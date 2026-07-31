@@ -58,13 +58,21 @@ export class RevymeBackend implements ProjectBackend {
         trace.error('backend:load-project-parse', { id, error: String(err) });
         return null;
       }
-      if (!data || !isKnownProjectFormat(data.format)) {
-        // Empty project (newly-created website) — return null so the
-        // ProjectLoader seeds the empty starter.
+      // A row that HAS files is a real project — never discard it over an
+      // unrecognised format tag. Returning null makes ProjectLoader seed an
+      // empty starter, and the next autosave writes that emptiness back over
+      // the user's work. The tag is a version hint, not an admission gate:
+      // only a genuinely fileless row (newly-created website) is "no
+      // snapshot". An unknown tag is logged loudly and loaded anyway.
+      const fileCount = data?.files ? Object.keys(data.files).length : 0;
+      if (!data || fileCount === 0) {
         trace.action('backend:load-project', { id, result: 'no-snapshot', format: data?.format });
         return null;
       }
-      trace.action('backend:load-project', { id, fileCount: Object.keys(data.files ?? {}).length });
+      if (!isKnownProjectFormat(data.format)) {
+        trace.error('backend:load-project-unknown-format', { id, format: data.format, fileCount });
+      }
+      trace.action('backend:load-project', { id, fileCount });
       return data as ProjectData;
     } catch (err) {
       trace.error('backend:load-project', err);

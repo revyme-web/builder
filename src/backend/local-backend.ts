@@ -18,8 +18,15 @@ export class LocalBackend implements ProjectBackend {
       const raw = localStorage.getItem(key);
       if (!raw) return null;
       const data = JSON.parse(raw) as ProjectData;
-      if (!isKnownProjectFormat(data.format)) return null;
-      trace.action('backend:load-project', { id, source: 'localStorage', fileCount: Object.keys(data.files).length });
+      // Files present = real project. Never reject over the format tag alone:
+      // ProjectLoader would seed an empty starter and autosave would write it
+      // back over the user's work. Unknown tag is logged, then loaded.
+      const fileCount = data?.files ? Object.keys(data.files).length : 0;
+      if (fileCount === 0) return null;
+      if (!isKnownProjectFormat(data.format)) {
+        trace.error('local-backend:unknown-format', { id, format: data.format, fileCount });
+      }
+      trace.action('backend:load-project', { id, source: 'localStorage', fileCount });
       return data;
     } catch (err) {
       trace.error('local-backend:load-error', { id, error: String(err) });

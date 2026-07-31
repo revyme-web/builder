@@ -194,3 +194,34 @@ _fd('flushSaveNow', () => {
     }
   });
 });
+
+// ─── Regression: an unknown format tag must NEVER discard a real project ─────
+// Rejecting on the tag made ProjectLoader seed an empty starter, which
+// autosave then wrote back over the user's files. Two projects were lost to
+// this. Files present = load it, whatever the tag says.
+describe('LocalBackend — format tag is a hint, not a gate', () => {
+  let backend: LocalBackend;
+  beforeEach(() => { localStorage.clear(); backend = new LocalBackend(); });
+
+  it('loads a project with an UNKNOWN format tag when it has files', async () => {
+    localStorage.setItem('revyme-project-local', JSON.stringify({
+      format: 'some-future-tag-v9',
+      files: { 'app/page.tsx': 'real work' },
+    }));
+    const loaded = await backend.loadProject('local');
+    expect(loaded).not.toBeNull();
+    expect(loaded!.files['app/page.tsx']).toBe('real work');
+  });
+
+  it('loads a project with NO format tag at all when it has files', async () => {
+    localStorage.setItem('revyme-project-local', JSON.stringify({
+      files: { 'app/page.tsx': 'real work' },
+    }));
+    expect((await backend.loadProject('local'))!.files['app/page.tsx']).toBe('real work');
+  });
+
+  it('still returns null for a genuinely fileless row', async () => {
+    localStorage.setItem('revyme-project-local', JSON.stringify({ format: 'revyme-v1', files: {} }));
+    expect(await backend.loadProject('local')).toBeNull();
+  });
+});
