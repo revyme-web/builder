@@ -1,0 +1,266 @@
+@import "tailwindcss";
+
+/* Class-based dark mode. The app theme is driven by a `.dark` class on
+   <html> (toggled by the BottomToolbar theme switcher; see the `.dark { … }`
+   block below). Without this line Tailwind 4's `dark:` variant defaults to
+   `@media (prefers-color-scheme)` — every `dark:` utility would then follow
+   the OS instead of the in-app toggle, so dark-variant styles leak into
+   light mode whenever the OS is set to dark. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─── Design Tokens ────────────────────────────────────────────────────
+   MUST be inside @layer theme so they don't override Tailwind utilities.
+   In CSS Cascade Layers, unlayered styles ALWAYS beat layered styles.
+   Since Tailwind puts utilities in @layer utilities, any unlayered CSS
+   (even just * { box-sizing }) would take priority over utility classes.
+   ──────────────────────────────────────────────────────────────────── */
+
+@layer theme {
+  :root {
+    /* Surfaces */
+    --bg-canvas: #eeeeee;
+    --bg-surface: #ffffff;
+    --bg-toolbar: #f8f9fa;
+    --bg-panel: #ffffff;
+    --bg-hover: #f1f1f1;
+    --bg-active: #e6e6e6;
+    --bg-tertiary: #f1f5f9;
+    /* AddVariantUI placeholder cards (the "Variant" / "Hover / Pressed"
+       affordances next to a selected component variant). */
+    --variant-card-bg: #ffffff;
+    --variant-card-bg-hover: #f1f5f9;
+    /* The filled circle behind the `+` glyph (PlusBadgeIcon). */
+    --variant-card-badge: #e2e8f0;
+
+    /* Text */
+    --text-primary: #1e293b;
+    --text-secondary: #5b5b5b;
+    --text-disabled: #94a3b8;
+    --text-tertiary: #999999;
+    --text-muted: #b0b0b0;
+
+    /* Accent */
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --accent-muted: #bfdbfe;
+    --accent-surface: #eff6ff;
+    --accent-secondary: #9a66ff;
+    --accent-secondary-hover: #b883ff;
+
+    /* Borders */
+    --border-light: #f0f0f0;
+    --border-default: #cbd5e1;
+    --border-focus: #3b82f6;
+
+    /* Controls */
+    --control-bg: #f8fafc;
+    --control-bg-hover: #f1f5f9;
+    --control-bg-active: #e2e8f0;
+    --control-border: #e2e8f0;
+    --control-border-hover: #cbd5e1;
+    --grid-line: rgba(224, 224, 224, 0.4);
+    --choice-bg: #e8e8e8;
+    --segmented-bg: white;
+    --slider-bg: #e2e8f0;
+    /* Border ring around the white slider thumb. Dark on the light
+       theme (the white thumb has no contrast against a light panel
+       otherwise); a translucent white ring on the dark theme. */
+    --slider-thumb-border: rgba(0, 0, 0, 0.2);
+
+    /* Buttons */
+    --btn-primary-bg: #3b82f6;
+    --btn-primary-hover: #2563eb;
+    --btn-secondary-bg: #f3f3f3;
+    --btn-secondary-hover: #e2e8f0;
+    /* Translucent "subtle fill" token — used by secondary buttons,
+       breadcrumb pills, toggle segments, etc. Mirrored per theme: 5%
+       black on light, 6% white on dark, so it reads on any surface.
+       (Referenced widely as `--button-secondary-bg`; it was previously
+       undefined, so every consumer fell back to a hard-coded
+       `rgba(255,255,255,…)` that vanished in light mode.) */
+    --button-secondary-bg: rgba(0, 0, 0, 0.05);
+    --button-secondary-hover: rgba(0, 0, 0, 0.09);
+
+    /* Misc */
+    --dropdown-bg: #ffffff;
+    --selection-bg: rgba(59, 130, 246, 0.2);
+    --drop-target: rgba(59, 130, 246, 0.3);
+
+    /* Status */
+    --success: #10b981;
+    --warning: #f59e0b;
+    --error: #ef4444;
+
+    /* Sizing */
+    --header-height: 52px;
+    --left-sidebar-width: 256px;
+    --left-menu-width: 52px;
+    --right-panel-width: 260px;
+    --control-height: 28px;
+    --bottom-toolbar-height: 48px;
+
+    /* ─── Control-row grid (properties panel + tool popups) ─────────────
+       Label column fraction for every two-column control row. Measured
+       from the pre-grid canonical row (StylesTool Overflow ToolSelect:
+       value cell left edge 92.2px of a 229.5px row = 40.2%) so the grid
+       conversion is pixel-identical to the old flex layout. The value
+       column is exactly the remainder — rows can no longer drift a few
+       px apart per content (the old flex-shrink artifact). Popups share
+       the fraction; their narrower container keeps the same ratio.
+
+       THEME-INDEPENDENT — it lives here in `:root`, never in `.dark`.
+       It's a track size, not a colour: `grid-template-columns:
+       var(--tool-label-col) minmax(0,1fr)` is invalid-at-computed-value
+       -time when the var is missing, so the whole declaration falls back
+       to `none` and every ToolRow collapses to ONE column — label
+       stacked above its control. Defining it under `.dark` only made
+       that the light-mode look of the entire properties panel
+       (user report 2026-07-25). */
+    --tool-label-col: 40.2%;
+
+    /* Radius */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  }
+
+  .dark {
+    --bg-canvas: #1d1d1d;
+    --bg-surface: #111111;
+    --bg-toolbar: #111111;
+    --bg-panel: #111111;
+    --bg-hover: #282828a3;
+    --bg-active: #4a4a4a;
+    --bg-tertiary: #1a1a1a;
+    --variant-card-bg: #2a2a2a;
+    --variant-card-bg-hover: #383838;
+    --variant-card-badge: rgba(255, 255, 255, 0.6);
+
+    --text-primary: #f8fafc;
+    --text-secondary: #bababa;
+    --text-disabled: #848484;
+    --text-tertiary: #666666;
+    --text-muted: #848484;
+
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+    --accent-muted: #1d4ed8;
+    --accent-surface: rgba(59, 130, 246, 0.1);
+    --accent-secondary: #9a66ff;
+    --accent-secondary-hover: #b883ff;
+
+    --border-light: #222222;
+    --border-default: #414243;
+    --border-focus: #3b82f6;
+
+    --control-bg: rgba(50, 50, 50, 0.8);
+    --control-bg-hover: #334155;
+    --control-bg-active: #45464b;
+    --control-border: #292929;
+    --control-border-hover: #475569;
+    --grid-line: rgba(50, 50, 50, 0.8);
+    --choice-bg: #1a1a1a;
+    --segmented-bg: #333333;
+    --slider-bg: #333333;
+    --slider-thumb-border: rgba(255, 255, 255, 0.5);
+
+    --btn-primary-bg: #3b82f6;
+    --btn-primary-hover: #60a5fa;
+    --btn-secondary-bg: #333333;
+    --btn-secondary-hover: #475569;
+    /* Dark value = the old hard-coded fallback, so dark mode is
+       unchanged; only light mode gains the (previously missing) fill. */
+    --button-secondary-bg: rgba(255, 255, 255, 0.06);
+    --button-secondary-hover: rgba(255, 255, 255, 0.1);
+
+    --dropdown-bg: #3d3d3d;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  }
+}
+
+@layer base {
+  body {
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+    margin: 0;
+  }
+
+  /* macOS Chrome maps a two-finger horizontal overscroll to the browser's
+     back/forward SWIPE NAVIGATION — on a pan-to-move canvas that's a
+     history hijack mid-gesture. `overscroll-behavior: none` on the scroll
+     roots stops the chain (both axes: also kills the vertical rubber-band
+     on the app shell). Same fix Figma ships. Mirrored in the sandbox
+     iframe's index.html — the gesture fires in whichever DOCUMENT the
+     wheel chain terminates, and canvas wheels land in the iframe. */
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+
+}
+
+/* ─── Smooth theme toggle ───────────────────────────────────────────── */
+/* The BottomToolbar theme switcher adds `theme-transition` to <html> for
+   the ~200ms of a light/dark flip so the editor chrome eases between
+   palettes instead of snapping, then removes it.
+
+   ONLY non-inherited properties are transitioned (background-color,
+   border-color, box-shadow, outline-color). `color` / `fill` / `stroke`
+   are INHERITED — in a `* { transition }` rule every nested element
+   re-triggers its own color transition each frame as the inherited value
+   cascades down, so a deeply-nested `currentColor` icon (button → span →
+   svg → path) visibly lags and oscillates while it "chases" its
+   ancestors. Leaving them out kills the oscillation: text + icon colors
+   snap instantly (unnoticeable next to the panel fade), and the
+   transform / opacity props stay out too so the 60fps RAF-driven canvas
+   overlays don't lerp-lag. */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 150ms ease, border-color 150ms ease,
+    box-shadow 150ms ease, outline-color 150ms ease !important;
+}
+
+/* ─── TipTap / ProseMirror ──────────────────────────────────────────── */
+
+.ProseMirror {
+  outline: none !important;
+  border: none !important;
+}
+
+.ProseMirror-focused {
+  outline: none !important;
+  border: none !important;
+}
+
+/* ─── Utilities ─────────────────────────────────────────────────────── */
+
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Add-Breakpoint menu rows — CSS hover (replaces brittle JS span-color toggling that left icons
+ * dim after the first hover). `!important` beats the spans' inline default colors; on mouse-out the
+ * rule stops applying and each span's inline color (icon/label/width) is restored. */
+.vp-add-item:hover {
+  background-color: var(--accent);
+}
+.vp-add-item:hover span {
+  color: #fff !important;
+}

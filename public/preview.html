@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Inter, system-ui, -apple-system, sans-serif; background: #fff; }
+    img { display: block; max-width: 100%; }
+    #loading { display: flex; align-items: center; justify-content: center; height: 100vh; color: #999; font-family: monospace; font-size: 13px; }
+    #error { color: red; padding: 20px; font-size: 13px; white-space: pre-wrap; font-family: monospace; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@19",
+      "react/jsx-runtime": "https://esm.sh/react@19/jsx-runtime",
+      "react-dom/client": "https://esm.sh/react-dom@19/client",
+      "framer-motion": "https://esm.sh/framer-motion@12",
+      "@react-spring/web": "https://esm.sh/@react-spring/web"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="root"><div id="loading">Waiting for preview...</div></div>
+  <script type="module">
+    import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { motion, AnimatePresence, useScroll, useTransform, useSpring, useMotionValueEvent, useInView, useMotionTemplate } from 'framer-motion';
+    // Make libraries available globally for eval'd code
+    window.React = React;
+    window.useState = useState;
+    window.useEffect = useEffect;
+    window.useRef = useRef;
+    window.useCallback = useCallback;
+    window.useMemo = useMemo;
+    window.motion = motion;
+    window.AnimatePresence = AnimatePresence;
+    window.useScroll = useScroll;
+    window.useTransform = useTransform;
+    window.useSpring = useSpring;
+    window.useMotionValueEvent = useMotionValueEvent;
+    window.useInView = useInView;
+    window.useMotionTemplate = useMotionTemplate;
+
+    const root = createRoot(document.getElementById('root'));
+
+    window.addEventListener('message', function(event) {
+      if (!event.data || event.data.type !== 'PREVIEW_CODE') return;
+
+      try {
+        // Inject tokens.css for CSS variable resolution
+        if (event.data.tokensCSS) {
+          let tokensEl = document.getElementById('preview-tokens');
+          if (!tokensEl) {
+            tokensEl = document.createElement('style');
+            tokensEl.id = 'preview-tokens';
+            document.head.appendChild(tokensEl);
+          }
+          tokensEl.textContent = event.data.tokensCSS;
+        }
+
+        // The parent sends already-compiled JS (not JSX)
+        const compiled = event.data.compiled;
+        // Eval in module context with React available
+        const PageComponent = new Function('React', compiled + '\nreturn Page;')(React);
+        root.render(React.createElement(PageComponent));
+        // Scroll to anchor if requested (after render settles)
+        if (event.data.scrollToId) {
+          const scrollSmooth = event.data.smooth;
+          requestAnimationFrame(function() {
+            setTimeout(function() {
+              const target = document.getElementById(event.data.scrollToId);
+              if (target) target.scrollIntoView({ behavior: scrollSmooth ? 'smooth' : 'auto' });
+            }, 100);
+          });
+        }
+      } catch(e) {
+        const errDiv = document.createElement('div');
+        errDiv.id = 'error';
+        errDiv.textContent = e.message;
+        document.getElementById('root').innerHTML = '';
+        document.getElementById('root').appendChild(errDiv);
+      }
+    });
+
+    // Intercept internal link clicks — navigate within preview, don't leave iframe
+    document.addEventListener('click', function(e) {
+      const anchor = e.target.closest('a[href]');
+      if (!anchor) return;
+      const href = anchor.getAttribute('href');
+      if (!href) return;
+      // External links: let them open normally (in new tab if target="_blank")
+      if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:')) return;
+      // Internal link: prevent default, tell parent to navigate
+      e.preventDefault();
+      const smooth = anchor.getAttribute('data-smooth-scroll') === 'true';
+      // Handle anchor-only links (#section) — scroll within current page
+      if (href.startsWith('#')) {
+        const target = document.getElementById(href.slice(1));
+        if (target) target.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+        return;
+      }
+      // Page link (possibly with #section): tell parent to switch pages
+      window.parent.postMessage({ type: 'PREVIEW_NAVIGATE', href, smooth }, '*');
+    });
+
+    // Tell parent we're ready
+    window.parent.postMessage({ type: 'PREVIEW_READY' }, '*');
+  </script>
+</body>
+</html>

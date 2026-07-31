@@ -1,0 +1,96 @@
+Revyme — open-source visual web builder
+Copyright © 2026 Nikita Kofman
+
+This work is licensed under the GNU Affero General Public License,
+version 3 (AGPL-3.0). See the LICENSE file.
+
+── Additional term under AGPL-3.0 section 7(b) ────────────────────────────────
+
+In accordance with section 7(b) of the GNU Affero General Public License
+version 3, the following additional term applies to this work and to every
+covered work based on it:
+
+  Any conveyance of this work, and any deployment of it that users interact
+  with remotely through a computer network, must preserve this NOTICE file,
+  the copyright notices and author attributions contained in the source
+  files, and the author attributions included in the Appropriate Legal
+  Notices displayed by the work.
+
+Removal of these notices from the work or from derivative works is a
+violation of the license.
+
+── Trademarks ─────────────────────────────────────────────────────────────────
+
+"Revyme", the Revyme logo, and the revyme.com / revyme.app names are
+trademarks of the copyright holder. This license does NOT grant permission
+to use them, except as required for reasonable and customary use in
+describing the origin of the work (see AGPL-3.0 section 7(e)). Forks and
+derivative products must use their own name and branding.
+
+── Third-party notices ────────────────────────────────────────────────────────
+
+Portions of this software are derived from third-party open-source work:
+
+  * svg-path-editor by Yann Armelin (https://github.com/Yqnn/svg-path-editor)
+    License: Apache-2.0
+    Used in: src/shared/svg-path/ (SVG path parser and data model, ported
+    to TypeScript with modifications)
+
+  * WebGL-Fluid-Simulation by Pavel Dobryakov
+    (https://github.com/PavelDoGreat/WebGL-Fluid-Simulation)
+    Copyright (c) 2017 Pavel Dobryakov
+    License: MIT (full text below)
+    Used in: the SplashCursor built-in code component
+    (src/code/project/default-code-components/SplashCursor.ts). The
+    Navier-Stokes solver, its GLSL shader programs and the framebuffer
+    ping-pong pipeline are Dobryakov's work, wrapped in a React component
+    and adapted to the Revyme code-component runtime.
+
+  * Magic UI (https://github.com/magicuidesign/magicui)
+    Copyright (c) Magic UI
+    License: MIT (full text below)
+    Techniques used in the following built-in code components
+    (src/code/project/default-code-components/): MorphingText.ts,
+    SpinningText.ts, WordRotate.ts, VideoText.ts, LensBox.ts.
+    The lens/magnifier effect in LensBox.ts derives from Magic UI's "Lens",
+    which is itself adapted from Aceternity UI.
+
+  * Feather Icons by Cole Bemis (https://github.com/feathericons/feather)
+    Copyright (c) 2013-2023 Cole Bemis
+    License: MIT (full text below)
+    Icon artwork used in: the LocaleSwitcher.ts (globe) and ThemeToggle.ts
+    (sun, moon) built-in code components
+    (src/code/project/default-code-components/).
+
+Because that work is redistributed as part of this software — and is written
+into projects created with it — the MIT permission notice is reproduced here
+in full, and repeated in the header of each affected source file:
+
+  Permission is hereby granted, free of charge, to any person obtaining a
+  copy of this software and associated documentation files (the "Software"),
+  to deal in the Software without restriction, including without limitation
+  the rights to use, copy, modify, merge, publish, distribute, sublicense,
+  and/or sell copies of the Software, and to permit persons to whom the
+  Software is furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+  DEALINGS IN THE SOFTWARE.
+
+All other third-party dependencies are consumed unmodified via npm under
+their respective licenses (see each package's LICENSE in node_modules).
+
+── Commercial licensing ───────────────────────────────────────────────────────
+
+The copyright holder offers this work under alternative commercial license
+terms for organizations that cannot or do not wish to comply with the
+AGPL-3.0 (for example: proprietary modifications, embedding in closed-source
+products, or network deployment without source disclosure).
+Contact: hello@revyme.com

@@ -1,0 +1,81 @@
+name: Deploy canvas-poc
+
+# Ships the builder to the host that runs the cloud service. Everything
+# sensitive lives in repo Secrets, so this file is safe in a public repo:
+#   - SSH_PRIVATE_KEY  deploy key for the server
+#   - DEPLOY_HOST      server hostname / IP
+#   - DEPLOY_USER      ssh user
+#   - DEPLOY_PATH      target directory on the server
+# Secrets are encrypted, masked in logs, and NOT exposed to workflows
+# triggered by pull requests from forks. This job only runs on a push to
+# `main` (which only the repo owner can do) or a manual dispatch — a fork
+# PR can never trigger it, so the deploy key can't be exfiltrated.
+#
+# Self-hosters: set the four secrets above (Settings → Secrets and variables
+# → Actions) to point at your own server, or delete this file and deploy
+# however you like — the app is a plain Vite build (`npm run build:all`).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-canvas-poc
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Provide build-time env
+        run: |
+          # Cloud build: with no VITE_API_URL the app calls /api on its OWN
+          # origin, and the front dispatcher proxies /api/* to the backend.
+          # That keeps the editor same-origin and HTTPS-safe (baking an
+          # absolute http:// API URL would be blocked as mixed content).
+          cat > .env <<EOF
+          VITE_REVYME_CLOUD=true
+          # ai-generator (Vibe chats + MCP bridge + Connect AI URLs) — served
+          # same-origin through nginx /bridge/ + /mcp/ so cookies flow and
+          # nothing is mixed-content.
+          VITE_AI_SERVICE_URL=https://revyme.com
+          VITE_MCP_URL=https://revyme.com
+          EOF
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (main + sandbox + preview)
+        run: npm run build:all
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" \
+            dist node_modules src public index.html .env \
+            package.json package-lock.json tsconfig.json \
+            vite.config.ts vite.sandbox.config.ts vite.preview.config.ts \
+            ecosystem.config.cjs \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd $DEPLOY_PATH && pm2 startOrReload ecosystem.config.cjs --update-env && pm2 save"

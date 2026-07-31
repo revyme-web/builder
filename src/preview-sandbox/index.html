@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en" suppressHydrationWarning>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Preview</title>
+    <!-- Importmap for dynamically-imported component bundles via the
+         preview's CDN-import preloader (`preloadCdnImports` in main.tsx).
+         The bundles import bare specifiers (`react`, `react/jsx-runtime`,
+         `framer-motion`); native browser ESM has no way to resolve those
+         without an importmap. Same approach as canvas-sandbox/index.html
+         — point at local bridge files that Vite transforms to use the
+         preview iframe's already-loaded React/motion instances, so
+         hooks share dispatchers (avoids "Cannot read properties of null
+         on dispatcher" inside dynamically loaded components). -->
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "/runtime-bridge.ts",
+        "react/jsx-runtime": "/runtime-bridge-jsx.ts",
+        "framer-motion": "/runtime-bridge-motion.ts",
+        "motion/react": "/runtime-bridge-motion.ts"
+      }
+    }
+    </script>
+    <style>
+      html, body { overscroll-behavior: none; }
+      /* Universal reset matching the canvas iframe's reset
+         (src/canvas-sandbox/index.html). The canvas zeroes margin AND padding
+         on every element so the user's design is purely explicit — no browser
+         defaults on h1/h2/p/ul/button/etc. The preview must match or the same
+         JSX renders with extra browser-default spacing here (h1 ~21px, p
+         ~16px, ul padding-left 40px) and the user sees a different layout
+         than they designed against. */
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body, #root { width: 100%; min-height: 100vh; }
+      /* Transparent body so the parent overlay's dark backdrop shows through
+         while user code is still booting. The user's globals.css will set
+         its own background once the runtime mounts the React tree. */
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: transparent;
+        color: #111;
+      }
+      /* Links inherit their surroundings — no browser-default underline or blue/visited-purple. Matches the
+         deploy reset (build-project.ts ensureGlobalsCss) so a link without inline textDecoration:'none' (e.g. a
+         logo link) previews exactly as it ships. */
+      a { color: inherit; text-decoration: inherit; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>

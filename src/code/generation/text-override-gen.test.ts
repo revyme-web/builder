@@ -1,0 +1,229 @@
+import { describe, test, expect } from 'vitest';
+import {
+  setTextOverrideInCode,
+  removeTextOverrideInCode,
+  getTextOverrideWidths,
+  HOOK_NAME,
+} from './text-override-gen';
+
+const PRIMARY = 1440;
+const TABLET = 768;
+const MOBILE = 375;
+const ALL_VPS = [MOBILE, TABLET, PRIMARY];
+
+const PLAIN = `'use client';
+import React from 'react';
+export default function Page() {
+  return <p data-id="t1">Hello</p>;
+}`;
+
+describe('setTextOverrideInCode', () => {
+  test('plain element + first non-primary override → wraps in useResponsiveText', () => {
+    const out = setTextOverrideInCode(PLAIN, 't1', TABLET, PRIMARY, 'Hi tablet', ALL_VPS);
+    expect(out).toMatch(new RegExp(`${HOOK_NAME}\\(['"]Hello['"]`));
+    expect(out).toMatch(/768:\s*['"]Hi tablet['"]/);
+    // Hook definition was injected.
+    expect(out).toContain(`function ${HOOK_NAME}(primary, overrides`);
+    // useState + useEffect added to react import (named imports may follow
+    // the default `React` specifier, so match against the whole import line).
+    expect(out).toMatch(/import\s+[^;]*useState[^;]*from\s+['"]react['"]/);
+    expect(out).toMatch(/import\s+[^;]*useLayoutEffect[^;]*from\s+['"]react['"]/);
+    expect(out).toMatch(/import\s+[^;]*useRef[^;]*from\s+['"]react['"]/);
+  });
+
+  test('plain element + primary edit → updates JSXText only (no wrap)', () => {
+    const out = setTextOverrideInCode(PLAIN, 't1', PRIMARY, PRIMARY, 'Updated primary');
+    expect(out).toContain('Updated primary');
+    expect(out).not.toContain(HOOK_NAME);
+    expect(out).not.toContain('useState');
+  });
+
+  test('wrapped element + add second viewport override', () => {
+    let code = setTextOverrideInCode(PLAIN, 't1', TABLET, PRIMARY, 'Hi tablet', ALL_VPS);
+    code = setTextOverrideInCode(code, 't1', MOBILE, PRIMARY, 'Hi mobile');
+    expect(code).toMatch(/768:\s*['"]Hi tablet['"]/);
+    expect(code).toMatch(/375:\s*['"]Hi mobile['"]/);
+    // Hook function still injected once (not duplicated)
+    expect(code.match(new RegExp(`function ${HOOK_NAME}`, 'g'))?.length).toBe(1);
+  });
+
+  test('wrapped element + update existing viewport override (no duplicate key)', () => {
+    let code = setTextOverrideInCode(PLAIN, 't1', TABLET, PRIMARY, 'old');
+    code = setTextOverrideInCode(code, 't1', TABLET, PRIMARY, 'new');
+    // Only one tablet entry, with the updated text
+    const matches = code.match(/768:\s*['"][^'"]*['"]/g) ?? [];
+    expect(matches).toHaveLength(1);
+    expect(code).toMatch(/768:\s*['"]new['"]/);
+    expect(code).not.toMatch(/['"]old['"]/);
+  });
+
+  test('wrapped element + primary edit updates first arg only', () => {
+    let code = setTextOverrideInCode(PLAIN, 't1', TABLET, PRIMARY, 'Hi tablet', ALL_VPS);
+    code = setTextOverrideInCode(code, 't1', PRIMARY, PRIMARY, 'New primary');
+    expect(code).toMatch(new RegExp(`${HOOK_NAME}\\(['"]New primary['"]`));
+    expect(code).toMatch(/768:\s*['"]Hi tablet['"]/);
+  });
+
+  test('removing the only override unwraps back to plain text + drops hook fn', () => {
+    let code = setTextOverrideInCode(PLAIN, 't1', TABLET, PRIMARY, 'Hi tablet', ALL_VPS);
+    expect(code).toContain(HOOK_NAME);
+    code = setTextOverrideInCode(code, 't1', TABLET, PRIMARY, '');
+    expect(code).not.toContain(HOOK_NAME);
+    expect(code).not.toContain('function useResponsiveText');
+    // Original primary text restored
+    expect(code).toContain('Hello');
+  });
+
+  test('removing one of two overrides keeps wrap + remaining viewport', () => {
+    let code = setTextOverrideInCode(PLAIN, 't1', TABLET, PRIMARY, 'Hi tablet', ALL_VPS);
+    code = setTextOverrideInCode(code, 't1', MOBILE, PRIMARY, 'Hi mobile');
+    code = setTextOverrideInCode(code, 't1', TABLET, PRIMARY, '');
+    expect(code).toContain(HOOK_NAME);
+    expect(code).toMatch(/375:\s*['"]Hi mobile['"]/);
+    expect(code).not.toMatch(/768:\s*['"]/);
+  });
+
+  test('hook definition is added once even with multiple overridden nodes', () => {
+    let code = `'use client';
+import React from 'react';
+export default function Page() {
+  return (
+    <div>
+      <p data-id="a">A</p>
+      <p data-id="b">B</p>
+    </div>
+  );
+}`;
+    code = setTextOverrideInCode(code, 'a', TABLET, PRIMARY, 'A-tablet');
+    code = setTextOverrideInCode(code, 'b', TABLET, PRIMARY, 'B-tablet');
+    expect(code.match(new RegExp(`function ${HOOK_NAME}`, 'g'))?.length).toBe(1);
+  });
+
+  test('non-existent nodeId is a no-op', () => {
+    const out = setTextOverrideInCode(PLAIN, 'NOPE', TABLET, PRIMARY, 'x');
+    expect(out).toBe(PLAIN);
+  });
+
+  test('emits viewport widths array as third arg to useResponsiveText', () => {
+    const out = setTextOverrideInCode(PLAIN, 't1', TABLET, PRIMARY, 'Hi tablet', ALL_VPS);
+    // Sorted ascending: 375, 768, 1440
+    expect(out).toMatch(/\[\s*375\s*,\s*768\s*,\s*1440\s*\]/);
+  });
+
+  test('changing viewport widths propagates to every existing hook call', () => {
+    let code = setTextOverrideInCode(PLAIN, 't1', TABLET, PRIMARY, 'A', ALL_VPS);
+    // User adds an XL viewport at 1920 — pass the new full list with the
+    // next override edit; every existing hook call's third arg should
+    // reflect [375, 768, 1440, 1920].
+    code = setTextOverrideInCode(code, 't1', MOBILE, PRIMARY, 'B', [375, 768, 1440, 1920]);
+    expect(code).toMatch(/\[\s*375\s*,\s*768\s*,\s*1440\s*,\s*1920\s*\]/);
+    expect(code).not.toMatch(/\[\s*375\s*,\s*768\s*,\s*1440\s*\](?![,\d])/); // no stale 3-element array
+  });
+});
+
+describe('removeTextOverrideInCode', () => {
+  test('removing last override unwraps and prunes hook function', () => {
+    let code = setTextOverrideInCode(PLAIN, 't1', TABLET, PRIMARY, 'Hi tablet', ALL_VPS);
+    code = removeTextOverrideInCode(code, 't1', TABLET, PRIMARY);
+    expect(code).not.toContain(HOOK_NAME);
+    expect(code).toContain('Hello');
+  });
+});
+
+describe('getTextOverrideWidths', () => {
+  test('plain element → empty array', () => {
+    expect(getTextOverrideWidths(PLAIN, 't1')).toEqual([]);
+  });
+
+  test('returns numeric widths from the overrides object', () => {
+    let code = setTextOverrideInCode(PLAIN, 't1', TABLET, PRIMARY, 'Hi tablet', ALL_VPS);
+    code = setTextOverrideInCode(code, 't1', MOBILE, PRIMARY, 'Hi mobile');
+    const widths = getTextOverrideWidths(code, 't1').sort((a, b) => b - a);
+    expect(widths).toEqual([TABLET, MOBILE]);
+  });
+
+  test('non-existent nodeId → empty', () => {
+    expect(getTextOverrideWidths(PLAIN, 'nope')).toEqual([]);
+  });
+});
+
+describe('react import management', () => {
+  test('augments existing react import when only React default is present', () => {
+    const code = `'use client';
+import React from 'react';
+export default function Page() {
+  return <p data-id="t1">Hi</p>;
+}`;
+    const out = setTextOverrideInCode(code, 't1', TABLET, PRIMARY, 'tablet');
+    expect(out).toMatch(/import\s+React,\s*\{[^}]*useState[^}]*\}\s+from\s+['"]react['"]/);
+  });
+
+  test('adds named imports when react import has braces but missing names', () => {
+    const code = `'use client';
+import { Component } from 'react';
+export default function Page() {
+  return <p data-id="t1">Hi</p>;
+}`;
+    const out = setTextOverrideInCode(code, 't1', TABLET, PRIMARY, 'tablet');
+    // Existing `Component` named import preserved; the hook deps + a default
+    // `React` are added (React is needed because the hook uses
+    // `React.createElement`).
+    expect(out).toMatch(/import\s+React,\s*\{[^}]*Component[^}]*\}\s+from\s+['"]react['"]/);
+    expect(out).toMatch(/import\s+[^;]*useState[^;]*from\s+['"]react['"]/);
+    expect(out).toMatch(/import\s+[^;]*useRef[^;]*from\s+['"]react['"]/);
+    expect(out).toMatch(/import\s+[^;]*useLayoutEffect[^;]*from\s+['"]react['"]/);
+  });
+
+  test('inserts a fresh react import when none exists', () => {
+    const code = `'use client';
+export default function Page() {
+  return <p data-id="t1">Hi</p>;
+}`;
+    const out = setTextOverrideInCode(code, 't1', TABLET, PRIMARY, 'tablet');
+    expect(out).toMatch(/import\s+React,\s*\{[^}]*useState[^}]*useRef[^}]*useLayoutEffect[^}]*\}\s+from\s+['"]react['"]/);
+  });
+});
+
+// ── legacy hook-inside-fence self-heal ────────────────────────────────────────
+// Files written before 2026-07-03 could carry the injected useMediaQuery hook
+// INSIDE the @useResponsiveText fence (the old before-first-function anchor).
+// Removing the last text override prunes the fence — the heal re-injects
+// useMediaQuery when __mq gates still reference it (the "Reset Override →
+// undefined useMediaQuery" live crash).
+describe('fence prune — useMediaQuery self-heal', () => {
+  const LEGACY = `'use client';
+import React, { useState, useRef, useLayoutEffect, useEffect } from 'react';
+
+// @useResponsiveText-begin
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
+  useEffect(() => {}, [query]);
+  return matches;
+}
+
+function useResponsiveText(primary, overrides, vpWidths) {
+  return primary;
+}
+// @useResponsiveText-end
+
+export default function Page() {
+  const __mq0 = useMediaQuery('(max-width: 768px)');
+  return (
+    <div data-id="root">
+      <svg data-id="t1-svg" viewBox={__mq0 ? "0 0 1010 120" : "0 0 1010 78"} style={{width: '100%'}}>
+        <foreignObject width="100%" height="100%"><p data-id="t1">{useResponsiveText('Hello', { 768: 'Hi' }, [375, 768, 1440])}</p></foreignObject>
+      </svg>
+    </div>
+  );
+}
+`;
+
+  test('re-injects useMediaQuery after pruning a fence that swallowed it', () => {
+    // Removing the ONLY override unwraps the call → hook unused → fence pruned.
+    const out = removeTextOverrideInCode(LEGACY, 't1', 768, 1440, [375, 768, 1440]);
+    expect(out).not.toContain('@useResponsiveText-begin');   // fence gone
+    expect(out).not.toContain('useResponsiveText(');          // call unwrapped
+    expect(out).toContain('__mq0');                           // gate still used by viewBox
+    expect(out).toMatch(/function\s+useMediaQuery\b/);        // hook re-injected (self-heal)
+  });
+});

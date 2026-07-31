@@ -1,0 +1,34 @@
+node_modules
+dist
+.env
+.env.local
+debug-trace.json
+debug-code.jsx
+debug_output/
+
+# generated / local
+debug-code-before.jsx
+logs/
+tags
+test-results/
+playwright-report/
+*.log
+.claude/
+
+# env — only the example ships
+.env*
+!.env.example
+
+# private — excluded from the public repo, kept locally
+# (docs/* not docs/ so docs/readme — the README's images — can be re-included;
+# gitignore cannot re-include children of an excluded DIRECTORY)
+lessons/
+docs/*
+!docs/readme/
+plans/
+todo/
+refactor-plan/
+before-oss-refactor/
+oss-release-plan/
+
+.DS_Store

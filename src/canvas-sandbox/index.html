@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Canvas Sandbox</title>
+    <!-- Importmap for dynamically-imported component bundles
+         (`https://assets.revyme.app/components/<Name>@<hash>.js`). The
+         bundles import bare specifiers — `react`, `react/jsx-runtime`,
+         `framer-motion`. The browser's native ESM loader has no way to
+         resolve those without an importmap (Vite handles imports for the
+         iframe's OWN bundle, but not for modules pulled in at runtime via
+         `import(url)`).
+
+         Pointing at LOCAL bridge files (which Vite transforms to use the
+         same Vite-optimized React the sandbox itself loaded) instead of
+         esm.sh — esm.sh would serve a SECOND React instance, breaking
+         hooks inside CDN-loaded components ("Cannot read properties of
+         null"). The bridge files do `export * from 'react'` etc. — Vite
+         rewrites those to its dep cache, so the bundle ends up sharing
+         the sandbox's actual React/framer-motion module instances.
+
+         `@revyme/runtime` is INLINED into bundles at share time on the
+         backend, so it doesn't need an importmap entry — see
+         `backend/src/services/component-bundler.ts`. -->
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "/runtime-bridge.ts",
+        "react/jsx-runtime": "/runtime-bridge-jsx.ts",
+        "framer-motion": "/runtime-bridge-motion.ts",
+        "motion/react": "/runtime-bridge-motion.ts"
+      }
+    }
+    </script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      /* Transparent so the parent app's `--bg-canvas` shows through. The
+         parent toggles between #eeeeee (light) and #1d1d1d (dark) on the
+         <html class="dark"> root — the iframe shouldn't paint its own
+         opaque background or it'd override that. */
+      html, body, #sandbox-root { width: 100%; height: 100%; overflow: hidden; background-color: transparent; }
+      /* Kill macOS Chrome's two-finger swipe-navigation inside the canvas
+         document — pan gestures must never trigger history back/forward.
+         Twin of the editor-shell rule in styles/globals.css. */
+      html, body { overscroll-behavior: none; }
+      /* Default UI font for any canvas content with no explicit
+         font-family — matches the code-component preview sandbox
+         (src/preview-sandbox/index.html) so the same JSX renders the
+         same in both. Without this the iframe body falls back to the
+         browser default (Times serif). */
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+      /* Links inherit their surroundings — no browser-default underline or blue/visited-purple, matching the
+         preview sandbox + the deploy reset so links look the same on the canvas as they ship. */
+      a { color: inherit; text-decoration: inherit; }
+    </style>
+  </head>
+  <body>
+    <div id="sandbox-root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

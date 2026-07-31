@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npx vitest run
+
+      - name: Build editor
+        run: npm run build
+
+      - name: Build canvas sandbox
+        run: npm run build:sandbox
+
+      - name: Build preview
+        run: npm run build:preview
+
+# Playwright e2e is intentionally NOT in CI v1 — it needs browsers plus the
+# dev-server pair (editor :3333 + sandbox :5174). Run locally with:
+#   VITE_REVYME_CLOUD= npx playwright test
+# (the env var must be EMPTY, not 'false' — 'false' is a truthy string and
+# flips the app into cloud mode).

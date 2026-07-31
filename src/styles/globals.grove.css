@@ -1,0 +1,299 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   REVYME PALETTE VARIANT — "GROVE"  (Emerald + Rose)
+   A/B TEST FILE. To use: copy this entire file over src/styles/globals.css
+   Primary accent  #0FA968 emerald   ·   Component (secondary) accent  #E64980 rose
+   Only the ACCENT palette differs from the base — surfaces / text / controls
+   are identical, so this is a clean A/B of the brand identity. Distinct from
+   the usual blue/purple design-tool palettes.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@import "tailwindcss";
+
+/* Class-based dark mode. The app theme is driven by a `.dark` class on
+   <html> (toggled by the BottomToolbar theme switcher; see the `.dark { … }`
+   block below). Without this line Tailwind 4's `dark:` variant defaults to
+   `@media (prefers-color-scheme)` — every `dark:` utility would then follow
+   the OS instead of the in-app toggle, so dark-variant styles leak into
+   light mode whenever the OS is set to dark. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─── Design Tokens — Figma-style ──────────────────────────────────────
+   MUST be inside @layer theme so they don't override Tailwind utilities.
+   In CSS Cascade Layers, unlayered styles ALWAYS beat layered styles.
+   Since Tailwind puts utilities in @layer utilities, any unlayered CSS
+   (even just * { box-sizing }) would take priority over utility classes.
+
+   Identity notes: surfaces are NEUTRAL cool grays (no hue tint), mirroring
+   Figma's editor chrome. Hover/active states are neutral too — the blue
+   accent (#0fa968) is reserved for SELECTION and primary actions only, the
+   way Figma uses it. Secondary accent is Figma's component-purple (#e64980).
+   Borders are very subtle, separating surfaces by luminance rather than a
+   hard line.
+   ──────────────────────────────────────────────────────────────────── */
+
+@layer theme {
+  :root {
+    /* Surfaces — neutral, Figma light */
+    --bg-canvas: #f5f5f5;
+    --bg-surface: #ffffff;
+    --bg-toolbar: #ffffff;
+    --bg-panel: #ffffff;
+    --bg-hover: rgba(0, 0, 0, 0.05);
+    --bg-active: #e5e5e5;
+    --bg-tertiary: #f5f5f5;
+    /* AddVariantUI placeholder cards (the "Variant" / "Hover / Pressed"
+       affordances next to a selected component variant). */
+    --variant-card-bg: #ffffff;
+    --variant-card-bg-hover: #f0f0f0;
+    /* The filled circle behind the `+` glyph (PlusBadgeIcon). */
+    --variant-card-badge: #e5e5e5;
+
+    /* Text — neutral near-black */
+    --text-primary: #1e1e1e;
+    --text-secondary: #666666;
+    --text-disabled: #b3b3b3;
+    --text-tertiary: #999999;
+    --text-muted: #b3b3b3;
+
+    /* Accent — Figma blue primary, component-purple secondary */
+    --accent: #0fa968;
+    --accent-hover: #0c8a55;
+    --accent-muted: #a7f3d0;
+    --accent-surface: #e9fbf2;
+    --accent-secondary: #e64980;
+    --accent-secondary-hover: #c9376a;
+
+    /* Borders — subtle, neutral */
+    --border-light: #f0f0f0;
+    --border-default: #e0e0e0;
+    --border-focus: #0fa968;
+
+    /* Controls */
+    --control-bg: #f5f5f5;
+    --control-bg-hover: #ebebeb;
+    --control-bg-active: #e0e0e0;
+    --control-border: #e0e0e0;
+    --control-border-hover: #cccccc;
+    --grid-line: rgba(0, 0, 0, 0.06);
+    --choice-bg: #ebebeb;
+    --segmented-bg: white;
+    --slider-bg: #e0e0e0;
+    /* Border ring around the white slider thumb. Dark on the light
+       theme (the white thumb has no contrast against a light panel
+       otherwise); a translucent white ring on the dark theme. */
+    --slider-thumb-border: rgba(0, 0, 0, 0.2);
+
+    /* Buttons */
+    --btn-primary-bg: #0fa968;
+    --btn-primary-hover: #0c8a55;
+    --btn-secondary-bg: #ebebeb;
+    --btn-secondary-hover: #e0e0e0;
+    /* Translucent "subtle fill" token — used by secondary buttons,
+       breadcrumb pills, toggle segments, etc. Neutral black/white alpha
+       (Figma keeps these chromeless): 5% black on light, 7% white on dark.
+       (Referenced widely as `--button-secondary-bg`; keep both themes
+       defined so no consumer falls back to a value that vanishes in one
+       mode.) */
+    --button-secondary-bg: rgba(0, 0, 0, 0.05);
+    --button-secondary-hover: rgba(0, 0, 0, 0.09);
+
+    /* Misc */
+    --dropdown-bg: #ffffff;
+    --selection-bg: rgba(15, 169, 104, 0.2);
+    --drop-target: rgba(15, 169, 104, 0.3);
+
+    /* Status — Figma green / yellow / red */
+    --success: #14ae5c;
+    --warning: #f5a623;
+    --error: #f24822;
+
+    /* Sizing */
+    --header-height: 52px;
+    --left-sidebar-width: 256px;
+    --left-menu-width: 52px;
+    --right-panel-width: 260px;
+    --control-height: 28px;
+    --bottom-toolbar-height: 48px;
+
+    /* Control-row grid label track. Theme-INDEPENDENT (a track size, not a
+       colour) so it must live in `:root` — a missing var makes
+       `grid-template-columns: var(--tool-label-col) minmax(0,1fr)` invalid
+       and every ToolRow collapses to one stacked column. */
+    --tool-label-col: 40.2%;
+
+    /* Radius */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 2px 14px rgba(0, 0, 0, 0.12);
+    --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.18);
+  }
+
+  .dark {
+    /* Surfaces — Figma neutral dark: canvas #1e1e1e, panels #2c2c2c,
+       elevated rows #383838. No hue tint. */
+    --bg-canvas: #1E1E1E;
+    --bg-surface: #2c2c2c;
+    --bg-toolbar: #2c2c2c;
+    --bg-panel: #2c2c2c;
+    --bg-hover: rgba(255, 255, 255, 0.07);
+    --bg-active: #383838;
+    --bg-tertiary: #383838;
+    --variant-card-bg: #383838;
+    --variant-card-bg-hover: #444444;
+    --variant-card-badge: rgba(255, 255, 255, 0.5);
+
+    /* Text — Figma bright neutral */
+    --text-primary: #ededed;
+    --text-secondary: #b3b3b3;
+    --text-disabled: #757575;
+    --text-tertiary: #8c8c8c;
+    --text-muted: #8c8c8c;
+
+    /* Accent — Figma blue (brightened hover), component-purple secondary */
+    --accent: #0fa968;
+    --accent-hover: #2dd48a;
+    --accent-muted: #0a5a39;
+    --accent-surface: rgba(15, 169, 104, 0.14);
+    --accent-secondary: #fb6f92;
+    --accent-secondary-hover: #ff93ac;
+
+    /* Borders — subtle luminance steps, neutral */
+    --border-light: #444444;
+    --border-default: #444444;
+    --border-focus: #0fa968;
+
+    /* Controls — flat dark fields, neutral */
+    --control-bg: #383838;
+    --control-bg-hover: #444444;
+    --control-bg-active: #4d4646;
+    --control-border: #444444;
+    --control-border-hover: #5c5c5c;
+    --grid-line: rgba(255, 255, 255, 0.06);
+    --choice-bg: #383838;
+    --segmented-bg: #535353;
+    --slider-bg: #444444;
+    --slider-thumb-border: rgba(255, 255, 255, 0.5);
+
+    /* Buttons */
+    --btn-primary-bg: #0fa968;
+    --btn-primary-hover: #2dd48a;
+    --btn-secondary-bg: #383838;
+    --btn-secondary-hover: #444444;
+    /* Neutral subtle fill (see light comment) — 7% white on dark. */
+    --button-secondary-bg: rgba(255, 255, 255, 0.07);
+    --button-secondary-hover: rgba(255, 255, 255, 0.12);
+
+    --dropdown-bg: #383838;
+    --selection-bg: rgba(15, 169, 104, 0.28);
+    --drop-target: rgba(15, 169, 104, 0.35);
+
+    /* Status — Figma green / yellow / red, tuned for dark */
+    --success: #14ae5c;
+    --warning: #ffcd29;
+    --error: #f24822;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 2px 14px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.6);
+  }
+}
+
+@layer base {
+  body {
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+    margin: 0;
+  }
+
+  /* Selection uses the accent at low alpha (Figma-style). */
+  ::selection {
+    background: var(--selection-bg);
+  }
+
+  /* Themed scrollbars — thin, neutral, rounded, the way Figma renders them.
+     Lives in @layer base so the `scrollbar-hide` utility (in @layer
+     utilities, a higher layer) still wins wherever it's applied — i.e.
+     opt-in hidden scrollbars keep working. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-default) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--border-default);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--text-tertiary);
+  }
+}
+
+/* ─── Smooth theme toggle ───────────────────────────────────────────── */
+/* The BottomToolbar theme switcher adds `theme-transition` to <html> for
+   the ~200ms of a light/dark flip so the editor chrome eases between
+   palettes instead of snapping, then removes it.
+
+   ONLY non-inherited properties are transitioned (background-color,
+   border-color, box-shadow, outline-color). `color` / `fill` / `stroke`
+   are INHERITED — in a `* { transition }` rule every nested element
+   re-triggers its own color transition each frame as the inherited value
+   cascades down, so a deeply-nested `currentColor` icon (button → span →
+   svg → path) visibly lags and oscillates while it "chases" its
+   ancestors. Leaving them out kills the oscillation: text + icon colors
+   snap instantly (unnoticeable next to the panel fade), and the
+   transform / opacity props stay out too so the 60fps RAF-driven canvas
+   overlays don't lerp-lag. */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 150ms ease, border-color 150ms ease,
+    box-shadow 150ms ease, outline-color 150ms ease !important;
+}
+
+/* ─── TipTap / ProseMirror ──────────────────────────────────────────── */
+
+.ProseMirror {
+  outline: none !important;
+  border: none !important;
+}
+
+.ProseMirror-focused {
+  outline: none !important;
+  border: none !important;
+}
+
+/* ─── Utilities ─────────────────────────────────────────────────────── */
+
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Add-Breakpoint menu rows — CSS hover (replaces brittle JS span-color toggling that left icons
+ * dim after the first hover). `!important` beats the spans' inline default colors; on mouse-out the
+ * rule stops applying and each span's inline color (icon/label/width) is restored. */
+.vp-add-item:hover {
+  background-color: var(--accent);
+}
+.vp-add-item:hover span {
+  color: #fff !important;
+}
