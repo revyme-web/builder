@@ -93,6 +93,14 @@ export const shortcutsModalOpenAtom = atom<boolean>(false);
  *  Deliberately session-only (plain atom, no storage) — closed on each load. */
 export const exportSectionOpenAtom = atom<boolean>(false);
 
+/** Right-header Export dropdown (format picker + "Export project" button).
+ *
+ *  Lifted out of RightHeader's local state so other surfaces can open it:
+ *  File ▸ Export code… in the left-header menu points here rather than
+ *  duplicating the dropdown or silently exporting a format the user never
+ *  chose. Session-only — a reload should not restore an open dropdown. */
+export const exportDropdownOpenAtom = atom<boolean>(false);
+
 /** false = docked in the VIBE left panel, true = floating popup. */
 export const aiChatDetachedAtom = atom<boolean>(false);
 

@@ -12,7 +12,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { CLOUD_ENABLED } from '@/shared/cloud-flag';
-import { useSetAtom, useAtomValue } from 'jotai';
+import { useSetAtom, useAtomValue, useAtom } from 'jotai';
+import { exportDropdownOpenAtom } from '@/code/stores/editor-store';
 import { PlayIcon } from '@/shared/icons';
 import { trace } from '@/shared/debug-trace';
 import Button from '@/design-system/Button';
@@ -115,7 +116,10 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
   // persisted across opens; the button flips to "Upgrade to export
   // in X" when the selected format requires a higher plan tier.
   const [exporting, setExporting] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
+  // Atom, not local state — File ▸ Export code… in the left-header menu opens
+  // this same dropdown, so the user picks a format in one place instead of
+  // the menu duplicating the picker or exporting a format it guessed.
+  const [exportOpen, setExportOpen] = useAtom(exportDropdownOpenAtom);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('source');
   const setSettingsOpenAtom = useSetAtom(settingsOverlayOpenAtom);
   const setSettingsSectionAtom = useSetAtom(settingsSectionAtom);

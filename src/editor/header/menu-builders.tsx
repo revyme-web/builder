@@ -33,7 +33,8 @@ import { projectVersionAtom, projectFS } from '@/code/project/project-fs';
 import { shareAsTemplate } from '@/backend/revyme-backend';
 import { toast } from 'sonner';
 import type { AutoPanSpeed } from '@/code/stores/user-preferences-store';
-import { previewModeAtom, shortcutsModalOpenAtom } from '@/code/stores/editor-store';
+import { previewModeAtom, shortcutsModalOpenAtom, exportDropdownOpenAtom } from '@/code/stores/editor-store';
+import { paletteOpenAtom } from '@/code/stores/palette-store';
 import { startOnboarding } from '@/editor/onboarding';
 
 type TabId = 'file' | 'edit' | 'insert' | 'view';
@@ -366,8 +367,20 @@ export function buildTabs(preferencesSubmenu: DropdownMenuEntry[]): TabSpec[] {
       ...(CLOUD_ENABLED ? [{ id: 'file-create-remix-link', label: 'Create remix link…', onClick: () => menuCreateRemixLink() }] : []),
       { type: 'separator' },
       // Code ops (formerly Code ▶)
-      { id: 'code-copy', label: 'Copy code', onClick: stub('code-copy') },
-      { id: 'code-export', label: 'Export code…', onClick: stub('code-export') },
+      // Opens the right-header Export dropdown (format picker + Export
+      // project) rather than exporting straight away — the user should
+      // choose Source vs Tailwind, and there is no reason to have a second
+      // picker in this menu. "Copy code" used to sit above this; it was a
+      // `stub()` that only traced, and its meaning was never clear
+      // (copy which code — the page? the project?), so it is gone.
+      {
+        id: 'code-export',
+        label: 'Export code…',
+        onClick: () => {
+          trace.action('menu:code-export');
+          getDefaultStore().set(exportDropdownOpenAtom, true);
+        },
+      },
       { type: 'separator' },
       // Project-scoped configuration — kept as submenus.
       { id: 'site-settings', label: 'Site Settings', submenuItems: siteSettingsSubmenu, onClick: () => {} },
@@ -404,7 +417,17 @@ export function buildTabs(preferencesSubmenu: DropdownMenuEntry[]): TabSpec[] {
       { type: 'separator' },
       // Editor configuration
       { id: 'preferences', label: 'Preferences', submenuItems: preferencesSubmenu, onClick: () => {} },
-      { id: 'quick-actions', label: 'Quick Actions', shortcut: 'Ctrl+K', onClick: stub('quick-actions') },
+      // The row advertises Ctrl+K, so it must open the same palette that
+      // shortcut does — it was a `stub()` that only traced.
+      {
+        id: 'quick-actions',
+        label: 'Quick Actions',
+        shortcut: 'Ctrl+K',
+        onClick: () => {
+          trace.action('menu:quick-actions');
+          getDefaultStore().set(paletteOpenAtom, true);
+        },
+      },
     ],
   },
   {
