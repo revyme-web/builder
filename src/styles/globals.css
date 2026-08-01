@@ -17,38 +17,29 @@
 
 @layer theme {
   :root {
-    /* Surfaces — ayu (https://ayu-theme.dev), light variant.
-       Values come from the palette's own themes/light.yaml: surface.sunk /
-       base / lift, ui.panel.bg, editor.fg, ui.fg.
+    /* SURFACES — the original neutral ladder, unchanged.
+       An earlier pass moved every surface onto ayu's blue-tinted neutrals to
+       go with the gold accent. It read as a blue cast across the whole app:
+       tinting the CHROME is not what makes the palette distinctive, and it
+       fought the neutral canvas the user's artwork sits on. Reverted.
 
-       Previously Tailwind slate (#f1f5f9, #e2e8f0, #94a3b8) with a blue
-       accent — the palette every Tailwind-era tool ships, and a large part of
-       why the editor read as a clone. ayu keeps a cool-neutral base but pairs
-       it with GOLD, which is what makes the combination distinctive.
-
-       Each surface is a deliberate ELEVATION step: canvas < panel < control <
-       hover < active, so a control is always visibly distinct from what it
-       sits on. ayu's own steps are flatter than this (it is designed for a
-       code editor, not a dense properties panel), so the control ladder is
-       widened here while keeping ayu's hues. */
-    /* Neutral grey, restored from the original palette and deliberately NOT
-       tinted with the rest of the ayu ladder. This is the one surface that
-       sits behind the USER'S artwork, so it has to stay chromatically neutral
-       — a tinted backdrop competes with whatever they are designing. */
+       What the redesign actually keeps is the ACCENT pair below — gold brand,
+       purple component-mode — on top of neutral greys. That is the part
+       carrying the identity; the neutrals are supposed to disappear. */
+    /* This surface sits behind the USER'S artwork, so it stays chromatically
+       neutral — a tinted backdrop competes with whatever they are designing. */
     --bg-canvas: #eeeeee;
     --bg-surface: #ffffff;
-    --bg-toolbar: #fafafa;
+    --bg-toolbar: #f8f9fa;
     --bg-panel: #ffffff;
-    --bg-hover: #f1f3f5;
-    --bg-active: #e4e8eb;
-    --bg-tertiary: #f8f9fa;
+    --bg-hover: #f1f1f1;
+    --bg-active: #e6e6e6;
+    --bg-tertiary: #f1f5f9;
     /* AddVariantUI placeholder cards (the "Variant" / "Hover / Pressed"
        affordances next to a selected component variant). */
     /* CANVAS-RESIDENT CHROME — viewport headers, Add-Variant placeholders.
-       Kept on the ORIGINAL neutral greys, not the ayu ladder: these sit on
-       the CANVAS beside the user's artwork, so like --bg-canvas they stay
-       untinted. The ayu control tones are blue-tinted, which reads cold and
-       out of place against the neutral canvas grey. */
+       These sit on the CANVAS beside the user's artwork, so like --bg-canvas
+       they track the neutral greys rather than any accent tone. */
     --canvas-chrome-bg: #ffffff;
     --canvas-chrome-border: #e2e2e2;
     --variant-card-bg: #ffffff;
@@ -56,23 +47,20 @@
     /* The filled circle behind the `+` glyph (PlusBadgeIcon). */
     --variant-card-badge: #e2e8f0;
 
-    /* Text — ayu light: editor.fg for primary, ui.fg for secondary. */
-    --text-primary: #5c6166;
-    --text-secondary: #828e9f;
-    --text-disabled: #b4bcc6;
-    --text-tertiary: #a0a9b5;
-    --text-muted: #a0a9b5;
+    --text-primary: #1e293b;
+    --text-secondary: #5b5b5b;
+    --text-disabled: #94a3b8;
+    --text-tertiary: #999999;
+    --text-muted: #b0b0b0;
 
-    /* Accent — ayu gold.
-       Warm and high-chroma. The earlier clay was warm but LOW chroma, which is
-       exactly where brown lives; gold keeps the saturation up so it reads as a
-       colour rather than as dirt.
+    /* ACCENT — gold (from the ayu palette), the one piece of the redesign that
+       carries the identity. Warm and HIGH-chroma: the earlier clay was warm but
+       low chroma, which is exactly where brown lives.
 
-       ayu's own light accent is #F29718, but that only reaches 2.3:1 on white
-       — fine as a fill, unreadable as text, and `--accent` is used for both
-       across the app. So light runs a deeper gold that clears AA in both
-       directions (4.9:1 as text on white, and white on it). --accent-strong
-       keeps ayu's brighter tone for CTAs and the active tool. */
+       Note --accent is used as both a fill and a text colour across the app, so
+       it has to clear AA in both directions. --accent-text carries the deeper
+       tone for the text sites; --accent-strong keeps the brighter one for CTAs
+       and the active tool. */
     /* IDENTICAL to dark. A brand accent that changes hue between themes stops
        being a brand colour, and the dark gold read as muddy on white. Gold is
        a FILL colour here (184 fill sites vs 57 text sites) and it fills the
@@ -115,42 +103,42 @@
     --selection: #035bd6;
 
     /* Borders */
-    --border-light: #f0f2f4;
-    --border-default: #cdd3d9;
+    --border-light: #f0f0f0;
+    --border-default: #cbd5e1;
     /* Focus is chrome, so it follows the brand accent — not the canvas blue. */
     --border-focus: #e6b450;
 
     /* Controls */
     /* Properties-panel controls. On light these must sit BELOW the white
-       panel (a control lighter than its container has no edge), so the ladder
-       inverts here: panel #ffffff -> control #f2eee9 -> hover -> active. */
-    --control-bg: #f1f3f5;
-    --control-bg-hover: #e4e8eb;
-    --control-bg-active: #d6dbe0;
-    --control-border: #e4e8eb;
-    --control-border-hover: #c8cfd6;
+       panel — a control lighter than its container has no edge — so the ladder
+       inverts here: panel #ffffff -> control -> hover -> active. */
+    --control-bg: #f8fafc;
+    --control-bg-hover: #f1f5f9;
+    --control-bg-active: #e2e8f0;
+    --control-border: #e2e8f0;
+    --control-border-hover: #cbd5e1;
     --grid-line: rgba(205, 211, 217, 0.4);
     /* Segmented controls (No/Yes, Flex/Grid, …). Two levels, and they must
        come from the same ladder as every other control or the segment reads
        as a different material: --choice-bg is the recessed TRACK, and
        --segmented-bg the RAISED active segment. These were flat greys
        (#e8e8e8 / white, #1a1a1a / #333333) left over from the old palette. */
-    --choice-bg: #e4e8eb;
+    --choice-bg: #e8e8e8;
     --segmented-bg: #ffffff;
-    --slider-bg: #e4e8eb;
+    --slider-bg: #e2e8f0;
     /* Border ring around the white slider thumb. Dark on the light
        theme (the white thumb has no contrast against a light panel
        otherwise); a translucent white ring on the dark theme. */
     --slider-thumb-border: rgba(0, 0, 0, 0.2);
 
     /* Buttons */
-    /* Primary buttons take --accent-strong, not --accent: a CTA is one of the
-       two things allowed to shout (the other is the active tool). The calm
-       clay is for persistent chrome. */
+    /* Primary buttons track --accent (with --accent-strong reserved for the
+       loudest surfaces: the active tool). Both take the same near-black label
+       — see --accent-fg. */
     --btn-primary-bg: #e6b450;
     --btn-primary-hover: #f2c86e;
-    --btn-secondary-bg: #f1f3f5;
-    --btn-secondary-hover: #e4e8eb;
+    --btn-secondary-bg: #f3f3f3;
+    --btn-secondary-hover: #e2e8f0;
     /* Translucent "subtle fill" token — used by secondary buttons,
        breadcrumb pills, toggle segments, etc. Mirrored per theme: 5%
        black on light, 6% white on dark, so it reads on any surface.
@@ -215,12 +203,12 @@
        brightest thing on screen in both themes. */
     /* Neutral grey — see the :root note. Not the ayu blue-black. */
     --bg-canvas: #1d1d1d;
-    --bg-surface: #0d1017;
-    --bg-toolbar: #0d1017;
-    --bg-panel: #0d1017;
-    --bg-hover: #1b202b;
-    --bg-active: #2e3542;
-    --bg-tertiary: #141821;
+    --bg-surface: #111111;
+    --bg-toolbar: #111111;
+    --bg-panel: #111111;
+    --bg-hover: #282828a3;
+    --bg-active: #4a4a4a;
+    --bg-tertiary: #1a1a1a;
     /* Neutral greys — see the :root note. Canvas-adjacent, so untinted. */
     --canvas-chrome-bg: #2a2a2a;
     --canvas-chrome-border: #333333;
@@ -228,11 +216,11 @@
     --variant-card-bg-hover: #383838;
     --variant-card-badge: rgba(255, 255, 255, 0.6);
 
-    --text-primary: #bfbdb6;
-    --text-secondary: #8a94a6;
-    --text-disabled: #4a5266;
-    --text-tertiary: #5a6378;
-    --text-muted: #5a6378;
+    --text-primary: #f8fafc;
+    --text-secondary: #bababa;
+    --text-disabled: #848484;
+    --text-tertiary: #666666;
+    --text-muted: #848484;
 
     /* Clay reads 4.7:1 on the #141211 chrome — comfortably legible without
        shouting. White on it only reaches 4.0, so --accent-fg is near-black:
@@ -268,8 +256,8 @@
        stroke holds up against the darker canvas (#1d1d1d). */
     --selection: #3388ff;
 
-    --border-light: #141821;
-    --border-default: #2a3140;
+    --border-light: #222222;
+    --border-default: #414243;
     /* Chrome affordance → brand accent, not the canvas blue. */
     --border-focus: #e6b450;
 
@@ -279,22 +267,22 @@
        control-bg-hover and control-border-hover were Tailwind slate
        (#334155 / #475569): cool blue-greys that visibly fought the warm
        accent the moment anything was hovered. */
-    --control-bg: #1a1f2a;
-    --control-bg-hover: #242a38;
-    --control-bg-active: #2e3542;
-    --control-border: #1f2530;
-    --control-border-hover: #313846;
+    --control-bg: rgba(50, 50, 50, 0.8);
+    --control-bg-hover: #334155;
+    --control-bg-active: #45464b;
+    --control-border: #292929;
+    --control-border-hover: #475569;
     --grid-line: rgba(31, 37, 48, 0.8);
     /* See the :root note — recessed track, raised active segment. */
-    --choice-bg: #141821;
-    --segmented-bg: #2e3542;
-    --slider-bg: #242a38;
+    --choice-bg: #1a1a1a;
+    --segmented-bg: #333333;
+    --slider-bg: #333333;
     --slider-thumb-border: rgba(191, 189, 182, 0.5);
 
     --btn-primary-bg: #e6b450;
     --btn-primary-hover: #f2c86e;
-    --btn-secondary-bg: #1b202b;
-    --btn-secondary-hover: #2e3542;
+    --btn-secondary-bg: #333333;
+    --btn-secondary-hover: #475569;
     /* Dark value = the old hard-coded fallback, so dark mode is
        unchanged; only light mode gains the (previously missing) fill. */
     --button-secondary-bg: rgba(255, 255, 255, 0.06);
