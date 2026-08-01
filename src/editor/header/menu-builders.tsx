@@ -125,7 +125,9 @@ function readSelection(): { ids: string[]; primary: string | null } {
  *  handles via `setSelectedIds` anyway. */
 const menuNoMouseDown: () => void = () => { /* see comment */ };
 
-function menuNewPage(): void {
+/** Exported so the cmd+K palette runs the identical path as File ▸ New page —
+ *  the flush-then-bump-then-switch order matters and must not be duplicated. */
+export function menuNewPage(): void {
   flushNow();
   const filePath = createPageFile();
   const store = getDefaultStore();

@@ -76,21 +76,40 @@ function scoreItem(item: SearchableItem, q: string): { score: number; matched: s
  * default set (see `getDefaultResults`). Non-empty query runs the
  * scorer above with the category-weight multiplier.
  */
+export interface RankOptions {
+  /** Recently-activated item ids, most recent first. Drives both the
+   *  recency boost and the empty-query view. Defaults to none so the
+   *  function stays pure and deterministic for tests. */
+  recentIds?: string[];
+}
+
+/**
+ * Multiplier applied to items the user has activated before. Deliberately
+ * small: recency should break ties between comparable matches, not drag a
+ * weak match above a strong one. At 1.15 an MRU keyword hit (20) still
+ * loses to a fresh name-prefix hit (80).
+ */
+const MRU_BOOST = 1.15;
+
 export function fuzzySearch(
   items: SearchableItem[],
   query: string,
   limit = 30,
+  opts: RankOptions = {},
 ): SearchResult[] {
   const filtered = filterByCondition(items);
   const q = query.trim().toLowerCase();
-  if (!q) return getDefaultResults(filtered, limit);
+  const recentIds = opts.recentIds ?? [];
+  if (!q) return getDefaultResults(filtered, limit, recentIds);
 
+  const recent = new Set(recentIds);
   const results: SearchResult[] = [];
   for (const item of filtered) {
     const { score, matched } = scoreItem(item, q);
     if (score < MIN_SCORE) continue;
     const weight = CATEGORY_CONFIG[item.category]?.weight ?? 1;
-    results.push({ ...item, score: score * weight, matchedTerms: matched });
+    const boost = recent.has(item.id) ? MRU_BOOST : 1;
+    results.push({ ...item, score: score * weight * boost, matchedTerms: matched });
   }
 
   results.sort((a, b) => b.score - a.score);
@@ -111,11 +130,31 @@ export function fuzzySearch(
  * shows nice "Plugins" / "Project" headers without extra wiring.
  * Stops adding once `limit` is reached.
  */
-function getDefaultResults(items: SearchableItem[], limit: number): SearchResult[] {
+function getDefaultResults(
+  items: SearchableItem[],
+  limit: number,
+  recentIds: string[],
+): SearchResult[] {
   const out: SearchResult[] = [];
+  const taken = new Set<string>();
+
+  // Recents lead. What you last reached for beats a fixed entry-point
+  // list — and unlike `featured`, it reflects how this user actually
+  // works. Ids that no longer resolve (deleted file, uninstalled plugin)
+  // simply don't match anything here and drop out silently.
+  const byId = new Map(items.map((i) => [i.id, i]));
+  for (const id of recentIds) {
+    const item = byId.get(id);
+    if (!item) continue;
+    out.push({ ...item, score: CATEGORY_CONFIG[item.category]?.weight ?? 1, matchedTerms: [] });
+    taken.add(id);
+    if (out.length >= limit) return out;
+  }
+
+  // Then the curated featured entries, skipping any already shown above.
   for (const cat of CATEGORY_ORDER) {
     const config = CATEGORY_CONFIG[cat];
-    const featuredOfCat = items.filter((i) => i.category === cat && i.featured);
+    const featuredOfCat = items.filter((i) => i.category === cat && i.featured && !taken.has(i.id));
     for (const item of featuredOfCat) {
       out.push({ ...item, score: config.weight, matchedTerms: [] });
       if (out.length >= limit) return out;

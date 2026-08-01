@@ -165,7 +165,7 @@ export function CommandPalette() {
                       setQuery(text);
                     }
                   }}
-                  placeholder={filter === 'plugins' ? 'Search plugins or paste a URL...' : 'Search commands, tools, library, plugins, pages...'}
+                  placeholder={filter === 'plugins' ? 'Search plugins or paste a URL...' : 'Search layers, components, pages, CMS, icons, commands...'}
                   className="flex-1 bg-transparent text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] placeholder:opacity-60 focus:outline-none"
                   autoComplete="off"
                   autoCorrect="off"

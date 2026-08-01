@@ -18,11 +18,13 @@ import type { ToolMode } from '@/code/stores/tool-store';
 
 export type SearchCategory =
   | 'project'    // virtual: Browse plugins / Browse components / New Project … (curated initial)
+  | 'layers'     // nodes on the ACTIVE page — query-driven, never in the empty view
   | 'plugins'    // installed plugins (Tier 1 + Tier 2 + Tier 3) — pinned to initial via `featured`
   | 'commands'   // app-level actions: undo, copy, preview, publish, …
   | 'draw'       // canvas drawing tools: frame, text, shapes, layouts
   | 'tabs'       // left-panel switches: insert, library, …
   | 'library'    // local project items: components, sketches, vectors, icon sets, templates
+  | 'cms'        // CMS collections + their items
   | 'pages';     // pages in the project
 
 export interface CategoryConfig {
@@ -37,18 +39,22 @@ export interface CategoryConfig {
 }
 
 export const CATEGORY_CONFIG: Record<SearchCategory, CategoryConfig> = {
-  // `project` is the only group pinned to the empty-query view (via
-  // its rows' `featured: true`). Everything else lives inline — plugins
-  // sit alongside library / commands / pages when the user types, no
-  // special elevation. Weights are basically uniform now; only project
-  // gets a small bump so its rows render first at equal score.
-  project:  { label: 'Project',     weight: 1.2, defaultLimit: 10 },
-  commands: { label: 'Commands',    weight: 1.0, defaultLimit: 8 },
-  draw:     { label: 'Tools',       weight: 1.0, defaultLimit: 10 },
-  tabs:     { label: 'Panels',      weight: 1.0, defaultLimit: 9 },
-  library:  { label: 'Library',     weight: 1.0, defaultLimit: 10 },
-  plugins:  { label: 'Plugins',     weight: 1.0, defaultLimit: 10 },
-  pages:    { label: 'Pages',       weight: 1.0, defaultLimit: 5 },
+  // `project` is the only group pinned to the empty-query view (via its
+  // rows' `featured: true`).
+  //
+  // Content categories (layers / library / pages / cms) outrank verb
+  // categories (commands / draw / tabs). Typing "hea" almost always
+  // means "find the Header thing", not "run a command whose keywords
+  // mention headers" — so the content the user actually built wins ties.
+  project:  { label: 'Project',     weight: 1.2,  defaultLimit: 10 },
+  layers:   { label: 'Layers',      weight: 1.15, defaultLimit: 0  },
+  library:  { label: 'Library',     weight: 1.15, defaultLimit: 10 },
+  pages:    { label: 'Pages',       weight: 1.1,  defaultLimit: 5  },
+  cms:      { label: 'CMS',         weight: 1.05, defaultLimit: 5  },
+  plugins:  { label: 'Plugins',     weight: 1.0,  defaultLimit: 10 },
+  commands: { label: 'Commands',    weight: 1.0,  defaultLimit: 8  },
+  draw:     { label: 'Tools',       weight: 1.0,  defaultLimit: 10 },
+  tabs:     { label: 'Panels',      weight: 0.95, defaultLimit: 9  },
 };
 
 // ─── Action variants ────────────────────────────────────────────────────────
@@ -70,6 +76,17 @@ export type SearchAction =
   | { type: 'insert-library-item'; filePath: string; elementType: string }
   | { type: 'launch-plugin'; pluginTier: 'project' | 'installed' | 'cloud'; id: string }
   | { type: 'set-palette-filter'; filter: 'all' | 'plugins' }
+  /**
+   * Reveal a node that already exists on the ACTIVE page: select it and
+   * frame it in the viewport. Never inserts — the node is already there,
+   * the user is navigating to it.
+   */
+  | { type: 'select-node'; nodeId: string }
+  /**
+   * Open the CMS panel focused on a collection, optionally scrolled to
+   * one item. Navigation, not insertion.
+   */
+  | { type: 'open-cms'; slug: string; itemId?: string }
   | { type: 'open-url'; url: string; newTab?: boolean };
 
 // ─── Item shape ─────────────────────────────────────────────────────────────
@@ -80,6 +97,13 @@ export interface SearchableItem {
   category: SearchCategory;
   /** Optional sub-grouping label shown under the row name. */
   subcategory?: string;
+  /**
+   * Ancestor trail rendered as `Project › Section › Header`. Disambiguates
+   * results that share a name — with a dozen nodes called "Container",
+   * the name alone tells the user nothing about which one to pick.
+   * Ordered outermost-first; the renderer elides the middle when long.
+   */
+  breadcrumb?: string[];
   /** Extra terms the fuzzy matcher should consider. The matcher
    *  weights `name` highest, then `keywords`, then `subcategory`. */
   keywords: string[];
@@ -118,10 +142,12 @@ export interface SearchResult extends SearchableItem {
  *  category, not a hero section. */
 export const CATEGORY_ORDER: SearchCategory[] = [
   'project',
+  'layers',
+  'library',
+  'pages',
+  'cms',
+  'plugins',
   'commands',
   'draw',
   'tabs',
-  'library',
-  'plugins',
-  'pages',
 ];

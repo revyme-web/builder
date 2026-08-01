@@ -18,7 +18,9 @@ import { paletteFilterAtom } from './palette-store';
 import { paletteOpenAtom, paletteQueryAtom } from '@/code/stores/palette-store';
 import { toolModeAtom } from '@/code/stores/tool-store';
 import { leftPanelAtom } from '@/code/stores/left-panel-store';
-import { pendingFileSwitchAtom } from '@/code/stores/store';
+import { updatingFromCanvasAtom } from '@/code/stores/store';
+import { activeFilePathAtom, switchActiveFile } from '@/code/project/active-file-store';
+import { syncQueueCode } from '@/code/mutation/mutation-queue';
 import {
   openPluginIdAtom,
   launchedProjectPluginAtom,
@@ -46,6 +48,8 @@ import {
 import { insertNodes, buildInstanceClipboardNode } from '@/canvas/insertion-bridge';
 import { selectedIdsAtom, nodesAtom } from '@/code/stores/store';
 import { getContentRoot } from '@/canvas/node-ops';
+import { openCmsEditorAtom } from '@/code/stores/cms-editor-store';
+import { recordRecent } from './mru';
 import {
   zoomIn,
   zoomOut,
@@ -53,7 +57,12 @@ import {
   zoomToFit,
   zoomToFitSelection,
 } from '@/canvas/transform';
-import { createAndOpenProject } from '@/editor/header/menu-builders';
+import { createAndOpenProject, menuNewPage } from '@/editor/header/menu-builders';
+import { exportProject } from '@/editor/header/export-project';
+import { previewModeAtom, shortcutsModalOpenAtom } from '@/code/stores/editor-store';
+import { settingsOverlayOpenAtom } from '@/code/stores/website-settings-store';
+import { startOnboarding } from '@/editor/onboarding';
+import { flushNow } from '@/code/mutation/mutation-queue';
 import { shareAsTemplate } from '@/backend/revyme-backend';
 import { projectFS } from '@/code/project/project-fs';
 import { trace } from '@/shared/debug-trace';
@@ -69,8 +78,12 @@ const store = getDefaultStore();
  * Unknown actions trace + toast rather than throwing, so a stale
  * registry entry doesn't crash the palette.
  */
-export function executeSearchAction(action: SearchAction): void {
-  trace.action('palette:execute', { action });
+export function executeSearchAction(action: SearchAction, itemId?: string): void {
+  trace.action('palette:execute', { action, itemId });
+  // Recorded before dispatch, not after: several branches return early
+  // (set-palette-filter) or kick off async work, and an activation the
+  // user made should count even if the action itself later fails.
+  if (itemId) recordRecent(itemId);
   switch (action.type) {
     case 'execute-command':
       executeCommand(action.commandId);
@@ -82,10 +95,7 @@ export function executeSearchAction(action: SearchAction): void {
       store.set(leftPanelAtom, action.panelId);
       break;
     case 'switch-active-file':
-      // pendingFileSwitchAtom is the cross-component-safe entry point —
-      // Canvas.tsx watches it, runs the full switchActiveFile flow
-      // (queue flush + selection clear), then resets to null.
-      store.set(pendingFileSwitchAtom, action.filePath);
+      switchToFile(action.filePath);
       break;
     case 'insert-library-item': {
       // Components / icon sets / vectors → insert an
@@ -102,6 +112,24 @@ export function executeSearchAction(action: SearchAction): void {
     }
     case 'launch-plugin':
       launchPlugin(action.pluginTier, action.id);
+      break;
+    case 'select-node': {
+      // The node already exists on the active page — select it and frame
+      // it. Without the zoom the selection is invisible whenever the node
+      // sits outside the current viewport, which is exactly the case
+      // where someone searched for it instead of clicking it.
+      store.set(selectedIdsAtom, [action.nodeId]);
+      const root = getContentRoot();
+      if (root) zoomToFitSelection(root, [action.nodeId], true);
+      break;
+    }
+    case 'open-cms':
+      // Write-only atom: it also switches leftPanelAtom to 'cms', which
+      // App.tsx requires or it closes the overlay in the same commit.
+      store.set(openCmsEditorAtom, {
+        collection: action.slug,
+        itemId: action.itemId ?? null,
+      });
       break;
     case 'set-palette-filter':
       // "Browse Plugins / Components" rows switch the tab in-place
@@ -127,6 +155,39 @@ export function executeSearchAction(action: SearchAction): void {
   // Always close after dispatch so the user doesn't have to ESC.
   store.set(paletteOpenAtom, false);
 }
+
+/**
+ * Open a page / template file on the canvas.
+ *
+ * Goes through `switchActiveFile` — the same function the Pages panel, the
+ * breadcrumb, the code editor and the plugin SDK's `pages.switch` all use.
+ * It is not a plain atom write: it flushes the mutation queue for the file
+ * being left (otherwise pending edits are silently dropped), clears the
+ * selection, applies the target's remembered camera BEFORE the render so the
+ * page doesn't flash at the wrong zoom, and forces a full Renderer rebuild
+ * so a data-id present in both files can't leave stale rects in the bridge
+ * cache.
+ *
+ * The palette previously wrote `pendingFileSwitchAtom` instead, on the
+ * assumption that Canvas.tsx watched it. Nothing does — the atom has no
+ * reader anywhere in the app — so every Pages and Template row closed the
+ * palette and did nothing at all (user report).
+ */
+function switchToFile(filePath: string): void {
+  const from = store.get(activeFilePathAtom);
+  if (from === filePath) return;
+  switchActiveFile(
+    from,
+    filePath,
+    {
+      setActiveFile: (next) => store.set(activeFilePathAtom, next),
+      setSelectedIds: (ids) => store.set(selectedIdsAtom, ids),
+      setUpdatingFromCanvas: (v) => store.set(updatingFromCanvasAtom, v),
+    },
+    { syncQueueCode, flushNow },
+  );
+}
+
 
 function launchPlugin(tier: 'project' | 'installed' | 'cloud', id: string) {
   // Clear the other two atoms before setting the target — each
@@ -169,6 +230,47 @@ function executeCommand(commandId: string): void {
     // File / project
     case 'new-project':
       createAndOpenProject();
+      break;
+    case 'new-page':
+      // Exported from menu-builders so this is byte-for-byte the File ▸
+      // New page path (flush → create → bump version → switch active file).
+      menuNewPage();
+      break;
+    case 'site-settings':
+      store.set(settingsOverlayOpenAtom, true);
+      break;
+    case 'export-code':
+      // Same module the header's Export button drives. Fire-and-forget:
+      // the palette closes immediately below, and `exportProject` reports
+      // its own failures via toast rather than throwing.
+      void exportProject('source');
+      break;
+
+    // View / help — same targets the header menu drives.
+    case 'toggle-preview':
+      store.set(previewModeAtom, !store.get(previewModeAtom));
+      break;
+    case 'open-shortcuts':
+      store.set(shortcutsModalOpenAtom, true);
+      break;
+    case 'launch-tutorial':
+      startOnboarding();
+      break;
+    case 'open-docs': {
+      // Docs are served by the marketing site: the Next dispatcher on
+      // :3001 in dev, revyme.com in production. Same import.meta cast the
+      // menu uses — a bare `import.meta.env` trips this tsconfig.
+      const isDev = !!(import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV;
+      const docsUrl = isDev ? 'http://localhost:3001/docs' : 'https://revyme.com/docs';
+      window.open(docsUrl, '_blank', 'noopener,noreferrer');
+      break;
+    }
+    case 'go-dashboard':
+      // Hard nav — `/dashboard` belongs to revyme-cloud, which React
+      // Router (basename="/builder") cannot reach. Flush first or the
+      // autosave races the route swap and the last edit is lost.
+      flushNow();
+      window.location.href = '/dashboard';
       break;
     case 'create-remix-link':
       // Upload the current projectFS snapshot, copy the user-facing

@@ -90,6 +90,54 @@ describe('fuzzySearch', () => {
   });
 });
 
+describe('recency (MRU)', () => {
+  it('boosts a previously-used item above an equal match', () => {
+    const items: SearchableItem[] = [
+      item({ id: 'a', name: 'Frame Tool' }),
+      item({ id: 'b', name: 'Frame Tool' }),
+    ];
+    const r = fuzzySearch(items, 'frame tool', 30, { recentIds: ['b'] });
+    expect(r[0].id).toBe('b');
+  });
+
+  it('does NOT let recency drag a weak match above a strong one', () => {
+    // The boost breaks ties; it must not reorder genuinely better matches.
+    // 'a' matches the name exactly (100); 'b' only via a keyword (20).
+    const items: SearchableItem[] = [
+      item({ id: 'a', name: 'Frame' }),
+      item({ id: 'b', name: 'Unrelated', keywords: ['frame'] }),
+    ];
+    const r = fuzzySearch(items, 'frame', 30, { recentIds: ['b'] });
+    expect(r[0].id).toBe('a');
+  });
+
+  it('leads the empty view with recents, before featured items', () => {
+    const items: SearchableItem[] = [
+      item({ id: 'feat', name: 'Featured', category: 'project', featured: true }),
+      item({ id: 'used', name: 'Recently Used', category: 'library' }),
+    ];
+    const r = fuzzySearch(items, '', 30, { recentIds: ['used'] });
+    expect(r[0].id).toBe('used');
+    expect(r.map((x) => x.id)).toContain('feat');
+  });
+
+  it('never repeats an item that is both recent and featured', () => {
+    const items: SearchableItem[] = [
+      item({ id: 'both', name: 'Both', category: 'project', featured: true }),
+    ];
+    const r = fuzzySearch(items, '', 30, { recentIds: ['both'] });
+    expect(r.map((x) => x.id)).toEqual(['both']);
+  });
+
+  it('ignores recent ids that no longer resolve (deleted file)', () => {
+    const items: SearchableItem[] = [
+      item({ id: 'feat', name: 'Featured', category: 'project', featured: true }),
+    ];
+    const r = fuzzySearch(items, '', 30, { recentIds: ['lib:component:components/Gone.tsx'] });
+    expect(r.map((x) => x.id)).toEqual(['feat']);
+  });
+});
+
 describe('groupResultsByCategory', () => {
   it('preserves display order and omits empty groups', () => {
     const items: SearchableItem[] = [

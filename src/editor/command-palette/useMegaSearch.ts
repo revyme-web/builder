@@ -8,7 +8,7 @@
 // time so projectFS / atom changes pick up without invalidation
 // plumbing — the registry is < 100 items so the cost is trivial.
 
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
 import { paletteResultsAtom, paletteSelectedIndexAtom } from './palette-store';
 import { paletteOpenAtom, paletteQueryAtom } from '@/code/stores/palette-store';
@@ -17,6 +17,7 @@ import { installedPluginsAtom } from '@/plugins/registry';
 import { installedCloudPluginsAtom } from '@/plugins/cloud-plugins';
 import { getAllSearchableItems } from './search-registry';
 import { fuzzySearch } from './search-utils';
+import { getRecentIds } from './mru';
 import { executeSearchAction } from './useSearchActions';
 
 export function useMegaSearch() {
@@ -32,12 +33,6 @@ export function useMegaSearch() {
   const installedDev = useAtomValue(installedPluginsAtom);
   const installedCloud = useAtomValue(installedCloudPluginsAtom);
 
-  const items = useMemo(
-    () => getAllSearchableItems(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectVersion, installedDev, installedCloud, isOpen],
-  );
-
   const [results, setResults] = useAtom(paletteResultsAtom);
   const [selectedIndex, setSelectedIndex] = useAtom(paletteSelectedIndexAtom);
 
@@ -48,18 +43,29 @@ export function useMegaSearch() {
     // recomputing on every keystroke for users typing fast.
     const delay = query.trim() ? 80 : 0;
     const t = setTimeout(() => {
-      setResults(fuzzySearch(items, query, 40));
+      // Built INSIDE the debounce, not memoised outside it. The
+      // query-aware sources (layers, cms) need the current query to
+      // decide how much to materialise, so hoisting this to a useMemo
+      // keyed on `query` would just rebuild on every keystroke and
+      // defeat the debounce entirely.
+      const items = getAllSearchableItems(query);
+      setResults(fuzzySearch(items, query, 40, { recentIds: getRecentIds() }));
       setSelectedIndex(0);
     }, delay);
     return () => clearTimeout(t);
-  }, [isOpen, query, items]);
+    // `projectVersion` / plugin atoms are dependencies because item
+    // content derives from them — a component created while the palette
+    // is open should appear without a keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, query, projectVersion, installedDev, installedCloud]);
 
   const handleSelect = useCallback(
     (index?: number) => {
       const target = index ?? selectedIndex;
       const result = results[target];
       if (!result) return;
-      executeSearchAction(result.action);
+      // Pass the id so the action layer can record it in the MRU list.
+      executeSearchAction(result.action, result.id);
     },
     [results, selectedIndex],
   );

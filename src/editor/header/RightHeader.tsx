@@ -20,6 +20,7 @@ import { settingsOverlayOpenAtom, settingsSectionAtom, websiteMetaAtom } from '@
 import { isComponentFileAtom } from '@/code/stores/store';
 import { LiveDropdown } from './LiveDropdown';
 import { ExportDropdown, type ExportFormat } from './ExportDropdown';
+import { exportProject } from './export-project';
 import { useIsClosedSource } from '@/code/stores/closed-source-store';
 import { parseWebsiteMeta } from './publish-utils';
 import { useSigmoidProgress } from '@/editor/hooks/useSigmoidProgress';
@@ -119,44 +120,14 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
   const setSettingsOpenAtom = useSetAtom(settingsOverlayOpenAtom);
   const setSettingsSectionAtom = useSetAtom(settingsSectionAtom);
 
+  // The fetch → blob → download sequence lives in `export-project.ts` so
+  // the cmd+K "Export Code" row runs the same path rather than a second
+  // copy. Only the spinner and dropdown state are the component's job.
   const handleExport = useCallback(async () => {
-    if (!CLOUD_ENABLED || exporting) return;
-    const id = (await import('@/backend/project-id')).getProjectId();
-    if (!id) return;
+    if (exporting) return;
     setExporting(true);
-    trace.action('header:export-start', { id, format: exportFormat });
     try {
-      // Each format maps to its own backend route so the service layer
-      // can pick the right transformer. `source` is shipped today;
-      // `tailwind` will land in Phase 2 and return 200 with a converted
-      // zip — for now a 501 surfaces a friendly "coming soon" alert.
-      const res = await fetch(`/api/export/${exportFormat}/${id}`);
-      if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        trace.error('header:export-failed', { format: exportFormat, error: j });
-        const msg = res.status === 501
-          ? 'This export format is coming soon.'
-          : j?.error?.message ?? 'Export failed — check console';
-        alert(msg);
-        return;
-      }
-      const disposition = res.headers.get('content-disposition') ?? '';
-      const match = disposition.match(/filename="?([^";]+)"?/i);
-      const filename = match?.[1] ?? 'revyme-export.zip';
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      trace.action('header:export-success', { format: exportFormat, filename, bytes: blob.size });
-      setExportOpen(false);
-    } catch (err) {
-      trace.error('header:export-error', err);
-      alert('Export failed — check console');
+      if (await exportProject(exportFormat)) setExportOpen(false);
     } finally {
       setExporting(false);
     }

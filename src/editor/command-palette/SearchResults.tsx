@@ -79,7 +79,43 @@ const CategoryTiles: Record<SearchCategory, React.FC> = {
       <path d="M12 4v3h3" stroke="white" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
     </svg>
   ),
+  layers: () => (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+      <rect width="20" height="20" rx="5" fill="#6366F1" />
+      <path d="M10 4l5 2.5-5 2.5-5-2.5L10 4z" fill="white" />
+      <path d="M5 10l5 2.5 5-2.5" stroke="white" strokeWidth="1.4" fill="none" strokeLinejoin="round" opacity="0.6" />
+      <path d="M5 13l5 2.5 5-2.5" stroke="white" strokeWidth="1.4" fill="none" strokeLinejoin="round" opacity="0.35" />
+    </svg>
+  ),
+  cms: () => (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+      <rect width="20" height="20" rx="5" fill="#14B8A6" />
+      <ellipse cx="10" cy="6.5" rx="4.5" ry="1.8" fill="white" />
+      <path d="M5.5 6.5v7c0 1 2 1.8 4.5 1.8s4.5-.8 4.5-1.8v-7" stroke="white" strokeWidth="1.3" fill="none" />
+      <path d="M5.5 10c0 1 2 1.8 4.5 1.8s4.5-.8 4.5-1.8" stroke="white" strokeWidth="1.3" fill="none" opacity="0.6" />
+    </svg>
+  ),
 };
+
+// ─── Breadcrumb ─────────────────────────────────────────────────────────────
+// `Project › Section › Header`. Deep trees get their middle elided rather
+// than truncated at the end — the outermost and innermost names carry
+// almost all the disambiguating information; the middle rarely does.
+
+const BREADCRUMB_MAX = 3;
+
+function Breadcrumb({ trail }: { trail: string[] }) {
+  if (trail.length === 0) return null;
+  const parts =
+    trail.length > BREADCRUMB_MAX
+      ? [trail[0], '…', ...trail.slice(-(BREADCRUMB_MAX - 1))]
+      : trail;
+  return (
+    <span className="text-[11px] text-[var(--text-tertiary)] truncate">
+      {parts.join(' › ')}
+    </span>
+  );
+}
 
 // ─── Shortcut hint ──────────────────────────────────────────────────────────
 // Lifted from builder/ShortcutHint.tsx — same `Modifier+Key` rendering.
@@ -247,8 +283,11 @@ function SearchRow({
         )}
       </div>
 
-      {/* Name + optional secondary line (subcategory for library /
-          plugin rows, description for plugin rows that have one). */}
+      {/* Name + optional secondary line. The secondary line is the
+          breadcrumb when there is one (layers / pages / CMS items, where
+          location is what tells two same-named rows apart), otherwise the
+          description (plugins). Never both — two grey sub-lines on one
+          row is noise. */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-[var(--text-secondary)] truncate">
@@ -260,11 +299,15 @@ function SearchRow({
             </span>
           )}
         </div>
-        {result.description && (
+        {result.breadcrumb && result.breadcrumb.length > 0 ? (
+          <div className="mt-0.5 min-w-0">
+            <Breadcrumb trail={result.breadcrumb} />
+          </div>
+        ) : result.description ? (
           <div className="text-[11px] text-[var(--text-tertiary)] truncate mt-0.5">
             {result.description}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Right-aligned shortcut hint. Pure visual — the actual
