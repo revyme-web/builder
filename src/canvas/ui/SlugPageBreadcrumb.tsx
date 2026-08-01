@@ -178,7 +178,7 @@ export default function SlugPageBreadcrumb() {
             ref={itemBtnRef}
             onClick={() => setOpen((o) => !o)}
             className={`${pillBase} max-w-[300px] hover:brightness-125 cursor-pointer`}
-            style={{ color: 'var(--accent)' }}
+            style={{ color: 'var(--accent-text)' }}
           >
             <span className="flex-shrink-0 flex items-center"><CmsItemIcon size={14} /></span>
             <span className="truncate">{currentLabel}</span>
@@ -240,7 +240,7 @@ export default function SlugPageBreadcrumb() {
                     <button
                       key={it._slug}
                       onClick={() => pick(it._slug)}
-                      className="group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-white transition-colors"
+                      className="group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors"
                     >
                       <span className="w-3.5 flex-shrink-0 flex items-center justify-center">
                         {isCurrent && (

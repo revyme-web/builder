@@ -313,7 +313,7 @@ export default function AddViewportMenu({ menu, existingVpIds, onAdd, onClose }:
             <button
               onClick={handleAddCustom}
               disabled={!customName.trim() || !customWidth}
-              className="w-full h-8 text-xs font-medium text-white rounded-[var(--radius-lg)] hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
+              className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] rounded-[var(--radius-lg)] hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
               style={{ backgroundColor: 'var(--accent)' }}
             >
               Add Breakpoint

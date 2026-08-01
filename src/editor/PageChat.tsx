@@ -66,7 +66,7 @@ function StopIcon() {
 /** Animated loader shown next to the live tool-status text. */
 function Spinner() {
   return (
-    <svg className="animate-spin w-3 h-3 shrink-0 text-[var(--accent)]" viewBox="0 0 24 24" fill="none">
+    <svg className="animate-spin w-3 h-3 shrink-0 text-[var(--accent-text)]" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
       <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
     </svg>
@@ -357,7 +357,7 @@ export default function PageChat() {
                             inputRef.current?.focus();
                           }}
                           className={`w-full text-left px-2.5 py-1.5 text-[11px] flex items-center justify-between gap-2 hover:bg-[var(--control-bg-hover)] cursor-pointer ${
-                            selected ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'
+                            selected ? 'text-[var(--accent-text)]' : 'text-[var(--text-primary)]'
                           }`}
                         >
                           <span className="truncate">{m.label}</span>
@@ -395,7 +395,7 @@ export default function PageChat() {
             <button
               onClick={handleSend}
               disabled={!prompt.trim()}
-              className={`w-6 h-6 rounded-md flex items-center justify-center transition-all text-white shrink-0 bg-[var(--accent)] ${
+              className={`w-6 h-6 rounded-md flex items-center justify-center transition-all text-[var(--accent-fg)] shrink-0 bg-[var(--accent)] ${
                 !prompt.trim()
                   ? 'opacity-40 cursor-not-allowed'
                   : 'hover:brightness-110 cursor-pointer'

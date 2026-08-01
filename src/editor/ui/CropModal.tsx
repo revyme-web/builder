@@ -199,7 +199,7 @@ export default function CropModal({ isOpen, onClose, src, onApply }: CropModalPr
             onClick={handleApply}
             data-crop-apply
             disabled={busy || loadState !== 'ready'}
-            className="h-8 px-4 text-xs rounded-[var(--radius-lg)] bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+            className="h-8 px-4 text-xs rounded-[var(--radius-lg)] bg-[var(--accent)] text-[var(--accent-fg)] hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
           >
             {busy ? 'Applying…' : 'Apply'}
           </button>

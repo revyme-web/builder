@@ -161,7 +161,7 @@ export default function SlotControl({ componentId, label, slotMax }: SlotControl
         onClick={() => setOpen(o => !o)}
         className="w-full h-7 px-2 flex items-center gap-1.5 text-xs rounded-md bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] transition-colors"
       >
-        <span className="font-mono text-[var(--accent)] text-[13px] leading-none">[ ]</span>
+        <span className="font-mono text-[var(--accent-text)] text-[13px] leading-none">[ ]</span>
         <span className="flex-1 text-left">
           {connected.length} Item{connected.length === 1 ? '' : 's'}
         </span>

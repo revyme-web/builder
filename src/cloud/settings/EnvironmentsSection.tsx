@@ -175,7 +175,7 @@ export default function EnvironmentsSection({ websiteId }: EnvironmentsSectionPr
         <div className="py-6">
           <button
             onClick={() => setActiveSection('plans')}
-            className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent)] hover:underline cursor-pointer"
+            className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-text)] hover:underline cursor-pointer"
           >
             Upgrade to Pro for a staging environment →
           </button>
@@ -209,7 +209,7 @@ export default function EnvironmentsSection({ websiteId }: EnvironmentsSectionPr
               else void handleCreate('staging');
             }}
             disabled={busyEnvId !== null}
-            className="flex-shrink-0 inline-flex items-center justify-center gap-1 h-8 px-3 text-xs font-medium text-white bg-[var(--accent)] hover:opacity-90 rounded-md cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex-shrink-0 inline-flex items-center justify-center gap-1 h-8 px-3 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-md cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             + Create environment
           </button>
@@ -262,7 +262,7 @@ export default function EnvironmentsSection({ websiteId }: EnvironmentsSectionPr
         <div className="pt-6">
           <button
             onClick={() => setActiveSection('plans')}
-            className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent)] hover:underline cursor-pointer"
+            className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-text)] hover:underline cursor-pointer"
           >
             Upgrade to Studio for unlimited staging environments →
           </button>
@@ -347,7 +347,7 @@ function EnvironmentRowItem({
           href={env.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors truncate inline-block max-w-full"
+          className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent-text)] transition-colors truncate inline-block max-w-full"
         >
           {env.url.replace(/^https?:\/\//, '')}  ↗
         </a>
@@ -444,7 +444,7 @@ function ActionConfirmModal({ confirm, onCancel, onRun }: ActionConfirmModalProp
         <button
           onClick={() => { void handleRun(); }}
           disabled={running}
-          className={`relative overflow-hidden flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] transition-colors font-medium flex items-center justify-center text-white disabled:opacity-100 disabled:cursor-not-allowed cursor-pointer ${
+          className={`relative overflow-hidden flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] transition-colors font-medium flex items-center justify-center text-[var(--accent-fg)] disabled:opacity-100 disabled:cursor-not-allowed cursor-pointer ${
             isDelete
               ? 'bg-red-500/90 hover:bg-red-500'
               : 'bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))]'
@@ -557,7 +557,7 @@ function CreateEnvironmentModal({ onCancel, onCreate, error }: CreateEnvironment
             <button
               onClick={() => { void handleSubmit(); }}
               disabled={submitting || !name.trim()}
-              className="flex-1 h-8 text-xs font-medium text-white bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? 'Creating…' : 'Create'}
             </button>

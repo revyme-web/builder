@@ -23,7 +23,7 @@ import {
 
 // Native dropdown item styling — matches the CMS pagination / Animation add menus.
 const ADD_ITEM = 'group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap disabled:opacity-40 disabled:cursor-default';
-const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-white';
+const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]';
 
 // Glyphs (24x24 viewBox).
 const GLYPH = {

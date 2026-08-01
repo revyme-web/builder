@@ -49,7 +49,7 @@ const PAGES_DRAG_THRESHOLD_PX = 3;
 // the Library panel uses. Library is component-/asset-themed
 // (components share the purple accent); Pages reads as page navigation
 // which is blue throughout the rest of the editor.
-const PAGES_DRAG_INDICATOR = 'var(--accent, #3b82f6)';
+const PAGES_DRAG_INDICATOR = 'var(--accent, #e6b450)';
 
 // ─── Icons ──────────────────────────────────────────────────────────────────
 
@@ -1817,7 +1817,7 @@ function UpgradePlanModal({
         <button
           type="button"
           onClick={onUpgrade}
-          className="w-full h-8 text-xs font-medium text-white bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer"
+          className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer"
         >
           Upgrade
         </button>

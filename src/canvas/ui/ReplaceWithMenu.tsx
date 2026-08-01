@@ -80,9 +80,9 @@ export default function ReplaceWithMenu({ nodeId, currentFile, width, height, on
       onMouseEnter={() => { setOpen(true); requestAnimationFrame(() => inputRef.current?.focus()); }}
       onMouseLeave={() => setOpen(false)}
     >
-      <button className="group flex items-center gap-3 mx-1.5 px-2 h-8 w-[calc(100%-12px)] rounded-[var(--radius-sm)] text-left text-[13px] text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-white transition-colors">
+      <button className="group flex items-center gap-3 mx-1.5 px-2 h-8 w-[calc(100%-12px)] rounded-[var(--radius-sm)] text-left text-[13px] text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors">
         <span className="flex-1">Replace with</span>
-        <span className="text-[var(--text-tertiary)] group-hover:text-white">▸</span>
+        <span className="text-[var(--text-tertiary)] group-hover:text-[var(--accent-fg)]">▸</span>
       </button>
       {open && (
         <>
@@ -113,9 +113,9 @@ export default function ReplaceWithMenu({ nodeId, currentFile, width, height, on
                   key={e.filePath}
                   onClick={() => handleReplace(e)}
                   onMouseDown={(ev) => ev.stopPropagation()}
-                  className="group flex items-center gap-2 mx-1.5 px-2 h-8 w-[calc(100%-12px)] rounded-[var(--radius-sm)] text-left text-[13px] text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-white transition-colors"
+                  className="group flex items-center gap-2 mx-1.5 px-2 h-8 w-[calc(100%-12px)] rounded-[var(--radius-sm)] text-left text-[13px] text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors"
                 >
-                  <span className="shrink-0 text-[var(--accent-secondary)] group-hover:text-white">
+                  <span className="shrink-0 text-[var(--accent-secondary)] group-hover:text-[var(--accent-fg)]">
                     {e.isCode ? <CodeIcon /> : <DiamondIcon />}
                   </span>
                   <span className="flex-1 truncate">{e.label}</span>

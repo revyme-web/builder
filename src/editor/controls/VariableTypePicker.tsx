@@ -74,7 +74,7 @@ export function VariableTypePicker({ anchorRef, onSelect, onClose }: VariableTyp
               <button
                 key={t.id}
                 onClick={() => { trace.action('variable-type-picker:select', { type: t.id }); onSelect(t); }}
-                className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-white transition-colors"
+                className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors"
               >
                 {t.label}
               </button>

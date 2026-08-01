@@ -43,7 +43,10 @@ import { parentHighlightOps, type ParentHighlightInfo } from './parent-highlight
 import { resizeLiveOps } from '@/canvas/resize/resize-live-store';
 import { trace } from '@/shared/debug-trace';
 
-const BORDER_COLOR = 'var(--accent)';
+// `--selection`, not `--accent`: this dashed outline wraps the user's own
+// artwork, so it belongs to the canvas overlay family (selection box, resize
+// handles, drop indicators) rather than to the amber brand chrome.
+const BORDER_COLOR = 'var(--selection)';
 const BORDER_WIDTH = 1;
 const BORDER_DASH = '4 3';
 

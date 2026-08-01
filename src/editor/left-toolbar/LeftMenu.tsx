@@ -216,7 +216,7 @@ export default function LeftMenu() {
 
       {/* Top section */}
       <div className="flex items-center flex-col gap-2 relative z-10">
-        {/* Vibe AI — purple. Opens the docked AI chat panel. Hidden while the
+        {/* Vibe AI — brand accent. Opens the docked AI chat panel. Hidden while the
             chat is detached into its floating popup OR a code / plugin
             overlay is open; scales + slides in/out (and collapses its row
             height) on those transitions. `initial={false}` skips the
@@ -238,10 +238,10 @@ export default function LeftMenu() {
                 onMouseLeave={isViewer ? undefined : handleLeave}
                 className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors text-[10px] font-bold tracking-wide ${
                   isViewer
-                    ? 'bg-[#7C3AED] text-white opacity-40 cursor-not-allowed'
+                    ? 'bg-[var(--accent)] text-[var(--accent-fg)] opacity-40 cursor-not-allowed'
                     : activePanel === 'vibe'
-                      ? 'bg-[#9333EA] text-white'
-                      : 'bg-[#7C3AED] hover:bg-[#9333EA] text-white'
+                      ? 'bg-[var(--accent-hover)] text-[var(--accent-fg)]'
+                      : 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-fg)]'
                 }`}
               >
                 VIBE
@@ -378,7 +378,7 @@ export default function LeftMenu() {
               animate={{ opacity: 1, scale: 1, x: 0, y: '-50%' }}
               exit={{ opacity: 0, scale: 0.92, x: -4, y: '-50%' }}
               transition={{ duration: 0.12, ease: 'easeOut' }}
-              className="fixed px-2 py-1 rounded-md bg-[var(--accent)] shadow-md text-[11px] font-medium text-white whitespace-nowrap pointer-events-none"
+              className="fixed px-2 py-1 rounded-md bg-[var(--accent)] shadow-md text-[11px] font-medium text-[var(--accent-fg)] whitespace-nowrap pointer-events-none"
               style={{
                 top: tooltip.top,
                 left: tooltip.left,

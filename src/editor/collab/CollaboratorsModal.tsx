@@ -309,7 +309,7 @@ function CloudBody() {
                     }}
                     className={`w-full px-2.5 py-1.5 text-[11px] text-left hover:bg-[var(--bg-hover)] transition-colors ${
                       inviteRole === 'editor'
-                        ? 'text-[var(--accent)] bg-[var(--bg-hover)]'
+                        ? 'text-[var(--accent-text)] bg-[var(--bg-hover)]'
                         : 'text-[var(--text-primary)]'
                     }`}
                   >
@@ -323,7 +323,7 @@ function CloudBody() {
                     }}
                     className={`w-full px-2.5 py-1.5 text-[11px] text-left hover:bg-[var(--bg-hover)] transition-colors ${
                       inviteRole === 'viewer'
-                        ? 'text-[var(--accent)] bg-[var(--bg-hover)]'
+                        ? 'text-[var(--accent-text)] bg-[var(--bg-hover)]'
                         : 'text-[var(--text-primary)]'
                     }`}
                   >
@@ -335,7 +335,7 @@ function CloudBody() {
             <button
               type="submit"
               disabled={inviting || !inviteEmail.trim()}
-              className="px-3 py-2 text-[11px] font-medium text-white bg-[var(--accent)] rounded-md hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
+              className="px-3 py-2 text-[11px] font-medium text-[var(--accent-fg)] bg-[var(--accent)] rounded-md hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
             >
               {inviting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Invite'}
             </button>

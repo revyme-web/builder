@@ -141,7 +141,7 @@ function FileTreeNode({
     <div
       className={`group flex items-center gap-1.5 cursor-pointer select-none transition-colors ${
         isActive
-          ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+          ? "bg-[var(--accent)]/15 text-[var(--accent-text)]"
           : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
       }`}
       style={{ paddingLeft: indent + 18, paddingRight: 4, height: 24 }}

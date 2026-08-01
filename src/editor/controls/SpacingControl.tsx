@@ -305,7 +305,7 @@ export default function SpacingControl({ values, labels, onChange, onChangeAll, 
                       tabIndex={-1}
                       onClick={() => toggleUnit(i)}
                       className={`text-[9px] cursor-pointer transition-colors border-none bg-transparent leading-none p-0 ${
-                        unit === '%' ? 'text-[var(--accent)]' : unit === 'rem' ? 'text-emerald-400' : 'text-[var(--text-disabled)]'
+                        unit === '%' ? 'text-[var(--accent-text)]' : unit === 'rem' ? 'text-emerald-400' : 'text-[var(--text-disabled)]'
                       } hover:text-[var(--text-primary)]`}
                       title={`Switch to ${nextUnit(unit)}`}
                     >

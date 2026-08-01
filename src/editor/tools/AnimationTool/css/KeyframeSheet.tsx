@@ -500,7 +500,7 @@ export default function KeyframeSheet() {
           {/* Label */}
           <span className="text-[11px] font-semibold text-[var(--text-primary)] shrink-0">Keyframe</span>
           <div className="w-px h-3 bg-[var(--border-light)] shrink-0" />
-          <span className="text-[11px] text-[var(--accent)] font-mono shrink-0 max-w-[100px] truncate" title={name}>{name}</span>
+          <span className="text-[11px] text-[var(--accent-text)] font-mono shrink-0 max-w-[100px] truncate" title={name}>{name}</span>
           <div className="w-px h-3 bg-[var(--border-light)] shrink-0" />
 
           {/* Animation config — scrollable overflow */}
@@ -616,7 +616,7 @@ export default function KeyframeSheet() {
             {/* Footer */}
             <div className="shrink-0 flex items-center justify-between px-3 py-2 border-t border-[var(--border-light)]">
               <button
-                className="h-6 px-2 text-[11px] text-[var(--text-secondary)] border border-dashed border-[var(--control-border)] rounded hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer bg-transparent"
+                className="h-6 px-2 text-[11px] text-[var(--text-secondary)] border border-dashed border-[var(--control-border)] rounded hover:border-[var(--accent)] hover:text-[var(--accent-text)] transition-colors cursor-pointer bg-transparent"
                 onClick={handleAddStop}
               >
                 + Add Stop

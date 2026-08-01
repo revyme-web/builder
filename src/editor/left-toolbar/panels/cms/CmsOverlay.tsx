@@ -316,7 +316,7 @@ export default function CmsOverlay() {
           {/* Add Item */}
           <button
             onClick={handleAddItem}
-            className="h-7 px-3 text-xs font-medium bg-[var(--accent)] text-white rounded-md hover:opacity-90 transition-opacity cursor-pointer flex items-center gap-1.5"
+            className="h-7 px-3 text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] rounded-md hover:opacity-90 transition-opacity cursor-pointer flex items-center gap-1.5"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -369,7 +369,7 @@ export default function CmsOverlay() {
           </span>
           <button
             onClick={handleClose}
-            className="h-8 px-5 text-xs font-medium bg-[var(--accent)] text-white rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
+            className="h-8 px-5 text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
           >
             Done
           </button>

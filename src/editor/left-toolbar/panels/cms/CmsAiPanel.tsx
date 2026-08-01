@@ -50,7 +50,7 @@ function StopIcon() {
 
 function Spinner() {
   return (
-    <svg className="animate-spin w-3 h-3 shrink-0 text-[var(--accent)]" viewBox="0 0 24 24" fill="none">
+    <svg className="animate-spin w-3 h-3 shrink-0 text-[var(--accent-text)]" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
       <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
     </svg>
@@ -261,7 +261,7 @@ export default function CmsAiPanel({ collectionName, onClose }: {
               <button
                 onClick={handleSend}
                 disabled={!prompt.trim()}
-                className={`w-6 h-6 rounded-md flex items-center justify-center transition-all text-white shrink-0 bg-[var(--accent)] ${
+                className={`w-6 h-6 rounded-md flex items-center justify-center transition-all text-[var(--accent-fg)] shrink-0 bg-[var(--accent)] ${
                   !prompt.trim() ? 'opacity-40 cursor-not-allowed' : 'hover:brightness-110 cursor-pointer'
                 }`}
               >

@@ -34,7 +34,7 @@ const STATE_LABEL: Record<FormState, string> = {
 
 const ADD_ITEM =
   'group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
-const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-white';
+const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]';
 
 /** The "+" header action — a native floating dropdown of not-yet-mapped states. */
 function AddStateMenu({ addable, onAdd }: { addable: FormState[]; onAdd: (s: FormState) => void }) {

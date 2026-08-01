@@ -40,7 +40,7 @@ export interface FlatLayer {
 
 const FrameIcon = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="4" y="4" width="16" height="16" rx="2" fill="#bababa" />
+    <rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor" />
   </svg>
 );
 
@@ -49,23 +49,23 @@ const ComponentIcon = ComponentClusterIcon;
 // ─── Overlay Icon ──────────────────────────────────────────────────────────
 // A panel floating OVER a base panel — the layer glyph for overlay nodes
 // (fixed/relative), replacing the generic frame square so overlays read at a
-// glance in the tree. Neutral #bababa to match FrameIcon.
+// glance in the tree. Inherits currentColor so it flips with the row.
 const OverlayIcon = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     {/* base panel (behind) */}
-    <rect x="3.25" y="3.25" width="13" height="13" rx="3" stroke="#bababa" strokeWidth="2" fill="none" />
+    <rect x="3.25" y="3.25" width="13" height="13" rx="3" stroke="currentColor" strokeWidth="2" fill="none" />
     {/* overlay panel (in front, offset down-right) */}
-    <rect x="9" y="9" width="11.75" height="11.75" rx="3" fill="#bababa" />
+    <rect x="9" y="9" width="11.75" height="11.75" rx="3" fill="currentColor" />
   </svg>
 );
 
 // ─── Text Icon ───────────────────────────────────────────────────────────────
 // A "T" glyph for text nodes (p / h1-6 / span / a / …) so they read as text in
 // the tree instead of falling through to the generic frame square. Neutral
-// #bababa to match FrameIcon.
+// Inherits currentColor so it flips with the row.
 const TextIcon = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M6 6.5h12M12 6.5v11" stroke="#bababa" strokeWidth="2" strokeLinecap="round" />
+    <path d="M6 6.5h12M12 6.5v11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
   </svg>
 );
 
@@ -548,6 +548,11 @@ export const LayerRow = React.memo(function LayerRow({
   const isComponentInstance = !!node.componentFile;
   const usePurple = isComponentMode || (isComponentInstance && !isSvgVector);
   const selColor = isMapTemplate ? 'rgb(249, 115, 22)' : usePurple ? 'var(--accent-secondary)' : 'var(--accent)';
+  // Foreground for anything sitting ON the selected row's accent fill —
+  // label, icons, chevron. Mirrors selColor's branching.
+  const selFg = isMapTemplate
+    ? '#0d1017'
+    : usePurple ? 'var(--accent-secondary-fg)' : 'var(--accent-fg)';
   const selColorFaded = isMapTemplate
     ? 'rgba(249, 115, 22, 0.2)'
     : usePurple
@@ -560,7 +565,11 @@ export const LayerRow = React.memo(function LayerRow({
   // the color + corner radii go onto `bgStyle`.
   const bgStyle: React.CSSProperties = {};
   if (isSelected) {
-    s.color = '#fff';
+    // White was 1.9:1 on the gold row — effectively unreadable. Every accent
+    // surface in the app now declares its own foreground, because the winner
+    // flips per tone (near-black on gold and purple, white only on the deep
+    // light-mode gold). Never hard-code #fff on an accent fill.
+    s.color = selFg;
     bgStyle.backgroundColor = selColor;
     bgStyle.borderTopLeftRadius = 'var(--radius-md)';
     bgStyle.borderTopRightRadius = 'var(--radius-md)';
@@ -676,7 +685,7 @@ export const LayerRow = React.memo(function LayerRow({
             draggable={false}
             onClick={(e) => { e.stopPropagation(); onToggleExpand(id); }}
             className="w-4 h-4 flex items-center justify-center rounded shrink-0 transition-colors hover:bg-[var(--bg-active)]"
-            style={{ color: isSelected ? 'rgba(255,255,255,0.7)' : 'var(--text-secondary)' }}
+            style={{ color: isSelected ? `color-mix(in srgb, ${selFg} 72%, transparent)` : 'var(--text-secondary)' }}
           >
             {isExpanded ? (
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
@@ -691,15 +700,15 @@ export const LayerRow = React.memo(function LayerRow({
         {/* Icon */}
         <div className="shrink-0" style={{
           color: isVpHeader
-            ? (isSelected ? '#fff' : 'var(--accent)')
-            : isSelected ? '#fff' : (node.isCanvasNode || isSvgVector)
+            ? (isSelected ? selFg : 'var(--accent)')
+            : isSelected ? selFg : (node.isCanvasNode || isSvgVector)
               // Vector/canvas-node icons: blue on pages, purple on a master —
               // same component-mode rule as the row selection color above.
               ? (isComponentMode ? 'var(--accent-secondary)' : 'var(--accent)')
               : 'var(--text-secondary)',
           opacity: node.fromLayout ? 0.5 : 1,
         }}>
-          {isVpHeader && layer.isVariantHeader ? <span style={{ color: isSelected ? '#fff' : 'var(--accent-secondary)' }}><ComponentIcon size={14} /></span>
+          {isVpHeader && layer.isVariantHeader ? <span style={{ color: isSelected ? selFg : 'var(--accent-secondary)' }}><ComponentIcon size={14} /></span>
             : isSvgVector ? <IconSetIcon />
             : isVpHeader ? <ViewportIcon width={layer.viewportWidth} size={14} />
             : node.isChildrenSlot ? (
@@ -710,14 +719,20 @@ export const LayerRow = React.memo(function LayerRow({
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
-            ) : (node.componentFile || (isComponentMode && !node.parentId && !node.isCanvasNode)) ? <span style={{ color: isSelected ? '#fff' : 'var(--accent-secondary)' }}>{node.isCodeComponent ? (
+            ) : (node.componentFile || (isComponentMode && !node.parentId && !node.isCanvasNode)) ? <span style={{ color: isSelected ? selFg : 'var(--accent-secondary)' }}>{node.isCodeComponent ? (
               <svg width="14" height="14" viewBox="0 0 24 24"><g fill="none"><path d="M0 0h24v24H0z" /><path fill="currentColor" d="M14.62 2.662a1.5 1.5 0 0 1 1.04 1.85l-4.431 15.787a1.5 1.5 0 0 1-2.889-.81L12.771 3.7a1.5 1.5 0 0 1 1.85-1.039ZM7.56 6.697a1.5 1.5 0 0 1 0 2.12L4.38 12l3.182 3.182a1.5 1.5 0 1 1-2.122 2.121L1.197 13.06a1.5 1.5 0 0 1 0-2.12l4.242-4.243a1.5 1.5 0 0 1 2.122 0Zm8.88 2.12a1.5 1.5 0 1 1 2.12-2.12l4.243 4.242a1.5 1.5 0 0 1 0 2.121l-4.242 4.243a1.5 1.5 0 1 1-2.122-2.121L19.621 12z" /></g></svg>
             ) : <ComponentIcon size={14} />}</span>
-            : layer.isCmsContainer ? <span style={{ color: isSelected ? '#fff' : 'var(--accent)' }}><CmsIcon width={14} height={14} /></span>
-            : layer.isCmsItem ? <span style={{ color: isSelected ? '#fff' : 'var(--accent)' }}><CmsItemIcon size={14} /></span>
-            : node.attrs?.['data-overlay'] ? <OverlayIcon size={14} />
-            : isTextTag(node.type) ? <TextIcon size={14} />
-            : <FrameIcon size={14} />}
+            : layer.isCmsContainer ? <span style={{ color: isSelected ? selFg : 'var(--accent)' }}><CmsIcon width={14} height={14} /></span>
+            : layer.isCmsItem ? <span style={{ color: isSelected ? selFg : 'var(--accent)' }}><CmsItemIcon size={14} /></span>
+            : (
+              // currentColor: dark on the gold/violet selection fill, neutral
+              // grey otherwise. A fixed #bababa washed out on the accent row.
+              <span style={{ color: isSelected ? selFg : '#bababa' }}>
+                {node.attrs?.['data-overlay'] ? <OverlayIcon size={14} />
+                  : isTextTag(node.type) ? <TextIcon size={14} />
+                    : <FrameIcon size={14} />}
+              </span>
+            )}
         </div>
         </div>
 
@@ -742,7 +757,7 @@ export const LayerRow = React.memo(function LayerRow({
             ref={textRef}
             className="text-xs font-medium select-none transition-colors whitespace-nowrap overflow-hidden text-ellipsis"
             style={{
-              color: isSelected ? '#fff' : isChildOfSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
+              color: isSelected ? selFg : isChildOfSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
               opacity: node.fromLayout ? 0.5 : 1,
               // Always fit the visible width (sx + vw) minus this text's indent
               // and a reserve for the sticky lock/eye icons + edge padding.
@@ -781,11 +796,11 @@ export const LayerRow = React.memo(function LayerRow({
                 title={isLocked ? 'Unlock layer' : 'Lock layer'}
               >
                 {isLocked ? (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={isSelected ? 'rgba(255,255,255,0.6)' : '#666'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={isSelected ? `color-mix(in srgb, ${selFg} 70%, transparent)` : '#666'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
                   </svg>
                 ) : (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={isSelected ? 'rgba(255,255,255,0.6)' : '#666'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={isSelected ? `color-mix(in srgb, ${selFg} 70%, transparent)` : '#666'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 5-5 5 5 0 0 1 5 5v4" /><line x1="1" y1="1" x2="23" y2="23" />
                   </svg>
                 )}
@@ -798,11 +813,11 @@ export const LayerRow = React.memo(function LayerRow({
                 title={isHidden ? 'Show layer' : 'Hide layer'}
               >
                 {isHidden ? (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={isSelected ? 'rgba(255,255,255,0.6)' : '#666'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={isSelected ? `color-mix(in srgb, ${selFg} 70%, transparent)` : '#666'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" />
                   </svg>
                 ) : (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={isSelected ? 'rgba(255,255,255,0.6)' : '#666'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={isSelected ? `color-mix(in srgb, ${selFg} 70%, transparent)` : '#666'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
                   </svg>
                 )}
@@ -813,7 +828,7 @@ export const LayerRow = React.memo(function LayerRow({
 
         {/* Viewport width badge */}
         {layer.viewportWidth && (
-          <span className="text-xs shrink-0 sticky right-2 z-10" style={{ color: isSelected ? '#fff' : 'var(--accent)', fontWeight: 500 }}>
+          <span className="text-xs shrink-0 sticky right-2 z-10" style={{ color: isSelected ? selFg : 'var(--accent)', fontWeight: 500 }}>
             {layer.viewportWidth}
           </span>
         )}

@@ -17,61 +17,140 @@
 
 @layer theme {
   :root {
-    /* Surfaces */
+    /* Surfaces — ayu (https://ayu-theme.dev), light variant.
+       Values come from the palette's own themes/light.yaml: surface.sunk /
+       base / lift, ui.panel.bg, editor.fg, ui.fg.
+
+       Previously Tailwind slate (#f1f5f9, #e2e8f0, #94a3b8) with a blue
+       accent — the palette every Tailwind-era tool ships, and a large part of
+       why the editor read as a clone. ayu keeps a cool-neutral base but pairs
+       it with GOLD, which is what makes the combination distinctive.
+
+       Each surface is a deliberate ELEVATION step: canvas < panel < control <
+       hover < active, so a control is always visibly distinct from what it
+       sits on. ayu's own steps are flatter than this (it is designed for a
+       code editor, not a dense properties panel), so the control ladder is
+       widened here while keeping ayu's hues. */
+    /* Neutral grey, restored from the original palette and deliberately NOT
+       tinted with the rest of the ayu ladder. This is the one surface that
+       sits behind the USER'S artwork, so it has to stay chromatically neutral
+       — a tinted backdrop competes with whatever they are designing. */
     --bg-canvas: #eeeeee;
     --bg-surface: #ffffff;
-    --bg-toolbar: #f8f9fa;
+    --bg-toolbar: #fafafa;
     --bg-panel: #ffffff;
-    --bg-hover: #f1f1f1;
-    --bg-active: #e6e6e6;
-    --bg-tertiary: #f1f5f9;
+    --bg-hover: #f1f3f5;
+    --bg-active: #e4e8eb;
+    --bg-tertiary: #f8f9fa;
     /* AddVariantUI placeholder cards (the "Variant" / "Hover / Pressed"
        affordances next to a selected component variant). */
+    /* CANVAS-RESIDENT CHROME — viewport headers, Add-Variant placeholders.
+       Kept on the ORIGINAL neutral greys, not the ayu ladder: these sit on
+       the CANVAS beside the user's artwork, so like --bg-canvas they stay
+       untinted. The ayu control tones are blue-tinted, which reads cold and
+       out of place against the neutral canvas grey. */
+    --canvas-chrome-bg: #ffffff;
+    --canvas-chrome-border: #e2e2e2;
     --variant-card-bg: #ffffff;
     --variant-card-bg-hover: #f1f5f9;
     /* The filled circle behind the `+` glyph (PlusBadgeIcon). */
     --variant-card-badge: #e2e8f0;
 
-    /* Text */
-    --text-primary: #1e293b;
-    --text-secondary: #5b5b5b;
-    --text-disabled: #94a3b8;
-    --text-tertiary: #999999;
-    --text-muted: #b0b0b0;
+    /* Text — ayu light: editor.fg for primary, ui.fg for secondary. */
+    --text-primary: #5c6166;
+    --text-secondary: #828e9f;
+    --text-disabled: #b4bcc6;
+    --text-tertiary: #a0a9b5;
+    --text-muted: #a0a9b5;
 
-    /* Accent */
-    --accent: #3b82f6;
-    --accent-hover: #2563eb;
-    --accent-muted: #bfdbfe;
-    --accent-surface: #eff6ff;
-    --accent-secondary: #9a66ff;
-    --accent-secondary-hover: #b883ff;
+    /* Accent — ayu gold.
+       Warm and high-chroma. The earlier clay was warm but LOW chroma, which is
+       exactly where brown lives; gold keeps the saturation up so it reads as a
+       colour rather than as dirt.
+
+       ayu's own light accent is #F29718, but that only reaches 2.3:1 on white
+       — fine as a fill, unreadable as text, and `--accent` is used for both
+       across the app. So light runs a deeper gold that clears AA in both
+       directions (4.9:1 as text on white, and white on it). --accent-strong
+       keeps ayu's brighter tone for CTAs and the active tool. */
+    /* IDENTICAL to dark. A brand accent that changes hue between themes stops
+       being a brand colour, and the dark gold read as muddy on white. Gold is
+       a FILL colour here (184 fill sites vs 57 text sites) and it fills the
+       same in both themes, with the same near-black label.
+
+       --accent-text is the exception: gold ON white is 1.8:1, invisible. The
+       57 places that use the accent as TEXT/icon colour take that deeper tone
+       instead, which clears AA (4.9:1). On dark it collapses back to the gold. */
+    --accent: #e6b450;
+    --accent-hover: #f2c86e;
+    --accent-fg: #0d1017;
+    --accent-text: #9c6500;
+    --accent-strong: #ffb454;
+    --accent-strong-fg: #0d1017;
+    --accent-muted: #ffe294;
+    --accent-surface: rgba(242, 151, 24, 0.12);
+    /* Component / master mode — magenta.
+       Purple-for-components is the convention Figma set and the other
+       builders inherited, so moving off it is one of the more visible ways
+       this app stops looking like them. Magenta at 311 degrees is as far from
+       that stock violet as the palette allows while staying legal: the hue
+       wheel is otherwise fully occupied — error 0, gold 40, success 75,
+       selection 215 — leaving only 125-170 (emerald) and 260-315 (violet to
+       magenta) with 45+ degrees of clearance from every neighbour.
+
+       Hue 293 — pulled back toward purple from the first magenta (311) but
+       still 33 degrees clear of the stock #9a66ff violet every other builder
+       ships. Light stays deep enough for a white label at any size (6.5:1). */
+    --accent-secondary: #8e3a99;
+    --accent-secondary-hover: #7a3184;
+    --accent-secondary-fg: #ffffff;
+
+    /* Canvas selection — FUNCTIONAL, not brand. Deliberately NOT --accent.
+       These strokes sit on top of the user's own design, so the colour has to
+       stay legible against arbitrary content and carry no semantic charge.
+       Warm fails both: it disappears over warm artwork and reads as a warning
+       when it wraps every element. Blue is chromatically neutral against most
+       content and is the selection colour every canvas tool has trained
+       people on. Brand lives in the chrome; the canvas stays conventional. */
+    --selection: #035bd6;
 
     /* Borders */
-    --border-light: #f0f0f0;
-    --border-default: #cbd5e1;
-    --border-focus: #3b82f6;
+    --border-light: #f0f2f4;
+    --border-default: #cdd3d9;
+    /* Focus is chrome, so it follows the brand accent — not the canvas blue. */
+    --border-focus: #e6b450;
 
     /* Controls */
-    --control-bg: #f8fafc;
-    --control-bg-hover: #f1f5f9;
-    --control-bg-active: #e2e8f0;
-    --control-border: #e2e8f0;
-    --control-border-hover: #cbd5e1;
-    --grid-line: rgba(224, 224, 224, 0.4);
-    --choice-bg: #e8e8e8;
-    --segmented-bg: white;
-    --slider-bg: #e2e8f0;
+    /* Properties-panel controls. On light these must sit BELOW the white
+       panel (a control lighter than its container has no edge), so the ladder
+       inverts here: panel #ffffff -> control #f2eee9 -> hover -> active. */
+    --control-bg: #f1f3f5;
+    --control-bg-hover: #e4e8eb;
+    --control-bg-active: #d6dbe0;
+    --control-border: #e4e8eb;
+    --control-border-hover: #c8cfd6;
+    --grid-line: rgba(205, 211, 217, 0.4);
+    /* Segmented controls (No/Yes, Flex/Grid, …). Two levels, and they must
+       come from the same ladder as every other control or the segment reads
+       as a different material: --choice-bg is the recessed TRACK, and
+       --segmented-bg the RAISED active segment. These were flat greys
+       (#e8e8e8 / white, #1a1a1a / #333333) left over from the old palette. */
+    --choice-bg: #e4e8eb;
+    --segmented-bg: #ffffff;
+    --slider-bg: #e4e8eb;
     /* Border ring around the white slider thumb. Dark on the light
        theme (the white thumb has no contrast against a light panel
        otherwise); a translucent white ring on the dark theme. */
     --slider-thumb-border: rgba(0, 0, 0, 0.2);
 
     /* Buttons */
-    --btn-primary-bg: #3b82f6;
-    --btn-primary-hover: #2563eb;
-    --btn-secondary-bg: #f3f3f3;
-    --btn-secondary-hover: #e2e8f0;
+    /* Primary buttons take --accent-strong, not --accent: a CTA is one of the
+       two things allowed to shout (the other is the active tool). The calm
+       clay is for persistent chrome. */
+    --btn-primary-bg: #e6b450;
+    --btn-primary-hover: #f2c86e;
+    --btn-secondary-bg: #f1f3f5;
+    --btn-secondary-hover: #e4e8eb;
     /* Translucent "subtle fill" token — used by secondary buttons,
        breadcrumb pills, toggle segments, etc. Mirrored per theme: 5%
        black on light, 6% white on dark, so it reads on any surface.
@@ -83,13 +162,13 @@
 
     /* Misc */
     --dropdown-bg: #ffffff;
-    --selection-bg: rgba(59, 130, 246, 0.2);
-    --drop-target: rgba(59, 130, 246, 0.3);
+    --selection-bg: rgba(3, 91, 214, 0.18);
+    --drop-target: rgba(3, 91, 214, 0.28);
 
     /* Status */
-    --success: #10b981;
-    --warning: #f59e0b;
-    --error: #ef4444;
+    --success: #86b300;
+    --warning: #eba400;
+    --error: #e65050;
 
     /* Sizing */
     --header-height: 52px;
@@ -130,49 +209,92 @@
   }
 
   .dark {
+    /* Warm-neutral ladder — see the :root note. Canvas sits ABOVE panel here
+       (the artboard is lighter than the chrome around it), which is the
+       opposite of light mode and intentional: the work should be the
+       brightest thing on screen in both themes. */
+    /* Neutral grey — see the :root note. Not the ayu blue-black. */
     --bg-canvas: #1d1d1d;
-    --bg-surface: #111111;
-    --bg-toolbar: #111111;
-    --bg-panel: #111111;
-    --bg-hover: #282828a3;
-    --bg-active: #4a4a4a;
-    --bg-tertiary: #1a1a1a;
+    --bg-surface: #0d1017;
+    --bg-toolbar: #0d1017;
+    --bg-panel: #0d1017;
+    --bg-hover: #1b202b;
+    --bg-active: #2e3542;
+    --bg-tertiary: #141821;
+    /* Neutral greys — see the :root note. Canvas-adjacent, so untinted. */
+    --canvas-chrome-bg: #2a2a2a;
+    --canvas-chrome-border: #333333;
     --variant-card-bg: #2a2a2a;
     --variant-card-bg-hover: #383838;
     --variant-card-badge: rgba(255, 255, 255, 0.6);
 
-    --text-primary: #f8fafc;
-    --text-secondary: #bababa;
-    --text-disabled: #848484;
-    --text-tertiary: #666666;
-    --text-muted: #848484;
+    --text-primary: #bfbdb6;
+    --text-secondary: #8a94a6;
+    --text-disabled: #4a5266;
+    --text-tertiary: #5a6378;
+    --text-muted: #5a6378;
 
-    --accent: #3b82f6;
-    --accent-hover: #60a5fa;
-    --accent-muted: #1d4ed8;
-    --accent-surface: rgba(59, 130, 246, 0.1);
-    --accent-secondary: #9a66ff;
-    --accent-secondary-hover: #b883ff;
+    /* Clay reads 4.7:1 on the #141211 chrome — comfortably legible without
+       shouting. White on it only reaches 4.0, so --accent-fg is near-black:
+       a clay fill with a dark label clears AA and looks deliberate rather
+       than like a washed-out button. */
+    --accent: #e6b450;
+    --accent-hover: #f2c86e;
+    /* Gold is bright: white on it is 1.9:1, near-black is 10:1. Dark labels on
+       gold are the only readable pairing AND the better-looking one. */
+    --accent-fg: #0d1017;
+    /* On dark chrome the gold is already 10:1 as text — no deeper tone needed. */
+    --accent-text: #e6b450;
+    --accent-strong: #ffb454;
+    --accent-strong-fg: #0d1017;
+    --accent-muted: #4c4126;
+    --accent-surface: rgba(230, 180, 80, 0.13);
+    /* See the light-theme note. Hue 293 — magenta pulled back toward purple
+       without reaching the stock violet at 260.
 
-    --border-light: #222222;
-    --border-default: #414243;
-    --border-focus: #3b82f6;
+       THE LABEL IS WHITE, and the fill is tuned around that. Purple takes
+       white; that is the pairing, and it should not change just because a
+       lighter tone would be prettier. Earlier passes softened the fill until
+       white fell to 3.7:1 and then flipped the label to near-black — that
+       silently traded away the rule. The fix is the one written here: when a
+       fill and its label disagree, MOVE THE FILL. Brightness 78% -> 70% puts
+       white back at 4.5:1 while the fill still separates from the chrome
+       (4.2) and the canvas (3.7). */
+    --accent-secondary: #a856b2;
+    --accent-secondary-hover: #b465be;
+    --accent-secondary-fg: #ffffff;
 
-    --control-bg: rgba(50, 50, 50, 0.8);
-    --control-bg-hover: #334155;
-    --control-bg-active: #45464b;
-    --control-border: #292929;
-    --control-border-hover: #475569;
-    --grid-line: rgba(50, 50, 50, 0.8);
-    --choice-bg: #1a1a1a;
-    --segmented-bg: #333333;
-    --slider-bg: #333333;
-    --slider-thumb-border: rgba(255, 255, 255, 0.5);
+    /* Canvas selection — see the light-theme note. Brighter here so the
+       stroke holds up against the darker canvas (#1d1d1d). */
+    --selection: #3388ff;
 
-    --btn-primary-bg: #3b82f6;
-    --btn-primary-hover: #60a5fa;
-    --btn-secondary-bg: #333333;
-    --btn-secondary-hover: #475569;
+    --border-light: #141821;
+    --border-default: #2a3140;
+    /* Chrome affordance → brand accent, not the canvas blue. */
+    --border-focus: #e6b450;
+
+    /* control-bg was rgba(50,50,50,.8) — a translucent grey that resolved
+       differently over every surface it sat on, so the panel's elevation
+       ladder was never actually consistent. Opaque steps instead.
+       control-bg-hover and control-border-hover were Tailwind slate
+       (#334155 / #475569): cool blue-greys that visibly fought the warm
+       accent the moment anything was hovered. */
+    --control-bg: #1a1f2a;
+    --control-bg-hover: #242a38;
+    --control-bg-active: #2e3542;
+    --control-border: #1f2530;
+    --control-border-hover: #313846;
+    --grid-line: rgba(31, 37, 48, 0.8);
+    /* See the :root note — recessed track, raised active segment. */
+    --choice-bg: #141821;
+    --segmented-bg: #2e3542;
+    --slider-bg: #242a38;
+    --slider-thumb-border: rgba(191, 189, 182, 0.5);
+
+    --btn-primary-bg: #e6b450;
+    --btn-primary-hover: #f2c86e;
+    --btn-secondary-bg: #1b202b;
+    --btn-secondary-hover: #2e3542;
     /* Dark value = the old hard-coded fallback, so dark mode is
        unchanged; only light mode gains the (previously missing) fill. */
     --button-secondary-bg: rgba(255, 255, 255, 0.06);

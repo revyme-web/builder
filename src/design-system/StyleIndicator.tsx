@@ -13,6 +13,16 @@ interface StyleIndicatorProps {
   children: ReactNode;
   /** Background color — defaults to var(--accent) */
   color?: string;
+  /**
+   * Label color. Defaults to `var(--accent-fg)` so it tracks whatever
+   * `--accent` currently is — near-black on the gold brand accent, white on
+   * the violet the component-mode re-skin swaps in. It was hardcoded `#fff`,
+   * which is 1.9:1 on gold.
+   *
+   * Callers that pass a CUSTOM `color` must pass a matching `fg` — the
+   * default only holds for the accent background.
+   */
+  fg?: string;
   /** Size variant — 'sm' for compact distance labels, 'md' (default) for resize/dimensions */
   size?: 'sm' | 'md';
 }
@@ -26,7 +36,7 @@ const sizes = {
  * Fixed-position pill badge portaled to document.body.
  * Center-anchored at (x, y) in screen coordinates.
  */
-export default function StyleIndicator({ x, y, children, color = 'var(--accent)', size = 'md' }: StyleIndicatorProps) {
+export default function StyleIndicator({ x, y, children, color = 'var(--accent)', fg = 'var(--accent-fg)', size = 'md' }: StyleIndicatorProps) {
   const s = sizes[size];
   return createPortal(
     <div
@@ -42,7 +52,7 @@ export default function StyleIndicator({ x, y, children, color = 'var(--accent)'
         fontWeight: s.fontWeight,
         fontSize: s.fontSize,
         fontFamily: 'Inter, system-ui, sans-serif',
-        color: '#fff',
+        color: fg,
         pointerEvents: 'none',
         whiteSpace: 'nowrap',
         boxShadow: '0 4px 6px -1px rgba(0,0,0,0.2)',

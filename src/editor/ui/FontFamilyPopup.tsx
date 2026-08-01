@@ -71,7 +71,7 @@ function FontRow({ index, style, filteredFonts, currentFontName, onSelect, onPre
       <div
         className={`flex items-center justify-between px-3 py-2 rounded-[var(--radius-md)] cursor-pointer transition-colors ${
           isSelected
-            ? 'bg-[var(--accent)] text-white'
+            ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
             : 'hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'
         }`}
         style={{ fontFamily: font.family }}
@@ -384,7 +384,7 @@ export default function FontFamilyPopup({ value, onChange, isOpen, onClose, anch
                     <div
                       className={`flex items-center justify-between px-3 py-2 rounded-[var(--radius-md)] cursor-pointer transition-colors ${
                         isSelected
-                          ? 'bg-[var(--accent)] text-white'
+                          ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
                           : 'hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'
                       }`}
                       style={{ fontFamily: `"${font.family}"` }}

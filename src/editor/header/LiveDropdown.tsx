@@ -254,7 +254,7 @@ export function LiveDropdown({ open, meta, publishing, publishSuccess, progress,
             type="button"
             onClick={onPublish}
             disabled={publishing || publishSuccess}
-            className="relative overflow-hidden w-full h-7 px-3 text-xs rounded-[var(--radius-lg)] transition-colors font-medium flex items-center justify-center gap-1.5 bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-white disabled:opacity-100 disabled:bg-[var(--accent)] disabled:cursor-not-allowed"
+            className="relative overflow-hidden w-full h-7 px-3 text-xs rounded-[var(--radius-lg)] transition-colors font-medium flex items-center justify-center gap-1.5 bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] disabled:opacity-100 disabled:bg-[var(--accent)] disabled:cursor-not-allowed"
           >
             {/* Progress fill — sits behind the label, advances 0 → 100%
                 while publishing. Uses lighter accent on top of the base

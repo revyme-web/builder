@@ -261,7 +261,7 @@ export function ExportDropdown({
                 type="button"
                 onClick={onExport}
                 disabled={exporting}
-                className="w-full h-7 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-white transition-colors cursor-pointer disabled:opacity-100 disabled:cursor-not-allowed"
+                className="w-full h-7 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] transition-colors cursor-pointer disabled:opacity-100 disabled:cursor-not-allowed"
               >
                 {exporting ? 'Exporting…' : 'Export project'}
               </button>
@@ -270,7 +270,7 @@ export function ExportDropdown({
                 type="button"
                 onClick={onUpgrade}
                 title={`${selected.label} export requires Pro`}
-                className="w-full h-7 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-white transition-colors cursor-pointer"
+                className="w-full h-7 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] transition-colors cursor-pointer"
               >
                 Upgrade
               </button>

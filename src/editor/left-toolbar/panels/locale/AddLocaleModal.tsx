@@ -254,7 +254,7 @@ export default function AddLocaleModal({ isOpen, onClose, existingCodes, existin
                 <button
                   onClick={handleAdd}
                   disabled={!slug.trim() || !name.trim()}
-                  className="h-8 px-4 text-xs bg-[var(--accent)] text-white rounded-[var(--radius-md)] hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-medium"
+                  className="h-8 px-4 text-xs bg-[var(--accent)] text-[var(--accent-fg)] rounded-[var(--radius-md)] hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-medium"
                 >
                   Add Language
                 </button>

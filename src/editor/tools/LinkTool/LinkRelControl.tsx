@@ -120,7 +120,7 @@ export default function LinkRelControl({ value, onChange }: LinkRelControlProps)
                 }}
                 className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
               >
-                <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white">{opt.label}</span>
+                <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">{opt.label}</span>
               </button>
             ));
           })()}

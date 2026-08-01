@@ -26,7 +26,7 @@ import { commitTranslationAttr, readTranslationText } from '@/code/project/trans
 import { getActiveFilePath } from '@/canvas/node-ops';
 
 /** Blue "overridden on this viewport/variant" label style (matches ComponentPropsTool). */
-const OVERRIDE_LABEL: React.CSSProperties = { color: 'var(--accent)', fontWeight: 600 };
+const OVERRIDE_LABEL: React.CSSProperties = { color: 'var(--accent-text)', fontWeight: 600 };
 
 /** flush the queue AND force the derived node map / canvas to refresh, so the
  *  tool re-reads fresh attrs on the next render (otherwise an edit appears to
@@ -60,7 +60,7 @@ const EXTRA_DEFS: Array<{ kind: ExtraKind; label: string; toggle?: boolean; nume
 ];
 
 const ADD_ITEM = 'group flex items-center mx-1 px-2.5 py-1.5 rounded w-[calc(100%-8px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap disabled:opacity-40';
-const ADD_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-white';
+const ADD_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]';
 
 function AddPropMenu({ available, onAdd }: { available: typeof EXTRA_DEFS; onAdd: (k: ExtraKind) => void }) {
   const [open, setOpen] = useState(false);

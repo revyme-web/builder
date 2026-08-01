@@ -383,7 +383,7 @@ export default function StylesTool() {
                     onClick={() => handleAdd(spec)}
                     className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer whitespace-nowrap hover:bg-[var(--accent)] transition-colors"
                   >
-                    <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white">
+                    <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">
                       {spec.label}
                     </span>
                   </button>
@@ -393,7 +393,7 @@ export default function StylesTool() {
                     onClick={handleAddPseudo}
                     className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer whitespace-nowrap hover:bg-[var(--accent)] transition-colors"
                   >
-                    <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white">
+                    <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">
                       Pseudo Element
                     </span>
                   </button>

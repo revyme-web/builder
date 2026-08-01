@@ -44,7 +44,7 @@ function dynamicWired(type: string | undefined): boolean {
 }
 
 const ROW = 'group flex items-center justify-between mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
-const ROW_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-white';
+const ROW_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]';
 
 /** One field row + its left-opening flyout (Dynamic option / Static). The
  *  Dynamic option is clickable only when `onDynamic` is supplied (currently the
@@ -77,7 +77,7 @@ function FieldRow({ field, onStatic, onDynamic }: { field: FieldDefinition; onSt
     <div onMouseEnter={() => setShowSub(true)} onMouseLeave={() => setShowSub(false)}>
       <button ref={btnRef} type="button" className={ROW} onClick={() => setShowSub(v => !v)}>
         <span className={ROW_LABEL}>{field.name}</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)] group-hover:text-white shrink-0 ml-2">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)] shrink-0 ml-2">
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </button>

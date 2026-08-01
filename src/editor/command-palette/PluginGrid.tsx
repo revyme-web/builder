@@ -187,7 +187,7 @@ export function PluginGrid() {
                 v{urlPreview.version} · {urlPreview.visibility === 'open' ? 'Open source' : 'Closed source'}
               </div>
             </div>
-            <div className="text-[10px] text-white bg-[var(--accent)] px-2 py-1 rounded shrink-0">
+            <div className="text-[10px] text-[var(--accent-fg)] bg-[var(--accent)] px-2 py-1 rounded shrink-0">
               {loadingPluginId === urlPreview.id ? '...' : 'Install'}
             </div>
           </button>

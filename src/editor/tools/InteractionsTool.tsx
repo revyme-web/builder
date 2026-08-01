@@ -204,7 +204,7 @@ function ComponentInstanceEventInteractions({ selectedId, componentFile }: { sel
                 onClick={() => bindClose(p.name)}
                 className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
               >
-                <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white">Close Overlay · {p.label ?? p.name}</span>
+                <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">Close Overlay · {p.label ?? p.name}</span>
               </button>
             ))}
           </div>
@@ -307,7 +307,7 @@ const EVENT_FIRE_TRIGGER_OPTIONS: Array<{ value: EventFireTrigger; label: string
 // Item styling + the left-flyout submenu are COPIED from AnimationTool's
 // AddEffectDropdown (its EffectSubMenu) so they look identical.
 const ADD_ITEM = 'group flex items-center justify-between mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
-const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-white';
+const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]';
 
 /** "Choose Event" — a hover flyout that opens to the LEFT (portaled), exactly like
  *  the Animation tool's "Scroll ›" submenu. */
@@ -322,7 +322,7 @@ function ChooseEventSubMenu({ eventVars, onChoose }: { eventVars: ComponentProp[
     <div onMouseEnter={() => setShowSub(true)} onMouseLeave={() => setShowSub(false)}>
       <button ref={btnRef} type="button" className={ADD_ITEM} onClick={() => setShowSub(s => !s)}>
         <span className={ADD_ITEM_LABEL}>Choose Event</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)] group-hover:text-white shrink-0 ml-2"><polyline points="9 18 15 12 9 6" /></svg>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)] shrink-0 ml-2"><polyline points="9 18 15 12 9 6" /></svg>
       </button>
       {showSub && createPortal(
         <div style={{ position: 'fixed', left: subPos.x, top: subPos.y, transform: 'translateX(-100%)', zIndex: 9999 }}
@@ -339,7 +339,7 @@ function ChooseEventSubMenu({ eventVars, onChoose }: { eventVars: ComponentProp[
                 // the button stealing focus / text-selection. (Same pattern as the
                 // LinkUrlControl page picker.)
                 onMouseDown={(e) => { e.preventDefault(); onChoose(v.name); }}>
-                <span className="text-[12px] font-medium text-[var(--text-primary)] group-hover:text-white">{v.label ?? v.name}</span>
+                <span className="text-[12px] font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">{v.label ?? v.name}</span>
               </button>
             ))}
           </div>
@@ -605,7 +605,7 @@ const CLOSE_TRIGGER_OPTIONS = [
 // (purple) inside a template or component master/instance.
 function ZapSwatch({ secondary }: { secondary?: boolean }) {
   return (
-    <span className="flex items-center justify-center w-5 h-5 rounded border border-white/10 flex-shrink-0" style={{ backgroundColor: secondary ? 'var(--accent-secondary, #a855f7)' : 'var(--accent, #3b82f6)' }}>
+    <span className="flex items-center justify-center w-5 h-5 rounded border border-white/10 flex-shrink-0" style={{ backgroundColor: secondary ? 'var(--accent-secondary, #a855f7)' : 'var(--accent, #e6b450)' }}>
       <svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M13 2 L4 14 h6 l-1 8 9-12 h-6 z" /></svg>
     </span>
   );
@@ -1056,7 +1056,7 @@ function AddPageInteractionForm({
       <button
         onClick={() => canSubmit && onAdd(trigger, varName, value)}
         disabled={!canSubmit}
-        className="w-full h-7 flex items-center justify-center text-xs font-medium text-white rounded-lg transition-all cursor-pointer hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full h-7 flex items-center justify-center text-xs font-medium text-[var(--accent-fg)] rounded-lg transition-all cursor-pointer hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
         style={{ backgroundColor: 'var(--accent)' }}
       >
         Add Interaction

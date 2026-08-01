@@ -149,7 +149,7 @@ export default function MapTool() {
           <div className="flex items-center justify-between w-full">
             <ControlLabel label="" property="" plain />
             <ControlActionRow onClick={handleAddItem}>
-              <span className="text-[var(--accent)]">+ Add Item</span>
+              <span className="text-[var(--accent-text)]">+ Add Item</span>
             </ControlActionRow>
           </div>
         </div>

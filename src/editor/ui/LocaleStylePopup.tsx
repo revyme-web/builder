@@ -388,7 +388,7 @@ export default function LocaleStylePopup({ property, propertyLabel, nodeId, base
           <button
             onClick={() => { setTranslationsOverlayOpen(true); onClose(); }}
             data-locale-variable-pill
-            className="w-full h-8 flex items-center gap-2 pl-1 pr-2 rounded-[var(--radius-lg)] border border-transparent text-xs font-medium text-white cursor-pointer"
+            className="w-full h-8 flex items-center gap-2 pl-1 pr-2 rounded-[var(--radius-lg)] border border-transparent text-xs font-medium text-[var(--accent-fg)] cursor-pointer"
             style={{ backgroundColor: 'var(--accent)' }}
             title="Open Localization"
           >

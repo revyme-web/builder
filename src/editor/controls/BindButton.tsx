@@ -131,7 +131,7 @@ export function BindButton({ nodeId, property, currentBinding, collectionSlug, i
                 className={`w-[calc(100%-8px)] mx-1 flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-left cursor-pointer transition-colors ${
                   currentBinding === field.id
                     ? 'bg-purple-600/20 text-purple-300'
-                    : 'hover:bg-[var(--accent)] text-[var(--text-primary)] hover:text-white'
+                    : 'hover:bg-[var(--accent)] text-[var(--text-primary)] hover:text-[var(--accent-fg)]'
                 }`}
               >
                 <span className="text-xs font-medium">{field.name}</span>

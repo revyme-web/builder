@@ -304,16 +304,16 @@ export default function ComponentBreadcrumb() {
            an "Exit" pill on the right. Both reuse the breadcrumb/Variables pill design. */
         <>
           <div
-            className="px-3 h-7 flex items-center gap-1.5 text-sm font-medium text-white rounded-md whitespace-nowrap select-none"
+            className="px-3 h-7 flex items-center gap-1.5 text-sm font-medium text-[var(--accent-secondary-fg)] rounded-md whitespace-nowrap select-none"
             style={{ backgroundColor: 'var(--accent-secondary)' }}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z" /></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
             Editing Overlay
           </div>
           <div className="flex-1" />
           <button
             onClick={exitOverlayEdit}
-            className="px-3 h-7 flex items-center text-sm font-medium text-white rounded-md transition-all hover:brightness-110 whitespace-nowrap"
+            className="px-3 h-7 flex items-center text-sm font-medium text-[var(--accent-secondary-fg)] rounded-md transition-all hover:brightness-110 whitespace-nowrap"
             style={{ backgroundColor: 'var(--accent-secondary)' }}
           >
             Exit
@@ -336,7 +336,7 @@ export default function ComponentBreadcrumb() {
                 trace.action('breadcrumb:open-variables', { file: activeFile });
                 setVariablesOpen(true);
               }}
-              className="px-3 h-7 flex items-center text-sm font-medium text-white rounded-md transition-all hover:brightness-110 whitespace-nowrap"
+              className="px-3 h-7 flex items-center text-sm font-medium text-[var(--accent-secondary-fg)] rounded-md transition-all hover:brightness-110 whitespace-nowrap"
               style={{ backgroundColor: 'var(--accent-secondary)' }}
             >
               Variables

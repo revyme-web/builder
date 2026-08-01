@@ -61,7 +61,7 @@ const GUIDE_COLOR = '#0d9488'; // teal — same as builder
 // position-indicator labels. Matches the canvas selection border so
 // the user can visually link the selection on canvas with its measured
 // extent on the rulers.
-const SELECTION_ACCENT = 'var(--accent)';
+const SELECTION_ACCENT = 'var(--selection)';
 
 // ─── Position indicator ──────────────────────────────────────────────────
 // Tiny pill-shaped label that floats on a ruler at a given canvas-space

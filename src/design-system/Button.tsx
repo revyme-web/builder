@@ -21,7 +21,7 @@ const SIZE_CLASSES: Record<ButtonSize, string> = {
 };
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: 'bg-[var(--accent)] text-white hover:brightness-110',
+  primary: 'bg-[var(--accent)] text-[var(--accent-fg)] hover:brightness-110',
   secondary: 'bg-[var(--button-secondary-bg,rgba(255,255,255,0.06))] text-[var(--text-secondary)] hover:brightness-125',
   ghost: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]',
   danger: 'bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300',

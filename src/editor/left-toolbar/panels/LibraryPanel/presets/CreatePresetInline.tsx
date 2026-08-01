@@ -33,7 +33,7 @@ export function CreatePresetInline({ category, onSubmit, onCancel }: CreatePrese
       />
       <button
         onClick={() => name.trim() && onSubmit(name.trim())}
-        className="text-[10px] font-medium text-[var(--accent)] hover:text-[var(--text-primary)] transition-colors px-1"
+        className="text-[10px] font-medium text-[var(--accent-text)] hover:text-[var(--text-primary)] transition-colors px-1"
       >
         Add
       </button>

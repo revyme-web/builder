@@ -61,11 +61,11 @@ function MenuItem({ label, shortcut, onClick, disabled }: {
       disabled={disabled}
       className={`group flex items-center gap-3 mx-1.5 px-2 h-8 w-[calc(100%-12px)] text-left cursor-pointer rounded-[var(--radius-sm)] hover:bg-[var(--accent)] ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
     >
-      <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white flex-1">
+      <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] flex-1">
         {label}
       </span>
       {shortcut && (
-        <span className="text-[10px] text-[var(--text-secondary)] group-hover:text-white/70">
+        <span className="text-[10px] text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)]/70">
           {shortcut}
         </span>
       )}
@@ -89,8 +89,8 @@ function SubMenu({ label, children }: { label: string; children: React.ReactNode
       onMouseLeave={() => setOpen(false)}
     >
       <button className="group flex items-center gap-3 mx-1.5 px-2 h-8 w-[calc(100%-12px)] text-left cursor-pointer rounded-[var(--radius-sm)] hover:bg-[var(--accent)]">
-        <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white flex-1">{label}</span>
-        <span className="text-[10px] text-[var(--text-secondary)] group-hover:text-white/70">▸</span>
+        <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] flex-1">{label}</span>
+        <span className="text-[10px] text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)]/70">▸</span>
       </button>
       {open && (
         <>
@@ -411,7 +411,7 @@ export default function ContextMenu() {
       // Component flows use the purple component-system accent; the
       // sibling "Make Vector Set" modal below keeps the
       // default blue because vectors live in the Vectors section.
-      accentColor="var(--accent-secondary, #9a66ff)"
+      accentColor="var(--accent-secondary, #a856b2)"
     />
   );
 

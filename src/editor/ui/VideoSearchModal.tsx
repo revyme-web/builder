@@ -282,7 +282,7 @@ export default function VideoSearchModal({ isOpen, onClose, onSelect }: VideoSea
               {urlInput.trim() && (
                 <button
                   onClick={() => handleSelect(urlInput.trim())}
-                  className="h-8 px-3 text-xs font-medium text-white bg-[var(--accent)] rounded-[var(--radius-lg)] hover:brightness-110 transition-all"
+                  className="h-8 px-3 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] rounded-[var(--radius-lg)] hover:brightness-110 transition-all"
                 >
                   Use
                 </button>

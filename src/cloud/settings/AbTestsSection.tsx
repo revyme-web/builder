@@ -457,7 +457,7 @@ function ActionConfirmModal({ confirm, onCancel, onRun }: ActionConfirmModalProp
         <button
           onClick={async () => { setRunning(true); try { await onRun(); } catch { setRunning(false); } }}
           disabled={running}
-          className={`flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center text-white disabled:opacity-60 cursor-pointer ${
+          className={`flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center text-[var(--accent-fg)] disabled:opacity-60 cursor-pointer ${
             k === 'delete' ? 'bg-red-500/90 hover:bg-red-500' : 'bg-[var(--accent)] hover:opacity-90'
           }`}
         >

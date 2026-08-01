@@ -650,7 +650,7 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
             )}
             <button
               onClick={handleNext}
-              className="flex items-center gap-1 px-4 py-1.5 text-[11px] text-white bg-[var(--accent)] hover:opacity-90 rounded-md transition-opacity"
+              className="flex items-center gap-1 px-4 py-1.5 text-[11px] text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-md transition-opacity"
             >
               {isLastStep ? 'Get Started' : 'Next'}
               {!isLastStep && <ChevronRightIcon className="w-3 h-3" />}

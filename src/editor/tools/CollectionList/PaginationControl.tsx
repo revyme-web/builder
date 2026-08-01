@@ -27,7 +27,7 @@ const MODE_LABEL: Record<'loadMore' | 'infinite', string> = { loadMore: 'Load Mo
 
 // Mirrors the Animation tool's add-dropdown item (same hover-accent fill).
 const ADD_ITEM = 'group flex items-center mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
-const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-white';
+const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]';
 
 export default function PaginationControl({ pagination, onSet, onRemove, editable = true }: Props) {
   const [open, setOpen] = useState(false);

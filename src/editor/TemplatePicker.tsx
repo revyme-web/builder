@@ -548,7 +548,7 @@ export default function TemplatePicker() {
                 }}
                 className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent)] transition-colors"
               >
-                <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white">
+                <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">
                   {tpl.name}
                 </span>
               </button>
@@ -560,7 +560,7 @@ export default function TemplatePicker() {
               }}
               className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent)] transition-colors"
             >
-              <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white">
+              <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">
                 New Template…
               </span>
             </button>

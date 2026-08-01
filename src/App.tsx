@@ -133,17 +133,31 @@ export default function App() {
     const root = document.documentElement;
     if (isComponentFile) {
       root.style.setProperty('--accent', 'var(--accent-secondary)');
+      // The FOREGROUND has to move with the fill. Overriding only --accent
+      // left every accent-filled control (Publish, Variables, the active
+      // tool) purple while its LABEL kept --accent-fg, which is the
+      // near-black chosen for gold — black text on purple, and unreadable
+      // once the two accents stopped being the same hue family.
+      root.style.setProperty('--accent-fg', 'var(--accent-secondary-fg)');
+      root.style.setProperty('--accent-strong', 'var(--accent-secondary)');
+      root.style.setProperty('--accent-strong-fg', 'var(--accent-secondary-fg)');
       // `--border-focus` is the colour for focused inputs / dropdowns —
       // separate token from --accent in globals.css. Without overriding
-      // it, focused ToolInputs stay blue even when everything else turns
-      // purple.
+      // it, focused ToolInputs keep the brand accent even when everything
+      // else turns purple.
       root.style.setProperty('--border-focus', 'var(--accent-secondary)');
     } else {
       root.style.removeProperty('--accent');
+      root.style.removeProperty('--accent-fg');
+      root.style.removeProperty('--accent-strong');
+      root.style.removeProperty('--accent-strong-fg');
       root.style.removeProperty('--border-focus');
     }
     return () => {
       root.style.removeProperty('--accent');
+      root.style.removeProperty('--accent-fg');
+      root.style.removeProperty('--accent-strong');
+      root.style.removeProperty('--accent-strong-fg');
       root.style.removeProperty('--border-focus');
     };
   }, [isComponentFile]);

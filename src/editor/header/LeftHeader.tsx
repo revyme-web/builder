@@ -12,7 +12,7 @@
 // and are consumed verbatim by the logo dropdown.
 
 import { useRef, useState, useMemo } from 'react';
-import { useAtom } from 'jotai';
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { flushNow } from '@/code/mutation/mutation-queue';
 import { previewModeAtom } from '@/code/stores/editor-store';
 import {
@@ -32,6 +32,8 @@ import KeyboardShortcutsModal from '@/editor/ui/KeyboardShortcutsModal';
 import DropdownMenu, { type DropdownMenuEntry } from '@/design-system/DropdownMenu';
 import Button from '@/design-system/Button';
 import { useIsViewer } from '@/code/stores/viewer-mode-store';
+import { settingsOverlayOpenAtom, settingsSectionAtom, hasActiveSubscriptionAtom } from '@/code/stores/website-settings-store';
+import { CLOUD_ENABLED } from '@/shared/cloud-flag';
 
 // ─── Back chevron — same glyph the settings overlay uses for its
 // "Back to canvas" affordance. Inline so we don't pull a third-
@@ -88,6 +90,12 @@ export function LogoButton() {
   // harmless) but every menubar tab (File / Edit / Insert / View) is
   // disabled — they all open write paths.
   const isViewer = useIsViewer();
+  // Upgrade nudge — moved here from the bottom toolbar, where it was a
+  // permanent accent pill floating over the canvas. Sites already on a paid
+  // plan have nothing to upgrade to, so the row collapses out entirely.
+  const hasActiveSubscription = useAtomValue(hasActiveSubscriptionAtom);
+  const setSettingsOpen = useSetAtom(settingsOverlayOpenAtom);
+  const setSettingsSection = useSetAtom(settingsSectionAtom);
 
   // Preference atoms — `buildPreferencesSubmenu` needs them so the toggle
   // rows can render their current state + flip atoms on click. Subscribing
@@ -153,6 +161,20 @@ export function LogoButton() {
           window.location.href = `/dashboard?${params.toString()}`;
         },
       },
+      // Sits directly under "Your Account" — a billing action belongs with
+      // the other account actions. `accent: true` gives it the one coloured
+      // label in an otherwise neutral menu so it still stands out, without
+      // needing a filled button competing with Publish.
+      ...(CLOUD_ENABLED && !isViewer && !hasActiveSubscription ? [{
+        id: 'logo-upgrade',
+        label: 'Upgrade your plan',
+        accent: true,
+        onClick: () => {
+          trace.action('left-header:upgrade');
+          setSettingsSection('plans');
+          setSettingsOpen(true);
+        },
+      }] : []),
       { type: 'separator' },
       // The menubar — flattened into 4 submenu entries. Each `tab.items`
       // is a `DropdownMenuEntry[]` straight from menu-builders.tsx; no
@@ -170,7 +192,7 @@ export function LogoButton() {
       })),
     ];
   }, [
-    isViewer,
+    isViewer, hasActiveSubscription, setSettingsOpen, setSettingsSection,
     directSelectionEnabled, autoPanSpeed, autoFocusLayers, showRulers, useSmoothZoom, showPixelGrid,
     setDirectSelectionEnabled, setAutoPanSpeed, setAutoFocusLayers, setShowRulers, setUseSmoothZoom, setShowPixelGrid,
   ]);

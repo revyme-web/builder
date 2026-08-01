@@ -3,7 +3,7 @@
 //
 // Visual states:
 //   Default:      text-xs font-bold text-[var(--text-secondary)]
-//   Has override: text-[var(--accent)] (blue)
+//   Has override: text-[var(--accent-text)] (blue)
 //   Hover master: text-[var(--accent-secondary)] (purple)
 //   Hover page:   text-[var(--text-primary)]
 //   Has variable: two-line stack (var name + property label)
@@ -157,7 +157,7 @@ function PlainOverrideLabel({ label, subLabel, onReset, cell }: { label: string;
               }}
               className="group flex items-center w-full px-3 py-1.5 text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
             >
-              <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white">Reset Override</span>
+              <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">Reset Override</span>
             </button>
           </div>
         </>
@@ -798,12 +798,12 @@ export default function ControlLabel({ label, property, plain, forceShow, hideCr
     : 'group-hover:text-[var(--text-primary)]';
   const chevronHoverColor = isComponentFile
     ? 'group-hover:text-[var(--accent-secondary)]'
-    : 'group-hover:text-[var(--accent)]';
+    : 'group-hover:text-[var(--accent-text)]';
 
   if (isOverride) {
     // Component-file overrides use the purple secondary accent (matching the bound pill + the rest of the
     // component-editing chrome); page overrides use the standard blue accent.
-    labelColorClass = isComponentFile ? 'text-[var(--accent-secondary)]' : 'text-[var(--accent)]';
+    labelColorClass = isComponentFile ? 'text-[var(--accent-secondary)]' : 'text-[var(--accent-text)]';
     hoverColorClass = '';
   }
 
@@ -823,7 +823,7 @@ export default function ControlLabel({ label, property, plain, forceShow, hideCr
   // (override / locale) so we don't trample those colours.
   const forceActive = menuOpen && !isOverride && !showLocaleIndicator;
   const activeLabelColor = isComponentFile ? 'text-[var(--accent-secondary)]' : 'text-[var(--text-primary)]';
-  const activeChevronColor = isComponentFile ? 'text-[var(--accent-secondary)]' : 'text-[var(--accent)]';
+  const activeChevronColor = isComponentFile ? 'text-[var(--accent-secondary)]' : 'text-[var(--accent-text)]';
   const effectiveLabelColor = forceActive ? activeLabelColor : labelColorClass;
   // When there's no dropdown to open (no chevron), the label is not interactive
   // — strip the hover color class so it stays neutral instead of lighting up
@@ -1032,13 +1032,13 @@ export default function ControlLabel({ label, property, plain, forceShow, hideCr
                         : 'hover:bg-[var(--accent)]'
                     } transition-colors`}
                   >
-                    <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white flex-1">
+                    <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] flex-1">
                       {item.label}
                     </span>
                     {/* Submenu chevron — RIGHT side, pointing RIGHT (standard cascade
                         indicator). `justify-between` on the row pushes it to the edge. */}
                     {hasSubmenu && (
-                      <span className="text-[var(--text-secondary)] group-hover:text-white flex-shrink-0">
+                      <span className="text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)] flex-shrink-0">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="9 18 15 12 9 6" />
                         </svg>
@@ -1071,7 +1071,7 @@ export default function ControlLabel({ label, property, plain, forceShow, hideCr
                     onClick={() => { sub.onClick(); closeMenu(); }}
                     className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent)] transition-colors"
                   >
-                    <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white truncate">
+                    <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] truncate">
                       {sub.label}
                     </span>
                   </button>

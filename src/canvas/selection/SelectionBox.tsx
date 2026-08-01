@@ -348,8 +348,8 @@ export default function SelectionBox({ containerEl, contentEl, onSelectionChange
         top: box.y,
         width: box.width,
         height: box.height,
-        backgroundColor: 'color-mix(in srgb, var(--accent) 10%, transparent)',
-        border: '1px solid color-mix(in srgb, var(--accent) 60%, transparent)',
+        backgroundColor: 'color-mix(in srgb, var(--selection) 10%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--selection) 60%, transparent)',
         pointerEvents: 'none',
         zIndex: 5,
       }}

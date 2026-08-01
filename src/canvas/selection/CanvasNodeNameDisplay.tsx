@@ -268,7 +268,7 @@ function NameDisplay({ nodeId, vpId }: LabelProps) {
   // but distinctly muted), and quiet on dark bg without being invisible.
   const color =
     isSelected || isHovered
-      ? isAccented ? 'var(--accent-secondary)' : 'var(--accent)'
+      ? isAccented ? 'var(--accent-secondary)' : 'var(--selection)'
       : '#555';
 
   // Icons only on top-level variant roots (crown). Plain canvas

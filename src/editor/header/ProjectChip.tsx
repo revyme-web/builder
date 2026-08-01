@@ -112,7 +112,7 @@ export default function ProjectChip() {
           // past 50%. `truncate` ellipses the over-50% case.
           //
           // Hover: text turns accent (no background fill).
-          className="max-w-[50%] truncate shrink-0 text-xs font-bold text-[var(--text-primary)] cursor-pointer bg-transparent border-none p-0 transition-colors hover:text-[var(--accent)]"
+          className="max-w-[50%] truncate shrink-0 text-xs font-bold text-[var(--text-primary)] cursor-pointer bg-transparent border-none p-0 transition-colors hover:text-[var(--accent-text)]"
         >
           {displayName}
         </button>

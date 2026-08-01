@@ -170,7 +170,7 @@ export default function PluginEditor({ filePath, onClose }: PluginEditorProps) {
                 <path d="M14 4a2 2 0 1 1 4 0v3h3a2 2 0 0 1 2 2v3h-1.5a2.5 2.5 0 1 0 0 5H23v3a2 2 0 0 1-2 2h-3v-1.5a2.5 2.5 0 1 0-5 0V21H10a2 2 0 0 1-2-2v-3H6.5a2.5 2.5 0 1 1 0-5H8V8a2 2 0 0 1 2-2h3V4z" />
               </svg>
             ),
-            color: 'var(--accent)',
+            color: 'var(--accent-text)',
             dot: hasUnsavedChanges,
           },
         ]} />

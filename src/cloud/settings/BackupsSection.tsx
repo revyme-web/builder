@@ -278,7 +278,7 @@ export default function BackupsSection({ websiteId }: BackupsSectionProps) {
               <button
                 type="button"
                 onClick={() => startEdit(s)}
-                className="group inline-flex items-center gap-1.5 text-sm font-medium text-[var(--text-primary)] max-w-full hover:text-[var(--accent)] transition-colors cursor-pointer"
+                className="group inline-flex items-center gap-1.5 text-sm font-medium text-[var(--text-primary)] max-w-full hover:text-[var(--accent-text)] transition-colors cursor-pointer"
                 title="Click to rename. Clear to reset to default."
               >
                 <span className="truncate">{displayName}</span>
@@ -287,7 +287,7 @@ export default function BackupsSection({ websiteId }: BackupsSectionProps) {
                     when the user hovers the row's name button. */}
                 <svg
                   width="12" height="12" viewBox="0 0 24 24"
-                  className="flex-shrink-0 text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors"
+                  className="flex-shrink-0 text-[var(--text-primary)] group-hover:text-[var(--accent-text)] transition-colors"
                 >
                   <path d="M0 0h24v24H0z" fill="none" />
                   <path
@@ -362,7 +362,7 @@ export default function BackupsSection({ websiteId }: BackupsSectionProps) {
         {copy.upsell && (
           <button
             onClick={() => setActiveSection('plans')}
-            className="flex-shrink-0 inline-flex items-center gap-1 text-xs font-medium text-[var(--accent)] hover:underline cursor-pointer"
+            className="flex-shrink-0 inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-text)] hover:underline cursor-pointer"
           >
             {copy.upsell} →
           </button>
@@ -665,7 +665,7 @@ function RestoreConfirmModal({ confirm, onCancel, onRun }: RestoreConfirmModalPr
         <button
           onClick={handleRun}
           disabled={running}
-          className="relative overflow-hidden flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] transition-colors font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-white disabled:opacity-100 disabled:bg-[var(--accent)] disabled:cursor-not-allowed cursor-pointer"
+          className="relative overflow-hidden flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] transition-colors font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] disabled:opacity-100 disabled:bg-[var(--accent)] disabled:cursor-not-allowed cursor-pointer"
         >
           {running && (
             <span

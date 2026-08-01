@@ -101,7 +101,7 @@ export function AlignmentButtons({ enabled, onAlign }: { enabled: boolean; onAli
             : 'cursor-not-allowed opacity-30'
           }`}
         >
-          <Icon className={`w-4 h-4 ${enabled ? 'text-[var(--accent)]' : 'text-[var(--text-disabled)]'}`} />
+          <Icon className={`w-4 h-4 ${enabled ? 'text-[var(--accent-text)]' : 'text-[var(--text-disabled)]'}`} />
         </button>
       ))}
     </div>

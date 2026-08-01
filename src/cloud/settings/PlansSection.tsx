@@ -437,7 +437,7 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
                 </div>
               ) : isCurrent ? (
                 <div className="absolute top-4 right-4 z-10">
-                  <span className="bg-[var(--accent)] text-white text-xs font-semibold px-3 py-1 rounded-full">
+                  <span className="bg-[var(--accent)] text-[var(--accent-fg)] text-xs font-semibold px-3 py-1 rounded-full">
                     Current Plan
                   </span>
                 </div>
@@ -656,10 +656,10 @@ function ChangePlanConfirmModal({
         <button
           onClick={() => { void onConfirm(); }}
           disabled={running}
-          className="flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] transition-colors font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-white disabled:opacity-100 disabled:bg-[var(--accent)] disabled:cursor-not-allowed cursor-pointer"
+          className="flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] transition-colors font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] disabled:opacity-100 disabled:bg-[var(--accent)] disabled:cursor-not-allowed cursor-pointer"
         >
           {running ? (
-            <Spinner className="w-4 h-4 text-white" />
+            <Spinner className="w-4 h-4 text-[var(--accent-fg)]" />
           ) : (
             submitText
           )}

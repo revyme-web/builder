@@ -119,9 +119,9 @@ function KeyframeSubMenu({ label, desc, existingKeyframes, onCreateNew, onApply 
       <button ref={btnRef} type="button" title={desc}
         className="group flex items-center justify-between mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
         onClick={() => setShowSub(!showSub)}>
-        <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white">{label}</span>
+        <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">{label}</span>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-          className="text-[var(--text-secondary)] group-hover:text-white shrink-0 ml-2">
+          className="text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)] shrink-0 ml-2">
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </button>
@@ -138,10 +138,10 @@ function KeyframeSubMenu({ label, desc, existingKeyframes, onCreateNew, onApply 
             <button type="button"
               className="group flex items-center gap-2 w-full px-3 py-1.5 text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
               onClick={onCreateNew}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[var(--text-secondary)] group-hover:text-white shrink-0">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)] shrink-0">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              <span className="text-[12px] font-medium text-[var(--text-primary)] group-hover:text-white">Create New</span>
+              <span className="text-[12px] font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">Create New</span>
             </button>
             {existingKeyframes.length > 0 && (
               <>
@@ -153,10 +153,10 @@ function KeyframeSubMenu({ label, desc, existingKeyframes, onCreateNew, onApply 
                   <button key={name} type="button"
                     className="group flex items-center gap-2 w-full px-3 py-1.5 text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
                     onClick={() => onApply(name)}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[var(--text-secondary)] group-hover:text-white shrink-0">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)] shrink-0">
                       <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
                     </svg>
-                    <span className="text-[12px] text-[var(--text-primary)] group-hover:text-white truncate">{name}</span>
+                    <span className="text-[12px] text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] truncate">{name}</span>
                   </button>
                 ))}
               </>
@@ -200,9 +200,9 @@ function EffectSubMenu({ label, desc, children, onSelect }: {
       <button ref={btnRef} type="button" title={desc}
         className="group flex items-center justify-between mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
         onClick={() => setShowSub(!showSub)}>
-        <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white">{label}</span>
+        <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">{label}</span>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-          className="text-[var(--text-secondary)] group-hover:text-white shrink-0 ml-2">
+          className="text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)] shrink-0 ml-2">
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </button>
@@ -221,7 +221,7 @@ function EffectSubMenu({ label, desc, children, onSelect }: {
               <button key={c.type} type="button" title={c.desc}
                 className="group flex items-center w-full px-3 py-1.5 text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
                 onClick={() => onSelect(c.type)}>
-                <span className="text-[12px] font-medium text-[var(--text-primary)] group-hover:text-white">{c.label}</span>
+                <span className="text-[12px] font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">{c.label}</span>
               </button>
             ))}
           </div>
@@ -377,7 +377,7 @@ export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketc
                     title={o.desc}
                     className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
                     onClick={() => { onAdd(o.type); setOpen(false); }}>
-                    <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white">
+                    <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">
                       {o.label}
                     </span>
                   </button>

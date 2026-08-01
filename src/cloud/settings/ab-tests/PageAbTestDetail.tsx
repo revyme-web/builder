@@ -845,7 +845,7 @@ function TestActions({
         <button
           type="button"
           onClick={() => stateChange(test.status === 'paused' ? 'resume' : 'start')}
-          className="h-8 px-4 text-xs font-medium text-white bg-[var(--accent)] hover:opacity-90 rounded-md cursor-pointer"
+          className="h-8 px-4 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-md cursor-pointer"
         >
           {test.status === 'paused' ? 'Resume test' : 'Start test'}
         </button>
@@ -1179,7 +1179,7 @@ function UpgradeGoalCapPopover({
         <button
           type="button"
           onClick={onUpgrade}
-          className="w-full h-8 text-xs font-medium text-white bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer"
+          className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer"
         >
           Upgrade
         </button>
@@ -1680,7 +1680,7 @@ function UpgradeFiltersPopover({
         <button
           type="button"
           onClick={onUpgrade}
-          className="w-full h-8 text-xs font-medium text-white bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer"
+          className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer"
         >
           Upgrade
         </button>
@@ -1821,7 +1821,7 @@ function EditFilterPopover({
                     <span
                       className={`w-3.5 h-3.5 rounded-[3px] flex items-center justify-center border ${
                         active
-                          ? 'bg-[var(--accent)] border-[var(--accent)] text-white'
+                          ? 'bg-[var(--accent)] border-[var(--accent)] text-[var(--accent-fg)]'
                           : 'border-[var(--control-border)]'
                       }`}
                     >
@@ -1904,7 +1904,7 @@ function EditFilterPopover({
               onClick={submit}
               disabled={!valid || !!lockReason}
               title={lockReason ?? undefined}
-              className="w-full h-8 text-xs font-medium text-white bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Save
             </button>
@@ -2101,7 +2101,7 @@ function CountryPicker({
                     <span
                       className={`w-3.5 h-3.5 rounded-[3px] flex items-center justify-center border ${
                         active
-                          ? 'bg-[var(--accent)] border-[var(--accent)] text-white'
+                          ? 'bg-[var(--accent)] border-[var(--accent)] text-[var(--accent-fg)]'
                           : 'border-[var(--control-border)]'
                       }`}
                     >
@@ -2321,7 +2321,7 @@ function EditStepPopover({
               onClick={submit}
               disabled={!valid || !!lockReason}
               title={lockReason ?? undefined}
-              className="w-full h-8 text-xs font-medium text-white bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Save
             </button>

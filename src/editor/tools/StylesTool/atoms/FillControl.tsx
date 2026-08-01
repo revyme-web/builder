@@ -1508,7 +1508,7 @@ function FillAtom() {
         <span ref={btnRef} className="contents">
         {isPresetRef ? (
           <button
-            className="w-full h-8 flex items-center justify-between px-2 bg-[var(--accent)] rounded-[var(--radius-lg)] text-xs font-medium text-white cursor-pointer transition-colors hover:opacity-90 truncate"
+            className="w-full h-8 flex items-center justify-between px-2 bg-[var(--accent)] rounded-[var(--radius-lg)] text-xs font-medium text-[var(--accent-fg)] cursor-pointer transition-colors hover:opacity-90 truncate"
             onClick={() => {
               openPanel(<FillPopupContent styles={styles} onUpdate={onUpdate} onChangeMultiple={onChangeMultiple} nodeId={node?.id} onLivePreview={setLivePreviewColor} />);
             }}

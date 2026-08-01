@@ -340,7 +340,7 @@ export default function CmsEditorOverlay() {
           {
             label: collectionName,
             icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg>,
-            color: 'var(--accent)',
+            color: 'var(--accent-text)',
           },
         ]} />
         {/* AI panel toggle — re-opens the docked Vibe panel after it's hidden. */}
@@ -349,7 +349,7 @@ export default function CmsEditorOverlay() {
           title={aiPanelOpen ? 'Hide AI panel' : 'Show AI panel'}
           className={`flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs font-medium transition-colors cursor-pointer ${
             aiPanelOpen
-              ? 'bg-[var(--accent)]/15 text-[var(--accent)]'
+              ? 'bg-[var(--accent)]/15 text-[var(--accent-text)]'
               : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
           }`}
         >

@@ -1672,7 +1672,7 @@ export default function ComponentPropsTool() {
     const currentValue = previewValues[propName] ?? pendingProps[propName] ?? committedValue;
     const variantOv = variantOverrideFor(propName);
     const labelStyle = hasResponsiveOverride
-      ? { color: 'var(--accent)', fontWeight: 600 } as React.CSSProperties
+      ? { color: 'var(--accent-text)', fontWeight: 600 } as React.CSSProperties
       : variantOv.overridden
         ? { color: 'var(--accent-secondary)', fontWeight: 600 } as React.CSSProperties
         : undefined;

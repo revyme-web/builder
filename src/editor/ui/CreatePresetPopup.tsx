@@ -289,7 +289,7 @@ function CreatePresetPopupBody({ category, initialValue, onClose, onApply }: {
         disabled={!canSave}
         className={`w-full h-8 rounded-[var(--radius-lg)] text-xs font-medium transition-colors ${
           canSave
-            ? 'bg-[var(--accent)] text-white cursor-pointer hover:opacity-90'
+            ? 'bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer hover:opacity-90'
             : 'bg-[var(--grid-line)] text-[var(--text-disabled)] cursor-not-allowed'
         }`}
       >

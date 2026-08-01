@@ -50,7 +50,9 @@ export default function InteractionOutline() {
   const isInteracting = useAtomValue(canvasInteractingAtom);
   const isRotating = useAtomValue(isRotatingAtom);
   const isComponent = useAtomValue(isComponentSelectedAtom);
-  const borderColor = isComponent ? 'var(--accent-secondary)' : 'var(--accent)';
+  // Canvas overlay → `--selection`, not the amber brand accent. Components
+  // keep their violet so instance-vs-node stays readable at a glance.
+  const borderColor = isComponent ? 'var(--accent-secondary)' : 'var(--selection)';
 
   const lineRefs = useRef<(SVGLineElement | null)[]>([null, null, null, null]);
   const lastCornersRef = useRef<ScreenCorners | null>(null);

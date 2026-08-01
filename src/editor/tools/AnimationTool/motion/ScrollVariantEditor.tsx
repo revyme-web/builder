@@ -293,11 +293,11 @@ export function ScrollVariantEditor({ nodeId, componentFile, spec }: {
                     // Bound to a template variable — purple pill: click opens the manage
                     // modal (like every variable pill); × unbinds (back to a literal).
                     <button type="button" onClick={() => openSectionVarModal(sec)}
-                      className="w-full max-w-full min-w-0 h-8 flex items-center gap-2 pl-2 pr-1 rounded-[var(--radius-lg)] text-xs font-medium text-white cursor-pointer hover:opacity-90 transition-opacity"
+                      className="w-full max-w-full min-w-0 h-8 flex items-center gap-2 pl-2 pr-1 rounded-[var(--radius-lg)] text-xs font-medium text-[var(--accent-secondary-fg)] cursor-pointer hover:opacity-90 transition-opacity"
                       style={{ backgroundColor: 'var(--accent-secondary)' }} title={`Variable: ${sectionVarLabel(sec.sectionVar)} — click to manage`}>
                       <span className="truncate flex-1 min-w-0 text-left">{sectionVarLabel(sec.sectionVar)}</span>
                       <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); unbindSectionVar(i); }}
-                        className="text-white/70 hover:text-white text-sm leading-none shrink-0 cursor-pointer px-1" title="Remove variable">×</span>
+                        className="text-[var(--accent-secondary-fg)]/70 hover:text-[var(--accent-secondary-fg)] text-sm leading-none shrink-0 cursor-pointer px-1" title="Remove variable">×</span>
                     </button>
                   ) : (
                     <ToolSelect value={sec.sectionId || ''} options={sectionOpts}

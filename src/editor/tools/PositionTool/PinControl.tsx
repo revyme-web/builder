@@ -396,7 +396,7 @@ export default function PinControl({ styles, nodeId, vpId, onUpdate, onUpdateMul
       <button
         onClick={() => handlePinToggle(side)}
         className={`flex items-center justify-center text-xs font-medium rounded transition-colors cursor-pointer ${active
-          ? 'bg-[var(--accent)] text-white'
+          ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
           : 'bg-[var(--control-bg)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
         }`}
       >

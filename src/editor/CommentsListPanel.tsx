@@ -110,7 +110,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ value, options, onChang
         onClick={() => setOpen(!open)}
         className={`flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium transition-colors cursor-pointer ${
           open
-            ? 'bg-[var(--accent)] text-white'
+            ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
             : 'bg-[var(--grid-line)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
         }`}
         style={{ border: 'none', maxWidth: 130 }}
@@ -138,7 +138,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ value, options, onChang
                 onClick={() => { onChange(opt.value); setOpen(false); }}
                 className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-sm text-[11px] text-left transition-colors cursor-pointer ${
                   active
-                    ? 'bg-[var(--accent)] text-white'
+                    ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
                     : 'bg-transparent text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                 }`}
                 style={{ border: 'none' }}
@@ -319,7 +319,7 @@ export default function CommentsListPanel() {
           <span className="text-xs text-[var(--text-secondary)]">No comments here</span>
           <button
             onClick={() => setFilter(FILTER_ALL)}
-            className="text-[10px] mt-2 text-[var(--accent)] hover:underline cursor-pointer bg-transparent"
+            className="text-[10px] mt-2 text-[var(--accent-text)] hover:underline cursor-pointer bg-transparent"
             style={{ border: 'none' }}
           >
             Show all pages
@@ -377,7 +377,7 @@ export default function CommentsListPanel() {
                     <span
                       className={`text-[9px] px-1.5 py-0.5 rounded font-sans flex-shrink-0 flex items-center gap-1 ${
                         loc.isComponent
-                          ? 'bg-[var(--accent-secondary)] text-white'
+                          ? 'bg-[var(--accent-secondary)] text-[var(--accent-secondary-fg)]'
                           : 'bg-[var(--grid-line)] text-[var(--text-secondary)]'
                       }`}
                     >

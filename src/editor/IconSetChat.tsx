@@ -281,7 +281,7 @@ export default function IconSetChat() {
             <button
               onClick={handleSend}
               disabled={!prompt.trim()}
-              className={`w-6 h-6 rounded-md flex items-center justify-center transition-all text-white shrink-0 bg-[var(--accent)] ${
+              className={`w-6 h-6 rounded-md flex items-center justify-center transition-all text-[var(--accent-fg)] shrink-0 bg-[var(--accent)] ${
                 !prompt.trim()
                   ? 'opacity-40 cursor-not-allowed'
                   : 'hover:brightness-110 cursor-pointer'

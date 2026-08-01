@@ -26,22 +26,29 @@ export const DOUBLE_CLICK_THRESHOLD = 400; // ms
  // pink — distinct snap-guide helper
 export const MAP_TEMPLATE_COLOR = '#f97316';  // orange — inline .map() template selection
 
-// ── Accent-driven canvas overlay colors ────────────────────────────────────
+// ── Token-driven canvas overlay colors ─────────────────────────────────────
 // These tint the selection box, resize handles, borders, hover outline, drop
 // indicators, creators, etc. They're drawn as SVG attributes / canvas strokes
-// where CSS `var()` can NOT resolve, so we mirror the editor's live
-// `--accent` / `--accent-secondary` design tokens into plain hex here and keep
-// them in sync with the light/dark theme via a MutationObserver on <html>.
+// where CSS `var()` can NOT resolve, so we mirror the editor's live design
+// tokens into plain hex here and keep them in sync with the light/dark theme
+// via a MutationObserver on <html>.
+//
+// SELECTION IS NOT THE BRAND ACCENT. Canvas overlays follow `--selection`
+// (blue), the chrome follows `--accent` (ayu gold). They were one token until the
+// warm rebrand made the difference matter: a selection stroke sits ON TOP of
+// the user's artwork, so it has to stay legible against arbitrary colours and
+// carry no semantic charge — a warm box around every element reads as a
+// warning, and vanishes over warm content. Keep them separate.
 // `let` + ES module live-bindings means every importer reads the current value
 // on its next render (the selection overlays re-render continuously, so the
 // swap is effectively immediate). Falls back to the original blue/purple when
 // the tokens aren't readable (tests / SSR). Change the palette in globals.css —
 // never here.
-let ACCENT_COLOR = '#3b82f6';            // mirrors --accent
-export let SELECTION_COLOR = '#3b82f6';         // mirrors --accent
-export let COMPONENT_COLOR = '#9a66ff';         // mirrors --accent-secondary
-let DROP_INDICATOR_COLOR = '#3b82f6';    // mirrors --accent
-let PARENT_HIGHLIGHT_COLOR = '#3b82f6';  // mirrors --accent
+let ACCENT_COLOR = '#e6b450';            // mirrors --accent (brand, chrome)
+export let SELECTION_COLOR = '#3388ff';         // mirrors --selection (canvas)
+export let COMPONENT_COLOR = '#a856b2';         // mirrors --accent-secondary
+let DROP_INDICATOR_COLOR = '#3388ff';    // mirrors --selection
+let PARENT_HIGHLIGHT_COLOR = '#3388ff';  // mirrors --selection
 
 /** Exported for unit tests only — production callers are the module-load
  *  sync + the <html> attribute observer below. */
@@ -63,11 +70,14 @@ export function refreshAccentColors(): void {
   const accentOverridden = rootEl.style.getPropertyValue('--accent') !== '';
   const accent = cs.getPropertyValue('--accent').trim();
   const secondary = cs.getPropertyValue('--accent-secondary').trim();
-  if (accent && !accentOverridden) {
-    ACCENT_COLOR = accent;
-    SELECTION_COLOR = accent;
-    DROP_INDICATOR_COLOR = accent;
-    PARENT_HIGHLIGHT_COLOR = accent;
+  // `--selection` is never re-skinned, so it needs no override guard — the
+  // master re-skin only rewrites `--accent`.
+  const selection = cs.getPropertyValue('--selection').trim();
+  if (accent && !accentOverridden) ACCENT_COLOR = accent;
+  if (selection) {
+    SELECTION_COLOR = selection;
+    DROP_INDICATOR_COLOR = selection;
+    PARENT_HIGHLIGHT_COLOR = selection;
   }
   if (secondary) COMPONENT_COLOR = secondary;
 }

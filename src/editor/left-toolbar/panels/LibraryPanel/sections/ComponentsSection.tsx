@@ -527,7 +527,7 @@ export function ComponentsSection({
         placeholder="e.g. Hero, Navbar, Card..."
         submitLabel="Create Component"
         defaultValue=""
-        accentColor="var(--accent-secondary, #9a66ff)"
+        accentColor="var(--accent-secondary, #a856b2)"
       />
 
       {/* Shared bulk-delete confirm — driven by `multiSelect`. The hook

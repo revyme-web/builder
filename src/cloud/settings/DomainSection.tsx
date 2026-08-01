@@ -388,7 +388,7 @@ export default function DomainSection({ websiteId }: DomainSectionProps) {
                   href={`https://${subdomain}.revyme.app`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-[var(--accent)] hover:underline truncate"
+                  className="text-sm text-[var(--accent-text)] hover:underline truncate"
                 >
                   {subdomain}.revyme.app
                 </a>
@@ -472,7 +472,7 @@ export default function DomainSection({ websiteId }: DomainSectionProps) {
                     href={`https://${customSubdomainInDb}.revyme.app`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[var(--accent)] hover:underline"
+                    className="text-[var(--accent-text)] hover:underline"
                   >
                     {customSubdomainInDb}.revyme.app
                   </a>
@@ -544,7 +544,7 @@ export default function DomainSection({ websiteId }: DomainSectionProps) {
                     href={`https://${customDomainInDb}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-[var(--text-primary)] hover:text-[var(--accent)] truncate"
+                    className="text-sm text-[var(--text-primary)] hover:text-[var(--accent-text)] truncate"
                   >
                     {customDomainInDb}
                   </a>
@@ -557,7 +557,7 @@ export default function DomainSection({ websiteId }: DomainSectionProps) {
                       <SettingsSpinner className="w-3 h-3" /> Checking
                     </span>
                   ) : customDomainDnsStatus === 'issuing' ? (
-                    <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
+                    <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent-text)]">
                       <SettingsSpinner className="w-3 h-3" /> Issuing SSL
                     </span>
                   ) : (
@@ -632,7 +632,7 @@ export default function DomainSection({ websiteId }: DomainSectionProps) {
                 (customDomainDnsStatus === 'not-connected' || customDomainDnsStatus === null) && (
                 <div className="mt-1 rounded-lg border border-[var(--border-light)] bg-[var(--bg-hover)]/40 p-3 space-y-3">
                   <p className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
-                    <GlobeIcon className="w-3.5 h-3.5 text-[var(--accent)]" />
+                    <GlobeIcon className="w-3.5 h-3.5 text-[var(--accent-text)]" />
                     Point your domain at Revyme
                   </p>
                   <p className="text-xs text-[var(--text-secondary)]">
@@ -653,7 +653,7 @@ export default function DomainSection({ websiteId }: DomainSectionProps) {
                         www <span className="text-[var(--text-tertiary)] font-normal">(or your chosen subdomain)</span>
                       </span>
                       <span className="text-[var(--text-tertiary)]">Value</span>
-                      <span className="text-[var(--accent)] font-medium">
+                      <span className="text-[var(--accent-text)] font-medium">
                         {subdomain ? `${subdomain}.revyme.app` : 'your-site.revyme.app'}
                       </span>
                     </div>

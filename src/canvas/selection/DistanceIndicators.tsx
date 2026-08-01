@@ -11,7 +11,16 @@ import StyleIndicator from '@/design-system/StyleIndicator';
 import { useModifierKeys } from '@/canvas/hooks/useModifierKeys';
 
 const LINE_COLOR = 'rgba(255, 124, 221, 0.8)';
-const LABEL_BG = 'rgb(255, 124, 221)';
+// Distinct jade — deliberately NOT an accent token. Distance labels must stay
+// readable next to a selection box without being confused for one.
+//
+// Was pink rgb(255,124,221) at hue 316, which collided with the component
+// magenta at 311 — five degrees apart, indistinguishable, and both can be on
+// canvas at once (ALT-drag measuring against a selected instance). Jade at 165
+// sits in the only window left after error/map-template/gold/success/selection
+// /component take their slots, with 50 degrees of clearance from all of them.
+const LABEL_BG = '#16c79a';
+const LABEL_FG = '#06231b';
 
 interface Distances {
   top: number; right: number; bottom: number; left: number;
@@ -98,7 +107,7 @@ export default function DistanceIndicators() {
       </svg>
       {dirs.map(dir => {
         const { lx, ly } = getLineCoords(dir, data.er, data.pr);
-        return <StyleIndicator key={dir} x={lx} y={ly} color={LABEL_BG} size="sm">{data[dir]}</StyleIndicator>;
+        return <StyleIndicator key={dir} x={lx} y={ly} color={LABEL_BG} fg={LABEL_FG} size="sm">{data[dir]}</StyleIndicator>;
       })}
     </>
   );

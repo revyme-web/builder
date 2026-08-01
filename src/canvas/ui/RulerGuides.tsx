@@ -38,7 +38,7 @@ const RIGHT_OFFSET = RIGHT_PANEL_WIDTH;
 // offset or guides won't line up with ruler ticks.
 
 const GUIDE_COLOR = '#0d9488';
-const GUIDE_COLOR_SELECTED = 'var(--accent)';
+const GUIDE_COLOR_SELECTED = 'var(--selection)';
 const GUIDE_HIT_AREA = 8;
 
 // Drop a guide back ONTO the ruler (within this many screen px) →
@@ -185,10 +185,10 @@ const GuideContextMenu: React.FC<GuideContextMenuProps> = ({ x, y, guideId, file
         onClick={handleDelete}
         className="group flex items-center gap-3 mx-1.5 px-2 py-2 cursor-pointer rounded-[var(--radius-sm)] hover:bg-[var(--accent)]"
       >
-        <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white flex-1">
+        <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] flex-1">
           Delete Guide
         </span>
-        <span className="text-[10px] text-[var(--text-secondary)] group-hover:text-white ml-8">⌫</span>
+        <span className="text-[10px] text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)] ml-8">⌫</span>
       </div>
     </div>
   );

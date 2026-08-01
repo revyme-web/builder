@@ -181,13 +181,13 @@ export default function AnalyticsSection({ websiteId }: AnalyticsSectionProps) {
                 title={locked ? 'Upgrade to Lite for longer windows' : undefined}
                 className={`h-8 px-3 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                   active
-                    ? 'bg-[var(--accent)] text-white'
+                    ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
                     : 'bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'
                 } ${locked ? 'opacity-70' : ''}`}
               >
                 {range.label}
                 {locked && (
-                  <span className="ml-1.5 text-[9px] font-semibold text-[var(--accent)] uppercase tracking-wide">Lite</span>
+                  <span className="ml-1.5 text-[9px] font-semibold text-[var(--accent-text)] uppercase tracking-wide">Lite</span>
                 )}
               </button>
             );
@@ -316,7 +316,7 @@ export default function AnalyticsSection({ websiteId }: AnalyticsSectionProps) {
                 itself stays flat. */}
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="max-w-md text-center bg-[var(--bg-surface)] border border-[var(--control-border)] rounded-xl px-6 py-5 shadow-xl">
-                <div className="text-xs font-semibold uppercase tracking-wider text-[var(--accent)] mb-2">
+                <div className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-text)] mb-2">
                   Advanced analytics
                 </div>
                 <h3 className="text-base font-semibold text-[var(--text-primary)] mb-2">
@@ -328,7 +328,7 @@ export default function AnalyticsSection({ websiteId }: AnalyticsSectionProps) {
                 </p>
                 <button
                   onClick={() => setActiveSection('plans')}
-                  className="h-8 px-4 text-xs font-medium text-white bg-[var(--accent)] hover:opacity-90 rounded-md cursor-pointer"
+                  className="h-8 px-4 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-md cursor-pointer"
                 >
                   Upgrade to Lite
                 </button>

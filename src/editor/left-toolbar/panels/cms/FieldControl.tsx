@@ -39,7 +39,7 @@ function TagPills({ tags, onRemove }: { tags: string[]; onRemove: (tag: string) 
       {tags.map(tag => (
         <span
           key={tag}
-          className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] bg-[var(--accent)]/15 text-[var(--accent)] rounded-full"
+          className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] bg-[var(--accent)]/15 text-[var(--accent-text)] rounded-full"
         >
           {tag}
           <span
@@ -458,7 +458,7 @@ function ReferencePicker({ field, value, onChange, multi }: {
           {selected.map(id => (
             <span
               key={id}
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] bg-[var(--accent)]/15 text-[var(--accent)] rounded-full"
+              className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] bg-[var(--accent)]/15 text-[var(--accent-text)] rounded-full"
             >
               {labelFor(id)}
               <span

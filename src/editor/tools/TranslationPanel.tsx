@@ -302,7 +302,7 @@ function TranslationProgressPill() {
           trace.action('translation-pill:done', { locale: activeLocale });
           setActiveLocale(config?.defaultLocale ?? 'en');
         }}
-        className="text-xs font-medium px-3 py-1 rounded-full bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer"
+        className="text-xs font-medium px-3 py-1 rounded-full bg-[var(--accent)] text-[var(--accent-fg)] hover:opacity-90 cursor-pointer"
       >
         Done
       </button>

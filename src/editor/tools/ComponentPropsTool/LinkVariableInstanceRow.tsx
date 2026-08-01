@@ -95,7 +95,7 @@ export function LinkVariableInstanceRow({
             {/* Accent swatch ONLY when a link is set; empty "Add link" shows a
                 bare muted icon (no filled square), like the other empty rows. */}
             <span
-              className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${value ? 'text-white' : 'text-[var(--text-secondary)]'}`}
+              className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${value ? 'text-[var(--accent-fg)]' : 'text-[var(--text-secondary)]'}`}
               style={value ? { backgroundColor: 'var(--accent)' } : undefined}
             >
               <ChainLinkIcon size={12} />

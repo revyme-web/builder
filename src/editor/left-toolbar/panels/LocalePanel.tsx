@@ -155,7 +155,7 @@ export default function LocalePanel() {
         <div className="px-3 mb-1.5">
           <button
             onClick={handleManageTranslations}
-            className="w-full h-7 bg-[var(--accent)] text-white text-xs font-medium rounded-[var(--radius-md)] hover:opacity-90 transition-opacity cursor-pointer"
+            className="w-full h-7 bg-[var(--accent)] text-[var(--accent-fg)] text-xs font-medium rounded-[var(--radius-md)] hover:opacity-90 transition-opacity cursor-pointer"
           >
             Manage Translations
           </button>
@@ -207,7 +207,7 @@ export default function LocalePanel() {
                   onClick={() => { setActiveLocale(locale.code); trace.action('locale-panel:switch', { code: locale.code }); }}
                   menuItems={menuItems}
                   right={isDefault ? (
-                    <span className="text-[9px] bg-[var(--accent)]/10 text-[var(--accent)] px-1.5 rounded-full shrink-0 font-medium leading-[18px]">
+                    <span className="text-[9px] bg-[var(--accent)]/10 text-[var(--accent-text)] px-1.5 rounded-full shrink-0 font-medium leading-[18px]">
                       Default
                     </span>
                   ) : undefined}

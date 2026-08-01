@@ -148,7 +148,7 @@ export default function ConnectionTypeModal({ from, to, position, sourceNodeId, 
         <div className="pt-2">
           <button
             onClick={handleCreate}
-            className="w-full h-8 text-xs font-medium text-white rounded-[var(--radius-lg)] transition-colors hover:opacity-90"
+            className="w-full h-8 text-xs font-medium text-[var(--accent-secondary-fg)] rounded-[var(--radius-lg)] transition-colors hover:opacity-90"
             style={{ backgroundColor: 'var(--accent-secondary)' }}
           >
             Create Connection

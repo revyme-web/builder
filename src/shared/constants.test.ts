@@ -295,17 +295,19 @@ describe('refreshAccentColors — master re-skin must not bake into the accent m
     mod.refreshAccentColors();
   });
 
-  const fakeComputed = (accent: string, secondary: string) => {
+  const fakeComputed = (accent: string, secondary: string, selection = '#3b82f6') => {
     vi.spyOn(window, 'getComputedStyle').mockReturnValue({
       getPropertyValue: (prop: string) =>
-        prop === '--accent' ? accent : prop === '--accent-secondary' ? secondary : '',
+        prop === '--accent' ? accent
+          : prop === '--accent-secondary' ? secondary
+            : prop === '--selection' ? selection : '',
     } as unknown as CSSStyleDeclaration);
   };
 
   it('skips the accent mirrors while the inline --accent override is active', async () => {
     const mod = await import('./constants');
-    // Baseline: theme accent blue, no override.
-    fakeComputed('#3b82f6', '#9a66ff');
+    // Baseline: amber chrome accent, blue canvas selection, no override.
+    fakeComputed('#e8622c', '#9a66ff');
     mod.refreshAccentColors();
     expect(mod.SELECTION_COLOR).toBe('#3b82f6');
     expect(mod.COMPONENT_COLOR).toBe('#9a66ff');
@@ -315,7 +317,7 @@ describe('refreshAccentColors — master re-skin must not bake into the accent m
     rootStyle().setProperty('--accent', 'var(--accent-secondary)');
     fakeComputed('#9a66ff', '#9a66ff');
     mod.refreshAccentColors();
-    expect(mod.SELECTION_COLOR).toBe('#3b82f6'); // still the theme blue
+    expect(mod.SELECTION_COLOR).toBe('#3b82f6'); // still the canvas blue
     expect(mod.COMPONENT_COLOR).toBe('#9a66ff');
   });
 
@@ -327,14 +329,45 @@ describe('refreshAccentColors — master re-skin must not bake into the accent m
     fakeComputed('#9a66ff', '#9a66ff');
     mod.refreshAccentColors();
 
-    // Exit the master: override removed, computed --accent back to blue.
+    // Exit the master: override removed, computed --accent back to amber.
     // The style-attribute observer fires refreshAccentColors — mirrors
-    // must return to the theme accent.
+    // must return to the theme values.
     rootStyle().removeProperty('--accent');
-    fakeComputed('#3b82f6', '#9a66ff');
+    fakeComputed('#e8622c', '#9a66ff');
     mod.refreshAccentColors();
     expect(mod.SELECTION_COLOR).toBe('#3b82f6');
     expect(mod.COMPONENT_COLOR).toBe('#9a66ff');
+  });
+
+  // The amber rebrand split these apart: chrome is warm, the canvas stays blue.
+  // Wiring selection back to --accent would tint every selection box, resize
+  // handle and drop indicator amber — unreadable over warm artwork, and it
+  // reads as a warning state.
+  it('tracks --selection for canvas overlays, NOT the brand --accent', async () => {
+    const mod = await import('./constants');
+    fakeComputed('#e8622c', '#7c5cff', '#2563eb');
+    mod.refreshAccentColors();
+    expect(mod.SELECTION_COLOR).toBe('#2563eb');
+    expect(mod.SELECTION_COLOR).not.toBe('#e8622c');
+  });
+
+  it('follows --selection when the theme flips it (light vs dark blue)', async () => {
+    const mod = await import('./constants');
+    fakeComputed('#c94a18', '#6d45ff', '#2563eb');
+    mod.refreshAccentColors();
+    expect(mod.SELECTION_COLOR).toBe('#2563eb');
+
+    fakeComputed('#e8622c', '#7c5cff', '#3b82f6');
+    mod.refreshAccentColors();
+    expect(mod.SELECTION_COLOR).toBe('#3b82f6');
+  });
+
+  it('keeps the component violet distinct from both accent and selection', async () => {
+    const mod = await import('./constants');
+    fakeComputed('#e8622c', '#7c5cff', '#3b82f6');
+    mod.refreshAccentColors();
+    expect(mod.COMPONENT_COLOR).toBe('#7c5cff');
+    expect(mod.COMPONENT_COLOR).not.toBe(mod.SELECTION_COLOR);
   });
 });
 

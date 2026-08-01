@@ -157,10 +157,10 @@ export default function PresetPicker({ property, tokens, onSelect, isOpen, onClo
 
               {/* Token info */}
               <span className="flex flex-col min-w-0">
-                <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white truncate">
+                <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] truncate">
                   {token.label || token.name}
                 </span>
-                <span className="text-[10px] text-[var(--text-disabled)] group-hover:text-white/60 truncate">
+                <span className="text-[10px] text-[var(--text-disabled)] group-hover:text-[var(--accent-fg)]/60 truncate">
                   {token.value}
                 </span>
               </span>

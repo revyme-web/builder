@@ -268,16 +268,16 @@ function CursorAddButton({ nodeId, onPending }: { nodeId: string; onPending: () 
               className="group flex flex-col gap-0.5 mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
               onClick={handleWeb}
             >
-              <div className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white">Web</div>
-              <div className="text-[11px] text-[var(--text-secondary)] group-hover:text-white/80">CSS cursor</div>
+              <div className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">Web</div>
+              <div className="text-[11px] text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)]/80">CSS cursor</div>
             </button>
             <button
               type="button"
               className="group flex flex-col gap-0.5 mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
               onClick={handleComponent}
             >
-              <div className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white">Component</div>
-              <div className="text-[11px] text-[var(--text-secondary)] group-hover:text-white/80">
+              <div className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">Component</div>
+              <div className="text-[11px] text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)]/80">
                 {isInComponentMaster
                   ? 'Create / Set Variable'
                   : 'Component follows mouse'}
@@ -519,12 +519,12 @@ function PendingCursorRow({
                 onClick={openSubmenu}
                 className="group flex items-center justify-between gap-2 mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent-secondary)] transition-colors"
               >
-                <span className="text-[var(--text-secondary)] group-hover:text-white">
+                <span className="text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)]">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="15 18 9 12 15 6" />
                   </svg>
                 </span>
-                <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white flex-1">
+                <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] flex-1">
                   Set Variable
                 </span>
               </button>
@@ -546,7 +546,7 @@ function PendingCursorRow({
               }}
               className="group flex items-center justify-between gap-2 mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent-secondary)] transition-colors"
             >
-              <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white flex-1">
+              <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] flex-1">
                 Create Variable
               </span>
             </button>
@@ -565,7 +565,7 @@ function PendingCursorRow({
                   onClick={() => { closeMenu(); writeCursorBinding(p.name, false); }}
                   className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent-secondary)] transition-colors"
                 >
-                  <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white truncate">
+                  <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] truncate">
                     {p.name}
                   </span>
                 </button>
@@ -660,11 +660,11 @@ function ComponentCursorRow({
               with the full Component Cursor control mounted as its Default via renderDefaultValue. */}
           <button
             onClick={() => setOpen(true)}
-            className="w-full h-8 flex items-center gap-2 px-2 rounded-[var(--radius-lg)] text-xs font-medium text-white cursor-pointer transition-colors hover:opacity-90 truncate"
+            className="w-full h-8 flex items-center gap-2 px-2 rounded-[var(--radius-lg)] text-xs font-medium text-[var(--accent-secondary-fg)] cursor-pointer transition-colors hover:opacity-90 truncate"
             style={{ backgroundColor: 'var(--accent-secondary)' }}
             title={`Cursor variable: ${cursor.componentName} — click to manage`}
           >
-            <span className="w-4 h-4 rounded bg-white/20 flex items-center justify-center shrink-0 text-white">
+            <span className="w-4 h-4 rounded bg-white/20 flex items-center justify-center shrink-0 text-[var(--accent-secondary-fg)]">
               <VariableTypeIcon iconKey="cursor" size={11} />
             </span>
             <span className="truncate flex-1 text-left">{cursor.componentName}</span>

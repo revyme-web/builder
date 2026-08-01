@@ -275,7 +275,7 @@ export function CmsNavGlyph({ dir }: { dir: 'prev' | 'next' }) {
   const Btn = ({ active, children }: { active: boolean; children: React.ReactNode }) => (
     <div
       className={`flex h-7 w-7 items-center justify-center rounded-md border ${CHIP_SHADOW} ${
-        active ? 'border-transparent text-white' : `${CHIP_SURFACE} text-[var(--text-disabled)]`
+        active ? 'border-transparent text-[var(--accent-fg)]' : `${CHIP_SURFACE} text-[var(--text-disabled)]`
       }`}
       style={active ? { backgroundColor: 'var(--accent)' } : undefined}
     >

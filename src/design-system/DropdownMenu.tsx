@@ -25,6 +25,10 @@ export interface DropdownMenuItem {
   shortcut?: string;
   disabled?: boolean;
   danger?: boolean;
+  /** Accent-coloured label — for a single promoted row in an otherwise
+   *  neutral menu (e.g. "Upgrade your plan"). Uses --accent-text, the tone
+   *  tuned to be READABLE on a panel, not the fill colour. */
+  accent?: boolean;
   /** Cascading submenu — opens to the right on hover. Recursive. */
   submenuItems?: DropdownMenuEntry[];
   /** Force-render a right chevron next to the label. Auto-rendered when
@@ -199,7 +203,7 @@ function MenuPanel({ items, hoverStyle, minWidth, onClose, style, rootRef, searc
   );
 
   const itemHoverClass = hoverStyle === 'accent'
-    ? 'hover:bg-[var(--accent)] hover:text-white'
+    ? 'hover:bg-[var(--accent)] hover:text-[var(--accent-fg)]'
     : 'hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]';
 
   return (
@@ -319,10 +323,12 @@ function MenuPanel({ items, hoverStyle, minWidth, onClose, style, rootRef, searc
                   ? 'opacity-40 cursor-default text-[var(--text-primary)]'
                   : entry.danger
                     ? 'text-red-400 hover:bg-red-500/15 hover:text-red-300 cursor-pointer'
-                    : `text-[var(--text-primary)] ${itemHoverClass} cursor-pointer`
+                    : entry.accent
+                      ? `text-[var(--accent-text)] font-semibold ${itemHoverClass} cursor-pointer`
+                      : `text-[var(--text-primary)] ${itemHoverClass} cursor-pointer`
                 }
                 ${isOpen && !entry.danger && !entry.disabled
-                  ? (hoverStyle === 'accent' ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-hover)]')
+                  ? (hoverStyle === 'accent' ? 'bg-[var(--accent)] text-[var(--accent-fg)]' : 'bg-[var(--bg-hover)]')
                   : ''
                 }
               `}
@@ -330,7 +336,7 @@ function MenuPanel({ items, hoverStyle, minWidth, onClose, style, rootRef, searc
               {entry.icon && <span className="shrink-0 w-4 flex items-center justify-center opacity-80 group-hover:opacity-100">{entry.icon}</span>}
               <span className="flex-1 text-left font-medium">{entry.label}</span>
               {entry.trailingIcon && <span className="shrink-0 w-4 flex items-center justify-center opacity-90 group-hover:opacity-100">{entry.trailingIcon}</span>}
-              {entry.shortcut && <span className="text-[10px] text-[var(--text-secondary)] group-hover:text-white/70">{entry.shortcut}</span>}
+              {entry.shortcut && <span className="text-[10px] text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)]/70">{entry.shortcut}</span>}
               {hasSubmenu && (
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70 group-hover:opacity-100">
                   <polyline points="9 18 15 12 9 6" />

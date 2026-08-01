@@ -58,8 +58,8 @@ function applyHeaderModeStyles(header: HTMLElement, scale: number): void {
       doneBtn.style.padding = `0 ${4 / scale}px`;
     }
   } else {
-    header.style.backgroundColor = 'var(--control-bg)';
-    header.style.borderColor = 'var(--border-light)';
+    header.style.backgroundColor = 'var(--canvas-chrome-bg)';
+    header.style.borderColor = 'var(--canvas-chrome-border)';
     if (title) {
       title.textContent = header.getAttribute('data-vp-label') || '';
       title.style.color = '';
@@ -322,8 +322,8 @@ function createHeader(
       position: 'absolute', left: `${left}px`, top: `${top - scaledH - scaledM}px`,
       width: `${width}px`, height: `${scaledH}px`,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: `0 ${8 / scale}px`, backgroundColor: 'var(--control-bg)',
-      border: `${1 / scale}px solid var(--border-light)`,
+      padding: `0 ${8 / scale}px`, backgroundColor: 'var(--canvas-chrome-bg)',
+      border: `${1 / scale}px solid var(--canvas-chrome-border)`,
       borderRadius: `${8 / scale}px`, boxShadow: 'var(--shadow-sm)',
       userSelect: 'none', pointerEvents: 'auto', cursor: 'grab',
       zIndex: '9999', overflow: 'hidden', boxSizing: 'border-box',
@@ -338,7 +338,7 @@ function createHeader(
         },
         children: [
           el('span', { attrs: { 'data-header-title': '' }, text: vp.label, styles: {} }),
-          el('span', { attrs: { 'data-header-width': '' }, text: `${Math.round(width)}`, styles: { color: 'var(--accent)', marginLeft: `${8 / scale}px` } }),
+          el('span', { attrs: { 'data-header-width': '' }, text: `${Math.round(width)}`, styles: { color: 'var(--accent-text)', marginLeft: `${8 / scale}px` } }),
         ],
       }),
       addBtn,

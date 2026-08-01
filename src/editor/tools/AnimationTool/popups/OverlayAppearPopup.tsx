@@ -77,7 +77,7 @@ export function OverlayAppearPopup({ nodeId, node, enterProps, exitProps, transi
           <button
             type="button"
             onClick={toggleLink}
-            className={`p-0.5 hover:bg-[var(--bg-hover)] rounded transition-colors absolute z-10 pointer-events-auto cursor-pointer ${linked ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}`}
+            className={`p-0.5 hover:bg-[var(--bg-hover)] rounded transition-colors absolute z-10 pointer-events-auto cursor-pointer ${linked ? 'text-[var(--accent-text)]' : 'text-[var(--text-secondary)]'}`}
             style={{ left: -7, top: 2 }}
             title={linked ? 'Exit linked to Enter — unlink to edit separately' : 'Exit unlinked — link to mirror Enter'}
           >

@@ -412,7 +412,7 @@ export function TextColorControl() {
             className="w-full h-8 flex items-center gap-2 px-2 bg-[var(--accent)] rounded-[var(--radius-lg)] cursor-pointer transition-colors min-w-0 overflow-hidden hover:opacity-90"
           >
             <ColorSwatch style={{ background: livePreset?.name === activePresetToken.name ? livePreset.value : activePresetToken.value }} />
-            <span className="text-xs text-white truncate flex-1 text-left">
+            <span className="text-xs text-[var(--accent-fg)] truncate flex-1 text-left">
               {activePresetToken.label || activePresetToken.name.replace(/^color-/, '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
             </span>
             <span

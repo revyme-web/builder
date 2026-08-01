@@ -136,7 +136,7 @@ export default function PreviewFrame({ children, onReload }: PreviewFrameProps) 
             onClick={() => setIsFullScreen(!isFullScreen)}
             className={`h-7 px-2.5 text-xs font-medium rounded-[var(--radius-lg)] transition-colors cursor-pointer border-none ${
               isFullScreen
-                ? 'bg-[var(--accent)] text-white'
+                ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
                 : 'bg-[var(--button-secondary-bg)] text-[var(--text-primary)] hover:bg-[var(--button-secondary-hover)]'
             }`}
           >

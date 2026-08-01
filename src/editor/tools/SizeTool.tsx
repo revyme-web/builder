@@ -1071,7 +1071,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
               <div
                 key={opt.key}
                 onClick={() => addProp(opt.key)}
-                className="px-3 py-1.5 text-xs text-[var(--text-primary)] cursor-pointer hover:bg-[var(--accent)] hover:text-white rounded-[var(--radius-sm)] mx-1 whitespace-nowrap"
+                className="px-3 py-1.5 text-xs text-[var(--text-primary)] cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] rounded-[var(--radius-sm)] mx-1 whitespace-nowrap"
               >
                 {opt.label}
               </div>
@@ -1172,7 +1172,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
               type="button"
               onClick={handleAspectRatioToggle}
               className={`p-0.5 hover:bg-[var(--bg-hover)] rounded transition-colors absolute z-10 pointer-events-auto cursor-pointer ${
-                isAspectRatioLocked ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'
+                isAspectRatioLocked ? 'text-[var(--accent-text)]' : 'text-[var(--text-secondary)]'
               }`}
               style={{ left: -7, top: 2 }}
               title={isAspectRatioLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}

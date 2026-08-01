@@ -25,7 +25,7 @@ import PaginationControl from './CollectionList/PaginationControl';
 
 // Mirrors the Animation/Layout tool add-dropdown item styling.
 const ADD_ITEM = 'group flex items-center mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
-const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-white';
+const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]';
 
 /** The "+" on the Collection List section header → a native floating dropdown
  *  (like the Animation tool's +) to add the "Limit to" / "Start Offset" rows

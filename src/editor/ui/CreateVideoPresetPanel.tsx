@@ -100,7 +100,7 @@ export default function CreateVideoPresetPanel({ initialValue, onCreated }: Prop
         disabled={!name.trim() || !url}
         className={`w-full h-8 rounded-[var(--radius-lg)] text-xs font-medium transition-colors ${
           name.trim() && url
-            ? 'bg-[var(--accent)] text-white cursor-pointer hover:opacity-90'
+            ? 'bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer hover:opacity-90'
             : 'bg-[var(--grid-line)] text-[var(--text-disabled)] cursor-not-allowed'
         }`}
       >

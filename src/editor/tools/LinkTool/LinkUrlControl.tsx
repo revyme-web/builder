@@ -331,7 +331,7 @@ export function LinkUrlField({
                       onMouseDown={(e) => { e.preventDefault(); handleSelectPage(r.slug); }}
                       className={`w-full flex items-center gap-2 px-2.5 py-1.5 mx-1 my-0.5 text-xs rounded text-left transition-colors ${
                         pagePart === r.slug
-                          ? 'bg-[var(--accent)] text-white'
+                          ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
                           : 'text-[var(--text-primary)] hover:bg-white/[0.06]'
                       }`}
                       style={{ width: 'calc(100% - 0.5rem)' }}
@@ -356,7 +356,7 @@ export function LinkUrlField({
                     onMouseDown={(e) => { e.preventDefault(); handleSelectPage(page.slug); }}
                     className={`w-full flex items-center gap-2 px-2.5 py-1.5 mx-1 my-0.5 text-xs rounded text-left transition-colors ${
                       pagePart === page.slug
-                        ? 'bg-[var(--accent)] text-white'
+                        ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
                         : 'text-[var(--text-primary)] hover:bg-white/[0.06]'
                     }`}
                     style={{ width: 'calc(100% - 0.5rem)' }}

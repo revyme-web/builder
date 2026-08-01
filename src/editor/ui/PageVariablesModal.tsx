@@ -214,7 +214,7 @@ export default function PageVariablesModal() {
                 onClick={handleStartCreate}
                 className={`flex items-center w-full px-2 py-1.5 cursor-pointer transition-colors rounded-[var(--radius-md)] ${
                   mode === 'create'
-                    ? 'bg-[var(--accent-secondary)] text-white'
+                    ? 'bg-[var(--accent-secondary)] text-[var(--accent-secondary-fg)]'
                     : 'hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'
                 }`}
               >
@@ -249,12 +249,12 @@ export default function PageVariablesModal() {
                         onClick={() => handleSelectVariable(v.name)}
                         className={`flex items-center text-left px-3 py-2 cursor-pointer transition-colors rounded-[var(--radius-md)] mx-2 ${
                           isSelected
-                            ? 'bg-[var(--accent-secondary)] text-white'
+                            ? 'bg-[var(--accent-secondary)] text-[var(--accent-secondary-fg)]'
                             : 'hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'
                         }`}
                       >
                         <span className={`w-5 h-5 rounded flex items-center justify-center mr-2 flex-shrink-0 ${
-                          isSelected ? 'bg-white/20 text-white' : 'bg-[var(--accent)] text-white'
+                          isSelected ? 'bg-white/20 text-[var(--accent-fg)]' : 'bg-[var(--accent)] text-[var(--accent-fg)]'
                         }`}>
                           <VariableTypeIcon iconKey={resolveVariableIconKey({ pageVarType: v.type })} size={13} />
                         </span>
@@ -354,7 +354,7 @@ export default function PageVariablesModal() {
                     <button
                       onClick={handleCreate}
                       disabled={!isValid}
-                      className="px-4 h-7 text-xs bg-[var(--accent-secondary)] text-white rounded-[var(--radius-lg)] hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
+                      className="px-4 h-7 text-xs bg-[var(--accent-secondary)] text-[var(--accent-secondary-fg)] rounded-[var(--radius-lg)] hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
                     >
                       Create variable
                     </button>
@@ -364,7 +364,7 @@ export default function PageVariablesModal() {
                   <button
                     onClick={handleSave}
                     disabled={!isValid || !dirty}
-                    className="px-4 h-7 text-xs bg-[var(--accent-secondary)] text-white rounded-[var(--radius-lg)] hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
+                    className="px-4 h-7 text-xs bg-[var(--accent-secondary)] text-[var(--accent-secondary-fg)] rounded-[var(--radius-lg)] hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
                   >
                     Save changes
                   </button>

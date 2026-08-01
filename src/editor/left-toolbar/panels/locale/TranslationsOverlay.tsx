@@ -258,7 +258,7 @@ export default function TranslationsOverlay() {
             icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>,
             onClick: handleClose,
           },
-          { label: 'Localization', color: 'var(--accent)' },
+          { label: 'Localization', color: 'var(--accent-text)' },
         ]} />
         {/* Target-locale picking lives in the LEFT PANEL (activeLocaleAtom) —
             a header duplicate was just noise (removed 2026-07-23). Breadcrumb
@@ -276,7 +276,7 @@ export default function TranslationsOverlay() {
             }}
             disabled={aiState.step === 'estimating' || aiState.step === 'running' || pendingRows.length === 0}
             data-ai-translate
-            className="flex items-center gap-1.5 px-3 h-8 rounded-[var(--radius-lg)] text-xs font-medium bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-40 cursor-pointer disabled:cursor-default transition-opacity"
+            className="flex items-center gap-1.5 px-3 h-8 rounded-[var(--radius-lg)] text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] hover:opacity-90 disabled:opacity-40 cursor-pointer disabled:cursor-default transition-opacity"
             title={pendingRows.length === 0 ? 'Everything is translated' : `Translate ${pendingRows.length} missing strings with AI`}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" /></svg>
@@ -302,7 +302,7 @@ export default function TranslationsOverlay() {
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => setAiState({ step: 'idle' })} className="flex-1 h-7 rounded-md text-xs bg-[var(--bg-hover)] text-[var(--text-primary)] cursor-pointer">Cancel</button>
-                    <button onClick={() => void handleAiRun()} data-ai-translate-run className="flex-1 h-7 rounded-md text-xs bg-[var(--accent)] text-white cursor-pointer">Translate</button>
+                    <button onClick={() => void handleAiRun()} data-ai-translate-run className="flex-1 h-7 rounded-md text-xs bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer">Translate</button>
                   </div>
                 </>
               ) : aiState.outOfCredits ? (
@@ -314,7 +314,7 @@ export default function TranslationsOverlay() {
                   <button
                     onClick={() => { openWorkspaceCreditsPage(); setAiState({ step: 'idle' }); }}
                     data-ai-translate-topup
-                    className="w-full h-7 rounded-md text-xs font-medium bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer transition-opacity"
+                    className="w-full h-7 rounded-md text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] hover:opacity-90 cursor-pointer transition-opacity"
                   >
                     Top Up
                   </button>

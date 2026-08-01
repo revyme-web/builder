@@ -170,7 +170,7 @@ function CreateTypoPresetPanel({ onCreated }: { onCreated: (group: TypoGroup) =>
         />
         <button
           onClick={() => onCreated(createdGroup)}
-          className="w-full h-7 rounded-[var(--radius-lg)] text-xs font-medium bg-[var(--accent)] text-white cursor-pointer hover:opacity-90 transition-colors"
+          className="w-full h-7 rounded-[var(--radius-lg)] text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer hover:opacity-90 transition-colors"
         >
           Done
         </button>
@@ -194,7 +194,7 @@ function CreateTypoPresetPanel({ onCreated }: { onCreated: (group: TypoGroup) =>
         disabled={!name.trim()}
         className={`w-full h-7 rounded-[var(--radius-lg)] text-xs font-medium transition-colors ${
           name.trim()
-            ? 'bg-[var(--accent)] text-white cursor-pointer hover:opacity-90'
+            ? 'bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer hover:opacity-90'
             : 'bg-[var(--grid-line)] text-[var(--text-disabled)] cursor-not-allowed'
         }`}
       >

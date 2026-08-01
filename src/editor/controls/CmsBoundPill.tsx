@@ -88,10 +88,10 @@ export function CmsBoundPill({ property, fallbackValue }: CmsBoundPillProps) {
       <button
         ref={btnRef}
         onClick={openPicker}
-        className="w-full min-w-0 h-8 flex items-center gap-1.5 pl-1 pr-2 bg-[var(--accent)] rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium text-white cursor-pointer transition-colors hover:opacity-90 truncate"
+        className="w-full min-w-0 h-8 flex items-center gap-1.5 pl-1 pr-2 bg-[var(--accent)] rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium text-[var(--accent-fg)] cursor-pointer transition-colors hover:opacity-90 truncate"
         title={`Bound to CMS field: ${fieldName} — click to change`}
       >
-        <span className="w-5 h-5 flex items-center justify-center shrink-0 text-white">
+        <span className="w-5 h-5 flex items-center justify-center shrink-0 text-[var(--accent-fg)]">
           <CmsLinkIcon />
         </span>
         <span className="truncate flex-1 text-left">{fieldName}</span>
@@ -127,8 +127,8 @@ export function CmsBoundPill({ property, fallbackValue }: CmsBoundPillProps) {
                 }}
                 className={`w-[calc(100%-12px)] mx-1.5 flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] cursor-pointer text-left transition-colors ${
                   f.id === fieldId
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'hover:bg-[var(--accent)] text-[var(--text-primary)] hover:text-white'
+                    ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
+                    : 'hover:bg-[var(--accent)] text-[var(--text-primary)] hover:text-[var(--accent-fg)]'
                 }`}
               >
                 <span className="text-xs font-medium">{f.name}</span>
@@ -167,10 +167,10 @@ export function CmsMissingPill({ field, onClear }: { field: string; onClear: () 
   };
   return (
     <div
-      className="w-full min-w-0 h-8 flex items-center gap-1.5 pl-1 pr-2 bg-[var(--accent)] rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium text-white truncate"
+      className="w-full min-w-0 h-8 flex items-center gap-1.5 pl-1 pr-2 bg-[var(--accent)] rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium text-[var(--accent-fg)] truncate"
       title={`Was bound to CMS field "${field}" — drop this into a collection list that has this field to reconnect`}
     >
-      <span className="w-5 h-5 flex items-center justify-center shrink-0 text-white">
+      <span className="w-5 h-5 flex items-center justify-center shrink-0 text-[var(--accent-fg)]">
         <CmsLinkIcon />
       </span>
       <span className="truncate flex-1 text-left">Missing</span>
@@ -205,10 +205,10 @@ export function CmsFieldPill({ field, title, onUnbind, onClick }: { field: strin
   return (
     <div
       onClick={onClick}
-      className={`w-full min-w-0 h-8 flex items-center gap-1.5 pl-1 pr-2 bg-[var(--accent)] rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium text-white truncate ${onClick ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
+      className={`w-full min-w-0 h-8 flex items-center gap-1.5 pl-1 pr-2 bg-[var(--accent)] rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium text-[var(--accent-fg)] truncate ${onClick ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
       title={title ?? `Bound to CMS field "${field}" for this viewport`}
     >
-      <span className="w-5 h-5 flex items-center justify-center shrink-0 text-white"><CmsLinkIcon /></span>
+      <span className="w-5 h-5 flex items-center justify-center shrink-0 text-[var(--accent-fg)]"><CmsLinkIcon /></span>
       <span className="truncate flex-1 text-left">{field}</span>
       <span
         role="button"

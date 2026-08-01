@@ -278,7 +278,7 @@ export default function CommentChatPopup({ comment, screenX, screenY, onClose }:
               disabled={!replyText.trim()}
               className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
                 replyText.trim()
-                  ? 'bg-[var(--accent)] hover:brightness-110 text-white'
+                  ? 'bg-[var(--accent)] hover:brightness-110 text-[var(--accent-fg)]'
                   : 'bg-[var(--bg-hover)] text-[var(--text-tertiary)]'
               }`}
               style={{ cursor: replyText.trim() ? 'pointer' : 'not-allowed', border: 'none' }}

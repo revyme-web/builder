@@ -28,7 +28,7 @@ interface SelectableConfig {
 
 // Inset rows (mx-1.5 + w-[calc(100%-12px)] + rounded) so the hover fill stays
 // within the dropdown's padding — matches every other native dropdown.
-const MENU_ITEM = 'group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:!bg-[var(--accent)] hover:text-white transition-colors border-none bg-transparent whitespace-nowrap';
+const MENU_ITEM = 'group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:!bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors border-none bg-transparent whitespace-nowrap';
 
 export default function PageVariableChip({ name, onRemove, selectable }: { name: string; onRemove?: () => void; selectable?: SelectableConfig }) {
   const openVariableModal = useSetAtom(variableModalRequestAtom);
@@ -61,7 +61,7 @@ export default function PageVariableChip({ name, onRemove, selectable }: { name:
         onClick={handleClick}
         // `min-w-0` lets the label truncate inside the flex row instead of pushing
         // the chip past the panel (a long var name like "searchReadTime" overflowed).
-        className="w-full max-w-full min-w-0 h-8 flex items-center gap-2 pl-1 pr-2 rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium text-white cursor-pointer transition-colors hover:opacity-90"
+        className="w-full max-w-full min-w-0 h-8 flex items-center gap-2 pl-1 pr-2 rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium text-[var(--accent-fg)] cursor-pointer transition-colors hover:opacity-90"
         style={{ backgroundColor: 'var(--accent)' }}
         title={isMissing ? `Missing variable "${name}" — click to choose or create one` : `Page variable: ${name}`}
       >
@@ -94,7 +94,7 @@ export default function PageVariableChip({ name, onRemove, selectable }: { name:
             ) : selectable.options.map((o) => (
               <button key={o.name} type="button" className={MENU_ITEM}
                 onClick={() => { trace.action('page-variable-chip:select', { name: o.name }); selectable.onSelect(o.name); setOpen(false); }}>
-                <span className="w-3 shrink-0 text-white/90 group-hover:text-white">
+                <span className="w-3 shrink-0 text-white/90 group-hover:text-[var(--accent-fg)]">
                   {o.name === name && !isMissing ? (
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                   ) : null}

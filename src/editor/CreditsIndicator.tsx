@@ -30,7 +30,7 @@ export default function CreditsIndicator() {
         type="button"
         onClick={openWorkspaceCreditsPage}
         title="View workspace credits"
-        className="bg-transparent text-xs leading-none font-medium text-[var(--accent)] hover:brightness-125 transition cursor-pointer"
+        className="bg-transparent text-xs leading-none font-medium text-[var(--accent-text)] hover:brightness-125 transition cursor-pointer"
         style={{ border: 'none', padding: 0 }}
       >
         {formatCredits(credits.balance)} credits

@@ -130,9 +130,9 @@ export function SaveButton({
       disabled={!enabled}
       className={`px-4 rounded-full text-xs font-medium min-w-[72px] h-[30px] flex items-center justify-center transition-all ${
         saving
-          ? 'bg-[var(--accent)]/50 text-white cursor-not-allowed'
+          ? 'bg-[var(--accent)]/50 text-[var(--accent-fg)] cursor-not-allowed'
           : enabled
-            ? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white'
+            ? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-fg)]'
             : 'bg-[var(--bg-hover)] text-[var(--text-disabled)] cursor-not-allowed'
       }`}
     >
@@ -191,7 +191,7 @@ export function RowButton({
     variant === 'danger'
       ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400'
       : variant === 'accent'
-        ? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white'
+        ? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-fg)]'
         : 'bg-[var(--bg-hover)] hover:bg-[var(--bg-active)] text-[var(--text-primary)]';
   return (
     <button
@@ -323,7 +323,7 @@ export function RowSelect({
                   }}
                   className={`w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm transition-colors ${
                     opt.value === value
-                      ? 'bg-[var(--accent)] text-white'
+                      ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
                       : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                   }`}
                 >
@@ -442,7 +442,7 @@ export function ConfirmModal({
                 <button
                   onClick={onConfirm}
                   disabled={isLoading}
-                  className={`flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer ${
+                  className={`flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center text-[var(--accent-fg)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer ${
                     variant === 'danger'
                       ? 'bg-red-500/90 hover:bg-red-500'
                       : 'bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))]'

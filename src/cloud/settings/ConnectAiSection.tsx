@@ -30,7 +30,7 @@ function CopyBlock({ label, value }: { label: string; value: string }) {
             setTimeout(() => setCopied(false), 1500);
             trace.action('connect-ai:copy', { label });
           }}
-          className="text-xs text-[var(--accent)] hover:opacity-80 cursor-pointer"
+          className="text-xs text-[var(--accent-text)] hover:opacity-80 cursor-pointer"
         >
           {copied ? 'Copied' : 'Copy'}
         </button>
@@ -70,7 +70,7 @@ export default function ConnectAiSection() {
 
       <button
         onClick={() => openWorkspaceSettingsPage('api-tokens')}
-        className="w-full h-9 rounded-[var(--radius-lg)] bg-[var(--accent)] text-white text-xs font-medium hover:opacity-90 cursor-pointer transition-opacity"
+        className="w-full h-9 rounded-[var(--radius-lg)] bg-[var(--accent)] text-[var(--accent-fg)] text-xs font-medium hover:opacity-90 cursor-pointer transition-opacity"
       >
         Manage API Tokens
       </button>

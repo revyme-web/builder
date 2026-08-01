@@ -165,7 +165,7 @@ export default function LinkSlugControl({
         {bound ? (
           // Variable-bound — blue chip with the direction + an ✕ to clear.
           <div
-            className="w-full h-7 flex items-center gap-1.5 px-2 rounded-md text-xs font-medium text-white"
+            className="w-full h-7 flex items-center gap-1.5 px-2 rounded-md text-xs font-medium text-[var(--accent-fg)]"
             style={{ backgroundColor: 'var(--accent)' }}
             title="CMS navigation variable"
           >
@@ -211,8 +211,8 @@ export default function LinkSlugControl({
                     onMouseDown={(e) => { e.preventDefault(); onLiteralSlugChange(s); setQuery(s); setOpen(false); }}
                     className={`w-[calc(100%-12px)] mx-1.5 flex items-center px-2.5 py-1.5 text-xs font-medium rounded-[var(--radius-sm)] text-left cursor-pointer transition-colors ${
                       s === literalSlug
-                        ? 'bg-[var(--accent)] text-white'
-                        : 'text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-white'
+                        ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
+                        : 'text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)]'
                     }`}
                   >
                     {s}

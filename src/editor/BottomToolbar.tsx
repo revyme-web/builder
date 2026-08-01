@@ -13,7 +13,6 @@ import { selectedNodeAtom } from '@/code/stores/store';
 import { activeFilePathAtom, isIconSetFilePath } from '@/code/project/active-file-store';
 import { i18nConfigAtom, activeLocaleAtom, isDefaultLocaleAtom } from '@/code/stores/locale-store';
 import { commentModeActiveAtom } from '@/code/stores/comment-store';
-import { settingsOverlayOpenAtom, settingsSectionAtom, hasActiveSubscriptionAtom } from '@/code/stores/website-settings-store';
 import {
   CursorIcon, FrameToolbarIcon, TextToolbarIcon, HandToolbarIcon,
   ShapeSquareIcon, ShapeCircleIcon, ShapeTriangleIcon, ShapePathIcon,
@@ -97,7 +96,7 @@ function SplitButton({ active, icon, onClick, onChevronClick, title }: {
         title={title}
         className={`flex items-center justify-center px-1.5 h-[32px] rounded-[var(--radius-sm)] transition-colors ${
           active
-            ? 'bg-[var(--accent)] text-white hover:brightness-110'
+            ? 'bg-[var(--accent)] text-[var(--accent-fg)] hover:brightness-110'
             : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
         }`}
         style={{ border: 'none', cursor: 'pointer' }}
@@ -132,7 +131,7 @@ function ToolButton({ active, onClick, title, children, dataTutorial }: {
       data-tutorial={dataTutorial}
       className={`flex items-center justify-center px-1.5 h-[32px] rounded-[var(--radius-sm)] transition-colors ${
         active
-          ? 'bg-[var(--accent)] text-white hover:brightness-110'
+          ? 'bg-[var(--accent)] text-[var(--accent-fg)] hover:brightness-110'
           : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
       }`}
       style={{ border: 'none', cursor: 'pointer' }}
@@ -320,7 +319,7 @@ function ZoomDropdown({ selectedId }: { selectedId: string | null }) {
         onClick={() => setOpen(!open)}
         className={`flex items-center justify-center h-[32px] min-w-[50px] px-2.5 rounded-lg text-xs font-medium transition-all ${
           open
-            ? 'bg-[var(--accent)] text-white border border-[var(--accent)]'
+            ? 'bg-[var(--accent)] text-[var(--accent-fg)] border border-[var(--accent)]'
             : 'bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--border-focus)] text-[var(--text-secondary)]'
         }`}
         style={{ cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}
@@ -372,7 +371,7 @@ function LocaleDropdown() {
           !isDefault
             ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
             : open
-              ? 'bg-[var(--accent)] text-white border border-[var(--accent)]'
+              ? 'bg-[var(--accent)] text-[var(--accent-fg)] border border-[var(--accent)]'
               : 'bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--border-focus)] text-[var(--text-secondary)]'
         }`}
         style={{ cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}
@@ -452,18 +451,19 @@ export default function BottomToolbar() {
   trace.action('bottom-toolbar:render', { toolMode });
   const [commentModeActive, setCommentModeActive] = useAtom(commentModeActiveAtom);
   // Viewers get a stripped toolbar: zoom · locale · theme · comment.
-  // Every creator tool, the ⌘K search, and Upgrade are hidden — none
-  // of them do anything useful for a read-only seat.
+  // Every creator tool and the ⌘K search are hidden — none of them do
+  // anything useful for a read-only seat.
+  //
+  // The Upgrade button used to live here, as an accent pill at the right
+  // end of the floating bar. It moved to the logo menu (LeftHeader) under
+  // "Your Account": a billing nudge belongs with the other account actions,
+  // and a permanent accent pill floating over the canvas was the loudest
+  // thing on screen for something the user acts on roughly once.
   const isViewer = useIsViewer();
   // Offline is a stricter case than role-viewer: a role-viewer MAY
   // comment, but an offline user may NOT (the comment can't be
   // persisted/synced), so the comment tool is hidden when offline.
   const isOffline = useIsOffline();
-  const setSettingsOpen = useSetAtom(settingsOverlayOpenAtom);
-  const setSettingsSection = useSetAtom(settingsSectionAtom);
-  // Sites already on a paid, active plan don't need the Upgrade nudge —
-  // it (and its separator) collapse out of the toolbar.
-  const hasActiveSubscription = useAtomValue(hasActiveSubscriptionAtom);
   const togglePalette = usePaletteToggle();
   const selectedId = useAtomValue(selectedNodeAtom);
   const activeFile = useAtomValue(activeFilePathAtom);
@@ -682,28 +682,6 @@ export default function BottomToolbar() {
           </ToolButton>
         )}
 
-        {/* ── Upgrade ── hidden for viewers (upgrading is a billing
-            action they can't take; it routes to Settings → Plans which
-            is also disabled for them) AND hidden when the site already
-            has an active paid subscription (nothing left to upgrade to
-            from the toolbar's POV — the separator goes with it). */}
-        {CLOUD_ENABLED && !isViewer && !hasActiveSubscription && (
-          <>
-            <Separator />
-            <button
-              title="Upgrade plan"
-              onClick={() => {
-                trace.action('bottom-toolbar:upgrade');
-                setSettingsSection('plans');
-                setSettingsOpen(true);
-              }}
-              className="flex items-center justify-center h-[32px] px-2.5 rounded-lg transition-all text-xs font-medium text-[var(--accent)] hover:brightness-125"
-              style={{ backgroundColor: 'color-mix(in srgb, var(--accent) 20%, transparent)', cursor: 'pointer', border: 'none' }}
-            >
-              Upgrade
-            </button>
-          </>
-        )}
       </div>
     </div>
   );

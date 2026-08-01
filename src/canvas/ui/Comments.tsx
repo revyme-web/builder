@@ -269,10 +269,10 @@ const CommentBubble: React.FC<CommentBubbleProps> = ({
             }}
             className="group flex items-center gap-3 mx-1.5 px-2 py-2 cursor-pointer rounded-[var(--radius-sm)] hover:bg-[var(--accent)]"
           >
-            <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-white flex-1">
+            <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] flex-1">
               Delete Comment
             </span>
-            <span className="text-[10px] text-[var(--text-secondary)] group-hover:text-white ml-8">⌫</span>
+            <span className="text-[10px] text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)] ml-8">⌫</span>
           </div>
         </div>
       )}
@@ -320,7 +320,7 @@ const CommentBubble: React.FC<CommentBubbleProps> = ({
             disabled={!localText.trim()}
             className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
               localText.trim()
-                ? 'bg-[var(--accent)] hover:brightness-110 text-white'
+                ? 'bg-[var(--accent)] hover:brightness-110 text-[var(--accent-fg)]'
                 : 'bg-[var(--bg-hover)] text-[var(--text-tertiary)]'
             }`}
             style={{ cursor: localText.trim() ? 'pointer' : 'not-allowed', border: 'none' }}
