@@ -238,14 +238,22 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
     // (a replica-only effect is hidden on Desktop; a hidden-here effect is hidden on
     // that replica). Flag a presence customization so the Scroll group shows a Reset.
     if (svSpec && scrollVariantPresentOn(svSpec, activeScope)) {
-      // PURPLE label = an explicit per-tile customization of the EFFECT itself: its PRESENCE
-      // (added / removed / hidden on this viewport via scope/hiddenOn). The effect's per-viewport
-      // VARIANT TARGET config (`responsive[scope].to`/`from`/`direction`) is the effect's natural
-      // per-viewport behavior on a multi-variant component — NOT a "this tile overrides the effect"
-      // signal — so it stays un-accented ("tied"), matching the Variant-row rule. (Per-tile targets
-      // remain editable + resettable inside the Scroll effect editor.)
+      // PURPLE label = this tile's Scroll effect differs from the primary, by EITHER
+      // channel: its PRESENCE (added / removed / hidden here via scope/hiddenOn) OR its
+      // per-tile CONFIG (`responsive[scope].to` / `direction`). Both are things the user
+      // set on this viewport and can reset — `resetScrollVariantScope` already clears
+      // both — so both must read as an override.
+      //
+      // This USED to accent presence only, on the reasoning that a per-viewport variant
+      // target is an effect's natural behaviour on a multi-variant component rather than
+      // an override. Rejected in practice (2026-08-01): a nav with a different `to` on
+      // tablet and mobile showed a plain label and no Reset Override, while every other
+      // per-viewport difference in the app accents. Consistency wins — the user reads the
+      // accent as "differs from primary here", and that is exactly what this is.
+      const svScoped = scrollVariantIsOverride(svSpec, activeScope)
+        || hasScrollVariantTargetScope(svSpec, activeScope);
       entries.push({ type: 'scrollVariant', summary: 'Edit', key: 'scrollVariant',
-        data: { spec: svSpec, componentFile: node.componentFile, isOverride: scrollVariantIsOverride(svSpec, activeScope) } });
+        data: { spec: svSpec, componentFile: node.componentFile, isOverride: svScoped } });
     }
 
     // Component-instance effects (Hover/Press/Appear/Loop) — page-level instance-fx,

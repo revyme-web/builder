@@ -351,6 +351,32 @@ function replaceVariantConfigInCode(code: string, configs: VariantConfig[]): str
  * And adds:
  *   newName: { ...copy of source values }
  */
+/** Transform channels motion holds at their last value across a variant switch
+ *  (paint props instead fall back to the default entry). Mirrors the oracle's
+ *  TRANSFORM_KEYS in oracle/checks/variant-dialect.ts. */
+const TRANSFORM_KEYS = ['rotate', 'rotateX', 'rotateY', 'rotateZ', 'scale', 'scaleX', 'scaleY', 'skewX', 'skewY', 'x', 'y', 'z'];
+const TRANSFORM_NEUTRAL: Record<string, string> = { scale: '1', scaleX: '1', scaleY: '1' };
+
+/**
+ * For a variants object that animates transforms, the entry a NEW variant needs
+ * so motion has a target instead of holding the previous variant's transform.
+ * Returns null for a paint-only object (which correctly stays sparse).
+ *
+ * Values come from the object's OWN `default` entry where it states one — that is
+ * what an entry-less variant renders today, so seeding it changes nothing
+ * visually. Anything the default doesn't state falls back to the CSS neutral.
+ */
+function transformRestEntry(objContent: string): string | null {
+  const used = TRANSFORM_KEYS.filter((k) => new RegExp(`(?:^|[{,\\s])${k}\\s*:`).test(objContent));
+  if (used.length === 0) return null;
+  const def = objContent.match(/default\s*:\s*\{([^}]*)\}/)?.[1] ?? '';
+  const parts = used.map((k) => {
+    const own = def.match(new RegExp(`(?:^|[{,\\s])${k}\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`))?.[1];
+    return `${k}: ${own ?? TRANSFORM_NEUTRAL[k] ?? '0'}`;
+  });
+  return `{ ${parts.join(', ')} }`;
+}
+
 function addVariantKeyToAllObjects(code: string, newName: string, sourceVariant?: string, seedResolvedDefault: boolean = false): string {
   // Find all: const xxxVariants = { ... };
   const variantObjRegex = /const\s+(\w+Variants)\s*=\s*\{([\s\S]*?)\};/g;
@@ -376,10 +402,34 @@ function addVariantKeyToAllObjects(code: string, newName: string, sourceVariant?
     // seeded or hover/press snaps to the base — addVariant passes
     // seedResolvedDefault=true for those.
     if (!sourceContent) {
-      if (!seedResolvedDefault) continue;
-      const defaultMatch = objContent.match(/default\s*:\s*(\{[^}]*\})/);
-      if (!defaultMatch) continue;
-      sourceContent = defaultMatch[1];
+      // TRANSFORMS BREAK THE SPARSE MODEL. Paint props inherit fine — with
+      // `animate={['default', variant]}` an entry-less variant just shows
+      // default's value. But framer-motion HOLDS an animated transform at its
+      // last value when it switches to a variant with no entry, so the element
+      // arrives stuck mid-state: add a variant while a burger is an X and the
+      // new variant's burger is a permanent X (user report 2026-08-01; the same
+      // class the oracle's VARIANT_OBJECT_MISSING_ENTRY rule describes as "the
+      // hamburger-frozen-as-X bug").
+      //
+      // So a variants object that animates transforms ALWAYS gets an explicit
+      // entry, seeded with the REST values this variant already renders (the
+      // default entry's own values), not a blind neutral — the point is to give
+      // motion a target, not to change the design. Paint-only objects keep the
+      // sparse behaviour below, where an entry would show as a spurious
+      // "overridden" pill on a value that merely equals the default.
+      //
+      // generator-styles has an equivalent guard (ensureTransformNeutralOnAllVariants)
+      // but it only runs on a STYLE WRITE that touches a transform prop. Adding a
+      // variant is not a style write, so nothing closed this hole until here.
+      const transformRest = transformRestEntry(objContent);
+      if (transformRest) {
+        sourceContent = transformRest;
+      } else {
+        if (!seedResolvedDefault) continue;
+        const defaultMatch = objContent.match(/default\s*:\s*(\{[^}]*\})/);
+        if (!defaultMatch) continue;
+        sourceContent = defaultMatch[1];
+      }
     }
 
     const defaultContent = sourceContent;

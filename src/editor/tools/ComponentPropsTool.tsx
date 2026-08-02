@@ -64,7 +64,7 @@ import { presetTokensAtom } from '@/code/stores/preset-store';
 import { flushNow, queueMutation } from '@/code/mutation/mutation-queue';
 import { useControl } from '../controls/ControlProvider';
 import { CmsBoundPill, CmsMissingPill, CmsFieldPill } from '../controls/CmsBoundPill';
-import { getScrollVariant, setScrollVariantInCode } from '@/code/generation/scroll-variant-gen';
+import { getScrollVariant, setScrollVariantInCode, rehydrateScrollVariant } from '@/code/generation/scroll-variant-gen';
 import { getActiveAnimationScope } from '@/editor/tools/AnimationTool/animation-scope-source';
 import { isComponentLikeFilePath, isTemplateFilePath } from '@/code/project/active-file-store';
 import VariableModal from '../ui/VariableModal';
@@ -1096,16 +1096,33 @@ export default function ComponentPropsTool() {
     if (newCode) { setCode(newCode); setVersion(v => v + 1); }
   }, [selectedId, activeFile, componentInfo, setCode, setVersion]);
 
+  // A SCROLL VARIANT caches the per-viewport resting variant in its OWN spec
+  // (`responsive[scope].from`), which migratePerViewportResting derives FROM
+  // `data-responsive`. The generated page code — useState(...), the scroll revert
+  // default, the useEffect resync — reads the SPEC, not data-responsive. So every
+  // write that changes an instance's per-viewport `initialVariant` must reseed it,
+  // or the canvas tile shows the new variant while the PUBLISHED page still rests
+  // at the old one (live case: a nav whose tablet resting stayed on the scrolled
+  // black variant, so the header was black from load instead of only after its
+  // trigger section — 2026-08-01).
+  //
+  // Call this LAST in the modifyProjectFile callback: it re-reads the UPDATED
+  // data-responsive. Reseeding before the write reseeds from stale data.
+  const resyncScrollResting = useCallback((code: string): string => (
+    selectedId && getScrollVariant(code, selectedId) ? rehydrateScrollVariant(code, selectedId) : code
+  ), [selectedId]);
+
   // Reset a single responsive override for a prop (removes from data-responsive)
   const handleResetOverride = useCallback((propName: string) => {
     if (!selectedId || !componentInfo) return;
     trace.action('component-props:reset-override', { nodeId: selectedId, propName, vpWidth });
     modifyProjectFile(activeFile, (currentCode) => {
-      return setResponsiveOverride(currentCode, selectedId, componentInfo.name, vpWidth, propName, '', null);
+      return resyncScrollResting(
+        setResponsiveOverride(currentCode, selectedId, componentInfo.name, vpWidth, propName, '', null));
     });
     const newCode = projectFS.readFile(activeFile);
     if (newCode) { setCode(newCode); setVersion(v => v + 1); }
-  }, [selectedId, activeFile, componentInfo, vpWidth, setCode, setVersion]);
+  }, [selectedId, activeFile, componentInfo, vpWidth, resyncScrollResting, setCode, setVersion]);
 
   // X on a per-viewport VARIABLE pill (replica): drop the `__mqN` branch for this band → revert the
   // tile to the base binding. `getActiveAnimationScope()` gives the current replica's banded query.
@@ -1228,7 +1245,18 @@ export default function ComponentPropsTool() {
       modifyProjectFile(activeFile, (currentCode) => {
         const rawBase = parseInstanceProps(currentCode, selectedId, componentInfo.name).get('initialVariant');
         const baseVal = rawBase && variantConfig.some((vc) => vc.name === rawBase) ? rawBase : 'default';
-        return setResponsiveOverride(currentCode, selectedId, componentInfo.name, vpWidth, 'initialVariant', variantName, baseVal);
+        const next = setResponsiveOverride(currentCode, selectedId, componentInfo.name, vpWidth, 'initialVariant', variantName, baseVal);
+        // A SCROLL VARIANT keeps its OWN copy of the per-viewport resting variant
+        // (spec.responsive[scope].from), which migratePerViewportResting seeds FROM
+        // data-responsive. We just changed data-responsive, so that copy is now stale
+        // — and the generated `useState`/revert expressions read the SPEC, not
+        // data-responsive. Rehydrate to reseed it (the migration drops from-only
+        // entries and re-derives them), otherwise the canvas tile shows the new
+        // variant while the published page still RESTS at the old one — e.g. a nav
+        // whose tablet resting stayed on the scrolled black variant, so the header
+        // was black from load instead of only after the trigger section. The primary
+        // path above already syncs via updateScrollVariant; this is the replica half.
+        return resyncScrollResting(next);
       });
     } else if (isComponentVariant && activeComponentVariant) {
       // Component file, non-default parent variant: write per-parent-variant
@@ -1420,7 +1448,7 @@ export default function ComponentPropsTool() {
                 const literal = variantConfig.some((v) => v.name === raw)
                   ? raw : (variantConfig.find((v) => v.isPrimary)?.name ?? variantConfig[0]?.name ?? 'default');
                 c = setResponsiveOverride(c, selectedId, componentInfo.name, vpWidth, 'initialVariant', literal, null);
-                return c;
+                return resyncScrollResting(c);
               });
               const nc = projectFS.readFile(activeFile);
               if (nc) { setCode(nc); setVersion((v) => v + 1); }
@@ -1451,7 +1479,7 @@ export default function ComponentPropsTool() {
                 // Reflect the resting into data-responsive (canvas); defaultValue null so it always
                 // writes a literal and never clears back to the cascaded base.
                 c = setResponsiveOverride(c, selectedId, componentInfo.name, vpWidth, 'initialVariant', restingLiteral, null);
-                return c;
+                return resyncScrollResting(c);
               });
               const newCode = projectFS.readFile(activeFile);
               if (newCode) { setCode(newCode); setVersion((v) => v + 1); }
@@ -1534,6 +1562,25 @@ export default function ComponentPropsTool() {
           // auto `data-responsive` reflection are NOT variant overrides, so a tile that merely
           // INHERITS the base variable stays un-accented ("tied"). Non-scroll instances keep the
           // plain data-responsive-literal check.
+          // THIS TILE'S RESTING VARIANT vs the base's — the plain "tablet shows Mobile,
+          // desktop shows Nav" case. For a scroll instance `data-responsive` cannot answer
+          // it: the spec auto-reflects into it (migratePerViewportResting), so an entry
+          // there proves nothing about who chose it — which is why the literal check below
+          // is skipped for these. The SPEC can answer, and it is the source the generated
+          // page actually reads.
+          //
+          // NOTE the two different keys for one tile: the resting is stored under the
+          // CAPPED `(max-width: Wpx)` query (migratePerViewportResting's key), while
+          // `activeQuery` / a per-tile to+direction use the BANDED
+          // `(max-width: Wpx) and (min-width: …)` form. Looking the resting up with
+          // activeQuery finds the wrong entry (or none) — that mismatch is why this tile
+          // read as un-overridden while visibly showing a different variant.
+          const svRestingEntry = (svRowSpec && vpWidth != null)
+            ? (svRowSpec.responsive ?? []).find((r) => 'query' in r.scope && r.scope.query === `(max-width: ${vpWidth}px)`)
+            : undefined;
+          const svRestingFrom = (svRestingEntry as { from?: string } | undefined)?.from;
+          const svRestingDiffers = typeof svRestingFrom === 'string'
+            && svRestingFrom !== (svRowSpec?.from ?? 'default');
           const variantOverridden = cvVariantBranch != null || (isReplica && (
             // A per-viewport variant VARIABLE on this tile (inline `initialVariant={__mqN ? var : base}`)
             // IS an override — it differs from the base binding — so the label goes PURPLE + Reset Override,
@@ -1541,7 +1588,8 @@ export default function ComponentPropsTool() {
             // data-responsive.)
             vpVariantBoundRef != null
             || (svRowSpec
-              ? (scopedEntry != null && 'fromVar' in scopedEntry && scopedEntry.fromVar !== (svRowSpec.fromVar ?? ''))
+              ? ((scopedEntry != null && 'fromVar' in scopedEntry && scopedEntry.fromVar !== (svRowSpec.fromVar ?? ''))
+                || svRestingDiffers)
               // data-responsive literal OR an inline-ternary per-viewport LITERAL (`__mq2 ? 'variant-3' :
               // 'default'`) — both are per-viewport overrides → PURPLE label + Reset Override. The inline form
               // (its value in responsiveAttrPropValues) appears after a per-viewport variant VARIABLE is
@@ -1583,7 +1631,7 @@ export default function ComponentPropsTool() {
                   c = setScrollVariantInCode(c, selectedId, { ...spec, responsive });
                 }
                 c = setResponsiveOverride(c, selectedId, componentInfo.name, vpWidth, 'initialVariant', '', null);
-                return c;
+                return resyncScrollResting(c);
               });
               const nc = projectFS.readFile(activeFile);
               if (nc) { setCode(nc); setVersion((v) => v + 1); }

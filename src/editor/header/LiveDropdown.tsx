@@ -256,21 +256,30 @@ export function LiveDropdown({ open, meta, publishing, publishSuccess, progress,
             disabled={publishing || publishSuccess}
             className="relative overflow-hidden w-full h-7 px-3 text-xs rounded-[var(--radius-lg)] transition-colors font-medium flex items-center justify-center gap-1.5 bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] disabled:opacity-100 disabled:bg-[var(--accent)] disabled:cursor-not-allowed"
           >
-            {/* Progress fill — sits behind the label, advances 0 → 100%
-                while publishing. Uses lighter accent on top of the base
-                accent so the difference reads even at low alpha. */}
+            {/* Progress fill — sits behind the label, advances 0 → 100% while
+                publishing. Tinted with `--accent-fg`, NOT white: accent-fg is by
+                definition the ink that contrasts with whatever `--accent` is, so
+                the fill darkens a light accent and lightens a dark one and reads
+                either way. A flat `white/20` only worked while the accent was
+                dark — on the light accent it was beige-on-beige and the bar was
+                effectively invisible (2026-08-01). */}
             {publishing && (
               <span
                 aria-hidden
-                className="absolute inset-y-0 left-0 bg-white/20 transition-[width] duration-300 ease-out"
-                style={{ width: `${Math.round(progress * 100)}%` }}
+                className="absolute inset-y-0 left-0 transition-[width] duration-300 ease-out"
+                style={{
+                  width: `${Math.round(progress * 100)}%`,
+                  backgroundColor: 'color-mix(in srgb, var(--accent-fg) 24%, transparent)',
+                }}
               />
             )}
             <span className="relative">
               {publishing
                 ? `Publishing… ${Math.round(progress * 100)}%`
                 : publishSuccess
-                ? <Check size={14} className="text-white" />
+                // accent-fg, not white: sits on the accent fill, same reason as
+                // the progress bar above.
+                ? <Check size={14} className="text-[var(--accent-fg)]" />
                 : meta?.isPublished
                 ? 'Update live site'
                 : 'Go live'}

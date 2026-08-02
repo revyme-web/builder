@@ -296,9 +296,9 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
             size="sm"
             tabIndex={-1}
             // While publishing with the dropdown closed, the button itself
-            // becomes the progress bar: white/20 fill grows from left to
-            // right based on `progress` (0-1), and the label flips from
-            // "Publish" to "42%" so the user still sees what's happening
+            // becomes the progress bar: an accent-fg-tinted fill grows from
+            // left to right based on `progress` (0-1), and the label flips
+            // from "Publish" to "42%" so the user still sees what's happening
             // without needing to open the dropdown. With the dropdown open
             // the dropdown's own UI handles the feedback, so the button
             // stays plain.
@@ -312,8 +312,16 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
           >
             {publishing && !open && (
               <span
-                className="absolute inset-y-0 left-0 bg-white/25 transition-[width] duration-150 ease-out pointer-events-none"
-                style={{ width: `${Math.round(progress * 100)}%` }}
+                // accent-fg, not white. accent-fg is by definition the ink that
+                // contrasts with whatever `--accent` is, so the fill darkens a
+                // light accent and lightens a dark one. Flat white only read
+                // while the accent was dark — on the light accent this was
+                // beige-on-beige (2026-08-01). Mirrors LiveDropdown's bar.
+                className="absolute inset-y-0 left-0 transition-[width] duration-150 ease-out pointer-events-none"
+                style={{
+                  width: `${Math.round(progress * 100)}%`,
+                  backgroundColor: 'color-mix(in srgb, var(--accent-fg) 24%, transparent)',
+                }}
               />
             )}
             <span className="relative tabular-nums">

@@ -781,3 +781,62 @@ describe('substituteScrollVariantFromVarForCanvas', () => {
     expect(readResp(out)['768'].initialVariant).toBe('mobile'); // headerVariantTablet unset → keep literal resting
   });
 });
+
+describe('Scroll Variant — per-viewport resting is reseeded from data-responsive', () => {
+  // The live bug (2026-08-01): the nav's tablet resting was cached in the spec as
+  // the SCROLLED variant, so the published header was black from load instead of
+  // only after its trigger section. data-responsive said 'mobile'; the spec (which
+  // is what the generated useState reads) still said the scroll target.
+  const navPage = (responsive: string) => `'use client';
+import React, { useState, useEffect, useRef } from 'react';
+import { useScroll, useMotionValueEvent, useInView } from 'framer-motion';
+import Nav from '@/components/Nav';
+export default function Page() {
+  return (<div data-id="root">
+    <Nav data-id="nav" initialVariant="default" data-responsive='${responsive}' />
+  </div>);
+}`;
+  const RESP = JSON.stringify({ 375: { initialVariant: 'mobile' }, 768: { initialVariant: 'mobile' }, _bp: [375, 768, 1440] });
+  // A spec whose cached tablet resting is STALE — it names the scrolled variant.
+  const staleSpec = (): ScrollVariantSpec => ({
+    trigger: 'sectionInView', from: 'default', to: 'mobile', replay: true,
+    sections: [{ sectionId: 'clients', to: 'variant-3' }],
+    responsive: [
+      { scope: { query: '(max-width: 768px) and (min-width: 376px)' }, to: 'variant-4' },
+      { scope: { query: '(max-width: 375px)' }, from: 'mobile' },
+      { scope: { query: '(max-width: 768px)' }, from: 'variant-4' },   // ← stale
+    ],
+  } as ScrollVariantSpec);
+
+  it('reseeds a stale per-scope `from` from data-responsive on regen', () => {
+    const out = setScrollVariantInCode(navPage(RESP), 'nav', staleSpec());
+    const tablet = getScrollVariant(out, 'nav')!.responsive!
+      .find((r) => 'query' in r.scope && r.scope.query === '(max-width: 768px)')!;
+    expect((tablet as { from?: string }).from).toBe('mobile');
+  });
+
+  it('the generated resting expression does NOT use the scrolled variant', () => {
+    const out = setScrollVariantInCode(navPage(RESP), 'nav', staleSpec());
+    const useStateLine = out.split('\n').find((l) => l.includes('useState') && l.includes('navSv'))!;
+    expect(useStateLine).toContain("'mobile'");
+    expect(useStateLine).not.toContain('variant-4');   // the black/scrolled variant
+  });
+
+  it('keeps the per-tile scroll TARGET — only the resting is reseeded', () => {
+    const out = setScrollVariantInCode(navPage(RESP), 'nav', staleSpec());
+    const banded = getScrollVariant(out, 'nav')!.responsive!
+      .find((r) => 'query' in r.scope && r.scope.query === '(max-width: 768px) and (min-width: 376px)')!;
+    expect((banded as { to?: string }).to).toBe('variant-4');
+  });
+
+  it('rehydrate after data-responsive changes picks up the NEW value', () => {
+    // What the replica variant-pick path now does: write data-responsive, then resync.
+    const changed = JSON.stringify({ 375: { initialVariant: 'mobile' }, 768: { initialVariant: 'mobile-open' }, _bp: [375, 768, 1440] });
+    const seeded = setScrollVariantInCode(navPage(RESP), 'nav', staleSpec());
+    const moved = seeded.replace(RESP.replace(/"/g, '"'), changed);
+    const out = rehydrateScrollVariant(moved, 'nav');
+    const tablet = getScrollVariant(out, 'nav')!.responsive!
+      .find((r) => 'query' in r.scope && r.scope.query === '(max-width: 768px)')!;
+    expect((tablet as { from?: string }).from).toBe('mobile-open');
+  });
+});

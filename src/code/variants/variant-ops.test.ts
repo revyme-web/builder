@@ -44,9 +44,25 @@ export default function Nav() {
     expect(result).toContain('x: 600');
   });
 
+  // PAINT-ONLY object. The sparse model is about paint: an entry-less variant
+  // renders default's value via animate={['default', variant]}, so seeding one
+  // in would only produce a spurious "overridden" pill. (The shared `baseCode`
+  // fixture states `x: 0`, a TRANSFORM — those are seeded on purpose, see below.)
+  const paintOnlyCode = `const variantConfig = [
+  { name: 'default', label: 'Default', x: 0, y: 0, isPrimary: true },
+];
+
+const navVariants = {
+  default: { opacity: 1, backgroundColor: '#fff' },
+};
+
+export default function Nav() {
+  return <motion.div variants={navVariants} />;
+}`;
+
   test('does NOT seed a variant key when there is no source override (sparse model)', () => {
     addVariant('test.tsx', 'hover', { x: 600, y: 0 }); // no sourceVariant
-    const result = capturedTransform!(baseCode);
+    const result = capturedTransform!(paintOnlyCode);
 
     // Sparse-entry model (design-tool parity): with no source override the new variant
     // inherits the default via animate={['default', variant]}, so NO entry is
@@ -55,6 +71,40 @@ export default function Nav() {
     // variantConfig.
     expect(result).not.toContain("'hover':");
     expect(result).toContain("name: 'hover'");
+  });
+
+  // The counterpart: motion HOLDS an animated transform when it switches to a
+  // variant with no entry, so the sparse model would leave the element stuck
+  // mid-state — a burger frozen as an X on every newly added variant (user
+  // report 2026-08-01). Transform objects therefore always get an entry.
+  test('DOES seed a transform entry (motion holds transforms across a variant switch)', () => {
+    addVariant('test.tsx', 'hover', { x: 600, y: 0 }); // no sourceVariant
+    const result = capturedTransform!(baseCode);       // default: { opacity: 1, x: 0 }
+    expect(result).toContain("'hover':");
+    expect(result).toMatch(/'hover':\s*\{[^}]*x:\s*0/);
+  });
+
+  test('seeds the transform value the variant ALREADY renders, not a blind neutral', () => {
+    // default states rotate: 45 — an entry-less variant renders 45 today, so the
+    // seed must be 45. Writing the neutral 0 would silently change the design.
+    const rotated = baseCode.replace('default: { opacity: 1, x: 0 }', 'default: { opacity: 1, rotate: 45 }');
+    addVariant('test.tsx', 'hover', { x: 600, y: 0 });
+    const result = capturedTransform!(rotated);
+    expect(result).toMatch(/'hover':\s*\{[^}]*rotate:\s*45/);
+  });
+
+  test('leaves a paint-only object sparse even when another object has transforms', () => {
+    const mixed = paintOnlyCode.replace(
+      'export default function Nav()',
+      'const burgerVariants = {\n  default: { rotate: 0 },\n};\n\nexport default function Nav()');
+    addVariant('test.tsx', 'hover', { x: 600, y: 0 });
+    const result = capturedTransform!(mixed);
+    // Slice each object's OWN body — a lazy regex from `const navVariants = {`
+    // happily runs past its closing brace into the next object's entry.
+    const bodyOf = (name: string) =>
+      result.match(new RegExp(`const ${name} = \\{([\\s\\S]*?)\\};`))![1];
+    expect(bodyOf('burgerVariants')).toContain("'hover':");   // transform → seeded
+    expect(bodyOf('navVariants')).not.toContain("'hover':");  // paint → stays sparse
   });
 
   test('auto-positions below last variant when no position provided', () => {

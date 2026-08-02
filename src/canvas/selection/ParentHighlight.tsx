@@ -36,6 +36,7 @@ import { useNodesComputed } from '@/code/stores/node-family';
 import { interactingViewportIdAtom } from '@/code/stores/viewport-store';
 import { activeEditorAtom } from '@/code/stores/editor-store';
 import { activeFilePathAtom, isIconSetFilePath } from '@/code/project/active-file-store';
+import { isComponentFileAtom } from '@/code/stores/store';
 import { shapeEditCommitPendingAtom, shapeEditingIdAtom } from '@/code/stores/shape-edit-store';
 import { sketchEditingIdAtom } from '@/code/stores/sketch-edit-store';
 import { getScreenCornersById, type ScreenCorners } from '@/canvas/resize/geometry-utils';
@@ -45,8 +46,17 @@ import { trace } from '@/shared/debug-trace';
 
 // `--selection`, not `--accent`: this dashed outline wraps the user's own
 // artwork, so it belongs to the canvas overlay family (selection box, resize
-// handles, drop indicators) rather than to the amber brand chrome.
+// handles, drop indicators) rather than to the brand chrome.
+//
+// EXCEPT inside a component master or a TEMPLATE, where the whole overlay family
+// turns PURPLE — the colour is the cue that you are editing shared content, not
+// one page. Mirrors HoverHighlight (`(isInsideComponent || isComponentInstance)
+// ? COMPONENT_COLOR : SELECTION_COLOR`) and SelectionOverlay, which both gate on
+// the WIDE `isComponentFileAtom` (= isComponentLikeFilePath: components/ AND
+// templates). Using the narrow components-only predicate here was tried before
+// and reverted: it left select blue while hover/parent were purple.
 const BORDER_COLOR = 'var(--selection)';
+const BORDER_COLOR_COMPONENT = 'var(--accent-secondary)';
 const BORDER_WIDTH = 1;
 const BORDER_DASH = '4 3';
 
@@ -109,6 +119,8 @@ export default function ParentHighlight() {
   const isInteracting = useAtomValue(canvasInteractingAtom);
   const activeEditor = useAtomValue(activeEditorAtom);
   const activeFile = useAtomValue(activeFilePathAtom);
+  // WIDE (components/ + templates) — see BORDER_COLOR_COMPONENT above.
+  const isInComponentMaster = useAtomValue(isComponentFileAtom);
   // Sketch-edit mode owns its own visual indicator (the dashed accent
   // outline rendered by SketchEditOverlay). The selection-derived
   // parent highlight would draw an outline around the sketch's parent
@@ -269,7 +281,7 @@ export default function ParentHighlight() {
       <polygon
         points={points}
         fill="none"
-        stroke={BORDER_COLOR}
+        stroke={isInComponentMaster ? BORDER_COLOR_COMPONENT : BORDER_COLOR}
         // Drag-driven highlight: thicker (1.5) + solid + non-scaling
         // stroke + full opacity — same look as HoverHighlight so the
         // user gets the same visual weight as a node-hover when the
