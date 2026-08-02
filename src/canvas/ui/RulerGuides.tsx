@@ -14,7 +14,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { transformManager } from '@/canvas/transform';
 import { showRulersAtom } from '@/code/stores/user-preferences-store';
-import { activeFilePathAtom, isMasterFilePath } from '@/code/project/active-file-store';
+import { useTopChromeHeight } from './use-top-chrome-height';
+import { activeFilePathAtom } from '@/code/project/active-file-store';
 import {
   activeRulerGuidesAtom,
   selectedGuideIdAtom,
@@ -29,13 +30,11 @@ const RULER_SIZE = 28;
 const LEFT_MENU_WIDTH = 52;
 const LEFT_PANEL_WIDTH = 256;
 const RIGHT_PANEL_WIDTH = 260;
-const BREADCRUMB_HEIGHT = 52;
 const LEFT_OFFSET = LEFT_MENU_WIDTH + LEFT_PANEL_WIDTH;
 const RIGHT_OFFSET = RIGHT_PANEL_WIDTH;
-// `topOffset` is dynamic at the component level (depends on whether
-// `isMasterFilePath(activeFile)` is true). See CanvasRulers.tsx for
-// the matching rationale — the two components must use the same
-// offset or guides won't line up with ruler ticks.
+// `topOffset` is measured at the component level via useTopChromeHeight().
+// Both this and CanvasRulers MUST use the same source or guides won't line up
+// with ruler ticks — which is exactly why it's one shared hook, not two checks.
 
 const GUIDE_COLOR = '#0d9488';
 const GUIDE_COLOR_SELECTED = 'var(--selection)';
@@ -218,7 +217,8 @@ export default function RulerGuides() {
   const setSelectedNodeIds = useSetAtom(selectedIdsAtom);
   const transform = useTransform();
   // Same dynamic offset rationale as CanvasRulers — see that file.
-  const topOffset = isMasterFilePath(activeFilePath) ? BREADCRUMB_HEIGHT : 0;
+  // Measured — see use-top-chrome-height.ts for why a path check isn't enough.
+  const topOffset = useTopChromeHeight();
 
   // Refs so the window-level mousemove/up handlers always read the
   // latest values without re-binding the listeners on every render.

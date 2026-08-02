@@ -136,7 +136,7 @@ export default function LinkedComponentModal({ isOpen, onClose, cdnUrl, instance
           // (purple) on `<html>` whenever the active file is a
           // component master, so this single token gives us the
           // right color in both contexts without a manual check.
-          style={{ backgroundColor: 'var(--accent, #e6b450)' }}
+          style={{ backgroundColor: 'var(--accent, #b8974a)' }}
         >
           {busy === 'all' ? 'Unlinking…' : 'Unlink & Replace All'}
         </button>}

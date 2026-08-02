@@ -292,8 +292,8 @@ function SecondaryPanelContent({ category }: SecondaryPanelContentProps) {
           }}
           className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold cursor-pointer transition-colors"
           style={{
-            backgroundColor: 'var(--accent, #e6b450)',
-            color: '#ffffff',
+            backgroundColor: 'var(--accent)',
+            color: 'var(--accent-fg)',
             border: 'none',
           }}
         >

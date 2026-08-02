@@ -384,7 +384,7 @@ function ShadowPresetPillRow({ tokenName, tokenLabel, currentValue, previewColor
           onClick={() => setEditOpen(true)}
         >
           <ColorSwatch style={{ backgroundColor: previewColor }} />
-          <span className="text-xs font-medium text-white truncate flex-1 text-left">
+          <span className="text-xs font-medium text-[var(--accent-fg)] truncate flex-1 text-left">
             {tokenLabel}
           </span>
           <span

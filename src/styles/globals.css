@@ -53,9 +53,15 @@
     --text-tertiary: #999999;
     --text-muted: #b0b0b0;
 
-    /* ACCENT — gold (from the ayu palette), the one piece of the redesign that
-       carries the identity. Warm and HIGH-chroma: the earlier clay was warm but
-       low chroma, which is exactly where brown lives.
+    /* ACCENT — brass, the one piece of the redesign that carries the identity.
+       Warm and mid-chroma at hue 40.
+
+       The tone is a LUMINANCE decision, not a hue one. The brighter gold this
+       started from (#e6b450) hit 9.9:1 on #111111 and read as aggressive —
+       yellow is the brightest hue there is, so at equal chroma it always shouts
+       loudest on a dark chrome. Brass keeps the hue and drops to 6.8:1.
+       Going the other way (lower chroma at this hue) is where brown lives,
+       which is the trap the earlier clay fell into.
 
        Note --accent is used as both a fill and a text colour across the app, so
        it has to clear AA in both directions. --accent-text carries the deeper
@@ -66,16 +72,37 @@
        a FILL colour here (184 fill sites vs 57 text sites) and it fills the
        same in both themes, with the same near-black label.
 
-       --accent-text is the exception: gold ON white is 1.8:1, invisible. The
-       57 places that use the accent as TEXT/icon colour take that deeper tone
-       instead, which clears AA (4.9:1). On dark it collapses back to the gold. */
-    --accent: #e6b450;
-    --accent-hover: #f2c86e;
-    --accent-fg: #0d1017;
-    --accent-text: #9c6500;
-    --accent-strong: #ffb454;
+       --accent-text is the exception: brass ON white is 2.8:1 — fine as a fill,
+       unreadable as text. The 57 places that use the accent as TEXT/icon colour
+       take a deeper tone instead, which clears AA (4.9:1). On dark, where the
+       surface is #111111, it collapses back to the accent. */
+    /* Monochrome accent: this is INK, so it inverts per theme rather than
+       staying one colour. White on the dark chrome, near-black on the light
+       one — #ffffff here would be an invisible button on a #ffffff panel. */
+    --accent: #1a1a1a;
+    /* DERIVED from --accent, like --accent-text below. These were hand-set
+       hexes, so changing --accent alone left hover and CTA surfaces on the
+       previous hue — a Publish button that changed colour on hover. */
+    --accent-hover: color-mix(in srgb, var(--accent) 82%, #fff);
+    --accent-fg: #ffffff;
+    /* DERIVED, not hand-tuned. The accent is a FILL colour; on a white panel
+       it's too light to read as text or a thin icon (brass managed 2.8:1). So
+       the ~54 text/icon sites take a darkened mix of whatever --accent
+       currently is — the alignment icons, the viewport-header width, domain
+       links, breadcrumbs.
+
+       Deriving it matters twice over: swapping --accent now carries every one
+       of those sites with it instead of leaving them on a stale hue, and
+       component mode (which rewrites --accent to --accent-secondary on <html>)
+       propagates here for free rather than needing its own override.
+
+       Caveat: a fixed 50% mix can't guarantee AA for every possible hue — it
+       lands most accents near 4.5:1 on white. A very light accent will come in
+       under that and wants a hand-set value here. */
+    --accent-text: color-mix(in srgb, var(--accent) 50%, #000);
+    --accent-strong: color-mix(in srgb, var(--accent) 88%, #fff);
     --accent-strong-fg: #0d1017;
-    --accent-muted: #ffe294;
+    --accent-muted: color-mix(in srgb, var(--accent) 30%, #fff);
     --accent-surface: rgba(242, 151, 24, 0.12);
     /* Component / master mode — magenta.
        Purple-for-components is the convention Figma set and the other
@@ -89,8 +116,8 @@
        Hue 293 — pulled back toward purple from the first magenta (311) but
        still 33 degrees clear of the stock #9a66ff violet every other builder
        ships. Light stays deep enough for a white label at any size (6.5:1). */
-    --accent-secondary: #8e3a99;
-    --accent-secondary-hover: #7a3184;
+    --accent-secondary: #9a66ff;
+    --accent-secondary-hover: #b883ff;
     --accent-secondary-fg: #ffffff;
 
     /* Canvas selection — FUNCTIONAL, not brand. Deliberately NOT --accent.
@@ -106,7 +133,7 @@
     --border-light: #f0f0f0;
     --border-default: #cbd5e1;
     /* Focus is chrome, so it follows the brand accent — not the canvas blue. */
-    --border-focus: #e6b450;
+    --border-focus: var(--accent);
 
     /* Controls */
     /* Properties-panel controls. On light these must sit BELOW the white
@@ -117,7 +144,7 @@
     --control-bg-active: #e2e8f0;
     --control-border: #e2e8f0;
     --control-border-hover: #cbd5e1;
-    --grid-line: rgba(205, 211, 217, 0.4);
+    --grid-line: rgba(224, 224, 224, 0.4);
     /* Segmented controls (No/Yes, Flex/Grid, …). Two levels, and they must
        come from the same ladder as every other control or the segment reads
        as a different material: --choice-bg is the recessed TRACK, and
@@ -135,8 +162,8 @@
     /* Primary buttons track --accent (with --accent-strong reserved for the
        loudest surfaces: the active tool). Both take the same near-black label
        — see --accent-fg. */
-    --btn-primary-bg: #e6b450;
-    --btn-primary-hover: #f2c86e;
+    --btn-primary-bg: var(--accent);
+    --btn-primary-hover: var(--accent-hover);
     --btn-secondary-bg: #f3f3f3;
     --btn-secondary-hover: #e2e8f0;
     /* Translucent "subtle fill" token — used by secondary buttons,
@@ -226,16 +253,19 @@
        shouting. White on it only reaches 4.0, so --accent-fg is near-black:
        a clay fill with a dark label clears AA and looks deliberate rather
        than like a washed-out button. */
-    --accent: #e6b450;
-    --accent-hover: #f2c86e;
+    --accent: #FFFFFF;
+    --accent-hover: color-mix(in srgb, var(--accent) 82%, #fff);
     /* Gold is bright: white on it is 1.9:1, near-black is 10:1. Dark labels on
        gold are the only readable pairing AND the better-looking one. */
     --accent-fg: #0d1017;
     /* On dark chrome the gold is already 10:1 as text — no deeper tone needed. */
-    --accent-text: #e6b450;
-    --accent-strong: #ffb454;
+    /* On #111111 the accent is already legible as text, so this is just the
+       accent — but written as a var so it tracks any change, including the
+       component-mode rewrite. */
+    --accent-text: var(--accent);
+    --accent-strong: color-mix(in srgb, var(--accent) 88%, #fff);
     --accent-strong-fg: #0d1017;
-    --accent-muted: #4c4126;
+    --accent-muted: color-mix(in srgb, var(--accent) 22%, #000);
     --accent-surface: rgba(230, 180, 80, 0.13);
     /* See the light-theme note. Hue 293 — magenta pulled back toward purple
        without reaching the stock violet at 260.
@@ -248,8 +278,8 @@
        fill and its label disagree, MOVE THE FILL. Brightness 78% -> 70% puts
        white back at 4.5:1 while the fill still separates from the chrome
        (4.2) and the canvas (3.7). */
-    --accent-secondary: #a856b2;
-    --accent-secondary-hover: #b465be;
+    --accent-secondary: #9a66ff;
+    --accent-secondary-hover: #b883ff;
     --accent-secondary-fg: #ffffff;
 
     /* Canvas selection — see the light-theme note. Brighter here so the
@@ -259,7 +289,7 @@
     --border-light: #222222;
     --border-default: #414243;
     /* Chrome affordance → brand accent, not the canvas blue. */
-    --border-focus: #e6b450;
+    --border-focus: var(--accent);
 
     /* control-bg was rgba(50,50,50,.8) — a translucent grey that resolved
        differently over every surface it sat on, so the panel's elevation
@@ -272,15 +302,15 @@
     --control-bg-active: #45464b;
     --control-border: #292929;
     --control-border-hover: #475569;
-    --grid-line: rgba(31, 37, 48, 0.8);
+    --grid-line: rgba(50, 50, 50, 0.8);
     /* See the :root note — recessed track, raised active segment. */
     --choice-bg: #1a1a1a;
     --segmented-bg: #333333;
     --slider-bg: #333333;
-    --slider-thumb-border: rgba(191, 189, 182, 0.5);
+    --slider-thumb-border: rgba(255, 255, 255, 0.5);
 
-    --btn-primary-bg: #e6b450;
-    --btn-primary-hover: #f2c86e;
+    --btn-primary-bg: var(--accent);
+    --btn-primary-hover: var(--accent-hover);
     --btn-secondary-bg: #333333;
     --btn-secondary-hover: #475569;
     /* Dark value = the old hard-coded fallback, so dark mode is
@@ -374,3 +404,171 @@ html.theme-transition *::after {
 .vp-add-item:hover span {
   color: #fff !important;
 }
+
+/* ─── Floating panel shell (TRIAL) ──────────────────────────────────────
+   The left rail and the right inspector detach from the window edges: inset
+   by --float-gap, rounded, with the canvas running FULL-BLEED behind them
+   instead of being boxed between them.
+
+   Deliberately UNLAYERED. Tailwind utilities live in @layer utilities and, in
+   CSS cascade layers, unlayered rules always win — so these override the
+   `border-l` / `w-[260px]` utilities already on those roots. The !important
+   flags are narrower than they look: those panels carry INLINE `top: 52` /
+   `marginTop: 52` / `height` from the docked layout, and inline styles beat
+   any class. Rather than unpick each one during a trial, the shell overrides
+   them here so the whole thing reverts by deleting this block.
+   ──────────────────────────────────────────────────────────────────── */
+:root {
+  --float-gap: 10px;
+  --float-radius: 14px;
+  /* The rail and the panel beside it are ONE card, so the shadow may only fall
+     on the OUTER perimeter. A single all-round shadow put the panel's left
+     spread straight onto the rail — the panel paints second, so it landed as a
+     grey band down the seam. Invisible on dark, obvious on light. Each half now
+     casts AWAY from the seam; the right inspector keeps the plain one. */
+  --float-shadow: 0 12px 32px -10px rgba(0, 0, 0, 0.16);
+  --float-shadow-l: -12px 12px 32px -14px rgba(0, 0, 0, 0.16);
+  --float-shadow-r: 12px 12px 32px -14px rgba(0, 0, 0, 0.16);
+  /* Spread-only: see the header rule below for why it can't drop downward. */
+  --float-shadow-header: 0 0 24px -12px rgba(0, 0, 0, 0.16);
+}
+
+/* Dark can carry a much stronger shadow — there is little left to darken, so
+   it reads as depth rather than as dirt. */
+:root.dark {
+  --float-shadow: 0 12px 32px -10px rgba(0, 0, 0, 0.5);
+  --float-shadow-l: -12px 12px 32px -14px rgba(0, 0, 0, 0.5);
+  --float-shadow-r: 12px 12px 32px -14px rgba(0, 0, 0, 0.5);
+  --float-shadow-header: 0 0 24px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Docked mode ──
+   The full-screen overlays (CMS, translations, settings, preview) cover the
+   whole viewport. Floating panels leave a gap and a rounded corner sitting over
+   a square, edge-to-edge overlay, which reads as a mistake. So the chrome DOCKS
+   while one is open and floats again when it closes.
+
+   The entire thing is these four values. Every position above is expressed in
+   terms of them, so zeroing them reproduces the original edge-to-edge layout
+   exactly — no rule here restates a coordinate, and the two layouts can't drift
+   apart. The shadows go to a transparent shadow rather than `none` so they
+   interpolate instead of popping. */
+:root.panels-docked {
+  --float-gap: 0px;
+  --float-radius: 0px;
+  --float-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+  --float-shadow-l: 0 0 0 0 rgba(0, 0, 0, 0);
+  --float-shadow-r: 0 0 0 0 rgba(0, 0, 0, 0);
+  --float-shadow-header: 0 0 0 0 rgba(0, 0, 0, 0);
+}
+
+.float-panel-menu,
+.float-panel-left,
+.float-panel-right {
+  position: fixed !important;
+  top: calc(52px + var(--float-gap)) !important;
+  height: calc(100vh - 52px - var(--float-gap) * 2) !important;
+  margin-top: 0 !important;
+  border: 1px solid var(--border-light);
+  box-shadow: var(--float-shadow);
+  z-index: 5000;
+  /* Custom properties don't animate, but the properties computed FROM them do:
+     changing --float-gap re-resolves these and the transition interpolates the
+     used values. That's what makes docking a single class toggle. */
+  transition:
+    top 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    left 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    right 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    height 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-radius 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 280ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Each side is ONE card: header on top, panel below, flush. Radius lives on
+   the OUTER corners only — the panels are square where they meet their header,
+   and the header is square where it meets the panel. The seam is owned by the
+   header's own `border-b`, so the panels drop their top border to avoid
+   doubling it into a 2px line. */
+.float-panel-menu {
+  left: var(--float-gap) !important;
+  border-bottom-left-radius: var(--float-radius);
+  border-top: none;
+  border-right: none;
+  box-shadow: var(--float-shadow-l);
+}
+
+.float-panel-left {
+  left: calc(var(--float-gap) + 52px) !important;
+  border-bottom-right-radius: var(--float-radius);
+  border-top: none;
+  border-left: none;
+  box-shadow: var(--float-shadow-r);
+}
+
+/* No `overflow` here on purpose: several of these roots carry
+   `overflow-y-auto` and an unlayered override would kill their scrolling. */
+.float-panel-right {
+  right: var(--float-gap) !important;
+  left: auto !important;
+  border-bottom-left-radius: var(--float-radius);
+  border-bottom-right-radius: var(--float-radius);
+  border-top: none;
+}
+
+/* ── Headers, docked to the top of their panel ──
+   Same inset as the panels so the two form a single column. The shadow here
+   is spread-only (no downward offset): the panel's own drop shadow would
+   otherwise be cast ONTO the panel across the seam and read as a dark band. */
+.float-header-left,
+.float-header-right {
+  position: fixed !important;
+  top: var(--float-gap) !important;
+  border-top: 1px solid var(--border-light);
+  border-left: 1px solid var(--border-light);
+  border-right: 1px solid var(--border-light);
+  border-top-left-radius: var(--float-radius);
+  border-top-right-radius: var(--float-radius);
+  box-shadow: var(--float-shadow-header);
+  transition:
+    top 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    left 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    right 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-radius 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 280ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .float-panel-menu,
+  .float-panel-left,
+  .float-panel-right,
+  .float-header-left,
+  .float-header-right,
+  .float-bar-top { transition: none; }
+}
+
+/* The breadcrumb bar between the two cards. Same row as the headers, so it
+   floats with them instead of spanning edge-to-edge behind them: it was pinned
+   at left:308 / right:260, the DOCKED panel edges, so it tucked ~10px under
+   each floating card and read as the one piece of chrome that hadn't moved.
+
+   The offsets are gap + card + gap, expressed in the same variables as
+   everything else — so at --float-gap:0 they collapse to exactly 308 and 260
+   and the docked layout is reproduced without restating it. */
+.float-bar-top {
+  position: fixed !important;
+  top: var(--float-gap) !important;
+  left: calc(var(--float-gap) * 2 + 308px) !important;
+  right: calc(var(--float-gap) * 2 + 260px) !important;
+  border: 1px solid var(--border-light);
+  border-radius: var(--float-radius);
+  box-shadow: var(--float-shadow);
+  transition:
+    top 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    left 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    right 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-radius 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 280ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.float-header-left { left: var(--float-gap) !important; }
+.float-header-right { right: var(--float-gap) !important; }

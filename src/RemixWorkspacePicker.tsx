@@ -130,7 +130,7 @@ export default function RemixWorkspacePicker({ kind, token }: Props) {
                     className="grid h-4 w-4 shrink-0 place-items-center rounded-full border"
                     style={{ borderColor: isSel ? 'var(--accent)' : 'var(--border-default)' }}
                   >
-                    {isSel && <span className="h-2 w-2 rounded-full" style={{ background: 'var(--accent)' }} />}
+                    {isSel && <span className="h-2 w-2 rounded-full" style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }} />}
                   </span>
                 </button>
               );
@@ -153,8 +153,8 @@ export default function RemixWorkspacePicker({ kind, token }: Props) {
             type="button"
             onClick={create}
             disabled={!selected || creating || loadError}
-            className="h-8 rounded-md px-3.5 text-[12px] font-semibold text-white transition-colors disabled:opacity-50"
-            style={{ background: 'var(--accent)' }}
+            className="h-8 rounded-md px-3.5 text-[12px] font-semibold transition-colors disabled:opacity-50"
+            style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
           >
             {creating ? 'Creating copy…' : 'Create copy'}
           </button>
@@ -171,8 +171,8 @@ function WorkspaceAvatar({ ws }: { ws: AttachableWorkspace }) {
   const initial = (ws.name || '?').charAt(0).toUpperCase();
   return (
     <span
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[13px] font-semibold text-white"
-      style={{ background: 'var(--accent)' }}
+      className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[13px] font-semibold"
+      style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
     >
       {initial}
     </span>

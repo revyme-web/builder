@@ -751,7 +751,7 @@ function BorderPresetPillRow({ group, onClear }: {
           onClick={() => setEditOpen(true)}
         >
           <span className="w-5 h-5 rounded bg-[var(--bg-surface)] flex-shrink-0" style={previewStyle} />
-          <span className="text-xs font-medium text-white truncate flex-1 text-left">
+          <span className="text-xs font-medium text-[var(--accent-fg)] truncate flex-1 text-left">
             {group.label}
           </span>
           <span

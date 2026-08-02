@@ -19,7 +19,8 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useAtomValue, useStore } from 'jotai';
 import { transformManager } from '@/canvas/transform';
 import { showRulersAtom } from '@/code/stores/user-preferences-store';
-import { activeFilePathAtom, isMasterFilePath } from '@/code/project/active-file-store';
+import { useTopChromeHeight } from './use-top-chrome-height';
+import { activeFilePathAtom } from '@/code/project/active-file-store';
 import { rulerGuideOps, draggingGuidePreviewAtom } from '@/code/stores/ruler-guides-store';
 import { selectedIdsAtom } from '@/code/stores/store';
 import { shapeEditingIdAtom } from '@/code/stores/shape-edit-store';
@@ -31,19 +32,13 @@ const RULER_SIZE = 28;
 const LEFT_MENU_WIDTH = 52;
 const LEFT_PANEL_WIDTH = 256;
 const RIGHT_PANEL_WIDTH = 260;
-const BREADCRUMB_HEIGHT = 52;
 const LEFT_OFFSET = LEFT_MENU_WIDTH + LEFT_PANEL_WIDTH; // 308 — left edge of canvas area
 // Right offset stops the top ruler before it reaches the right panel /
 // RightHeader. Both share the same 260 px width, so a single value
 // keeps the ruler clear of both the panel and the header chrome and
 // makes the visible ruler region == the visible canvas region.
 const RIGHT_OFFSET = RIGHT_PANEL_WIDTH;
-// Top offset is dynamic — 0 when on a regular page (no breadcrumb,
-// rulers reach the top of the browser), or BREADCRUMB_HEIGHT (52) when
-// editing a master file (component / icon-set / vector master) so the
-// rulers sit BELOW the ComponentBreadcrumb bar that mounts at top:0
-// only on those files. Same conditional `isMasterFilePath` check
-// `ComponentBreadcrumb.tsx:29` uses to decide whether to render itself.
+// Top offset is MEASURED at the component level — see use-top-chrome-height.ts.
 
 // Color tokens — pixel-match the builder repo's `CanvasRulers.tsx`:
 //   bg     = `--bg-canvas` (lighter than `--bg-surface`, reads as a
@@ -244,13 +239,10 @@ export default function CanvasRulers() {
   const draggingPreview = useAtomValue(draggingGuidePreviewAtom);
   const store = useStore();
 
-  // Dynamic top offset — 52 px when the ComponentBreadcrumb is visible
-  // (editing a component / icon-set master), 0 otherwise. Mirrors the
-  // breadcrumb's own `if (!isMasterFilePath(activeFile)) return null;`
-  // check so the ruler offset stays in lockstep with the breadcrumb's
-  // visibility. Keep this in a stable closure so the drag handlers
-  // below see the latest value via the transformRef pattern.
-  const topOffset = isMasterFilePath(activeFilePath) ? BREADCRUMB_HEIGHT : 0;
+  // Height of whatever breadcrumb bar is above the canvas, measured from the
+  // DOM rather than re-derived from the file path — see use-top-chrome-height.ts.
+  // Read through topOffsetRef below so the drag handlers see the latest value.
+  const topOffset = useTopChromeHeight();
 
   // Container dimensions — track viewport size so the rulers extend to
   // the right edge of the screen. We avoid SSR (`window` access) by

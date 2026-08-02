@@ -140,7 +140,7 @@ export default function SlugPageBreadcrumb() {
           left/right sidebars). z below the side headers (9999), above canvas
           overlays. */}
       <div
-        className="fixed h-[52px] px-4 flex items-center left-[308px] right-[260px] shadow-[var(--shadow-sm)] border-b border-[var(--border-default)] bg-[var(--bg-canvas)] z-[9000] top-0"
+        className="float-bar-top fixed h-[52px] px-4 flex items-center left-[308px] right-[260px] shadow-[var(--shadow-sm)] border-b border-[var(--border-default)] bg-[var(--bg-canvas)] z-[9000] top-0"
         data-dynamic-toolbar="true"
       >
         <div className="flex items-center gap-2 min-w-0">

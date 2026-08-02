@@ -1,18 +1,26 @@
 // PropertyIcons.tsx — SVG swatch icons for every CSS property category.
-// Each icon: rounded square (accent bg) + white icon inside.
+// Each icon: rounded square (accent bg) + a glyph that CONTRASTS with it.
 // Override bg with `bg` prop, icon color with `iconColor` prop.
 
 import React from 'react';
 
 type P = React.SVGProps<SVGSVGElement> & { bg?: string; iconColor?: string };
 
-const DEFAULT_BG = 'var(--accent, #6366f1)';
-const IC = '#ffffff';
+const DEFAULT_BG = 'var(--accent)';
+// The glyph has to track the badge it sits on. This was hardcoded '#ffffff',
+// which only worked while the accent happened to be dark — a light accent made
+// all 57 icons vanish into their own square.
+const IC = 'var(--accent-fg)';
+// A caller that overrides `bg` is drawing on something OTHER than the accent
+// (the empty-state placeholders use --control-border), so --accent-fg would be
+// wrong there. Those fall back to the normal text colour unless the caller
+// names one.
+const IC_ON_CUSTOM_BG = 'var(--text-primary)';
 
 const W = ({ bg, iconColor, ...props }: P, children: (c: string) => React.ReactNode) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width={20} height={20} fill="none" {...props}>
     <rect width={16} height={16} rx={4} fill={bg || DEFAULT_BG} />
-    {children(iconColor || IC)}
+    {children(iconColor || (bg ? IC_ON_CUSTOM_BG : IC))}
   </svg>
 );
 

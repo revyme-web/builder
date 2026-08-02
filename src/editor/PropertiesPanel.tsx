@@ -77,7 +77,7 @@ export default React.memo(function PropertiesPanel() {
       <div
         data-properties-panel
         data-tutorial="right-toolbar"
-        className="w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] overflow-y-auto scrollbar-hide relative z-5000"
+        className="float-panel-right w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] overflow-y-auto scrollbar-hide relative z-5000"
         style={{ marginTop: 52, willChange: 'transform', isolation: 'isolate' }}
       />
     );
@@ -285,7 +285,7 @@ function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boole
       <div
         data-properties-panel
         data-tutorial="right-toolbar"
-        className="w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] overflow-y-auto scrollbar-hide relative z-5000"
+        className="float-panel-right w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] overflow-y-auto scrollbar-hide relative z-5000"
         style={{ marginTop: 52, willChange: 'transform', isolation: 'isolate' }}
       />
     );
@@ -449,7 +449,7 @@ function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boole
     <div
       data-properties-panel
       data-tutorial="right-toolbar"
-      className="w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] flex flex-col relative z-5000"
+      className="float-panel-right w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] flex flex-col relative z-5000"
       style={{ marginTop: 52, paddingLeft: '1.5px', willChange: 'transform', isolation: 'isolate' }}
       onMouseDown={(e) => {
         if (activeEditor && !(e.target instanceof HTMLSelectElement)) {

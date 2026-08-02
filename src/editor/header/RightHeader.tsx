@@ -203,7 +203,7 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
 
   return (
     <div
-      className={`h-[52px] bg-[var(--bg-surface)] border-b border-l border-[var(--border-light)] fixed top-0 right-0 flex items-center px-2 ${
+      className={`float-header-right h-[52px] bg-[var(--bg-surface)] border-b border-l border-[var(--border-light)] fixed top-0 right-0 flex items-center px-2 ${
         settingsOpen ? 'z-[10001]' : 'z-[9999]'
       }`}
       style={{ width: 260 }}

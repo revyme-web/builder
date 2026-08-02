@@ -279,7 +279,7 @@ export default function CommentsListPanel() {
     return (
       <aside
         data-comment-panel
-        className="w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] flex flex-col relative z-5000"
+        className="float-panel-right w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] flex flex-col relative z-5000"
         style={{ marginTop: 52, paddingLeft: '1.5px' }}
       >
         <div className="px-4 py-3 border-b border-[var(--border-light)]">
@@ -298,7 +298,7 @@ export default function CommentsListPanel() {
   return (
     <aside
       data-comment-panel
-      className="w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] flex flex-col relative z-5000"
+      className="float-panel-right w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] flex flex-col relative z-5000"
       style={{ marginTop: 52, paddingLeft: '1.5px' }}
     >
       {/* Header — title + filter chip on the right. The chip wraps to a

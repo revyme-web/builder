@@ -128,9 +128,9 @@ export default function CurvePreview({ isSpring, ease, bounce, stiffness, dampin
         <path d={curvePath} fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         <circle cx={p0.x} cy={p0.y} r="4" fill="rgba(255,255,255,0.3)" vectorEffect="non-scaling-stroke" />
         <circle cx={p3.x} cy={p3.y} r="4" fill="rgba(255,255,255,0.3)" vectorEffect="non-scaling-stroke" />
-        <circle cx={p1.x} cy={p1.y} r="6" fill="var(--accent)" stroke="white" strokeWidth="1.5"
+        <circle cx={p1.x} cy={p1.y} r="6" fill="var(--accent)" stroke="var(--accent-fg)" strokeWidth="1.5"
           style={{ cursor: 'grab' }} vectorEffect="non-scaling-stroke" onPointerDown={(e) => handleDrag(0, e)} />
-        <circle cx={p2.x} cy={p2.y} r="6" fill="var(--accent)" stroke="white" strokeWidth="1.5"
+        <circle cx={p2.x} cy={p2.y} r="6" fill="var(--accent)" stroke="var(--accent-fg)" strokeWidth="1.5"
           style={{ cursor: 'grab' }} vectorEffect="non-scaling-stroke" onPointerDown={(e) => handleDrag(1, e)} />
       </svg>
     </div>

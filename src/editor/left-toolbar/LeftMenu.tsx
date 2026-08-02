@@ -206,7 +206,7 @@ export default function LeftMenu() {
 
   return (
     <div
-      className="left-0 w-[52px] bg-[var(--bg-surface)] fixed z-[5000] flex flex-col justify-between items-center px-[10px] py-4"
+      className="float-panel-menu left-0 w-[52px] bg-[var(--bg-surface)] fixed z-[5000] flex flex-col justify-between items-center px-[10px] py-4"
       // willChange/isolation: own compositor layer — see LeftPanel (grey
       // checkerboard under the zoom-out re-raster burst).
       style={{ top: 52, height: 'calc(100vh - 52px)', willChange: 'transform', isolation: 'isolate' }}

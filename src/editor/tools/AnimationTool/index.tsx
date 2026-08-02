@@ -1195,7 +1195,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
                 <ToolRow key={'pe-' + pe.target} label="Page">
                   <ControlActionRow className="!pr-2" onClick={() => setActivePopup('pageTransition:' + pe.target)}>
                     <span className="flex items-center justify-center w-5 h-5 rounded shrink-0" style={{ backgroundColor: 'var(--accent)' }}>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M12 2 L22 12 L12 22 L2 12 Z" /></svg>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="var(--accent-fg)"><path d="M12 2 L22 12 L12 22 L2 12 Z" /></svg>
                     </span>
                     <span className="truncate flex-1">{label}</span>
                     <RemoveButton onClick={() => removePageEffect(pe.target)} />
