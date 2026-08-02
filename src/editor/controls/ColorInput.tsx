@@ -205,11 +205,12 @@ export default function ColorInput({ value, onChange, onChangeLive, showAlpha, s
           isPresetRef ? (
             <>
               <ColorSwatch style={{ backgroundColor: displayColor }} />
-              <span className="text-xs font-medium text-white truncate flex-1">
+              {/* Label sits ON the accent fill, so it takes --accent-fg. */}
+              <span className="text-xs font-medium text-[var(--accent-fg)] truncate flex-1">
                 {presetLabel}
               </span>
               <span onClick={(e) => { e.stopPropagation(); onChange(''); }}
-                className="text-white/70 hover:text-white transition-colors cursor-pointer text-sm ml-1 shrink-0">&times;</span>
+                className="text-[var(--accent-fg)]/70 hover:text-[var(--accent-fg)] transition-colors cursor-pointer text-sm ml-1 shrink-0">&times;</span>
             </>
           ) : (
             <>

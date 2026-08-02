@@ -21,7 +21,7 @@ const GLYPH: Record<RowGlyph, React.ReactNode> = {
 export default function CollectionRowIcon({ glyph, active }: { glyph: RowGlyph; active: boolean }) {
   const isMaster = useAtomValue(isComponentFileAtom);
   const bg = active
-    ? (isMaster ? 'var(--accent-secondary, #a856b2)' : 'var(--accent, #b8974a)')
+    ? (isMaster ? 'var(--accent-secondary, #9a66ff)' : 'var(--accent, #cec997)')
     : 'var(--grid-line)';
   const stroke = active ? '#ffffff' : 'var(--text-secondary)';
   return (

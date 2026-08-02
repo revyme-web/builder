@@ -76,15 +76,20 @@
        unreadable as text. The 57 places that use the accent as TEXT/icon colour
        take a deeper tone instead, which clears AA (4.9:1). On dark, where the
        surface is #111111, it collapses back to the accent. */
-    /* Monochrome accent: this is INK, so it inverts per theme rather than
-       staying one colour. White on the dark chrome, near-black on the light
-       one — #ffffff here would be an invisible button on a #ffffff panel. */
-    --accent: #1a1a1a;
+    /* Gold. IDENTICAL in both themes — a brand accent that changes hue between
+       light and dark stops being a brand colour. It's a FILL colour and it
+       fills the same either way, with the same near-black label.
+
+       Chosen back over the monochrome ink: white measured 18.9:1 on the dark
+       panel against gold's 9.9:1, so ink was nearly double the contrast and
+       read as aggressive. --accent-text below is the exception for the ~54
+       sites that use the accent as TEXT, where gold on white is unreadable. */
+    --accent: #cec997;
     /* DERIVED from --accent, like --accent-text below. These were hand-set
        hexes, so changing --accent alone left hover and CTA surfaces on the
        previous hue — a Publish button that changed colour on hover. */
     --accent-hover: color-mix(in srgb, var(--accent) 82%, #fff);
-    --accent-fg: #ffffff;
+    --accent-fg: #0d1017;
     /* DERIVED, not hand-tuned. The accent is a FILL colour; on a white panel
        it's too light to read as text or a thin icon (brass managed 2.8:1). So
        the ~54 text/icon sites take a darkened mix of whatever --accent
@@ -148,8 +153,9 @@
     --control-bg: var(--grid-line);
     --control-bg-hover: #f1f5f9;
     --control-bg-active: #e2e8f0;
-    --control-border: #e2e8f0;
-    --control-border-hover: #cbd5e1;
+    /* Translucent — see the .dark note. */
+    --control-border: rgba(0, 0, 0, 0.045);
+    --control-border-hover: rgba(0, 0, 0, 0.10);
     --grid-line: rgba(0, 0, 0, 0.022);
     /* Segmented controls (No/Yes, Flex/Grid, …). Two levels, and they must
        come from the same ladder as every other control or the segment reads
@@ -257,12 +263,12 @@
        brightest thing on screen in both themes. */
     /* Neutral grey — see the :root note. Not the ayu blue-black. */
     --bg-canvas: #1d1d1d;
-    --bg-surface: #171717;
-    --bg-toolbar: #171717;
-    --bg-panel: #171717;
+    --bg-surface: #111111;
+    --bg-toolbar: #111111;
+    --bg-panel: #111111;
     --bg-hover: #282828a3;
     --bg-active: #4a4a4a;
-    --bg-tertiary: #1f1f1f;
+    --bg-tertiary: #1a1a1a;
     /* Neutral greys — see the :root note. Canvas-adjacent, so untinted. */
     --canvas-chrome-bg: #2a2a2a;
     --canvas-chrome-border: #333333;
@@ -280,7 +286,7 @@
        shouting. White on it only reaches 4.0, so --accent-fg is near-black:
        a clay fill with a dark label clears AA and looks deliberate rather
        than like a washed-out button. */
-    --accent: #FFFFFF;
+    --accent: #cec997;
     --accent-hover: color-mix(in srgb, var(--accent) 82%, #fff);
     /* Gold is bright: white on it is 1.9:1, near-black is 10:1. Dark labels on
        gold are the only readable pairing AND the better-looking one. */
@@ -333,8 +339,20 @@
     --control-bg: var(--grid-line);
     --control-bg-hover: #334155;
     --control-bg-active: #45464b;
-    --control-border: #333333;
-    --control-border-hover: #475569;
+    /* Translucent rather than a fixed grey. #333333 sat a fixed 28 steps above
+       the #171717 panel and read as a hard outline around every control; an
+       alpha keeps the border PROPORTIONAL to whatever surface it lands on, so
+       it stays soft on the panel and on the lighter nested surfaces alike.
+
+       Hover was #475569 — a blue-tinted slate left over from the old palette,
+       which flashed blue on a chrome that has no blue left in it.
+
+       NB the alpha composites over the CONTROL'S OWN FILL, not the panel:
+       background-clip defaults to border-box, so --grid-line paints under the
+       border. The control interior is ~#1f1f1f, so 0.07 rendered #2f2f2f —
+       lighter than intended. 0.035 lands on ~#272727. */
+    --control-border: rgba(255, 255, 255, 0.035);
+    --control-border-hover: rgba(255, 255, 255, 0.10);
     /* Control fill. Was rgba(50,50,50,.8) — which composites to ~#2b2b2b over
        the #111111 panel, two units off --control-border's #292929. The border
        was therefore invisible and every control read as a solid raised slab.

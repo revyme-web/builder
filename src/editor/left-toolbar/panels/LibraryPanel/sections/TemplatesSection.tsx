@@ -362,7 +362,7 @@ export function TemplatesSection({
         placeholder="e.g. marketing, dashboard, blog..."
         defaultValue=""
         submitLabel="Create Template"
-        accentColor="var(--accent-secondary, #a856b2)"
+        accentColor="var(--accent-secondary, #9a66ff)"
       />
       <NameInputModal
         isOpen={renameTarget !== null}
@@ -372,7 +372,7 @@ export function TemplatesSection({
         placeholder="New template name"
         defaultValue={renameTarget ?? ''}
         submitLabel="Rename"
-        accentColor="var(--accent-secondary, #a856b2)"
+        accentColor="var(--accent-secondary, #9a66ff)"
       />
       <ConfirmDialog
         isOpen={confirmDelete !== null}

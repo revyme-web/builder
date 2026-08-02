@@ -136,7 +136,7 @@ function KeyframeSubMenu({ label, desc, existingKeyframes, onCreateNew, onApply 
           <div style={{ position: 'absolute', top: 0, right: -12, width: 16, height: '100%' }} />
           <div className="min-w-max bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-2xl py-1">
             <button type="button"
-              className="group flex items-center gap-2 w-full px-3 py-1.5 text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
+              className="group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
               onClick={onCreateNew}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)] shrink-0">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -151,7 +151,7 @@ function KeyframeSubMenu({ label, desc, existingKeyframes, onCreateNew, onApply 
                 </div>
                 {existingKeyframes.map(name => (
                   <button key={name} type="button"
-                    className="group flex items-center gap-2 w-full px-3 py-1.5 text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
+                    className="group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
                     onClick={() => onApply(name)}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)] shrink-0">
                       <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
@@ -219,7 +219,7 @@ function EffectSubMenu({ label, desc, children, onSelect }: {
               </div>
             ) : (
               <button key={c.type} type="button" title={c.desc}
-                className="group flex items-center w-full px-3 py-1.5 text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
+                className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
                 onClick={() => onSelect(c.type)}>
                 <span className="text-[12px] font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">{c.label}</span>
               </button>

@@ -110,7 +110,7 @@ export default function NameInputModal({
   placeholder = 'Enter name...', defaultValue = '',
   submitLabel = 'Create Component',
   validate,
-  accentColor = 'var(--accent, #b8974a)',
+  accentColor = 'var(--accent, #cec997)',
 }: NameInputModalProps) {
   const [value, setValue] = useState(defaultValue);
   const [error, setError] = useState<string | null>(null);

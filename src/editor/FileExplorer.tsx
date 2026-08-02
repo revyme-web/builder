@@ -49,7 +49,7 @@ const PAGES_DRAG_THRESHOLD_PX = 3;
 // the Library panel uses. Library is component-/asset-themed
 // (components share the purple accent); Pages reads as page navigation
 // which is blue throughout the rest of the editor.
-const PAGES_DRAG_INDICATOR = 'var(--accent, #b8974a)';
+const PAGES_DRAG_INDICATOR = 'var(--accent, #cec997)';
 
 // ─── Icons ──────────────────────────────────────────────────────────────────
 

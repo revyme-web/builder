@@ -18,6 +18,7 @@ import { renameVariant } from '@/code/variants/variant-ops';
 import { toggleLock } from '@/canvas/commands';
 import { queueMutation } from '@/code/mutation/mutation-queue';
 import type { CanvasNode } from '@/code/parsing/parser';
+import { presetTokensAtom } from '@/code/stores/preset-store';
 import { trace } from '@/shared/debug-trace';
 import { contextMenuAtom, renamingNodeIdAtom } from '@/code/stores/context-menu-store';
 import { useIsViewer } from '@/code/stores/viewer-mode-store';
@@ -57,6 +58,11 @@ export default function LayersPanel() {
   // parse. The cache is refreshed from every parse, so outside drags it
   // equals parsedNodes.
   const structureVersion = useAtomValue(nodeTreeStructureVersionAtom);
+  // Colour presets — read once here and passed down rather than subscribed
+  // per row: a deep tree is hundreds of rows and they'd all subscribe to the
+  // same atom. Same reasoning as the node map below.
+  const presetTokens = useAtomValue(presetTokensAtom);
+
   const nodes = useMemo(() => {
     const cached = getCachedNodesMap();
     return cached.size > 0 ? cached : parsedNodes;
@@ -1038,6 +1044,8 @@ export default function LayersPanel() {
             <LayerRow
               key={layer.id}
               layer={layer}
+              nodes={nodes}
+              presetTokens={presetTokens}
               isSelected={layer.id === selectedLayerId || (layer.nodeId != null && selectedIds.includes(layer.nodeId) && layer.viewportId === interactingVpId)}
               isMapTemplate={isMapTemplate}
               isChildOfSelected={childOfSelectedSet.has(layer.id)}

@@ -13,8 +13,8 @@ import { MULTI_SELECT_OUTLINE } from '../shared/section-utils';
 // Filled triangle — chosen because it matches the reference's icon-set glyph in
 // the layers/library tree (image #36 / #37 reference). Distinguishes
 // icon-set rows from component rows at a glance.
-export const IconSetIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24">
+export const IconSetIcon = ({ size = 14 }: { size?: number } = {}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24">
     <polygon fill="currentColor" points="12,3 22,21 2,21" />
   </svg>
 );

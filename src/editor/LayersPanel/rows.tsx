@@ -7,8 +7,10 @@ import type { CanvasNode } from '@/code/parsing/parser';
 import { isFrameTag, isTextTag } from '@/shared/constants';
 import { useIsViewer } from '@/code/stores/viewer-mode-store';
 import { isVectorSetComponentFile } from '@/code/project/active-file-store';
-import { DesktopViewportIcon, TabletViewportIcon, MobileViewportIcon, ComponentClusterIcon, CmsIcon, CmsItemIcon } from '@/shared/icons';
+import { DesktopViewportIcon, TabletViewportIcon, MobileViewportIcon, ComponentClusterIcon, CmsIcon, CmsItemIcon, FrameToolbarIcon } from '@/shared/icons';
 import { IconSetIcon } from '@/editor/left-toolbar/panels/LibraryPanel/items/IconSetRow';
+import LayerPreview, { deriveLayerPreview } from './LayerPreview';
+import type { PresetToken } from '@/shared/types';
 import { trace } from '@/shared/debug-trace';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -36,13 +38,17 @@ export interface FlatLayer {
   isCmsItem?: boolean;
 }
 
-// ─── Frame Icon (matches old builder) ─────────────────────────────────────
-
+// ─── Frame Icon ───────────────────────────────────────────────────────────
+// The same glyph as the toolbar's Draw Frame tool — the icon you click to
+// create a frame is now the icon that marks one in the tree.
+//
+// Outline rather than a filled square ON PURPOSE: a solid box is what a derived
+// colour swatch looks like, so a frame WITHOUT a fill was reading as a frame
+// with a grey one. The crop-mark outline says "frame, no paint" and can't be
+// confused with a swatch.
 const FrameIcon = ({ size = 14 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor" />
-  </svg>
-);
+  <FrameToolbarIcon width={size} height={size} />
+)
 
 const ComponentIcon = ComponentClusterIcon;
 
@@ -458,7 +464,7 @@ export const LayerRow = React.memo(function LayerRow({
   layer, isSelected, isMapTemplate, isChildOfSelected, hasHighlightedChildren, isLastHighlightedChild,
   isDragOver, dropPosition, dropDepth, isDragging, effectiveHidden,
   onSelect, onToggleExpand, onDragStart, onContextMenu, onToggleLock, onToggleVisibility,
-  isRenaming, onRenameCommit, onVariantRenameCommit, onDoubleClickLayout, isComponentMode,
+  isRenaming, onRenameCommit, onVariantRenameCommit, onDoubleClickLayout, isComponentMode, nodes, presetTokens,
 }: {
   layer: FlatLayer;
   isSelected: boolean;
@@ -487,6 +493,14 @@ export const LayerRow = React.memo(function LayerRow({
   onRenameCommit: (nodeId: string, newName: string) => void;
   onVariantRenameCommit: (variantVpId: string, newLabel: string) => void;
   onDoubleClickLayout: (node: CanvasNode) => void;
+  /** Full node map — needed to rebuild an <svg> layer's icon from its shape
+   *  children. Passed rather than read from the store so React.memo still
+   *  works: it's a stable useMemo in LayersPanel. */
+  nodes: Map<string, CanvasNode>;
+  /** Colour presets, for resolving `var(--color-*)` fills — those custom
+   *  properties only exist on the canvas iframe, so the parent frame has to
+   *  look them up. Same stability reasoning as `nodes`. */
+  presetTokens: PresetToken[];
 }) {
   const { id, node, depth, hasChildren, isExpanded } = layer;
   // Viewers get single-click select + expand only. Drag-reorder,
@@ -503,6 +517,10 @@ export const LayerRow = React.memo(function LayerRow({
   // container publishes, so every row's truncation updates on scroll with no
   // JS. `textIndent` is the text's left offset within the scroll CONTENT.
   const [textIndent, setTextIndent] = useState<number | null>(null);
+  // A derived preview can still 404 — a src may be project-relative and resolve
+  // against the EDITOR's origin rather than the canvas iframe's. Falling back to
+  // the type glyph keeps a broken asset from leaving a blank hole in the row.
+  const [previewFailed, setPreviewFailed] = useState(false);
   useEffect(() => {
     const el = textRef.current;
     if (!el) return;
@@ -516,7 +534,9 @@ export const LayerRow = React.memo(function LayerRow({
   // 'group' + the hover/selection background now live on the row WRAPPER and
   // the separate background layer respectively (see JSX). The content row sits
   // ABOVE that layer via z-[1].
-  let rowClass = 'flex items-center gap-2 py-1.5 transition-all duration-150 select-none relative z-[1]';
+  // py-2 (was py-1.5): the leading swatch is 18px vs the old 14px glyph, so
+  // the row needs a little more height or the preview crowds the text.
+  let rowClass = 'flex items-center gap-2 py-2 transition-all duration-150 select-none relative z-[1]';
   if (isDragging) rowClass += ' opacity-40';
 
   // Background style. 20 px indent step matches the Pages panel — each
@@ -544,6 +564,10 @@ export const LayerRow = React.memo(function LayerRow({
   // on a master use --accent-secondary" (Rule 8, 00-ai-instructions.md).
   const isContainerSetInstance = isVectorSetComponentFile(node.componentFile);
   const isSvgVector = (node.type === 'svg' && !node.id.endsWith('-svg')) || isContainerSetInstance;
+  // Recomputed per render rather than memoised: it's a couple of string checks
+  // over props already in memory, and memoising would need the styles object's
+  // identity to be stable across edits, which it isn't.
+  const preview = previewFailed ? null : deriveLayerPreview(node, nodes, 18, presetTokens);
   // Map template nodes use orange, component mode/instances use purple, regular nodes use blue
   const isComponentInstance = !!node.componentFile;
   const usePurple = isComponentMode || (isComponentInstance && !isSvgVector);
@@ -697,8 +721,15 @@ export const LayerRow = React.memo(function LayerRow({
           <span className="w-4 h-4 shrink-0" aria-hidden="true" />
         )}
 
-        {/* Icon */}
-        <div className="shrink-0" style={{
+        {/* Icon / preview — FIXED 18x18 box.
+            Every row must reserve the same width here or the name column steps
+            in and out as you scroll: previews are 18px while the type glyphs
+            are 14px, so without a fixed box the rows with a fill sat wider than
+            the rows without one. The glyph is centred inside the box; a preview
+            fills it. */}
+        <div className="shrink-0 flex items-center justify-center" style={{
+          width: 18,
+          height: 18,
           color: isVpHeader
             ? (isSelected ? selFg : 'var(--accent)')
             : isSelected ? selFg : (node.isCanvasNode || isSvgVector)
@@ -708,29 +739,37 @@ export const LayerRow = React.memo(function LayerRow({
               : 'var(--text-secondary)',
           opacity: node.fromLayout ? 0.5 : 1,
         }}>
-          {isVpHeader && layer.isVariantHeader ? <span style={{ color: isSelected ? selFg : 'var(--accent-secondary)' }}><ComponentIcon size={14} /></span>
-            : isSvgVector ? <IconSetIcon />
-            : isVpHeader ? <ViewportIcon width={layer.viewportWidth} size={14} />
+          {isVpHeader && layer.isVariantHeader ? <span style={{ color: isSelected ? selFg : 'var(--accent-secondary)' }}><ComponentIcon size={18} /></span>
+            : isSvgVector ? (preview?.kind === 'svg'
+                ? <LayerPreview spec={preview} size={18} />
+                : <IconSetIcon size={18} />)
+            : isVpHeader ? <ViewportIcon width={layer.viewportWidth} size={18} />
             : node.isChildrenSlot ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18" />
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="1" width="22" height="22" rx="4" /><path d="M1 8.5h22M1 15.5h22" />
               </svg>
             ) : node.fromLayout ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
             ) : (node.componentFile || (isComponentMode && !node.parentId && !node.isCanvasNode)) ? <span style={{ color: isSelected ? selFg : 'var(--accent-secondary)' }}>{node.isCodeComponent ? (
-              <svg width="14" height="14" viewBox="0 0 24 24"><g fill="none"><path d="M0 0h24v24H0z" /><path fill="currentColor" d="M14.62 2.662a1.5 1.5 0 0 1 1.04 1.85l-4.431 15.787a1.5 1.5 0 0 1-2.889-.81L12.771 3.7a1.5 1.5 0 0 1 1.85-1.039ZM7.56 6.697a1.5 1.5 0 0 1 0 2.12L4.38 12l3.182 3.182a1.5 1.5 0 1 1-2.122 2.121L1.197 13.06a1.5 1.5 0 0 1 0-2.12l4.242-4.243a1.5 1.5 0 0 1 2.122 0Zm8.88 2.12a1.5 1.5 0 1 1 2.12-2.12l4.243 4.242a1.5 1.5 0 0 1 0 2.121l-4.242 4.243a1.5 1.5 0 1 1-2.122-2.121L19.621 12z" /></g></svg>
-            ) : <ComponentIcon size={14} />}</span>
-            : layer.isCmsContainer ? <span style={{ color: isSelected ? selFg : 'var(--accent)' }}><CmsIcon width={14} height={14} /></span>
-            : layer.isCmsItem ? <span style={{ color: isSelected ? selFg : 'var(--accent)' }}><CmsItemIcon size={14} /></span>
-            : (
+              <svg width="18" height="18" viewBox="0 0 24 24"><g fill="none"><path d="M0 0h24v24H0z" /><path fill="currentColor" d="M14.62 2.662a1.5 1.5 0 0 1 1.04 1.85l-4.431 15.787a1.5 1.5 0 0 1-2.889-.81L12.771 3.7a1.5 1.5 0 0 1 1.85-1.039ZM7.56 6.697a1.5 1.5 0 0 1 0 2.12L4.38 12l3.182 3.182a1.5 1.5 0 1 1-2.122 2.121L1.197 13.06a1.5 1.5 0 0 1 0-2.12l4.242-4.243a1.5 1.5 0 0 1 2.122 0Zm8.88 2.12a1.5 1.5 0 1 1 2.12-2.12l4.243 4.242a1.5 1.5 0 0 1 0 2.121l-4.242 4.243a1.5 1.5 0 1 1-2.122-2.121L19.621 12z" /></g></svg>
+            ) : <ComponentIcon size={18} />}</span>
+            : layer.isCmsContainer ? <span style={{ color: isSelected ? selFg : 'var(--accent)' }}><CmsIcon width={18} height={18} /></span>
+            : layer.isCmsItem ? <span style={{ color: isSelected ? selFg : 'var(--accent)' }}><CmsItemIcon size={18} /></span>
+            : preview ? (
+              // Derived from parsed props — see LayerPreview.tsx. Only reached
+              // for plain element nodes: viewport headers, components, CMS
+              // containers and vectors above all carry semantic glyphs that say
+              // more than a swatch would.
+              <LayerPreview spec={preview} size={18} onError={() => setPreviewFailed(true)} />
+            ) : (
               // currentColor: dark on the gold/violet selection fill, neutral
               // grey otherwise. A fixed #bababa washed out on the accent row.
               <span style={{ color: isSelected ? selFg : '#bababa' }}>
-                {node.attrs?.['data-overlay'] ? <OverlayIcon size={14} />
-                  : isTextTag(node.type) ? <TextIcon size={14} />
-                    : <FrameIcon size={14} />}
+                {node.attrs?.['data-overlay'] ? <OverlayIcon size={18} />
+                  : isTextTag(node.type) ? <TextIcon size={18} />
+                    : <FrameIcon size={18} />}
               </span>
             )}
         </div>
