@@ -174,7 +174,7 @@ export default function LinkSlugControl({
               role="button"
               onClick={() => onNavModeChange('none')}
               title="Remove"
-              className="text-white/70 hover:text-white text-sm leading-none shrink-0 cursor-pointer"
+              className="text-[var(--accent-fg)] opacity-70 hover:opacity-100 text-sm leading-none shrink-0 cursor-pointer"
             >
               &times;
             </span>

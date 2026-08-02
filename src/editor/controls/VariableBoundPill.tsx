@@ -54,6 +54,7 @@ function VariableBoundPillView({
   // the standard accent (blue).
   const isComponentFile = useAtomValue(isComponentFileAtom);
   const pillBg = isComponentFile ? 'var(--accent-secondary)' : 'var(--accent)';
+  const pillFg = isComponentFile ? 'var(--accent-secondary-fg)' : 'var(--accent-fg)';
 
   // Show the variable's friendly LABEL (from @propMeta), not the raw camelCase prop id — and keep it in
   // sync when renamed in the modal (re-reads on every projectVersion bump). Page variables (non-component
@@ -103,11 +104,14 @@ function VariableBoundPillView({
         // matches the bordered value widgets (ToolSelect / ControlActionRow): same
         // 1px border-box width AND the fill insets 1px like theirs — without this the
         // borderless pill's colour reaches the outer edge and reads ~2px wider.
-        className="w-full h-8 flex items-center gap-2 pl-1 pr-2 rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium text-white cursor-pointer transition-colors hover:opacity-90 truncate"
-        style={{ backgroundColor: pillBg }}
+        className="w-full h-8 flex items-center gap-2 pl-1 pr-2 rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium cursor-pointer transition-colors hover:opacity-90 truncate"
+        style={{ backgroundColor: pillBg, color: pillFg }}
         title={`Variable: ${displayName} — click to manage`}
       >
-        <span className="w-4 h-4 rounded bg-white/20 flex items-center justify-center shrink-0 text-white">
+        <span
+          className="w-4 h-4 rounded flex items-center justify-center shrink-0"
+          style={{ backgroundColor: 'color-mix(in srgb, currentColor 16%, transparent)' }}
+        >
           <VariableTypeIcon iconKey={resolvedIcon} size={11} />
         </span>
         <span className="truncate flex-1 text-left">{displayName}</span>
@@ -116,7 +120,7 @@ function VariableBoundPillView({
           tabIndex={0}
           onClick={handleRemove}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleRemove(e as any); }}
-          className="text-white/70 hover:text-white text-sm leading-none shrink-0 cursor-pointer"
+          className="opacity-70 hover:opacity-100 text-sm leading-none shrink-0 cursor-pointer"
           title="Remove variable binding"
         >
           ×

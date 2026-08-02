@@ -756,7 +756,7 @@ function BorderPresetPillRow({ group, onClear }: {
           </span>
           <span
             onClick={(e) => { e.stopPropagation(); onClear(); }}
-            className="text-white/70 hover:text-white text-sm leading-none cursor-pointer shrink-0"
+            className="text-[var(--accent-fg)] opacity-70 hover:opacity-100 text-sm leading-none cursor-pointer shrink-0"
           >
             &times;
           </span>

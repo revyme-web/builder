@@ -65,7 +65,7 @@ export default function PageVariableChip({ name, onRemove, selectable }: { name:
         style={{ backgroundColor: 'var(--accent)' }}
         title={isMissing ? `Missing variable "${name}" — click to choose or create one` : `Page variable: ${name}`}
       >
-        <span className="w-4 h-4 rounded bg-white/20 flex items-center justify-center shrink-0 text-[10px] font-bold leading-none">T</span>
+        <span className="w-4 h-4 rounded flex items-center justify-center shrink-0 text-[10px] font-bold leading-none" style={{ backgroundColor: 'color-mix(in srgb, var(--accent-fg) 16%, transparent)' }}>T</span>
         <span className="flex-1 min-w-0 truncate text-left">{label}</span>
         {onRemove ? (
           <span
@@ -73,13 +73,13 @@ export default function PageVariableChip({ name, onRemove, selectable }: { name:
             tabIndex={0}
             onClick={(e) => { e.stopPropagation(); onRemove(); }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onRemove(); } }}
-            className="text-white/70 hover:text-white text-sm leading-none shrink-0 cursor-pointer"
+            className="text-[var(--accent-fg)] opacity-70 hover:opacity-100 text-sm leading-none shrink-0 cursor-pointer"
             title="Remove variable"
           >
             ×
           </span>
         ) : (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/80 shrink-0">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--accent-fg)] opacity-80 shrink-0">
             <polyline points="6 9 12 15 18 9" />
           </svg>
         )}

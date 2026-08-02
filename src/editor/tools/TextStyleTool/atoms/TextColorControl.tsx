@@ -416,7 +416,7 @@ export function TextColorControl() {
               {activePresetToken.label || activePresetToken.name.replace(/^color-/, '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
             </span>
             <span
-              className="text-white/60 hover:text-white text-sm leading-none cursor-pointer shrink-0"
+              className="text-[var(--accent-fg)] opacity-70 hover:opacity-100 text-sm leading-none cursor-pointer shrink-0"
               onClick={clearPreset}
             >
               &times;

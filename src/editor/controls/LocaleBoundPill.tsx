@@ -204,14 +204,14 @@ export default function LocaleBoundPill({ property, propertyLabel, nodeId, baseV
         style={{ backgroundColor: 'var(--accent)' }}
         title={`Localized · ${summary}`}
       >
-        <span className="w-4 h-4 rounded bg-white/20 flex items-center justify-center shrink-0">
+        <span className="w-4 h-4 rounded flex items-center justify-center shrink-0" style={{ backgroundColor: 'color-mix(in srgb, var(--accent-fg) 16%, transparent)' }}>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <circle cx="12" cy="12" r="9" />
             <path d="M3 12h18M12 3c2.5 2.6 3.9 5.7 3.9 9S14.5 18.4 12 21c-2.5-2.6-3.9-5.7-3.9-9S9.5 5.6 12 3z" />
           </svg>
         </span>
         <span className="truncate flex-1 text-left">Locale</span>
-        <span role="button" onClick={clear} className="text-white/70 hover:text-white text-sm leading-none" title="Remove localization">×</span>
+        <span role="button" onClick={clear} className="text-[var(--accent-fg)] opacity-70 hover:opacity-100 text-sm leading-none" title="Remove localization">×</span>
       </button>
       {open && (
         <LocaleStylePopup

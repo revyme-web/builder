@@ -107,7 +107,7 @@ function SplitButton({ active, icon, onClick, onChevronClick, title }: {
         onClick={onChevronClick}
         className={`flex items-center justify-center w-[12px] h-[32px] transition-colors ${
           active
-            ? 'text-white/70 hover:text-white'
+            ? 'text-[var(--accent-fg)] opacity-70 hover:opacity-100'
             : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-sm)]'
         }`}
         style={{ border: 'none', cursor: 'pointer', backgroundColor: 'transparent' }}

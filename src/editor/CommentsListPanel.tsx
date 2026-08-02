@@ -150,7 +150,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ value, options, onChang
                   <span className="truncate">{opt.label}</span>
                 </span>
                 {opt.count !== undefined && (
-                  <span className={`text-[9px] shrink-0 ${active ? 'text-white/70' : 'text-[var(--text-tertiary)]'}`}>
+                  <span className={`text-[9px] shrink-0 ${active ? 'text-[var(--accent-fg)] opacity-70' : 'text-[var(--text-tertiary)]'}`}>
                     {opt.count}
                   </span>
                 )}

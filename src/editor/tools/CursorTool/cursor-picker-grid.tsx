@@ -30,7 +30,7 @@ export function CursorPickerGrid({ value, onChange }: { value: string; onChange:
             <span className="flex items-center justify-center w-9 h-9">
               <Icon size={32} />
             </span>
-            <span className={`text-[10px] truncate w-full text-center ${isSelected ? 'text-white' : 'text-[var(--text-secondary)]'}`}>
+            <span className={`text-[10px] truncate w-full text-center ${isSelected ? 'text-[var(--accent-fg)]' : 'text-[var(--text-secondary)]'}`}>
               {cursorLabel(name)}
             </span>
           </button>

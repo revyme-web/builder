@@ -453,8 +453,8 @@ function ActionConfirmModal({ confirm, onCancel, onRun }: ActionConfirmModalProp
           {running && (isDeploy || isPromote) && (
             <span
               aria-hidden
-              className="absolute inset-y-0 left-0 bg-white/20 transition-[width] duration-300 ease-out"
-              style={{ width: `${Math.round(progress * 100)}%` }}
+              className="absolute inset-y-0 left-0 transition-[width] duration-300 ease-out"
+              style={{ backgroundColor: 'color-mix(in srgb, var(--accent-fg) 24%, transparent)', width: `${Math.round(progress * 100)}%` }}
             />
           )}
           <span className="relative">

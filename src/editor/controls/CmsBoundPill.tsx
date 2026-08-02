@@ -100,7 +100,7 @@ export function CmsBoundPill({ property, fallbackValue }: CmsBoundPillProps) {
           tabIndex={0}
           onClick={handleUnbind}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleUnbind(e as any); }}
-          className="text-white/70 hover:text-white text-sm leading-none shrink-0 cursor-pointer"
+          className="text-[var(--accent-fg)] opacity-70 hover:opacity-100 text-sm leading-none shrink-0 cursor-pointer"
           title="Unbind from CMS field"
         >
           ×
@@ -179,7 +179,7 @@ export function CmsMissingPill({ field, onClear }: { field: string; onClear: () 
         tabIndex={0}
         onClick={handleClear}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClear(e); }}
-        className="text-white/70 hover:text-white text-sm leading-none shrink-0 cursor-pointer"
+        className="text-[var(--accent-fg)] opacity-70 hover:opacity-100 text-sm leading-none shrink-0 cursor-pointer"
         title="Clear — revert to the component default"
       >
         ×
@@ -215,7 +215,7 @@ export function CmsFieldPill({ field, title, onUnbind, onClick }: { field: strin
         tabIndex={0}
         onClick={handleUnbind}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleUnbind(e); }}
-        className="text-white/70 hover:text-white text-sm leading-none shrink-0 cursor-pointer"
+        className="text-[var(--accent-fg)] opacity-70 hover:opacity-100 text-sm leading-none shrink-0 cursor-pointer"
         title="Remove this viewport's binding (show the default)"
       >
         ×

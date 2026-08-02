@@ -75,7 +75,7 @@ export function VariablePresetPillRow({
             tabIndex={0}
             onClick={(e) => { e.stopPropagation(); onDetach(); }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onDetach(); } }}
-            className="ml-1 text-white/70 hover:text-white text-sm leading-none shrink-0 cursor-pointer"
+            className="ml-1 text-[var(--accent-fg)] opacity-70 hover:opacity-100 text-sm leading-none shrink-0 cursor-pointer"
           >
             ×
           </span>

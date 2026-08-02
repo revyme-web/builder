@@ -1518,7 +1518,7 @@ function FillAtom() {
               <span className="truncate">{labelText}</span>
             </span>
             <span onClick={handleClearAll}
-              className="text-white/70 hover:text-white text-sm ml-1">×</span>
+              className="text-[var(--accent-fg)] opacity-70 hover:opacity-100 text-sm ml-1">×</span>
           </button>
         ) : (
           <ControlActionRow
