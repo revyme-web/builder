@@ -534,12 +534,23 @@ function removeScrollFxConst(code: string, e: string, protectRef = false): strin
     if (end === -1) { from = idx + 6; continue; }
     const stmt = result.slice(idx, end + 1);
     const head = stmt.slice(0, stmt.indexOf('=') === -1 ? stmt.length : stmt.indexOf('='));
-    // `<cn>Variants` (the component's framer-motion variants object) ALSO starts
-    // with `<cn>[A-Z]` (Variants → 'V'), but it is NOT a scroll-fx var. Deleting
-    // it leaves the JSX's `variants={…<cn>Variants…}` referencing an undefined
-    // identifier — the reported "frameMr2ed4ynBVariants — would crash at runtime"
-    // when removing the Appear effect from a component-master root. Never sweep it.
-    const isVariantsConst = new RegExp(`\\b${e}Variants\\b`).test(head);
+    // A framer-motion variants object ALSO starts with `<cn>[A-Z]` (Variants →
+    // 'V') but is NOT a scroll-fx var. Deleting one leaves the JSX's
+    // `variants={…}` referencing an undefined identifier — the reported
+    // "frameMr2ed4ynBVariants — would crash at runtime" when removing the Appear
+    // effect from a component-master root.
+    //
+    // Matching only `<cn>Variants` was too narrow. A component names its CHILD
+    // variant objects `<childCn>Variants`, and a child's cn carries the parent's
+    // prefix — so removing the Scroll Transform from a nav root (`e` = 'nav')
+    // swept navBarVariants / navMarkVariants / navLinksVariants / navCtaVariants
+    // / navBurgerVariants / navBarTopVariants / navBarBottomVariants and left
+    // seven dangling identifiers (live find 2026-08-02). Every one of them
+    // matches `nav[A-Z]`; only the exact `navVariants` was carved out.
+    //
+    // Any binding whose name ends in `Variants` is a variants object — a
+    // scroll-fx var is never named that — so protect the whole family.
+    const isVariantsConst = /\b\w*Variants\b/.test(head);
     // Shared-ref protection: text-anim still targets `<cn>Ref` — keep it.
     const isProtectedRef = protectRef && nodeRefRe.test(head);
     if (refRe.test(head) && !isVariantsConst && !isProtectedRef) {

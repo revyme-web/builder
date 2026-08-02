@@ -486,30 +486,70 @@ function checkVariantDialect(code: string, ast: t.File, v: OracleViolation[]): v
     });
   }
 
-  // IMAGE_VARIABLE_URL_WRAPPED — an @propMeta "image" VARIABLE (a prop) bound via a
-  // url-wrapped template literal (`backgroundImage: `url(${image1})``) renders a
-  // plain TEXT field in the panel instead of the "Pick image" control (the parser
-  // reads it as a `urlvar:` binding, not the whole-value `var:` an image control
-  // needs). Bind it as the WHOLE value: `backgroundImage: image1` (the picker
-  // stores the full `url(...)`; default it to '' or 'url(https://…)'). The wrapped
-  // `url(${x})` form is CORRECT ONLY for a CMS FIELD — `url(${item.image})`, a
-  // MemberExpression — so a bare-Identifier image prop is the mis-authored case.
+  // IMAGE_VARIABLE_URL_WRAPPED — an @propMeta "image" VARIABLE (a prop) must bind
+  // as the WHOLE backgroundImage value: `backgroundImage: image1` (the picker
+  // stores the full `url(...)`; default the prop to '' or "url('https://…')").
+  // TWO authored wrappings reach here and both break, differently:
+  //
+  //   `url(${image1})`        TemplateLiteral — the parser reads a `urlvar:`
+  //                           binding, not the whole-value `var:` an image
+  //                           control needs, so the panel shows a plain TEXT
+  //                           field instead of "Pick image".
+  //   'url(' + image1 + ')'   BinaryExpression — WORSE. The canvas renders from
+  //                           PARSED source, it does not execute the component,
+  //                           so a computed style value resolves to nothing and
+  //                           the element renders with no image at all. The
+  //                           template-literal-only check used to miss this
+  //                           (live case: WorkCard, 2026-08-01 — four cards
+  //                           rendered blank and the panel showed no Image
+  //                           control, with a clean oracle pass).
+  //
+  // The wrapped `url(${x})` form is CORRECT ONLY for a CMS FIELD —
+  // `url(${item.image})`, a MemberExpression — so an image PROP is the
+  // mis-authored case either way.
   if (imagePropNames.size > 0) {
+    // → the image-prop name this value url-wraps, or null if it is not a wrap.
+    const urlWrappedImageProp = (val: t.Node): string | null => {
+      if (t.isTemplateLiteral(val)) {
+        if (val.expressions.length !== 1) return null;
+        const ex = val.expressions[0];
+        if (!t.isIdentifier(ex) || !imagePropNames.has(ex.name)) return null;
+        const raw = (val.quasis[0]?.value?.raw ?? '').trimStart().toLowerCase();
+        return raw.startsWith('url(') ? ex.name : null;
+      }
+      if (t.isBinaryExpression(val)) {
+        // Flatten the `+` chain: 'url(' + x + ')' nests to the LEFT, so the
+        // leading quote is the deepest node rather than val.left.
+        const parts: t.Node[] = [];
+        const flatten = (n: t.Node): boolean => {
+          if (t.isBinaryExpression(n)) {
+            if (n.operator !== '+') return false;
+            return flatten(n.left) && flatten(n.right);
+          }
+          parts.push(n);
+          return true;
+        };
+        if (!flatten(val)) return null;
+        const named = parts.filter(
+          (p): p is t.Identifier => t.isIdentifier(p) && imagePropNames.has(p.name));
+        if (named.length !== 1) return null;
+        const lead = t.isStringLiteral(parts[0]) ? parts[0].value.trimStart().toLowerCase() : '';
+        return lead.startsWith('url(') ? named[0].name : null;
+      }
+      return null;
+    };
+
     traverse(ast, {
       ObjectProperty(path: NodePath<t.ObjectProperty>) {
         const key = t.isIdentifier(path.node.key) ? path.node.key.name
           : t.isStringLiteral(path.node.key) ? path.node.key.value : null;
         if (key !== 'backgroundImage') return;
-        const val = path.node.value;
-        if (!t.isTemplateLiteral(val) || val.expressions.length !== 1) return;
-        const ex = val.expressions[0];
-        if (!t.isIdentifier(ex) || !imagePropNames.has(ex.name)) return;
-        const raw = (val.quasis[0]?.value?.raw ?? '').trimStart().toLowerCase();
-        if (!raw.startsWith('url(')) return;
+        const name = urlWrappedImageProp(path.node.value);
+        if (!name) return;
         const line = path.node.loc?.start.line;
         v.push({
           code: 'IMAGE_VARIABLE_URL_WRAPPED', tier: 2, line,
-          message: `The image variable '${ex.name}' (line ${line}) is bound as backgroundImage: \`url(\${${ex.name}})\` — the URL-wrapped form shows a plain TEXT field, not the "Pick image" control. An @propMeta "image" variable must bind as the WHOLE value: backgroundImage: ${ex.name} (the picker stores the full url(...); default it '' or 'url(https://…)'). The wrapped url(\${x}) form is ONLY for a CMS field — url(\${item.image}).`,
+          message: `The image variable '${name}' (line ${line}) is url-wrapped. An @propMeta "image" variable must bind as the WHOLE value — backgroundImage: ${name} — and carry the wrapper in its DEFAULT instead: ${name} = "url('https://…')". Wrapped at the binding it breaks: \`url(\${${name}})\` shows a plain TEXT field rather than the "Pick image" control, and 'url(' + ${name} + ')' is a computed expression the canvas cannot resolve, so the element renders with NO image. The wrapped url(\${x}) form is ONLY for a CMS field — url(\${item.image}).`,
         });
       },
     });

@@ -44,7 +44,7 @@ function TagPills({ tags, onRemove }: { tags: string[]; onRemove: (tag: string) 
           {tag}
           <span
             onClick={() => onRemove(tag)}
-            className="cursor-pointer hover:text-white transition-colors"
+            className="cursor-pointer hover:text-[var(--accent-fg)] transition-colors"
           >
             &times;
           </span>
@@ -463,7 +463,7 @@ function ReferencePicker({ field, value, onChange, multi }: {
               {labelFor(id)}
               <span
                 onClick={() => onChange(selected.filter(x => x !== id))}
-                className="cursor-pointer hover:text-white transition-colors"
+                className="cursor-pointer hover:text-[var(--accent-fg)] transition-colors"
               >
                 &times;
               </span>

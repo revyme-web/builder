@@ -260,7 +260,7 @@ export default function PageVariablesModal() {
                         </span>
                         <div className="flex-1 min-w-0">
                           <div className="text-xs truncate">{v.name}</div>
-                          <div className={`text-[10px] capitalize ${isSelected ? 'text-white/70' : 'text-[var(--text-secondary)] opacity-60'}`}>
+                          <div className={`text-[10px] capitalize ${isSelected ? 'text-[var(--accent-fg)]/70' : 'text-[var(--text-secondary)] opacity-60'}`}>
                             {v.type}{v.queryParam ? ` · ?${v.queryParam}` : ''}
                           </div>
                         </div>

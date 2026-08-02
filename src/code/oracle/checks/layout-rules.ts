@@ -156,6 +156,67 @@ function checkGridNeedsTemplate(ast: t.File, v: OracleViolation[], existingDataI
 }
 
 /**
+ * GRID_CHILD_SPAN_UNRESOLVABLE — a grid child's `gridColumn`/`gridRow` must be
+ * written in one of the two forms the Layout tool's Span dropdown round-trips
+ * losslessly (`formatSpanValue`/`parseSpanValue` in editor/tools/LayoutTool.tsx):
+ *
+ *     absent        → Span 1
+ *     'span N'      → Span N        (N = 2..12)
+ *     '1 / -1'      → Span All
+ *
+ * Every other CSS-legal value — `'7 / span 6'`, `'2 / 4'`, `'span 2 / span 3'`,
+ * named lines — RENDERS CORRECTLY on canvas and in production but decodes to
+ * `'1'`, so the dropdown reads "Span 1" while the element visibly spans six
+ * tracks. The value is not lost until someone touches the dropdown, at which
+ * point the hand-written placement is silently overwritten.
+ *
+ * Line-based placement is also redundant in practice: in a 12-track grid,
+ * children of `'1 / span 6'` and `'7 / span 6'` auto-place to exactly the cells
+ * plain `'span 6'` gives them. Live case: the four Selected Work cards,
+ * 2026-08-01 — correct on canvas, "Span 1" in the panel.
+ */
+function checkGridChildSpan(ast: t.File, v: OracleViolation[], existingDataIds?: Set<string>): void {
+  // The forms parseSpanValue decodes without loss. `N / M` starting at line 1
+  // also decodes (→ Span M-1), but it is not what the control ever WRITES, so
+  // it is steered to the canonical `span N` rather than blessed.
+  const RESOLVES = /^(span\s+([2-9]|1[0-2])|1\s*\/\s*-1)$/;
+
+  traverse(ast, {
+    JSXElement(path) {
+      const attrs = jsxAttrs(path.node.openingElement);
+      const dataId = stringAttr(attrs, 'data-id');
+      if (!dataId) return;
+      if (!existingDataIds || existingDataIds.has(dataId)) return;   // new nodes only
+      const a = attrs.find((x) => x.name.name === 'style');
+      if (a?.value?.type !== 'JSXExpressionContainer' || !t.isObjectExpression(a.value.expression)) return;
+
+      for (const pr of a.value.expression.properties) {
+        if (!t.isObjectProperty(pr)) continue;
+        const k = t.isIdentifier(pr.key) ? pr.key.name : t.isStringLiteral(pr.key) ? pr.key.value : '';
+        if (k !== 'gridColumn' && k !== 'gridRow') continue;
+        // Only literals — an expression is someone else's problem (and the
+        // panel shows no dropdown for it anyway).
+        if (!t.isStringLiteral(pr.value)) continue;
+        const raw = pr.value.value.trim();
+        if (!raw || RESOLVES.test(raw)) continue;
+
+        // Suggest the equivalent the control writes, when it is derivable.
+        const span = raw.match(/^-?\d+\s*\/\s*span\s+(\d+)$/)
+          ?? raw.match(/^span\s+(\d+)$/);
+        const fix = span
+          ? (span[1] === '1' ? `drop ${k} entirely (Span 1 is the default)` : `${k}: 'span ${span[1]}'`)
+          : `${k}: 'span N'`;
+        const line = path.node.openingElement.loc?.start.line;
+        v.push({
+          code: 'GRID_CHILD_SPAN_UNRESOLVABLE', tier: 2, line, elementId: dataId,
+          message: `<${dataId}> (line ${line}) sets ${k}: '${raw}' — a line-based placement the Layout tool's Span dropdown cannot decode, so the panel reads "Span 1" while the element actually spans a different number of tracks, and the first edit to that dropdown silently overwrites the placement. Use ${fix}. Auto-placement puts a 'span N' child in the same cells as the explicit line form; only 'span N' (N=2..12) and '1 / -1' (Span All) round-trip.`,
+        });
+      }
+    },
+  });
+}
+
+/**
  * CANVAS_FILL_FEEDBACK — a code-component <canvas> that fills its box
  * (width/height '100%') MUST be position:'absolute'. An IN-FLOW fill canvas has
  * no definite parent height when the instance uses a fill/grow height, so its
@@ -636,4 +697,4 @@ function checkMediaColumnFlipRebase(ast: t.File, v: OracleViolation[]): void {
   }
 }
 
-export { checkSlotComponentInlineChildren, checkUnresolvableTernary, checkGridNeedsTemplate, checkCanvasFillFeedback, checkPaddingNeedsLayout, checkFlexChildOrder, checkOrderIsString, checkFlexChildShrink, checkImageBackgroundFrame, checkNoLayoutParentRelativeChild, checkMediaColumnFlipRebase };
+export { checkSlotComponentInlineChildren, checkUnresolvableTernary, checkGridNeedsTemplate, checkGridChildSpan, checkCanvasFillFeedback, checkPaddingNeedsLayout, checkFlexChildOrder, checkOrderIsString, checkFlexChildShrink, checkImageBackgroundFrame, checkNoLayoutParentRelativeChild, checkMediaColumnFlipRebase };

@@ -89,7 +89,7 @@ export function ControlRow({ label, children, plain }: ControlRowProps) {
           title={`Preset: ${binding.presetRef} — click to remove`}
         >
           <span className="truncate">{formatPresetLabel(binding.presetRef!)}</span>
-          <span className="ml-1 text-white/70 hover:text-white text-sm">×</span>
+          <span className="ml-1 text-[var(--accent-fg)]/70 hover:text-[var(--accent-fg)] text-sm">×</span>
         </button>
       ) : showVariablePill ? (
         <VariableBoundPill propertyLabel={label} />

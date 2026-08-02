@@ -403,6 +403,23 @@ export default withResponsiveProps(Img);`;
   it('EXEMPTS a CMS field: backgroundImage: `url(${item.image})` (MemberExpression)', () => {
     expect(codes(checkFile(pic('backgroundImage: `url(${item.image})`'), { kind: 'component', path: 'components/Img.tsx' }))).not.toContain('IMAGE_VARIABLE_URL_WRAPPED');
   });
+
+  // The concatenated form used to pass clean — the check only tested for a
+  // TemplateLiteral. It is the WORSE of the two: the canvas renders from parsed
+  // source, so a computed style value resolves to nothing and the element draws
+  // no image at all (live case: WorkCard, 2026-08-01).
+  it("BOUNCES the CONCATENATED wrap: 'url(' + image1 + ')'", () => {
+    expect(codes(checkFile(pic("backgroundImage: 'url(' + image1 + ')'"), { kind: 'component', path: 'components/Img.tsx' }))).toContain('IMAGE_VARIABLE_URL_WRAPPED');
+  });
+  it('BOUNCES a concatenated wrap with a double-quoted lead', () => {
+    expect(codes(checkFile(pic(`backgroundImage: "url(" + image1 + ")"`), { kind: 'component', path: 'components/Img.tsx' }))).toContain('IMAGE_VARIABLE_URL_WRAPPED');
+  });
+  it('EXEMPTS concatenation that is NOT a url() wrap (no leading url()', () => {
+    expect(codes(checkFile(pic("backgroundImage: image1 + ', linear-gradient(red, red)'"), { kind: 'component', path: 'components/Img.tsx' }))).not.toContain('IMAGE_VARIABLE_URL_WRAPPED');
+  });
+  it('EXEMPTS a concatenation over a NON-image prop', () => {
+    expect(codes(checkFile(pic("backgroundImage: 'url(' + notAnImage + ')'"), { kind: 'component', path: 'components/Img.tsx' }))).not.toContain('IMAGE_VARIABLE_URL_WRAPPED');
+  });
 });
 
 describe('checkFile — FIT-text foreignObject is exempt from MISSING_DATA_ID', () => {
@@ -1057,6 +1074,51 @@ export default function Page() {
   });
   it('new-node-only: silent for pre-existing grid', () => {
     expect(has(checkFile(page(`position: 'relative', display: 'grid', gap: '16px'`), { kind: 'page', existingDataIds: new Set(['root','bento','c1','c2']) }))).toBe(false);
+  });
+});
+
+describe('GRID_CHILD_SPAN_UNRESOLVABLE — grid child spans must round-trip in the Span dropdown', () => {
+  const page = (childStyle: string) => `'use client';
+export default function Page() {
+  return <div data-id="root" style={{ position: 'relative' }}>
+    <div data-id="grid" data-name="Grid" style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gridAutoRows: 'minmax(200px, auto)', gap: '16px' }}>
+      <div data-id="c1" data-name="A" style={{ position: 'relative', order: '0', ${childStyle} }}>a</div>
+      <div data-id="c2" data-name="B" style={{ position: 'relative', order: '1' }}>b</div>
+    </div>
+  </div>;
+}`;
+  const ex = new Set<string>(['root']);
+  const vs = (s: string) => checkFile(page(s), { kind: 'page', existingDataIds: ex });
+  const has = (s: string) => vs(s).some(x => x.code === 'GRID_CHILD_SPAN_UNRESOLVABLE');
+
+  // The live regression: renders six tracks wide, panel reads "Span 1".
+  it("flags line-based placement: gridColumn '7 / span 6'", () => {
+    expect(has(`gridColumn: '7 / span 6'`)).toBe(true);
+  });
+  it("flags an explicit line pair: gridColumn '2 / 4'", () => {
+    expect(has(`gridColumn: '2 / 4'`)).toBe(true);
+  });
+  it('flags gridRow the same way', () => {
+    expect(has(`gridRow: '3 / span 2'`)).toBe(true);
+  });
+  it("passes the canonical form: gridColumn 'span 6'", () => {
+    expect(has(`gridColumn: 'span 6'`)).toBe(false);
+  });
+  it("passes Span All: gridColumn '1 / -1'", () => {
+    expect(has(`gridColumn: '1 / -1'`)).toBe(false);
+  });
+  it('passes a child with no span at all', () => {
+    expect(has(`width: '100%'`)).toBe(false);
+  });
+  it('new-node-only: silent for pre-existing children', () => {
+    expect(checkFile(page(`gridColumn: '7 / span 6'`), { kind: 'page', existingDataIds: new Set(['root','grid','c1','c2']) })
+      .some(x => x.code === 'GRID_CHILD_SPAN_UNRESOLVABLE')).toBe(false);
+  });
+  // The message has to be copy-paste fixable — an abstract "use span N" did not
+  // converge for the image rule, so this one carries the derived equivalent.
+  it("names the exact replacement in the message", () => {
+    const m = vs(`gridColumn: '7 / span 6'`).find(x => x.code === 'GRID_CHILD_SPAN_UNRESOLVABLE')!.message;
+    expect(m).toContain(`gridColumn: 'span 6'`);
   });
 });
 

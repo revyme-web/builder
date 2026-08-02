@@ -479,9 +479,9 @@ export default function KeyframeSheet() {
             title={isPlaying ? 'Pause (Space)' : playState === 'paused' ? 'Resume (Space)' : 'Play (Space)'}
           >
             {isPlaying ? (
-              <svg width="8" height="8" viewBox="0 0 10 10" fill="white"><rect x="1" width="3" height="10" rx="0.5" /><rect x="6" width="3" height="10" rx="0.5" /></svg>
+              <svg width="8" height="8" viewBox="0 0 10 10" fill="var(--accent-fg)"><rect x="1" width="3" height="10" rx="0.5" /><rect x="6" width="3" height="10" rx="0.5" /></svg>
             ) : (
-              <svg width="8" height="8" viewBox="0 0 10 10" fill="white"><polygon points="1,0 10,5 1,10" /></svg>
+              <svg width="8" height="8" viewBox="0 0 10 10" fill="var(--accent-fg)"><polygon points="1,0 10,5 1,10" /></svg>
             )}
           </button>
           {/* Stop */}
@@ -493,7 +493,7 @@ export default function KeyframeSheet() {
             }`}
             title="Stop & reset"
           >
-            <svg width="8" height="8" viewBox="0 0 10 10" fill="white"><rect width="10" height="10" rx="1" /></svg>
+            <svg width="8" height="8" viewBox="0 0 10 10" fill="var(--accent-fg)"><rect width="10" height="10" rx="1" /></svg>
           </button>
           {/* Separator */}
           <div className="w-px h-3 bg-[var(--border-light)] shrink-0" />

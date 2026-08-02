@@ -317,9 +317,9 @@ export function LocalePropPopup({ nodeId, componentName, prop, propLabel, option
             style={{ backgroundColor: 'var(--accent)' }}
             title="Open Localization"
           >
-            <span className="w-4 h-4 rounded bg-white/20 flex items-center justify-center shrink-0"><GlobeIcon /></span>
+            <span className="w-4 h-4 rounded bg-[var(--accent-fg)]/20 flex items-center justify-center shrink-0"><GlobeIcon /></span>
             <span className="truncate flex-1 text-left">Locale</span>
-            <span role="button" onClick={(e) => { e.stopPropagation(); clearAll(); }} className="text-white/70 hover:text-white text-sm leading-none" title="Remove localization">×</span>
+            <span role="button" onClick={(e) => { e.stopPropagation(); clearAll(); }} className="text-[var(--accent-fg)]/70 hover:text-[var(--accent-fg)] text-sm leading-none" title="Remove localization">×</span>
           </button>
         </ToolRow>
         <ToolRow label="">
@@ -428,7 +428,7 @@ export function LocalePropPillOr({ nodeId, componentName, prop, propLabel, optio
         style={{ backgroundColor: 'var(--accent)' }}
         title={`Localized · ${state.locales.join(', ')}`}
       >
-        <span className="w-4 h-4 rounded bg-white/20 flex items-center justify-center shrink-0"><GlobeIcon /></span>
+        <span className="w-4 h-4 rounded bg-[var(--accent-fg)]/20 flex items-center justify-center shrink-0"><GlobeIcon /></span>
         <span className="truncate flex-1 text-left">Locale</span>
         <span
           role="button"
@@ -451,7 +451,7 @@ export function LocalePropPillOr({ nodeId, componentName, prop, propLabel, optio
             flushNow();
             trace.action('locale-prop:pill-clear', { nodeId, prop, replica: state.isReplica });
           }}
-          className="text-white/70 hover:text-white text-sm leading-none"
+          className="text-[var(--accent-fg)]/70 hover:text-[var(--accent-fg)] text-sm leading-none"
           title="Remove localization"
         >×</span>
       </button>

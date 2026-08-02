@@ -422,13 +422,24 @@ export default function StylesTool() {
         // surface the inner element's styles.
         null
       ) : (isComponentInstanceWrapper || isVectorSet) ? (
-        // Wrapper-level styles only — Opacity and Hide are always
+        // Wrapper-level styles only — Margin, Opacity and Hide are always
         // visible; the rest (Filter, Mask, Pointer Events, User Select,
         // Z-Index) appear once the user adds them via the +. Each is
         // gated on `visibleIds` so they hide again when removed, same
         // as for non-instance nodes. A VECTOR SET additionally gets a
         // standalone Rotate (no full Transform tool / anchor).
+        //
+        // MARGIN belongs here even though PADDING does not: margin is the
+        // OUTER box, owned by the parent's flow, so an instance override
+        // composes cleanly with whatever the master paints inside. Padding
+        // is the inner box and is the master's to own. The instance already
+        // exposes its other outer-box props (size, align-self, grid span)
+        // via the Size and Layout tools, and codegen writes marginTop onto
+        // an instance without complaint — leaving it out of this branch just
+        // meant hand-written margins rendered on canvas but were invisible
+        // and uneditable in the panel.
         <>
+          <MarginControl />
           <OpacityControl />
           <HideControl />
           {isVectorSet && <RotateControl />}

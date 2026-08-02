@@ -102,6 +102,9 @@ interface NameInputModalProps {
    *  Code Component") pass `var(--accent-secondary)` (purple) to
    *  match the component-system accent. */
   accentColor?: string;
+  /** Label ON the accent fill. Pairs with accentColor — a caller that
+   *  overrides one must override the other. */
+  accentFg?: string;
 }
 
 export default function NameInputModal({
@@ -111,6 +114,7 @@ export default function NameInputModal({
   submitLabel = 'Create Component',
   validate,
   accentColor = 'var(--accent, #cec997)',
+  accentFg = 'var(--accent-fg)',
 }: NameInputModalProps) {
   const [value, setValue] = useState(defaultValue);
   const [error, setError] = useState<string | null>(null);
@@ -161,8 +165,8 @@ export default function NameInputModal({
         <button
           onClick={handleSubmit}
           disabled={!value.trim()}
-          className="w-full h-8 text-xs font-medium text-white rounded-[var(--radius-lg)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 cursor-pointer"
-          style={{ backgroundColor: accentColor }}
+          className="w-full h-8 text-xs font-medium rounded-[var(--radius-lg)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 cursor-pointer"
+          style={{ backgroundColor: accentColor, color: accentFg }}
         >
           {submitLabel}
         </button>

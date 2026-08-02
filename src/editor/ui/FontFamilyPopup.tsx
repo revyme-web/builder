@@ -77,7 +77,7 @@ function FontRow({ index, style, filteredFonts, currentFontName, onSelect, onPre
         style={{ fontFamily: font.family }}
       >
         <span className="text-sm truncate">{font.family}</span>
-        <span className={`text-sm flex-shrink-0 ml-2 ${isSelected ? 'text-white/70' : 'text-[var(--text-secondary)]'}`}>Aa</span>
+        <span className={`text-sm flex-shrink-0 ml-2 ${isSelected ? 'text-[var(--accent-fg)]/70' : 'text-[var(--text-secondary)]'}`}>Aa</span>
       </div>
     </div>
   );
@@ -390,7 +390,7 @@ export default function FontFamilyPopup({ value, onChange, isOpen, onClose, anch
                       style={{ fontFamily: `"${font.family}"` }}
                     >
                       <span className="text-sm truncate">{font.family}</span>
-                      <span className={`text-sm flex-shrink-0 ml-2 ${isSelected ? 'text-white/70' : 'text-[var(--text-secondary)]'}`}>Aa</span>
+                      <span className={`text-sm flex-shrink-0 ml-2 ${isSelected ? 'text-[var(--accent-fg)]/70' : 'text-[var(--text-secondary)]'}`}>Aa</span>
                     </div>
                   </div>
                 );
