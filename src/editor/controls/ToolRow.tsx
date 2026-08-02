@@ -134,7 +134,7 @@ export default function ToolRow({ label, children, labelStyle, onResetOverride, 
       )}
       {/* `min-w-0` lets a too-wide value (e.g. a long variable-pill name) shrink +
           truncate instead of overflowing the panel. No-op when the value fits. */}
-      <div data-tool-row-value className="flex items-center gap-2 w-full min-w-0">
+      <div data-tool-row-value className="flex items-center gap-[var(--control-gap)] w-full min-w-0">
         {children}
       </div>
 

@@ -287,7 +287,7 @@ function CreatePresetPopupBody({ category, initialValue, onClose, onApply }: {
       <button
         onClick={handleSave}
         disabled={!canSave}
-        className={`w-full h-8 rounded-[var(--radius-lg)] text-xs font-medium transition-colors ${
+        className={`w-full h-[var(--control-height)] rounded-[var(--radius-lg)] text-xs font-medium transition-colors ${
           canSave
             ? 'bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer hover:opacity-90'
             : 'bg-[var(--grid-line)] text-[var(--text-disabled)] cursor-not-allowed'

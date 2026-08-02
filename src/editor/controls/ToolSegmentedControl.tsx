@@ -41,7 +41,10 @@ export default function ToolSegmentedControl({ value, onChange, options, size = 
   const px = size === 'compact' ? 'px-1' : 'px-3';
 
   return (
-    <div ref={containerRef} className="relative flex w-full bg-[var(--choice-bg)] rounded-[var(--radius-lg)] p-0.5">
+    // Outlined like the inputs and selects: the track was a bare fill with no
+    // border, so when the other controls moved to outlined-and-recessed this
+    // one stayed a filled slab and stood out as the odd control.
+    <div ref={containerRef} className="relative flex w-full bg-[var(--choice-bg)] border border-[var(--control-border)] rounded-[var(--radius-lg)] p-0.5">
       {/* Animated highlight */}
       <div
         className="absolute rounded"
@@ -50,6 +53,10 @@ export default function ToolSegmentedControl({ value, onChange, options, size = 
           width: highlight.width,
           top: 2, bottom: 2,
           backgroundColor: 'var(--segmented-bg)',
+          // The track is close to the panel now, so the thumb carries the
+          // "raised" reading on its own. Matters most on light, where the
+          // thumb is white on a near-white track.
+          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.18)',
           transition: hasMounted.current ? 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
           zIndex: 1,
         }}

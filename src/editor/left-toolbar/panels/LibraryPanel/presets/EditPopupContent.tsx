@@ -139,7 +139,7 @@ export function AssetValueEditor({ value, type, onChange }: {
       {url && (
         <button
           onClick={() => setPickerOpen(true)}
-          className="w-full h-7 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+          className="w-full h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
         >
           Change {type === 'image' ? 'Image' : 'Video'}
         </button>

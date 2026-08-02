@@ -531,7 +531,7 @@ export default function BottomToolbar() {
       // with rounded-top-only), so the toolbar hovers slightly above the
       // bottom. CommandPalette measures #bottom-toolbar-container's live
       // rect, so anchored UI tracks the offset automatically.
-      style={{ bottom: 'var(--float-gap)', willChange: 'transform', isolation: 'isolate' }}
+      style={{ bottom: 14, willChange: 'transform', isolation: 'isolate' }}
     >
       <div id="bottom-toolbar-container" className="bg-[var(--bg-surface)] flex items-center px-2 p-1.5 rounded-xl border border-[var(--border-light)] shadow-lg gap-0.5">
         {/* ── Cursor / Hand ── Always shown, viewers included: a

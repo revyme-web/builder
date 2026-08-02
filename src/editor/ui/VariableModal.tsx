@@ -223,7 +223,7 @@ function NumberMetaFields({ meta, patch }: { meta: PropNumberMeta; patch: (m: Nu
   const numStr = (n: number | undefined) => (n === undefined ? '' : String(n));
   const ClearBtn = ({ onClick }: { onClick: () => void }) => (
     <button type="button" onClick={onClick}
-      className="h-8 px-3 rounded-[var(--radius-lg)] text-xs font-medium bg-[var(--grid-line)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-light)] shrink-0">
+      className="h-[var(--control-height)] px-3 rounded-[var(--radius-lg)] text-xs font-medium bg-[var(--grid-line)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-light)] shrink-0">
       Clear
     </button>
   );
@@ -1202,7 +1202,7 @@ export default function VariableModal({
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="e.g. cardGap"
                     autoFocus
-                    className={`w-full h-8 px-3 text-xs bg-[var(--grid-line)] rounded-[var(--radius-lg)] text-[var(--text-primary)] focus:outline-none transition-colors ${
+                    className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] rounded-[var(--radius-lg)] text-[var(--text-primary)] focus:outline-none transition-colors ${
                       nameError
                         ? 'border border-red-500 focus:border-red-500'
                         : 'border border-[var(--border-light)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)]'
@@ -1252,7 +1252,7 @@ export default function VariableModal({
               <div className="border-t border-[var(--border-light)] p-4 flex justify-end gap-2">
                 <button
                   onClick={() => { setMode('list'); setSelectedVar(null); }}
-                  className="px-4 h-7 text-xs bg-[var(--control-bg)] text-[var(--text-primary)] border border-[var(--border-light)] rounded-[var(--radius-lg)] hover:bg-[var(--bg-hover)] transition-colors"
+                  className="px-4 h-[var(--control-height-sm)] text-xs bg-[var(--control-bg)] text-[var(--text-primary)] border border-[var(--border-light)] rounded-[var(--radius-lg)] hover:bg-[var(--bg-hover)] transition-colors"
                 >
                   Cancel
                 </button>
@@ -1282,7 +1282,7 @@ export default function VariableModal({
                     onBlur={commitName}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitName(); (e.target as HTMLInputElement).blur(); } }}
                     placeholder="Variable name"
-                    className="w-full h-8 px-3 text-xs bg-[var(--grid-line)] text-[var(--text-primary)] border border-[var(--border-light)] rounded-[var(--radius-lg)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)] focus:outline-none transition-colors"
+                    className="w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] text-[var(--text-primary)] border border-[var(--border-light)] rounded-[var(--radius-lg)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)] focus:outline-none transition-colors"
                   />
                 </FieldRow>
 

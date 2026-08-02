@@ -467,7 +467,7 @@ export default function MotionPropsEditor({ nodeId, props, onChange, preview, de
                   <ToolInput value={xVal} onChange={(v) => handleChange({ ...localProps, [xKey]: v })} step={1} chevronLabel="X" />
                   <ToolInput value={yVal} onChange={(v) => handleChange({ ...localProps, [yKey]: v })} step={1} chevronLabel="Y" />
                   <button type="button" onClick={toggleUnit}
-                    className="flex items-center justify-center h-7 px-1.5 text-[10px] font-medium transition-colors cursor-pointer bg-[var(--button-secondary-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-md shrink-0"
+                    className="flex items-center justify-center h-[var(--control-height-sm)] px-1.5 text-[10px] font-medium transition-colors cursor-pointer bg-[var(--button-secondary-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-md shrink-0"
                     title={`Switch to ${usingPercent ? 'pixels' : 'percent'}`}>
                     {usingPercent ? '%' : 'px'}
                   </button>
@@ -558,7 +558,7 @@ export default function MotionPropsEditor({ nodeId, props, onChange, preview, de
                   {availableRawProps.map(key => (
                     <button key={key}
                       onClick={() => { handleChange({ ...localProps, [key]: '0' }); closeAll(); }}
-                      className="w-full h-8 flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
+                      className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
                       {(() => { const I = getPropertyIcon(key); return <I width={20} height={20} className="shrink-0" />; })()}
                       {key === 'color' ? 'Color' : key === 'width' ? 'Width' : 'Height'}
                     </button>
@@ -566,7 +566,7 @@ export default function MotionPropsEditor({ nodeId, props, onChange, preview, de
                   {availableToAdd.map(({ key, label }) => (
                     <button key={key}
                       onClick={() => { handleChange({ ...localProps, [key]: ADD_PROPERTY_DEFAULTS[key] || '0' }); closeAll(); }}
-                      className="w-full h-8 flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
+                      className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
                       {(() => { const I = getPropertyIcon(key); return <I width={20} height={20} className="shrink-0" />; })()}
                       {label}
                     </button>
@@ -577,7 +577,7 @@ export default function MotionPropsEditor({ nodeId, props, onChange, preview, de
               else if (renderAddPropertyList) renderAddPropertyList(addList);
               else setShowAddList(!showAddList);
             }}
-              className="w-full h-8 flex items-center justify-center text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors">
+              className="w-full h-[var(--control-height)] flex items-center justify-center text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors">
               + Add Property
             </button>
             </div>
@@ -588,14 +588,14 @@ export default function MotionPropsEditor({ nodeId, props, onChange, preview, de
               {availableRawProps.map(key => (
                 <button key={key}
                   onClick={() => { handleChange({ ...localProps, [key]: '0' }); setShowAddList(false); }}
-                  className="w-full h-8 flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
+                  className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
                   {key === 'color' ? 'Color' : key === 'width' ? 'Width' : 'Height'}
                 </button>
               ))}
               {availableToAdd.map(({ key, label }) => (
                 <button key={key}
                   onClick={() => { handleChange({ ...localProps, [key]: ADD_PROPERTY_DEFAULTS[key] || '0' }); setShowAddList(false); }}
-                  className="w-full h-8 flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
+                  className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
                   {label}
                 </button>
               ))}

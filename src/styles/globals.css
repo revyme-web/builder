@@ -139,18 +139,24 @@
     /* Properties-panel controls. On light these must sit BELOW the white
        panel — a control lighter than its container has no edge — so the ladder
        inverts here: panel #ffffff -> control -> hover -> active. */
-    --control-bg: #f8fafc;
+    /* ALIAS of --grid-line, not a second value. Two tokens ended up meaning
+       "control fill" — atoms like ToolInput use --grid-line, while
+       LinkUrlControl and ~36 other sites use this one. They held identical
+       values, so the split was invisible until the fill changed and only half
+       the controls followed. Aliasing makes drift impossible; the name stays
+       because 36 sites read it. */
+    --control-bg: var(--grid-line);
     --control-bg-hover: #f1f5f9;
     --control-bg-active: #e2e8f0;
     --control-border: #e2e8f0;
     --control-border-hover: #cbd5e1;
-    --grid-line: rgba(224, 224, 224, 0.4);
+    --grid-line: rgba(0, 0, 0, 0.022);
     /* Segmented controls (No/Yes, Flex/Grid, …). Two levels, and they must
        come from the same ladder as every other control or the segment reads
        as a different material: --choice-bg is the recessed TRACK, and
        --segmented-bg the RAISED active segment. These were flat greys
        (#e8e8e8 / white, #1a1a1a / #333333) left over from the old palette. */
-    --choice-bg: #e8e8e8;
+    --choice-bg: rgba(0, 0, 0, 0.045);
     --segmented-bg: #ffffff;
     --slider-bg: #e2e8f0;
     /* Border ring around the white slider thumb. Dark on the light
@@ -190,7 +196,28 @@
     --left-sidebar-width: 256px;
     --left-menu-width: 52px;
     --right-panel-width: 260px;
-    --control-height: 28px;
+    /* ── Control geometry ──
+       Radius already had tokens (--radius-*); HEIGHT, PADDING and GAP did not,
+       so retuning the properties panel's density meant editing every atom in
+       editor/controls plus every hand-rolled control that skipped them. These
+       make density one knob.
+
+       `--control-height` already existed here but was consumed by NOTHING —
+       every atom hardcoded its own. Its old value (28) was also wrong for the
+       majority case, so it's corrected to 32 and given a `-sm` sibling rather
+       than leaving a token that lies about the UI.
+
+       Two heights on purpose: the atoms were already split — ToolInput and
+       ToolSelect at 32, ToolButton and ToolPlusMinus at 28. Collapsing them
+       into one value would silently resize half the panel, so this records
+       the split instead of hiding it.
+
+       THEME-INDEPENDENT, in `:root` only — same rule as --tool-label-col
+       below: these are track sizes, not colours. */
+    --control-height: 32px;
+    --control-height-sm: 28px;
+    --control-pad-x: 6px;
+    --control-gap: 8px;
     --bottom-toolbar-height: 48px;
 
     /* ─── Control-row grid (properties panel + tool popups) ─────────────
@@ -230,12 +257,12 @@
        brightest thing on screen in both themes. */
     /* Neutral grey — see the :root note. Not the ayu blue-black. */
     --bg-canvas: #1d1d1d;
-    --bg-surface: #111111;
-    --bg-toolbar: #111111;
-    --bg-panel: #111111;
+    --bg-surface: #171717;
+    --bg-toolbar: #171717;
+    --bg-panel: #171717;
     --bg-hover: #282828a3;
     --bg-active: #4a4a4a;
-    --bg-tertiary: #1a1a1a;
+    --bg-tertiary: #1f1f1f;
     /* Neutral greys — see the :root note. Canvas-adjacent, so untinted. */
     --canvas-chrome-bg: #2a2a2a;
     --canvas-chrome-border: #333333;
@@ -297,14 +324,25 @@
        control-bg-hover and control-border-hover were Tailwind slate
        (#334155 / #475569): cool blue-greys that visibly fought the warm
        accent the moment anything was hovered. */
-    --control-bg: rgba(50, 50, 50, 0.8);
+    /* ALIAS of --grid-line, not a second value. Two tokens ended up meaning
+       "control fill" — atoms like ToolInput use --grid-line, while
+       LinkUrlControl and ~36 other sites use this one. They held identical
+       values, so the split was invisible until the fill changed and only half
+       the controls followed. Aliasing makes drift impossible; the name stays
+       because 36 sites read it. */
+    --control-bg: var(--grid-line);
     --control-bg-hover: #334155;
     --control-bg-active: #45464b;
-    --control-border: #292929;
+    --control-border: #333333;
     --control-border-hover: #475569;
-    --grid-line: rgba(50, 50, 50, 0.8);
+    /* Control fill. Was rgba(50,50,50,.8) — which composites to ~#2b2b2b over
+       the #111111 panel, two units off --control-border's #292929. The border
+       was therefore invisible and every control read as a solid raised slab.
+       Now the fill is a faint lift and the BORDER defines the control, which
+       is both quieter and structurally different from the filled-pill idiom. */
+    --grid-line: rgba(255, 255, 255, 0.035);
     /* See the :root note — recessed track, raised active segment. */
-    --choice-bg: #1a1a1a;
+    --choice-bg: rgba(255, 255, 255, 0.035);
     --segmented-bg: #333333;
     --slider-bg: #333333;
     --slider-thumb-border: rgba(255, 255, 255, 0.5);
@@ -404,171 +442,3 @@ html.theme-transition *::after {
 .vp-add-item:hover span {
   color: #fff !important;
 }
-
-/* ─── Floating panel shell (TRIAL) ──────────────────────────────────────
-   The left rail and the right inspector detach from the window edges: inset
-   by --float-gap, rounded, with the canvas running FULL-BLEED behind them
-   instead of being boxed between them.
-
-   Deliberately UNLAYERED. Tailwind utilities live in @layer utilities and, in
-   CSS cascade layers, unlayered rules always win — so these override the
-   `border-l` / `w-[260px]` utilities already on those roots. The !important
-   flags are narrower than they look: those panels carry INLINE `top: 52` /
-   `marginTop: 52` / `height` from the docked layout, and inline styles beat
-   any class. Rather than unpick each one during a trial, the shell overrides
-   them here so the whole thing reverts by deleting this block.
-   ──────────────────────────────────────────────────────────────────── */
-:root {
-  --float-gap: 10px;
-  --float-radius: 14px;
-  /* The rail and the panel beside it are ONE card, so the shadow may only fall
-     on the OUTER perimeter. A single all-round shadow put the panel's left
-     spread straight onto the rail — the panel paints second, so it landed as a
-     grey band down the seam. Invisible on dark, obvious on light. Each half now
-     casts AWAY from the seam; the right inspector keeps the plain one. */
-  --float-shadow: 0 12px 32px -10px rgba(0, 0, 0, 0.16);
-  --float-shadow-l: -12px 12px 32px -14px rgba(0, 0, 0, 0.16);
-  --float-shadow-r: 12px 12px 32px -14px rgba(0, 0, 0, 0.16);
-  /* Spread-only: see the header rule below for why it can't drop downward. */
-  --float-shadow-header: 0 0 24px -12px rgba(0, 0, 0, 0.16);
-}
-
-/* Dark can carry a much stronger shadow — there is little left to darken, so
-   it reads as depth rather than as dirt. */
-:root.dark {
-  --float-shadow: 0 12px 32px -10px rgba(0, 0, 0, 0.5);
-  --float-shadow-l: -12px 12px 32px -14px rgba(0, 0, 0, 0.5);
-  --float-shadow-r: 12px 12px 32px -14px rgba(0, 0, 0, 0.5);
-  --float-shadow-header: 0 0 24px -12px rgba(0, 0, 0, 0.5);
-}
-
-/* ── Docked mode ──
-   The full-screen overlays (CMS, translations, settings, preview) cover the
-   whole viewport. Floating panels leave a gap and a rounded corner sitting over
-   a square, edge-to-edge overlay, which reads as a mistake. So the chrome DOCKS
-   while one is open and floats again when it closes.
-
-   The entire thing is these four values. Every position above is expressed in
-   terms of them, so zeroing them reproduces the original edge-to-edge layout
-   exactly — no rule here restates a coordinate, and the two layouts can't drift
-   apart. The shadows go to a transparent shadow rather than `none` so they
-   interpolate instead of popping. */
-:root.panels-docked {
-  --float-gap: 0px;
-  --float-radius: 0px;
-  --float-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
-  --float-shadow-l: 0 0 0 0 rgba(0, 0, 0, 0);
-  --float-shadow-r: 0 0 0 0 rgba(0, 0, 0, 0);
-  --float-shadow-header: 0 0 0 0 rgba(0, 0, 0, 0);
-}
-
-.float-panel-menu,
-.float-panel-left,
-.float-panel-right {
-  position: fixed !important;
-  top: calc(52px + var(--float-gap)) !important;
-  height: calc(100vh - 52px - var(--float-gap) * 2) !important;
-  margin-top: 0 !important;
-  border: 1px solid var(--border-light);
-  box-shadow: var(--float-shadow);
-  z-index: 5000;
-  /* Custom properties don't animate, but the properties computed FROM them do:
-     changing --float-gap re-resolves these and the transition interpolates the
-     used values. That's what makes docking a single class toggle. */
-  transition:
-    top 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    left 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    right 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    height 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    border-radius 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    box-shadow 280ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-/* Each side is ONE card: header on top, panel below, flush. Radius lives on
-   the OUTER corners only — the panels are square where they meet their header,
-   and the header is square where it meets the panel. The seam is owned by the
-   header's own `border-b`, so the panels drop their top border to avoid
-   doubling it into a 2px line. */
-.float-panel-menu {
-  left: var(--float-gap) !important;
-  border-bottom-left-radius: var(--float-radius);
-  border-top: none;
-  border-right: none;
-  box-shadow: var(--float-shadow-l);
-}
-
-.float-panel-left {
-  left: calc(var(--float-gap) + 52px) !important;
-  border-bottom-right-radius: var(--float-radius);
-  border-top: none;
-  border-left: none;
-  box-shadow: var(--float-shadow-r);
-}
-
-/* No `overflow` here on purpose: several of these roots carry
-   `overflow-y-auto` and an unlayered override would kill their scrolling. */
-.float-panel-right {
-  right: var(--float-gap) !important;
-  left: auto !important;
-  border-bottom-left-radius: var(--float-radius);
-  border-bottom-right-radius: var(--float-radius);
-  border-top: none;
-}
-
-/* ── Headers, docked to the top of their panel ──
-   Same inset as the panels so the two form a single column. The shadow here
-   is spread-only (no downward offset): the panel's own drop shadow would
-   otherwise be cast ONTO the panel across the seam and read as a dark band. */
-.float-header-left,
-.float-header-right {
-  position: fixed !important;
-  top: var(--float-gap) !important;
-  border-top: 1px solid var(--border-light);
-  border-left: 1px solid var(--border-light);
-  border-right: 1px solid var(--border-light);
-  border-top-left-radius: var(--float-radius);
-  border-top-right-radius: var(--float-radius);
-  box-shadow: var(--float-shadow-header);
-  transition:
-    top 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    left 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    right 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    border-radius 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    box-shadow 280ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .float-panel-menu,
-  .float-panel-left,
-  .float-panel-right,
-  .float-header-left,
-  .float-header-right,
-  .float-bar-top { transition: none; }
-}
-
-/* The breadcrumb bar between the two cards. Same row as the headers, so it
-   floats with them instead of spanning edge-to-edge behind them: it was pinned
-   at left:308 / right:260, the DOCKED panel edges, so it tucked ~10px under
-   each floating card and read as the one piece of chrome that hadn't moved.
-
-   The offsets are gap + card + gap, expressed in the same variables as
-   everything else — so at --float-gap:0 they collapse to exactly 308 and 260
-   and the docked layout is reproduced without restating it. */
-.float-bar-top {
-  position: fixed !important;
-  top: var(--float-gap) !important;
-  left: calc(var(--float-gap) * 2 + 308px) !important;
-  right: calc(var(--float-gap) * 2 + 260px) !important;
-  border: 1px solid var(--border-light);
-  border-radius: var(--float-radius);
-  box-shadow: var(--float-shadow);
-  transition:
-    top 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    left 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    right 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    border-radius 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    box-shadow 280ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-.float-header-left { left: var(--float-gap) !important; }
-.float-header-right { right: var(--float-gap) !important; }

@@ -170,7 +170,7 @@ function VideoToolInner({
             </div>
             <button
               onClick={() => setVideoModalOpen(true)}
-              className="w-full h-7 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+              className="w-full h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
             >
               Change
             </button>
@@ -193,7 +193,7 @@ function VideoToolInner({
           {poster ? (
             <button
               onClick={() => setPosterModalOpen(true)}
-              className="w-full h-8 flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-xs text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+              className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-xs text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
             >
               <div
                 className="w-6 h-6 rounded shrink-0 border border-[var(--border-light)]"
@@ -204,7 +204,7 @@ function VideoToolInner({
           ) : (
             <button
               onClick={() => setPosterModalOpen(true)}
-              className="w-full h-8 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-secondary)] hover:border-[var(--control-border-hover)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              className="w-full h-[var(--control-height)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-secondary)] hover:border-[var(--control-border-hover)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
             >
               Choose
             </button>

@@ -191,7 +191,7 @@ export default function CropModal({ isOpen, onClose, src, onApply }: CropModalPr
           <button
             onClick={onClose}
             disabled={busy}
-            className="h-8 px-4 text-xs rounded-[var(--radius-lg)] bg-[var(--grid-line)] border border-[var(--control-border)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer disabled:opacity-50"
+            className="h-[var(--control-height)] px-4 text-xs rounded-[var(--radius-lg)] bg-[var(--grid-line)] border border-[var(--control-border)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer disabled:opacity-50"
           >
             Cancel
           </button>

@@ -488,7 +488,7 @@ function PseudoEditor({ nodeId, pseudo, styles }: {
                       popPanel?.();
                       trace.action('pseudo-editor:add-property', { nodeId, pseudo, property: key });
                     }}
-                    className="w-full h-8 shrink-0 flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
+                    className="w-full h-[var(--control-height)] shrink-0 flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
                     {(() => { const I = getPropertyIcon(key); return <I width={20} height={20} className="shrink-0" />; })()}
                     {label}
                   </button>
@@ -500,7 +500,7 @@ function PseudoEditor({ nodeId, pseudo, styles }: {
                       popPanel?.();
                       trace.action('pseudo-editor:add-property', { nodeId, pseudo, property: 'textShadow' });
                     }}
-                    className="w-full h-8 shrink-0 flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
+                    className="w-full h-[var(--control-height)] shrink-0 flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
                     {(() => { const I = getPropertyIcon('textShadow'); return <I width={20} height={20} className="shrink-0" />; })()}
                     Text Shadow
                   </button>
@@ -512,7 +512,7 @@ function PseudoEditor({ nodeId, pseudo, styles }: {
                       popPanel?.();
                       trace.action('pseudo-editor:add-property', { nodeId, pseudo, property: 'animation' });
                     }}
-                    className="w-full h-8 shrink-0 flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
+                    className="w-full h-[var(--control-height)] shrink-0 flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
                     {(() => { const I = getPropertyIcon('animation'); return <I width={20} height={20} className="shrink-0" />; })()}
                     Animation
                   </button>
@@ -529,7 +529,7 @@ function PseudoEditor({ nodeId, pseudo, styles }: {
                       popPanel?.();
                       trace.action('pseudo-editor:add-property', { nodeId, pseudo, property: key });
                     }}
-                    className="w-full h-8 shrink-0 flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
+                    className="w-full h-[var(--control-height)] shrink-0 flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]">
                     {(() => { const I = getPropertyIcon(key); return <I width={20} height={20} className="shrink-0" />; })()}
                     {label}
                   </button>
@@ -538,7 +538,7 @@ function PseudoEditor({ nodeId, pseudo, styles }: {
             );
             if (pushPanel) pushPanel('Add Property', addList);
           }}
-            className="w-full h-8 flex items-center justify-center text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors">
+            className="w-full h-[var(--control-height)] flex items-center justify-center text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors">
             + Add Property
           </button>
           </div>

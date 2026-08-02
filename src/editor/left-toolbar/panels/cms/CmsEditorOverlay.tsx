@@ -67,7 +67,7 @@ function sidebarSearchInput(value: string, onChange: (v: string) => void, placeh
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full h-7 px-2.5 text-xs bg-[var(--control-bg)] border border-[var(--control-border)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
+      className="w-full h-[var(--control-height-sm)] px-2.5 text-xs bg-[var(--control-bg)] border border-[var(--control-border)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
     />
   );
 }

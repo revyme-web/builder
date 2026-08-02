@@ -45,7 +45,7 @@ export default function VibeDockShell({ headerAccessory, contextLabel, onDetach,
       // `data-editor-panel` lets ToolbarDragStrategy recognize "cursor over a
       // left panel, not the canvas" — same marker LeftPanel carries.
       data-editor-panel="left-primary"
-      className="float-panel-left fixed z-[5000] flex flex-col overflow-hidden bg-[var(--bg-surface)] border-r border-[var(--border-light)]"
+      className="fixed z-[5000] flex flex-col overflow-hidden bg-[var(--bg-surface)] border-r border-[var(--border-light)]"
       style={{ left: 52, top: 52, width: 256, height: 'calc(100vh - 52px)' }}
     >
       {/* Header */}

@@ -72,7 +72,7 @@ export default function CreateImagePresetPanel({ initialValue, onCreated }: Prop
           />
           <button
             onClick={() => setPickerOpen(true)}
-            className="w-full h-7 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+            className="w-full h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
           >
             Change Image
           </button>
@@ -93,7 +93,7 @@ export default function CreateImagePresetPanel({ initialValue, onCreated }: Prop
       <button
         onClick={handleCreate}
         disabled={!name.trim() || !url}
-        className={`w-full h-8 rounded-[var(--radius-lg)] text-xs font-medium transition-colors ${
+        className={`w-full h-[var(--control-height)] rounded-[var(--radius-lg)] text-xs font-medium transition-colors ${
           name.trim() && url
             ? 'bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer hover:opacity-90'
             : 'bg-[var(--grid-line)] text-[var(--text-disabled)] cursor-not-allowed'

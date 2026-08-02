@@ -329,7 +329,7 @@ export default function TranslationsOverlay() {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search text…"
-          className="w-[220px] h-8 px-2.5 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] rounded-[var(--radius-lg)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none transition-colors"
+          className="w-[220px] h-[var(--control-height)] px-2.5 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] rounded-[var(--radius-lg)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none transition-colors"
         />
       </div>
 

@@ -435,7 +435,7 @@ export function ConfirmModal({
                 <button
                   onClick={onCancel}
                   disabled={isLoading}
-                  className="flex-1 h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-lg)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  className="flex-1 h-[var(--control-height)] text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-lg)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {cancelText}
                 </button>

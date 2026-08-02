@@ -292,7 +292,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
               // immediately without clearing first.
               onFocus={(e) => e.currentTarget.select()}
               placeholder="Search images... (Enter to search)"
-              className="w-64 h-8 px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors"
+              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors"
             />
           )}
 
@@ -304,7 +304,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
               onChange={(e) => setQuery3d(e.target.value)}
               onFocus={(e) => e.currentTarget.select()}
               placeholder="Search 3D assets..."
-              className="w-64 h-8 px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors"
+              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors"
             />
           )}
         </div>

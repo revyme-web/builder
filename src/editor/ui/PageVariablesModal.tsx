@@ -283,7 +283,7 @@ export default function PageVariablesModal() {
                   onChange={(e) => setDraftName(e.target.value)}
                   placeholder="e.g. opacity"
                   autoFocus={mode === 'create'}
-                  className={`w-full h-8 px-3 text-xs bg-[var(--grid-line)] rounded-[var(--radius-lg)] text-[var(--text-primary)] focus:outline-none transition-colors ${
+                  className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] rounded-[var(--radius-lg)] text-[var(--text-primary)] focus:outline-none transition-colors ${
                     nameError
                       ? 'border border-red-500 focus:border-red-500'
                       : 'border border-[var(--border-light)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)]'
@@ -321,7 +321,7 @@ export default function PageVariablesModal() {
                   value={draftQueryParam}
                   onChange={(e) => setDraftQueryParam(e.target.value)}
                   placeholder="e.g. tab"
-                  className={`w-full h-8 px-3 text-xs bg-[var(--grid-line)] rounded-[var(--radius-lg)] text-[var(--text-primary)] focus:outline-none transition-colors ${
+                  className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] rounded-[var(--radius-lg)] text-[var(--text-primary)] focus:outline-none transition-colors ${
                     queryParamError
                       ? 'border border-red-500 focus:border-red-500'
                       : 'border border-[var(--border-light)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)]'
@@ -347,7 +347,7 @@ export default function PageVariablesModal() {
                   <>
                     <button
                       onClick={onClose}
-                      className="px-4 h-7 text-xs bg-[var(--control-bg)] text-[var(--text-primary)] border border-[var(--border-light)] rounded-[var(--radius-lg)] hover:bg-[var(--bg-hover)] transition-colors"
+                      className="px-4 h-[var(--control-height-sm)] text-xs bg-[var(--control-bg)] text-[var(--text-primary)] border border-[var(--border-light)] rounded-[var(--radius-lg)] hover:bg-[var(--bg-hover)] transition-colors"
                     >
                       Cancel
                     </button>

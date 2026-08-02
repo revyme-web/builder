@@ -338,7 +338,7 @@ export default function CmsOverlay() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search items..."
-            className="w-[200px] h-7 px-2.5 text-xs bg-[var(--bg-input)] border border-[var(--control-border)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
+            className="w-[200px] h-[var(--control-height-sm)] px-2.5 text-xs bg-[var(--bg-input)] border border-[var(--control-border)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
           />
         </div>
 

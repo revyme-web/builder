@@ -58,7 +58,7 @@ interface EditorData {
 }
 
 // Native date input styled to match ToolInput (dark color-scheme picker).
-const DATE_INPUT_CLASS = 'w-full h-8 px-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors [color-scheme:dark]';
+const DATE_INPUT_CLASS = 'w-full h-[var(--control-height)] px-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors [color-scheme:dark]';
 
 // ─── Popup body (rendered INSIDE the ToolPopup → can call useToolPopup) ───────
 function FiltersPopupBody({

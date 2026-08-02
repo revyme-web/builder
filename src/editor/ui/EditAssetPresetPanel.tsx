@@ -99,13 +99,13 @@ export default function EditAssetPresetPanel({ presetName, type, initialValue, o
       <div className="flex gap-1.5">
         <button
           onClick={() => setPickerOpen(true)}
-          className="flex-1 h-7 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+          className="flex-1 h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
         >
           Change
         </button>
         <button
           onClick={handleDelete}
-          className="h-7 px-3 text-xs text-red-400 hover:text-red-300 border border-[var(--control-border)] rounded-[var(--radius-lg)] transition-colors cursor-pointer"
+          className="h-[var(--control-height-sm)] px-3 text-xs text-red-400 hover:text-red-300 border border-[var(--control-border)] rounded-[var(--radius-lg)] transition-colors cursor-pointer"
         >
           Delete
         </button>

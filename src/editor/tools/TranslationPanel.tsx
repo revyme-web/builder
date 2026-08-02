@@ -31,7 +31,7 @@ import type { CanvasNode } from '@/code/parsing/parser';
 import { trace } from '@/shared/debug-trace';
 
 const PANEL_CLASS =
-  'float-panel-right w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] overflow-y-auto scrollbar-hide relative z-5000';
+  'w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] overflow-y-auto scrollbar-hide relative z-5000';
 
 /** A node is text-translatable when it carries literal text or is already
  *  transformed — but NOT when its text is variable/CMS-bound. */

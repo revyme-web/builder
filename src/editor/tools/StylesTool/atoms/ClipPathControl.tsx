@@ -128,7 +128,7 @@ function ClipPathEditor({ initialData, onWrite, showOverlay }: ClipPathEditorPro
             <button key={preset.name}
               onClick={() => write({ ...data, points: presetToPoints(preset.points) })}
               title={preset.name}
-              className="h-8 w-full bg-[var(--choice-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded transition-colors relative overflow-hidden cursor-pointer">
+              className="h-[var(--control-height)] w-full bg-[var(--choice-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded transition-colors relative overflow-hidden cursor-pointer">
               <div className="absolute inset-1 bg-[var(--text-secondary)]"
                 style={{ clipPath: `polygon(${preset.points.map(([x, y]) => `${x}% ${y}%`).join(', ')})` }} />
             </button>

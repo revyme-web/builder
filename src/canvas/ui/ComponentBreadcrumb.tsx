@@ -295,7 +295,7 @@ export default function ComponentBreadcrumb() {
   // (z-9999) which need to remain on top of everything in the editor.
   return createPortal(
     <div
-      className="float-bar-top fixed h-[52px] px-4 flex items-center left-[308px] right-[260px] shadow-[var(--shadow-sm)] border-b border-[var(--border-default)] bg-[var(--bg-surface)] z-[9000] top-0"
+      className="fixed h-[52px] px-4 flex items-center left-[308px] right-[260px] shadow-[var(--shadow-sm)] border-b border-[var(--border-default)] bg-[var(--bg-surface)] z-[9000] top-0"
       data-dynamic-toolbar="true"
     >
       {overlayEditingId ? (

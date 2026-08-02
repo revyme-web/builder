@@ -33,7 +33,7 @@ export default function GroupControl({ label, controls, renderControl }: GroupCo
       <button
         ref={btnRef}
         onClick={() => setOpen(o => !o)}
-        className="w-full h-7 px-2 flex items-center gap-1.5 text-xs rounded-md bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] transition-colors"
+        className="w-full h-[var(--control-height-sm)] px-2 flex items-center gap-1.5 text-xs rounded-md bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] transition-colors"
       >
         <span className="text-[var(--accent-text)] text-[13px] leading-none tracking-tighter">•••</span>
         <span className="flex-1 text-left text-[var(--text-tertiary)]">

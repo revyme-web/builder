@@ -104,7 +104,7 @@ function ImagePopupBody({ value, onChange }: ImagePopupBodyProps) {
           <div className="flex gap-1.5">
             <button
               onClick={() => setImageModalOpen(true)}
-              className="flex-1 h-7 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+              className="flex-1 h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
             >
               Change
             </button>

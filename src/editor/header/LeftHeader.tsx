@@ -232,7 +232,7 @@ export default function LeftHeader() {
 
   return (
     <div
-      className="float-header-left h-[52px] bg-[var(--bg-surface)] border-b border-r border-[var(--border-light)] fixed top-0 left-0 z-[9999] flex"
+      className="h-[52px] bg-[var(--bg-surface)] border-b border-r border-[var(--border-light)] fixed top-0 left-0 z-[9999] flex"
       style={{ width: 'calc(52px + 256px)' }}
     >
       {/* Logo column — 51 px wide so the rule at its right edge lands

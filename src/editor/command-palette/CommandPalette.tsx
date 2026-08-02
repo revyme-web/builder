@@ -140,7 +140,7 @@ export function CommandPalette() {
           >
             {/* Search input */}
             <div className="p-2 border-b border-[var(--border-light)]">
-              <div className="flex items-center gap-2 px-2.5 h-8 bg-[var(--grid-line)] border border-[var(--control-border)] rounded-lg">
+              <div className="flex items-center gap-2 px-2.5 h-[var(--control-height)] bg-[var(--grid-line)] border border-[var(--control-border)] rounded-lg">
                 <SearchIcon className="w-3.5 h-3.5 text-[var(--text-tertiary)] flex-shrink-0" />
                 <input
                   ref={inputRef}

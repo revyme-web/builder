@@ -113,7 +113,7 @@ export default function ScrollSectionTool() {
               onChange={(v) => commitOffset(parseOffset(v))}
               chevronLabel="px"
             />
-            <div className="flex h-8 shrink-0 rounded-[var(--radius-lg)] bg-[var(--grid-line)] border border-[var(--control-border)] overflow-hidden">
+            <div className="flex h-[var(--control-height)] shrink-0 rounded-[var(--radius-lg)] bg-[var(--grid-line)] border border-[var(--control-border)] overflow-hidden">
               <button
                 onClick={() => commitOffset(offsetY - 1)}
                 className="w-8 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"

@@ -23,8 +23,6 @@ import CmsOverlay, { cmsOverlayOpenAtom } from './editor/left-toolbar/panels/cms
 import CmsEditorOverlay from './editor/left-toolbar/panels/cms/CmsEditorOverlay';
 import { cmsEditorOpenAtom } from '@/code/stores/cms-editor-store';
 import { translationsOverlayOpenAtom } from '@/editor/left-toolbar/panels/LocalePanel';
-import { settingsOverlayOpenAtom } from '@/code/stores/website-settings-store';
-import { showRulersAtom } from '@/code/stores/user-preferences-store';
 import CodeEditorPopup from './editor/CodeEditorPopup';
 import ComponentEditorOverlay from './editor/component-editor/ComponentEditorOverlay';
 import SettingsOverlay from './editor/overlays/SettingsOverlay';
@@ -164,40 +162,6 @@ export default function App() {
     };
   }, [isComponentFile]);
 
-  // The left rail, left panel and right inspector normally FLOAT: inset from
-  // the window edges, rounded, with the canvas running behind them. The
-  // full-screen overlays (CMS, translations, settings, preview) cover the
-  // whole viewport, and against that a floating panel leaves a gap and a
-  // rounded corner sitting over a square edge — it reads as a bug.
-  //
-  // So the chrome docks for the duration: `panels-docked` zeroes --float-gap
-  // and --float-radius on <html>, and the transition in globals.css slides
-  // everything flush. Closing the overlay reverses it. The class goes on
-  // <html> rather than a child because the headers and panels are `fixed`
-  // siblings scattered across the tree, not children of one container.
-  //
-  // Rulers dock it too, and for a different reason than the overlays. They are
-  // edge-anchored measurement chrome: opaque, and pinned to canvas coordinates,
-  // so they can neither float nor bleed behind the cards the way the canvas
-  // does. Every junction between a ruler and a floating card — the corner box,
-  // the bar ends, the exposed bottom corner — needs its own patch, and the strip
-  // of bare canvas above the top bar can't be fixed at all without pinning the
-  // ruler to the window edge, which contradicts the floating layout.
-  //
-  // Turning rulers on IS a switch into precision mode, and edge-to-edge chrome
-  // is what precision mode wants. So they dock, and the whole class of seam
-  // problems stops existing. Rulers are opt-in and default OFF, so the floating
-  // layout is what most sessions actually see.
-  const settingsOverlayOpen = useAtomValue(settingsOverlayOpenAtom);
-  const showRulers = useAtomValue(showRulersAtom);
-  const panelsDocked =
-    previewMode || settingsOverlayOpen || cmsOverlayShowing || translationsOverlayOpen || showRulers;
-  useEffect(() => {
-    const root = document.documentElement;
-    root.classList.toggle('panels-docked', panelsDocked);
-    return () => root.classList.remove('panels-docked');
-  }, [panelsDocked]);
-
   return (
     <CollaborationProvider>
     <div style={{ display: 'flex', height: '100vh', flexDirection: 'column' }}>
@@ -235,10 +199,8 @@ export default function App() {
       <LeftMenu />
       <LeftPanel />
 
-      {/* Main — FULL-BLEED. The left rail and right inspector float above the
-          canvas (see .float-panel-* in globals.css), so the canvas spans the
-          whole width and runs behind them rather than being boxed between. */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
+      {/* Main — always offset by 52px menu + 256px panel = 308px */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', marginLeft: 308 }}>
         <Canvas />
         {/* Right panel: PropertiesPanel by default, swap for the
             project-wide comments list while comment mode is active.

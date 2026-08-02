@@ -159,7 +159,7 @@ export default function SlotControl({ componentId, label, slotMax }: SlotControl
       <button
         ref={btnRef}
         onClick={() => setOpen(o => !o)}
-        className="w-full h-7 px-2 flex items-center gap-1.5 text-xs rounded-md bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] transition-colors"
+        className="w-full h-[var(--control-height-sm)] px-2 flex items-center gap-1.5 text-xs rounded-md bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] transition-colors"
       >
         <span className="font-mono text-[var(--accent-text)] text-[13px] leading-none">[ ]</span>
         <span className="flex-1 text-left">

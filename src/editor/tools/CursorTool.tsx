@@ -491,7 +491,7 @@ function PendingCursorRow({
           ref={triggerRef}
           type="button"
           onClick={openMenu}
-          className="w-full h-8 flex items-center justify-between px-2 bg-[var(--control-bg)] hover:bg-[var(--bg-hover)] border border-[var(--border-light)] rounded-[var(--radius-lg)] text-xs cursor-pointer transition-colors"
+          className="w-full h-[var(--control-height)] flex items-center justify-between px-2 bg-[var(--control-bg)] hover:bg-[var(--bg-hover)] border border-[var(--border-light)] rounded-[var(--radius-lg)] text-xs cursor-pointer transition-colors"
         >
           <span className="truncate flex-1 text-left text-[var(--text-disabled)]">Add</span>
         </button>

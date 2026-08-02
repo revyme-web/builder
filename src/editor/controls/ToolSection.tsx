@@ -29,17 +29,29 @@ export default function ToolSection({ title, children, defaultOpen = true, colla
   return (
     <div className="px-2">
       {/* Title row: label + action */}
-      <div className={`${showContent ? 'mb-1.5' : 'mb-0'} flex items-center justify-between py-1.5`}>
+      <div className={`${showContent ? 'mb-2' : 'mb-0'} flex items-center justify-between pt-3 pb-1.5`}>
         <span
           onClick={() => { if (collapsible) { setIsOpen(!isOpen); trace.action('tool-section:toggle', { title, isOpen: !isOpen }); } }}
-          className={`text-xs font-bold text-[var(--text-primary)] ${collapsible ? 'cursor-pointer select-none' : ''} ${collapsible && !isOpen ? 'opacity-50' : ''}`}
+          // Eyebrow, not a heading. Bold sentence-case at body size makes the
+          // titles compete with the controls for attention and produces the
+          // ruled-list rhythm this panel shares with every other builder. Small
+          // + uppercase + tracked reads as a spec sheet: the titles recede and
+          // the controls become the content.
+          //
+          // --text-PRIMARY, same as the row labels. Dimming the title looked
+          // right in isolation but inverted the hierarchy in place: the labels
+          // below it use --text-primary, so a grey title read as LESS important
+          // than the rows it heads. The recession comes from size, case and
+          // tracking instead — 10px uppercase tracked against 12px sentence
+          // case is unmistakably a different role at the same colour.
+          className={`text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--text-primary)] ${collapsible ? 'cursor-pointer select-none' : ''} ${collapsible && !isOpen ? 'opacity-50' : ''}`}
         >
           {title}
         </span>
         {action}
       </div>
       {isOpen && showContent && (
-        <div className="flex flex-col py-0.5 gap-2 pl-3">
+        <div className="flex flex-col py-0.5 gap-[var(--control-gap)] pl-3">
           {children}
         </div>
       )}

@@ -461,7 +461,7 @@ export default function LocaleStylePopup({ property, propertyLabel, nodeId, base
                 setConds(prev => [...prev, { locale: nextFree.code, value: effectiveBase || '' }]);
               }}
               data-locale-add-condition
-              className="w-full h-8 rounded-[var(--radius-lg)] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-xs text-[var(--text-primary)] cursor-pointer transition-colors"
+              className="w-full h-[var(--control-height)] rounded-[var(--radius-lg)] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-xs text-[var(--text-primary)] cursor-pointer transition-colors"
             >
               Add Condition
             </button>

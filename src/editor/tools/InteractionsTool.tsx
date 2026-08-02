@@ -684,7 +684,7 @@ function CloseOverlayForm({ co, onChangeTrigger, onChangeDelay, onRemove }: {
       </ToolRow>
       <button
         onClick={onRemove}
-        className="h-7 px-3 flex items-center justify-center text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] rounded-lg transition-colors cursor-pointer hover:bg-[var(--control-border)]"
+        className="h-[var(--control-height-sm)] px-3 flex items-center justify-center text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] rounded-lg transition-colors cursor-pointer hover:bg-[var(--control-border)]"
       >
         Remove
       </button>
@@ -919,7 +919,7 @@ function EditInteractionForm({ conn, variants, onUpdate, onRemove }: {
       <div className="flex gap-2">
         <button
           onClick={onRemove}
-          className="h-7 px-3 flex items-center justify-center text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] rounded-lg transition-colors cursor-pointer hover:bg-[var(--control-border)]"
+          className="h-[var(--control-height-sm)] px-3 flex items-center justify-center text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] rounded-lg transition-colors cursor-pointer hover:bg-[var(--control-border)]"
         >
           Remove
         </button>
@@ -1114,7 +1114,7 @@ function EditPageInteractionForm({
       </ToolRow>
       <button
         onClick={onRemove}
-        className="w-full h-7 flex items-center justify-center text-xs font-medium text-red-400 hover:text-red-300 bg-[var(--grid-line)] border border-[var(--control-border)] rounded-lg transition-colors cursor-pointer"
+        className="w-full h-[var(--control-height-sm)] flex items-center justify-center text-xs font-medium text-red-400 hover:text-red-300 bg-[var(--grid-line)] border border-[var(--control-border)] rounded-lg transition-colors cursor-pointer"
       >
         Remove
       </button>
@@ -1126,7 +1126,7 @@ function EditPageInteractionForm({
 
 function ReadOnlyField({ text }: { text: string }) {
   return (
-    <div className="w-full h-7 px-2 flex items-center text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-md text-[var(--text-secondary)] truncate">
+    <div className="w-full h-[var(--control-height-sm)] px-2 flex items-center text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-md text-[var(--text-secondary)] truncate">
       {text}
     </div>
   );

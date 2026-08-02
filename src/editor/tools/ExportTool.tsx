@@ -245,7 +245,7 @@ export default function ExportTool() {
       <button
         onClick={handleExport}
         disabled={exporting || !nodeId}
-        className={`w-full h-8 rounded-[var(--radius-lg)] text-xs font-medium transition-colors border ${
+        className={`w-full h-[var(--control-height)] rounded-[var(--radius-lg)] text-xs font-medium transition-colors border ${
           exporting || !nodeId
             ? 'bg-[var(--grid-line)] border-[var(--control-border)] text-[var(--text-disabled)] cursor-not-allowed'
             : 'bg-[var(--grid-line)] border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] cursor-pointer'

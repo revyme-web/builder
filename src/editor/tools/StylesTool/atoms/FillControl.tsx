@@ -160,13 +160,13 @@ function ImageFillTab({ styles, onUpdate }: { styles: Record<string, string>; on
           />
           <div className="flex gap-1.5">
             <button onClick={() => setImageModalOpen(true)}
-              className="flex-1 h-7 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer">
+              className="flex-1 h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer">
               Change
             </button>
             {/* Crop — opens a modal to crop the current image, then replaces the
                 fill with the cropped upload (undo-safe: it's a style write). */}
             <button onClick={() => setCropModalOpen(true)}
-              className="flex-1 h-7 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer flex items-center justify-center gap-1">
+              className="flex-1 h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer flex items-center justify-center gap-1">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M6 2v14a2 2 0 0 0 2 2h14" /><path d="M18 22V8a2 2 0 0 0-2-2H2" />
               </svg>
@@ -406,7 +406,7 @@ function VideoFillTab({ node }: { node: CanvasNode | null }) {
             />
           </div>
           <button onClick={() => setVideoModalOpen(true)}
-            className="w-full h-7 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer">
+            className="w-full h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer">
             Change
           </button>
         </div>
@@ -759,7 +759,7 @@ function LayerEditorPanel({ layer: initialLayer, onChange }: { layer: BgLayer; o
               />
               <div className="flex gap-1.5">
                 <button onClick={() => setImageModalOpen(true)}
-                  className="flex-1 h-7 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer">
+                  className="flex-1 h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer">
                   Change
                 </button>
               </div>
@@ -994,19 +994,19 @@ function MultiModeFillContent({ styles, onUpdate, onChangeMultiple }: {
       <div className="flex gap-1.5">
         <button
           onClick={() => { const l = addLayer('gradient'); openLayerEditor(l); }}
-          className="flex-1 h-7 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+          className="flex-1 h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
         >
           + Gradient
         </button>
         <button
           onClick={() => { const l = addLayer('image'); openLayerEditor(l); }}
-          className="flex-1 h-7 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+          className="flex-1 h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
         >
           + Image
         </button>
         <button
           onClick={() => { const l = addLayer('color'); openLayerEditor(l); }}
-          className="flex-1 h-7 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+          className="flex-1 h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
         >
           + Color
         </button>

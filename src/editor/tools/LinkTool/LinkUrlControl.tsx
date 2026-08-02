@@ -294,7 +294,7 @@ export function LinkUrlField({
             else if (e.key === 'Escape') { setDraftValue(null); (e.target as HTMLInputElement).blur(); }
           }}
           placeholder="/page or https://..."
-          className={`w-full h-7 px-2 text-xs border rounded-[var(--radius-lg)] focus:outline-none transition-colors ${
+          className={`w-full h-[var(--control-height-sm)] px-2 text-xs border rounded-[var(--radius-lg)] focus:outline-none transition-colors ${
             disabled
               ? 'bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-disabled)] cursor-default'
               : 'bg-[var(--control-bg)] border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)]'

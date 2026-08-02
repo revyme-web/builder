@@ -128,7 +128,7 @@ export default function AddLocaleModal({ isOpen, onClose, existingCodes, existin
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search languages..."
-                className="w-full h-8 pl-8 pr-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+                className="w-full h-[var(--control-height)] pl-8 pr-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:border-[var(--accent)] focus:outline-none transition-colors"
               />
             </div>
           </div>
@@ -200,7 +200,7 @@ export default function AddLocaleModal({ isOpen, onClose, existingCodes, existin
                     type="text"
                     value={name}
                     onChange={e => setName(e.target.value)}
-                    className="w-full h-8 px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+                    className="w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:border-[var(--accent)] focus:outline-none transition-colors"
                   />
                 </div>
 
@@ -213,7 +213,7 @@ export default function AddLocaleModal({ isOpen, onClose, existingCodes, existin
                     type="text"
                     value={slug}
                     onChange={e => handleSlugChange(e.target.value)}
-                    className="w-full h-8 px-3 text-xs font-mono bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+                    className="w-full h-[var(--control-height)] px-3 text-xs font-mono bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:border-[var(--accent)] focus:outline-none transition-colors"
                   />
                   <span className="text-[10px] text-[var(--text-disabled)]">
                     Used in URLs and file names
@@ -229,7 +229,7 @@ export default function AddLocaleModal({ isOpen, onClose, existingCodes, existin
                     <select
                       value={fallback}
                       onChange={e => setFallback(e.target.value)}
-                      className="w-full h-8 px-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-colors cursor-pointer"
+                      className="w-full h-[var(--control-height)] px-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-colors cursor-pointer"
                     >
                       <option value="">None</option>
                       {existingLocales.map(l => (
@@ -247,7 +247,7 @@ export default function AddLocaleModal({ isOpen, onClose, existingCodes, existin
               <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border-light)]">
                 <button
                   onClick={onClose}
-                  className="h-8 px-4 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] text-[var(--text-primary)] rounded-[var(--radius-md)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+                  className="h-[var(--control-height)] px-4 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] text-[var(--text-primary)] rounded-[var(--radius-md)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>

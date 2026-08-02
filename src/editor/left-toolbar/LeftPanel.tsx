@@ -56,7 +56,7 @@ export default function LeftPanel() {
       // mouseup over here.
       data-editor-panel="left-primary"
       data-tutorial="left-panel"
-      className="float-panel-left fixed z-[5000] bg-[var(--bg-surface)] border-r border-[var(--border-light)] flex flex-col overflow-hidden"
+      className="fixed z-[5000] bg-[var(--bg-surface)] border-r border-[var(--border-light)] flex flex-col overflow-hidden"
       // willChange/isolation: own compositor layer — during a big zoom-out
       // the sandbox's re-materialise + re-raster burst saturates the shared
       // GPU process; without a persistent texture the panel's invalidated

@@ -192,7 +192,7 @@ function CreateTypoPresetPanel({ onCreated }: { onCreated: (group: TypoGroup) =>
       <button
         onClick={handleCreate}
         disabled={!name.trim()}
-        className={`w-full h-7 rounded-[var(--radius-lg)] text-xs font-medium transition-colors ${
+        className={`w-full h-[var(--control-height-sm)] rounded-[var(--radius-lg)] text-xs font-medium transition-colors ${
           name.trim()
             ? 'bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer hover:opacity-90'
             : 'bg-[var(--grid-line)] text-[var(--text-disabled)] cursor-not-allowed'

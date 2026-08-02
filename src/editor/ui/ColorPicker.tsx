@@ -97,7 +97,7 @@ function ChannelPill({ values, onChange, onCommit }: {
         return (
           <input
             key={i}
-            className={`flex-1 min-w-0 h-7 px-1.5 text-xs text-center bg-[var(--grid-line)] text-[var(--text-primary)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] focus:outline-none focus:z-10 relative transition-colors ${isFirst ? 'rounded-l-[var(--radius-lg)]' : '-ml-[1px]'} ${isLast ? 'rounded-r-[var(--radius-lg)]' : ''}`}
+            className={`flex-1 min-w-0 h-[var(--control-height-sm)] px-1.5 text-xs text-center bg-[var(--grid-line)] text-[var(--text-primary)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] focus:outline-none focus:z-10 relative transition-colors ${isFirst ? 'rounded-l-[var(--radius-lg)]' : '-ml-[1px]'} ${isLast ? 'rounded-r-[var(--radius-lg)]' : ''}`}
             value={val}
             onChange={e => onChange(i, e.target.value)}
             onBlur={onCommit}
@@ -403,8 +403,8 @@ export default function ColorPicker({ value, onChange, onChangeEnd, showAlpha = 
   const currentHex = rgbToHex(currentRgb);
 
   // Input styles
-  const inputCls = 'h-7 px-1.5 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-center outline-none focus:border-[var(--border-focus)] text-[var(--text-primary)]';
-  const iconBtnCls = 'h-7 w-7 flex items-center justify-center bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] cursor-pointer hover:border-[var(--control-border-hover)] text-[var(--text-secondary)]';
+  const inputCls = 'h-[var(--control-height-sm)] px-1.5 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-center outline-none focus:border-[var(--border-focus)] text-[var(--text-primary)]';
+  const iconBtnCls = 'h-[var(--control-height-sm)] w-7 flex items-center justify-center bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] cursor-pointer hover:border-[var(--control-border-hover)] text-[var(--text-secondary)]';
 
   return (
     <div className="space-y-0">
@@ -492,7 +492,7 @@ export default function ColorPicker({ value, onChange, onChangeEnd, showAlpha = 
         <button
           type="button"
           onClick={cycleMode}
-          className="h-7 px-2 text-[10px] font-bold bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] cursor-pointer hover:border-[var(--control-border-hover)] text-[var(--text-secondary)] shrink-0 select-none"
+          className="h-[var(--control-height-sm)] px-2 text-[10px] font-bold bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] cursor-pointer hover:border-[var(--control-border-hover)] text-[var(--text-secondary)] shrink-0 select-none"
         >
           {inputMode.toUpperCase()}
         </button>

@@ -57,7 +57,7 @@ export default function ImageListControl({ label, value, onChange }: ImageListCo
       <button
         ref={btnRef}
         onClick={() => setOpen((o) => !o)}
-        className="w-full h-7 px-1 flex items-center gap-2 text-xs rounded-md bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] transition-colors min-w-0 overflow-hidden"
+        className="w-full h-[var(--control-height-sm)] px-1 flex items-center gap-2 text-xs rounded-md bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] transition-colors min-w-0 overflow-hidden"
       >
         <ColorSwatch
           style={urls[0]
@@ -73,7 +73,7 @@ export default function ImageListControl({ label, value, onChange }: ImageListCo
         {urls.map((url, idx) => (
           <div key={`${url}-${idx}`} className="flex items-center gap-2 min-w-0">
             <div
-              className="w-8 h-8 rounded-md border border-[var(--control-border)] flex-shrink-0"
+              className="w-8 h-[var(--control-height)] rounded-md border border-[var(--control-border)] flex-shrink-0"
               style={{ backgroundColor: '#ffffff', backgroundImage: `url("${url}")`, backgroundSize: 'cover', backgroundPosition: 'center' }}
             />
             <span className="flex-1 text-xs text-[var(--text-secondary)] truncate">Image {idx + 1}</span>

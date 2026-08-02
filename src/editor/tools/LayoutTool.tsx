@@ -880,11 +880,11 @@ function ColumnRuleControl({ styles, onUpdate, onUpdateMultiple, onUpdateLive }:
                     <ToolInput value={parsed.width} onChange={updateWidth} step={1} chevronLabel="px" />
                   </div>
                   <button
-                    className="shrink-0 w-7 h-7 flex items-center justify-center rounded-md border border-[var(--control-border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--control-border-hover)] cursor-pointer text-sm"
+                    className="shrink-0 w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded-md border border-[var(--control-border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--control-border-hover)] cursor-pointer text-sm"
                     onClick={() => updateWidth(String(Math.max(0, parseInt(parsed.width) - 1)))}
                   >−</button>
                   <button
-                    className="shrink-0 w-7 h-7 flex items-center justify-center rounded-md border border-[var(--control-border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--control-border-hover)] cursor-pointer text-sm"
+                    className="shrink-0 w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded-md border border-[var(--control-border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--control-border-hover)] cursor-pointer text-sm"
                     onClick={() => updateWidth(String(parseInt(parsed.width) + 1))}
                   >+</button>
                 </div>

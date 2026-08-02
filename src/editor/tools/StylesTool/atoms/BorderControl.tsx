@@ -408,10 +408,10 @@ function BorderEditorPanel({ styles: s, nodeId, onChangeMultiple, onChangeMultip
         <div className="flex justify-end">
           <div className="flex items-center border border-[var(--control-border)] rounded-md overflow-hidden shrink-0">
             <button tabIndex={-1} onClick={switchToUniform}
-              className={`flex items-center justify-center h-7 w-7 transition-colors ${!showIndividual ? 'bg-[var(--button-secondary-bg)] text-[var(--text-primary)]' : 'bg-[var(--choice-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+              className={`flex items-center justify-center h-[var(--control-height-sm)] w-7 transition-colors ${!showIndividual ? 'bg-[var(--button-secondary-bg)] text-[var(--text-primary)]' : 'bg-[var(--choice-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
               title="Uniform"><BorderUniformIcon className="w-3 h-3" /></button>
             <button tabIndex={-1} onClick={switchToIndividual}
-              className={`flex items-center justify-center h-7 w-7 transition-colors ${showIndividual ? 'bg-[var(--button-secondary-bg)] text-[var(--text-primary)]' : 'bg-[var(--choice-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+              className={`flex items-center justify-center h-[var(--control-height-sm)] w-7 transition-colors ${showIndividual ? 'bg-[var(--button-secondary-bg)] text-[var(--text-primary)]' : 'bg-[var(--choice-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
               title="Individual sides"><BorderIndividualIcon className="w-3 h-3" /></button>
           </div>
         </div>

@@ -8,7 +8,14 @@ export default function ToolDivider() {
   return (
     <div
       data-tool-divider
-      className="h-px bg-[var(--border-light)] mx-3 my-2.5 first:hidden last:hidden [[data-tool-divider]+&]:hidden"
+      // A rule again, but doing less of the work than before. Pure whitespace
+      // left the sections floating with nothing to bound them; the full-width
+      // hairline was the strongest single tell against Framer. So: still a
+      // hairline, but inset further from both edges (mx-5 vs mx-3) and sitting
+      // in more space, so it reads as a light punctuation mark between groups
+      // rather than as the ruled-list rhythm. The eyebrow title carries the
+      // rest of the grouping.
+      className="h-px bg-[var(--border-light)] mx-5 my-2 first:hidden last:hidden [[data-tool-divider]+&]:hidden"
     />
   );
 }
