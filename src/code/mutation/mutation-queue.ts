@@ -143,6 +143,10 @@ import { makeIntoMapInCode, addMapItemInCode, removeMapItemInCode, updateMapItem
 import { dormantizeCmsBindings, rehydrateCmsBindings, clearCmsOrphanInCode, healDanglingCanvasNodeBindings, detachCmsSubtreeWithValues } from '../generation/cms-detach-gen';
 import { resolveCmsRowForNodeInCode } from '../generation/cms-row-resolve';
 import { dormantizeComponentVarBindings, rehydrateComponentVarBindings, clearVarOrphanInCode, isCanvasNode } from '../generation/component-var-detach-gen';
+import { dormantizeTranslationBinding, rehydrateTranslationBinding } from '../generation/i18n-gen';
+import { readTranslationText } from '../project/translation-ops';
+import { getI18nConfig } from '../project/locale-ops';
+import { filePathToSlug } from '../project/active-file-store';
 import { connectSlotInCode, disconnectSlotInCode, reorderSlotInCode, getAllSlotConnections } from '../generation/slot-ops';
 import {
   createCollectionListInCode, bindFieldInCode, unbindFieldInCode,
@@ -651,6 +655,20 @@ export { RENDER_RESOLVED_MUTATIONS, flushNeedsRender } from './render-resolved-m
 
 /** Active file path — so writeFile mutations can update code when targeting the active page */
 let _activeFilePath: string = 'app/page.client.tsx';
+
+/** Resolver handed to `dormantizeTranslationBinding` — looks the key up in the
+ *  active page's default-locale messages. Built per call so a locale/page switch
+ *  can't be captured stale. Failures degrade to null (the generator then falls
+ *  back to showing the key) rather than aborting the move. */
+function translationTextResolver(): (key: string) => string | null {
+  return (key: string) => {
+    try {
+      return readTranslationText({ filePath: _activeFilePath, key, locale: getI18nConfig().defaultLocale });
+    } catch {
+      return null;
+    }
+  };
+}
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
@@ -2196,6 +2214,11 @@ function applyMutationCore(code: string, mutation: Mutation): string {
           // viewport), so the orphan pass then sees a plain `{var}` ref it can stash in `data-var-orphan`.
           nextCode = resolveMediaGateTernariesInCode(nextCode, mutation.nodeId);
           nextCode = dormantizeComponentVarBindings(nextCode, mutation.nodeId);
+          // A translated text node renders `{t('key')}`, and `t` is the component
+          // fn's `useTranslations()` const — undefined at module scope, so the move
+          // was rejected outright ("References undefined identifier: t"). Bake the
+          // default-locale string and stash the key; re-entry restores the call.
+          nextCode = dormantizeTranslationBinding(nextCode, mutation.nodeId, translationTextResolver());
           // Dormantize removed this node's motion-value hooks (`<cn>Fx…`), but the drag captured the
           // PARSED style map — whose transform serializes those bindings as
           // `transform: 'scale(var:<cn>FxCScale) rotate(var:<cn>FxLoopRotate)'`. Writing that now-dead
@@ -2255,6 +2278,7 @@ function applyMutationCore(code: string, mutation: Mutation): string {
         if (!mutation.canvasNode && mutation.newParentId && isCanvasNode(nextCode, mutation.newParentId)) {
           nextCode = resolveMediaGateTernariesInCode(nextCode, mutation.nodeId);
           nextCode = dormantizeComponentVarBindings(nextCode, mutation.nodeId);
+          nextCode = dormantizeTranslationBinding(nextCode, mutation.nodeId, translationTextResolver());
           nextCode = dormantizeFormStateBinding(nextCode, mutation.nodeId);
           // Landing INSIDE a canvas frame leaves the viewport system just the
           // same — shed the source page's breakpoint-keyed overrides (see the
@@ -2295,6 +2319,10 @@ function applyMutationCore(code: string, mutation: Mutation): string {
           // only props that still exist.
           if (!isCanvasNode(rehydrated, mutation.nodeId)) {
             rehydrated = rehydrateComponentVarBindings(rehydrated, mutation.nodeId);
+            // Back inside the component render → `t` is in scope again, so put the
+            // `{t('key')}` call back and re-ensure the import + hook (the node may
+            // have landed in a different file than the one it left).
+            rehydrated = rehydrateTranslationBinding(rehydrated, mutation.nodeId, filePathToSlug(_activeFilePath));
             // Form Submit dragged back into a form → rebind its `initialVariant`
             // to THAT form's `formState<Id>` (+ ensure its useState) from the
             // retained `data-form-state` spec. No-op if it didn't land in a form.

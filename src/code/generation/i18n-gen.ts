@@ -439,3 +439,148 @@ export function setMessageValue(
   parsed[namespace][key] = value;
   return JSON.stringify(parsed, null, 2);
 }
+
+// ─── Canvas-node dormancy ───────────────────────────────────────────────────
+//
+// `canvasNodes` is a MODULE-SCOPE fragment, so nothing declared inside the
+// component function exists there — including `const t = useTranslations(…)`.
+// Dragging a translated node out of the page therefore produced a live
+// `{t('key')}` at module scope: "References undefined identifier: t", and the
+// mutation was rejected (user report 2026-08-03).
+//
+// Same treatment as every other component-scope binding that survives a canvas
+// round trip (component vars, CMS bindings, form state, scroll fx): swap the
+// live call for the resolved literal, stash the key in an attribute, and
+// restore the call when the node lands back inside the component render.
+
+/** Stash attribute holding a dormantized translation key. */
+export const I18N_ORPHAN_ATTR = 'data-i18n-orphan';
+
+/** Read a node's dormantized translation key, or null when it has none. */
+export function getTranslationOrphanKey(code: string, nodeId: string): string | null {
+  const ast = parseJSX(code);
+  if (!ast) return null;
+  let key: string | null = null;
+  findFirstElementByDataId(ast, nodeId, (path) => {
+    const attr = path.node.openingElement.attributes.find(
+      (a: any) => a.type === 'JSXAttribute' && a.name?.name === I18N_ORPHAN_ATTR,
+    );
+    if (attr && (attr as any).value?.type === 'StringLiteral') key = (attr as any).value.value;
+    path.stop();
+  });
+  return key;
+}
+
+/**
+ * Live `{t('key')}` → `literalText` + `data-i18n-orphan="key"`.
+ *
+ * `resolveText` is handed the key we actually find in the call (which is NOT
+ * always the nodeId — rich-text runs and attrs use derived keys) and returns
+ * the default-locale string; the queue backs it with `readTranslationText`.
+ * When it resolves to nothing we fall back to the key itself rather than
+ * blanking the node, so the element stays visible and selectable on the
+ * canvas. No-op when the node has no translation call.
+ */
+export function dormantizeTranslationBinding(
+  code: string,
+  nodeId: string,
+  resolveText: (key: string) => string | null,
+): string {
+  const ast = parseJSX(code);
+  if (!ast) return code;
+
+  let changed = false;
+  findFirstElementByDataId(ast, nodeId, (path) => {
+    // Already dormant — a second exit pass must not overwrite the stash.
+    const hasStash = path.node.openingElement.attributes.some(
+      (a: any) => a.type === 'JSXAttribute' && a.name?.name === I18N_ORPHAN_ATTR,
+    );
+    if (hasStash) { path.stop(); return; }
+
+    // Find the `{someHook('key')}` text child and lift its key out.
+    let key: string | null = null;
+    for (const child of path.node.children as any[]) {
+      if (child.type !== 'JSXExpressionContainer') continue;
+      const expr = child.expression;
+      if (expr?.type !== 'CallExpression' || expr.callee?.type !== 'Identifier') continue;
+      // Builder-injected text calls are not translations — same exclusion the
+      // rest of this module makes for `useResponsiveText`.
+      if (expr.callee.name === 'useResponsiveText') continue;
+      const arg = expr.arguments?.[0];
+      if (arg?.type === 'StringLiteral') { key = arg.value; break; }
+    }
+    if (!key) { path.stop(); return; }
+
+    // Swap the call for the resolved literal, keeping any non-text children.
+    const text = (resolveText(key) ?? '').trim() || key;
+    const newChildren: any[] = [];
+    let inserted = false;
+    for (const child of path.node.children as any[]) {
+      const isTranslationCall =
+        child.type === 'JSXExpressionContainer' &&
+        child.expression?.type === 'CallExpression' &&
+        child.expression.callee?.type === 'Identifier' &&
+        child.expression.callee.name !== 'useResponsiveText';
+      if (isTranslationCall) {
+        if (!inserted) { newChildren.push(t.jsxText(text)); inserted = true; }
+        continue;
+      }
+      newChildren.push(child);
+    }
+    path.node.children = newChildren;
+    path.node.openingElement.attributes.push(
+      t.jsxAttribute(t.jsxIdentifier(I18N_ORPHAN_ATTR), t.stringLiteral(key)),
+    );
+    changed = true;
+    path.stop();
+  });
+
+  if (!changed) return code;
+  trace.action('i18n-gen:dormantize-translation', { nodeId });
+  try {
+    return generate(ast, { retainLines: false, concise: false }, code).code;
+  } catch (err) {
+    trace.error('i18n-gen:dormantize-generate-failed', { nodeId, error: err instanceof Error ? err.message : String(err) });
+    return code;
+  }
+}
+
+/**
+ * Inverse: drop `data-i18n-orphan` and re-inject `{t('key')}`, re-ensuring the
+ * import + hook in the destination component (it may be a different file from
+ * the one the node left). No-op when the node carries no stash.
+ */
+export function rehydrateTranslationBinding(
+  code: string,
+  nodeId: string,
+  namespace: string,
+): string {
+  const key = getTranslationOrphanKey(code, nodeId);
+  if (!key) return code;
+
+  // Strip the stash first so `transformTextToTranslation` sees a plain text
+  // node and re-runs its normal path (scaffold + call injection).
+  const ast = parseJSX(code);
+  if (!ast) return code;
+  findFirstElementByDataId(ast, nodeId, (path) => {
+    path.node.openingElement.attributes = path.node.openingElement.attributes.filter(
+      (a: any) => !(a.type === 'JSXAttribute' && a.name?.name === I18N_ORPHAN_ATTR),
+    );
+    path.stop();
+  });
+
+  let stripped: string;
+  try {
+    stripped = generate(ast, { retainLines: false, concise: false }, code).code;
+  } catch (err) {
+    trace.error('i18n-gen:rehydrate-generate-failed', { nodeId, error: err instanceof Error ? err.message : String(err) });
+    return code;
+  }
+
+  trace.action('i18n-gen:rehydrate-translation', { nodeId, key, namespace });
+  const result = transformTextToTranslation(stripped, nodeId, key, namespace);
+  // `changed:false` means the node had no text to swap (e.g. emptied while
+  // dormant) — keep the stash-stripped code rather than reverting, so the
+  // node never carries a dead attribute.
+  return result.changed ? result.code : stripped;
+}
