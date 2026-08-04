@@ -2,19 +2,23 @@
 // brand-new cloud websites.
 //
 // Armed by ProjectLoader when a cloud site loads with ZERO files (the
-// dashboard's New Website flow creates the row empty). Offers the FREE
-// approved marketplace templates; picking one calls the remix endpoint
-// with `intoWebsiteId` so the template is applied INTO this website
-// (assets deep-copied, `is_remix` stamped — same royalty path as a
-// normal remix) and the page reloads on the same /builder/:id URL.
-// Closing keeps the blank canvas and is remembered per site, then hands
-// off to the first-run onboarding tour if that hasn't been seen yet.
+// dashboard's New Website flow creates the row empty). Card order: a
+// white "start from scratch" tile first, then the FREE approved
+// marketplace templates, then the PAID ones. Picking a free one calls
+// the remix endpoint with `intoWebsiteId` so the template is applied
+// INTO this website (assets deep-copied, `is_remix` stamped — same
+// royalty path as a normal remix) and the page reloads on the same
+// /builder/:id URL. Paid templates open their marketplace page in a new
+// tab (purchase happens there); the modal stays open. Closing keeps the
+// blank canvas and is remembered per site, then hands off to the
+// first-run onboarding tour if that hasn't been seen yet.
 
 import { useEffect, useState } from 'react';
 import Modal from '@/design-system/Modal';
 import {
-  listFreeTemplates,
+  listApprovedTemplates,
   remixTemplateIntoWebsite,
+  isFreeTemplate,
   type ApprovedTemplate,
 } from '@/backend/revyme-backend';
 import { getProjectId } from '@/backend/project-id';
@@ -25,6 +29,7 @@ import {
   templatePromptDismissKey,
 } from '@/code/stores/fresh-site-store';
 import { startOnboarding, ONBOARDING_COMPLETED_KEY } from '@/editor/onboarding';
+import { SketchPencilIcon } from '@/shared/icons';
 import { trace } from '@/shared/debug-trace';
 
 export default function NewWebsiteTemplatesModal() {
@@ -39,7 +44,7 @@ export default function NewWebsiteTemplatesModal() {
   useEffect(() => {
     if (!armed) return;
     let cancelled = false;
-    listFreeTemplates()
+    listApprovedTemplates()
       .then((rows) => {
         if (cancelled) return;
         if (rows.length === 0) {
@@ -48,7 +53,8 @@ export default function NewWebsiteTemplatesModal() {
           setTemplatePromptArmed(false);
           return;
         }
-        setTemplates(rows);
+        // Free first, paid after — paid cards deep-link to the marketplace.
+        setTemplates([...rows.filter(isFreeTemplate), ...rows.filter((t) => !isFreeTemplate(t))]);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -111,6 +117,15 @@ export default function NewWebsiteTemplatesModal() {
     }
   };
 
+  // Paid templates aren't remixable until purchased — the checkout lives on
+  // the marketplace detail page, so open it in a new tab and keep the
+  // prompt up (the user comes back or remixes from there after buying).
+  const openMarketplace = (tpl: ApprovedTemplate) => {
+    if (applyingId) return;
+    trace.action('template-prompt:open-marketplace', { templateId: tpl.id, slug: tpl.slug });
+    window.open(`/templates/${encodeURIComponent(tpl.slug ?? tpl.id)}`, '_blank', 'noopener');
+  };
+
   const isOpen = armed && revealed && !!templates && templates.length > 0;
 
   return (
@@ -126,37 +141,59 @@ export default function NewWebsiteTemplatesModal() {
           Pick a template to start from, or start from a blank canvas.
         </p>
 
-        <div className="grid max-h-[52vh] grid-cols-3 gap-3 overflow-auto pr-1">
-          {(templates ?? []).map((tpl) => (
-            <TemplateCard
-              key={tpl.id}
-              tpl={tpl}
-              applying={applyingId === tpl.id}
-              disabled={!!applyingId}
-              onPick={() => apply(tpl)}
-            />
-          ))}
+        <div className="grid max-h-[56vh] grid-cols-3 gap-3 overflow-auto pr-1">
+          <ScratchCard disabled={!!applyingId} onPick={dismiss} />
+          {(templates ?? []).map((tpl) => {
+            const free = isFreeTemplate(tpl);
+            return (
+              <TemplateCard
+                key={tpl.id}
+                tpl={tpl}
+                free={free}
+                applying={applyingId === tpl.id}
+                disabled={!!applyingId}
+                onPick={() => (free ? apply(tpl) : openMarketplace(tpl))}
+              />
+            );
+          })}
         </div>
 
         {error && <div className="mt-3 text-[12px] text-[#e5484d]">{error}</div>}
-
-        <div className="mt-4 flex items-center justify-end">
-          <button
-            type="button"
-            onClick={dismiss}
-            disabled={!!applyingId}
-            className="h-8 rounded-md px-3 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50"
-          >
-            Start from scratch
-          </button>
-        </div>
       </div>
     </Modal>
   );
 }
 
-function TemplateCard({ tpl, applying, disabled, onPick }: {
+/** First card — the blank-canvas choice, drawn as a white page with a
+ *  pencil. White in BOTH modes on purpose: it depicts the empty canvas,
+ *  not the chrome. Same dismiss path as closing the modal. */
+function ScratchCard({ disabled, onPick }: { disabled: boolean; onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      disabled={disabled}
+      className="group flex flex-col overflow-hidden rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] text-left transition-colors hover:border-[var(--accent)] disabled:opacity-60"
+    >
+      <span className="grid aspect-[4/3] w-full place-items-center bg-white">
+        <SketchPencilIcon size={28} className="text-[#111111] transition-transform duration-300 group-hover:scale-110" />
+      </span>
+      <span className="flex min-w-0 flex-col gap-0.5 px-2.5 py-2">
+        <span className="truncate text-[12px] font-medium text-[var(--text-primary)]">Start from scratch</span>
+        <span className="truncate text-[11px] text-[var(--text-tertiary)]">Blank canvas</span>
+      </span>
+    </button>
+  );
+}
+
+function priceLabel(priceCents: number | null): string {
+  const cents = priceCents ?? 0;
+  return cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
+}
+
+function TemplateCard({ tpl, free, applying, disabled, onPick }: {
   tpl: ApprovedTemplate;
+  free: boolean;
   applying: boolean;
   disabled: boolean;
   onPick: () => void;
@@ -166,6 +203,7 @@ function TemplateCard({ tpl, applying, disabled, onPick }: {
       type="button"
       onClick={onPick}
       disabled={disabled}
+      title={free ? undefined : 'Opens the marketplace page'}
       className="group flex flex-col overflow-hidden rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] text-left transition-colors hover:border-[var(--accent)] disabled:opacity-60"
     >
       <span className="relative block aspect-[4/3] w-full overflow-hidden bg-[var(--bg-hover)]">
@@ -193,8 +231,13 @@ function TemplateCard({ tpl, applying, disabled, onPick }: {
           <span className="min-w-0 truncate text-[11px] text-[var(--text-tertiary)]">
             {tpl.author ?? 'Revyme'}
           </span>
-          <span className="ml-auto shrink-0 rounded bg-[var(--accent-surface)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
-            Free
+          <span className="ml-auto flex shrink-0 items-center gap-0.5 rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-primary)]">
+            {free ? 'Free' : priceLabel(tpl.price_cents)}
+            {!free && (
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 17 17 7M9 7h8v8" />
+              </svg>
+            )}
           </span>
         </span>
       </span>

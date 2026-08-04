@@ -669,21 +669,20 @@ export function isFreeTemplate(t: Pick<ApprovedTemplate, 'pricing_type' | 'price
 }
 
 /**
- * Free approved marketplace templates — for the fresh-website "start from
+ * All approved marketplace templates — for the fresh-website "start from
  * a template" prompt. The `/approved` endpoint is public and unfiltered;
- * the free/paid split is applied client-side (same as the landing page's
- * marketplace browser).
+ * the caller splits free/paid with `isFreeTemplate` (same client-side
+ * split the landing page's marketplace browser does).
  */
-export async function listFreeTemplates(): Promise<ApprovedTemplate[]> {
+export async function listApprovedTemplates(): Promise<ApprovedTemplate[]> {
   const res = await fetch(url('/api/templates/approved'));
   if (!res.ok) {
     trace.error('template:list-approved-failed', { status: res.status });
     throw new Error(`Failed to load templates: ${res.status}`);
   }
   const json = (await res.json()) as { templates: ApprovedTemplate[] };
-  const free = (json.templates ?? []).filter(isFreeTemplate);
-  trace.action('template:list-free', { total: json.templates?.length ?? 0, free: free.length });
-  return free;
+  trace.action('template:list-approved', { total: json.templates?.length ?? 0 });
+  return json.templates ?? [];
 }
 
 /**

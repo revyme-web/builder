@@ -93,6 +93,16 @@ export const BUILDER_THEMES: BuilderTheme[] = [
 
 export const DEFAULT_BUILDER_THEME_ID = 'default';
 
+/** Dark-mode `--accent-text` derivation: accent share of the accent/white
+ *  color-mix that `editor/builder-theme.ts` paints for non-default themes.
+ *  `.dark`'s stylesheet rule collapses --accent-text to the RAW accent —
+ *  fine for the bright stock brass (6.4:1 on the dropdown surface), but the
+ *  mid-dark palettes were unreadable as text there (Rose sat at 1.9:1 —
+ *  the "Upgrade your plan" report). 50/50 is the strongest mix at which
+ *  EVERY palette clears WCAG AA (4.5:1) on `--dropdown-bg` #3d3d3d, the
+ *  lightest dark chrome surface accent text sits on; the test locks this. */
+export const DARK_ACCENT_TEXT_MIX = 0.5;
+
 export function getBuilderThemeById(id: string): BuilderTheme | undefined {
   return BUILDER_THEMES.find((t) => t.id === id);
 }

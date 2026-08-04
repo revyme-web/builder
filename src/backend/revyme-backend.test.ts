@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   RevymeBackend,
   isFreeTemplate,
-  listFreeTemplates,
+  listApprovedTemplates,
   remixTemplateIntoWebsite,
 } from './revyme-backend';
 
@@ -179,11 +179,11 @@ describe('Template flow — free templates + remix-into', () => {
     expect(isFreeTemplate(paid)).toBe(false);
   });
 
-  it('listFreeTemplates GETs /approved and filters out paid rows', async () => {
+  it('listApprovedTemplates GETs /approved unfiltered (caller splits free/paid)', async () => {
     setResponse({ templates: [free, paid, freeZeroPrice] });
-    const rows = await listFreeTemplates();
+    const rows = await listApprovedTemplates();
     expect(calls[0].url).toBe(`${API}/api/templates/approved`);
-    expect(rows.map((t) => t.id)).toEqual(['t1', 't2']);
+    expect(rows.map((t) => t.id)).toEqual(['t1', 't3', 't2']);
   });
 
   it('remixTemplateIntoWebsite POSTs intoWebsiteId with credentials', async () => {

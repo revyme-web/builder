@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import {
   BUILDER_THEMES,
   DEFAULT_BUILDER_THEME_ID,
+  DARK_ACCENT_TEXT_MIX,
   getBuilderThemeById,
 } from './builder-themes';
 
@@ -38,6 +39,39 @@ describe('builder themes', () => {
         expect(ratio(accent, accentFg), `${t.id} (${mode}): ${accentFg} on ${accent}`)
           .toBeGreaterThanOrEqual(4.5);
       }
+    }
+  });
+
+  test('dark-mode --accent-text derivation clears AA on the dark chrome', () => {
+    // `editor/builder-theme.ts` paints `--accent-text` in dark mode as
+    // color-mix(accent DARK_ACCENT_TEXT_MIX, white) — because `.dark`'s own
+    // rule collapses it to the RAW accent, which left Rose at 1.9:1 on the
+    // dropdown surface (the unreadable "Upgrade your plan" report). This
+    // replicates that srgb mix and holds every palette to WCAG AA on the
+    // LIGHTEST dark chrome surface accent text sits on (--dropdown-bg
+    // #3d3d3d; --bg-surface #111111 is easier and follows for free).
+    const lum = (hex: string) => {
+      const c = [1, 3, 5]
+        .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+        .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    const ratio = (a: string, b: string) => {
+      const [l1, l2] = [lum(a), lum(b)];
+      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    };
+    const mixWithWhite = (hex: string, accentShare: number) => {
+      const ch = [1, 3, 5].map((i) =>
+        Math.round(parseInt(hex.slice(i, i + 2), 16) * accentShare + 255 * (1 - accentShare)),
+      );
+      return `#${ch.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+    };
+    const DROPDOWN_BG_DARK = '#3d3d3d';
+    for (const t of BUILDER_THEMES) {
+      if (t.id === DEFAULT_BUILDER_THEME_ID) continue; // Default keeps the stylesheet's raw-accent collapse (brass: 6.4:1)
+      const lifted = mixWithWhite(t.dark.accent, DARK_ACCENT_TEXT_MIX);
+      expect(ratio(lifted, DROPDOWN_BG_DARK), `${t.id}: ${lifted} on ${DROPDOWN_BG_DARK}`)
+        .toBeGreaterThanOrEqual(4.5);
     }
   });
 

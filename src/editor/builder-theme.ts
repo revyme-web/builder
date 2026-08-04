@@ -16,13 +16,14 @@ import { getDefaultStore } from 'jotai';
 import { builderThemeAtom } from '@/code/stores/user-preferences-store';
 import {
   DEFAULT_BUILDER_THEME_ID,
+  DARK_ACCENT_TEXT_MIX,
   getBuilderThemeById,
   type BuilderTheme,
 } from '@/shared/builder-themes';
 import { trace } from '@/shared/debug-trace';
 
 /** The variables we own. The rest of the accent family color-mixes off these. */
-const OWNED_VARS = ['--accent', '--accent-fg', '--accent-strong-fg', '--accent-surface'] as const;
+const OWNED_VARS = ['--accent', '--accent-fg', '--accent-strong-fg', '--accent-surface', '--accent-text'] as const;
 
 let observer: MutationObserver | null = null;
 
@@ -60,6 +61,24 @@ function paint(theme: BuilderTheme): void {
   // Hardcoded as an orange rgba in the stylesheet, so it would stay orange
   // under any other accent. Derive it to keep tinted surfaces in family.
   root.style.setProperty('--accent-surface', 'color-mix(in srgb, var(--accent) 12%, transparent)');
+  if (isDarkMode()) {
+    // `.dark` collapses --accent-text to the RAW accent — right for the
+    // bright stock brass, unreadable for the mid-dark palettes: Rose as
+    // text on the dark dropdown surface sat at 1.9:1 ("Upgrade your
+    // plan" report). Lift toward white; already-bright accents (Amber,
+    // Monochrome's white) barely move, dark ones gain the missing contrast.
+    // Ratio single-sourced with the AA test in builder-themes.test.ts.
+    root.style.setProperty(
+      '--accent-text',
+      `color-mix(in srgb, var(--accent) ${DARK_ACCENT_TEXT_MIX * 100}%, #fff)`,
+    );
+  } else {
+    // Light mode's stylesheet derivation (darken toward black) is correct
+    // for every palette — clear our override so it applies to the inline
+    // --accent. Without the clear, a dark→light switch would keep the
+    // lifted tone and wash out on white panels.
+    root.style.removeProperty('--accent-text');
+  }
 }
 
 /** Re-paint the accent for the mode that's now active. No-op while suspended. */
