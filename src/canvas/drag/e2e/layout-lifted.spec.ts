@@ -57,6 +57,37 @@ test.describe('LayoutLiftedStrategy', () => {
     expect(visual).toEqual(['how', 'hero', 'features']);
   });
 
+  test('drop at END commits with an invisible zero-size flow sibling present', async ({ page }) => {
+    // Figma-import repro: an empty zero-size frame sits in the flow as a
+    // real (but invisible) flex child. The reorder walk only sees VISIBLE
+    // siblings while the start-index/commit-splice covered ALL children —
+    // the one-slot skew made "drag the footer below the last section"
+    // compare equal to its start slot and silently revert on mouseup.
+    const editor = new EditorPage(page);
+    await editor.gotoWithSeed('GHOST_SIBLING_COLUMN');
+
+    const visibleOrder = async () =>
+      (await editor.getRootChildrenVisualOrder()).filter((id) => id !== 'ghost');
+    expect(await visibleOrder()).toEqual(['nav', 'hero', 'footer', 'cta']);
+
+    // Drag footer DOWN past the CTA's bottom edge → footer becomes last.
+    const footerBox = await editor.nodeBox('footer');
+    const ctaBox = await editor.nodeBox('cta');
+    const from = { x: footerBox.x + footerBox.width / 2, y: footerBox.y + footerBox.height / 2 };
+    const to = { x: ctaBox.x + ctaBox.width / 2, y: ctaBox.y + ctaBox.height - 4 };
+
+    await editor.dragFromTo(from, to);
+
+    expect(await visibleOrder()).toEqual(['nav', 'hero', 'cta', 'footer']);
+
+    // The bordered footer keeps its border AND carries a real `order` —
+    // the generator's order/border key-collision regression.
+    const code = await editor.getPageCode();
+    const footerTag = code.slice(code.indexOf('data-id="footer"'), code.indexOf('data-id="cta"'));
+    expect(footerTag).toContain("border: '0'");
+    expect(footerTag).toMatch(/[^b]order: '/);
+  });
+
   // Row-flex reorder via Playwright pointer events doesn't commit the
   // drop in this harness even though the column case does. The lift +
   // placeholder UI fires (mid-drag screenshot shows col-c gone from

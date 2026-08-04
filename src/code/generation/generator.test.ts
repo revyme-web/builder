@@ -56,6 +56,54 @@ const COMPLEX = `<div data-id="root" style={{position: 'relative', width: '1440p
 
 // ─── updateNodeInCode ──────────────────────────────────────────────────────
 
+describe('updateNodeInCode — key-name suffix collisions (order vs border)', () => {
+  // The Figma-import reorder bug: the fast path located properties with a
+  // plain indexOf, and `order:` matches the TAIL of `border:`. Every `order`
+  // write on an element with a bare `border` prop replaced the border's
+  // VALUE and never wrote the order — the dragged Footer snapped back to
+  // the top on each drop.
+  const BORDERED = `<div data-id="root" style={{display: 'flex', flexDirection: 'column'}}>
+  <div data-id="footer" style={{display: 'flex', border: '0', height: '408px'}}>Footer</div>
+</div>`;
+
+  test('writing order on a bordered element appends order, keeps border', () => {
+    const result = updateNodeInCode(BORDERED, 'footer', { order: '7' });
+    const styles = parseJSXToNodes(result).get('footer')!.styles;
+    expect(styles.order).toBe('7');
+    expect(styles.border).toBe('0');
+  });
+
+  test('updating an existing order next to a matching border value', () => {
+    // border and order share the value '7' — the old .replace(fullMatch)
+    // re-searched from the start and patched inside the border instead.
+    const code = `<div data-id="root" style={{display: 'flex'}}>
+  <div data-id="footer" style={{border: '7', order: '7'}}>F</div>
+</div>`;
+    const result = updateNodeInCode(code, 'footer', { order: '9' });
+    const styles = parseJSXToNodes(result).get('footer')!.styles;
+    expect(styles.order).toBe('9');
+    expect(styles.border).toBe('7');
+  });
+
+  test('removing order leaves border intact', () => {
+    const code = `<div data-id="root" style={{display: 'flex'}}>
+  <div data-id="footer" style={{border: '0', order: '3', height: '10px'}}>F</div>
+</div>`;
+    const result = updateNodeInCode(code, 'footer', { order: '' });
+    const styles = parseJSXToNodes(result).get('footer')!.styles;
+    expect(styles.order).toBeUndefined();
+    expect(styles.border).toBe('0');
+    expect(styles.height).toBe('10px');
+  });
+
+  test('removing order on a bordered element without order is a no-op', () => {
+    const result = updateNodeInCode(BORDERED, 'footer', { order: '' });
+    const styles = parseJSXToNodes(result).get('footer')!.styles;
+    expect(styles.border).toBe('0');
+    expect(styles.order).toBeUndefined();
+  });
+});
+
 describe('updateNodeInCode', () => {
   test('updates a single style property', () => {
     const result = updateNodeInCode(SIMPLE, 'box', { left: '50px' });

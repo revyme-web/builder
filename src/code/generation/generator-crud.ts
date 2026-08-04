@@ -96,6 +96,25 @@ export function updateNodeInCode(
   return syncTemplate(astResult);
 }
 
+/** Index of a TOP-LEVEL `key:` property in a style-object body, or -1.
+ *  A plain indexOf matches inside a LONGER property name — `order:` sits at
+ *  the tail of `border:` — which made every `order` write on an element with
+ *  a bare `border` prop clobber the border's VALUE and never write the order
+ *  at all (the Figma-import section-reorder bug: Footer kept snapping back
+ *  to the top). A real key starts the body or follows `{`, `,` or
+ *  whitespace. */
+function findStyleKeyIndex(content: string, key: string): number {
+  const needle = `${key}:`;
+  let from = 0;
+  for (;;) {
+    const idx = content.indexOf(needle, from);
+    if (idx === -1) return -1;
+    const prev = idx === 0 ? '' : content[idx - 1];
+    if (prev === '' || prev === ',' || prev === '{' || /\s/.test(prev)) return idx;
+    from = idx + 1;
+  }
+}
+
 /**
  * FAST PATH: Replace style values directly in the string.
  * Works when all properties already exist on the node.
@@ -137,7 +156,7 @@ function updateNodeInCodeFast(
   for (const [key, value] of Object.entries(styleChanges)) {
     if (value === '') {
       // Empty string = remove property — find it with paren-aware matching
-      const rkIdx = newStyleContent.indexOf(`${key}:`);
+      const rkIdx = findStyleKeyIndex(newStyleContent, key);
       if (rkIdx !== -1) {
         // Walk backwards to include leading comma/whitespace/newlines
         let rStart = rkIdx;
@@ -172,7 +191,7 @@ function updateNodeInCodeFast(
     }
     // Match the property value — handle nested parens (gradients, url(), rgba())
     // by counting parenthesis depth instead of simple [^']* which breaks on url('...')
-    const keyIdx = newStyleContent.indexOf(`${key}:`);
+    const keyIdx = findStyleKeyIndex(newStyleContent, key);
     if (keyIdx === -1) {
       // Property doesn't exist yet — APPEND it in place instead of bailing to a
       // full-file AST parse+regenerate. Adding a prop (flex / order / position
@@ -228,12 +247,13 @@ function updateNodeInCodeFast(
       i++;
     }
 
-    const fullMatch = newStyleContent.substring(keyIdx, i + 1);
-    const prefix = newStyleContent.substring(keyIdx, valStart);
     // Use double quotes if value contains single quotes (url('...'), font families)
     const useDouble = value.includes("'");
     const quoted = useDouble ? `"${value}"` : `'${value}'`;
-    newStyleContent = newStyleContent.replace(fullMatch, `${prefix}${quoted}`);
+    // Splice by INDEX — a `.replace(fullMatch, …)` re-searched from the start
+    // and could land on an earlier identical substring (e.g. `order: '7'`
+    // inside `border: '7'`), patching the wrong property.
+    newStyleContent = newStyleContent.substring(0, valStart) + quoted + newStyleContent.substring(i + 1);
   }
 
   return code.substring(0, objStart) + newStyleContent + code.substring(objEnd);

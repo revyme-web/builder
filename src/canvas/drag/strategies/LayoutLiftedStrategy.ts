@@ -760,9 +760,27 @@ export class LayoutLiftedStrategy implements DragStrategy {
         height: cssHeight,
       });
 
-      // Record insert index of the primary node
+      // Record insert index of the primary node.
+      //
+      // INDEX SPACE: `currentInsertIndex` lives in the VISIBLE-sibling space —
+      // the list `calculateReorderIndex` walks and `movePlaceholders` splices
+      // (`getLayoutSiblingRects`, which drops zero-size/hidden flow children).
+      // The full-child rank (`originalChildIndices`) also counts INVISIBLE
+      // flow children (e.g. an empty zero-size frame from a Figma import), so
+      // seeding from it started the drag one slot too high per invisible
+      // child before the dragged: "drop after the last section" then compared
+      // EQUAL to the start index and the reorder never fired (the
+      // Footer-to-end no-op), and every other drop was one slot off.
       if (node.id === primary.id) {
-        const childIdx = this.originalChildIndices.get(node.id) ?? 0;
+        const fullRank = this.originalChildIndices.get(node.id) ?? 0;
+        const visibleSibs = this.getLayoutSiblingRects(new Set(draggedNodes.map(n => n.id)));
+        // Cold rect cache (no visible siblings measurable) → fall back to the
+        // full-space rank; the siblingRectsReady gate keeps early moves sane.
+        const childIdx = visibleSibs.length > 0
+          ? visibleSibs.filter(s =>
+              (this.originalChildIndices.get(s.id) ?? Number.MAX_SAFE_INTEGER) < fullRank,
+            ).length
+          : fullRank;
         this.currentInsertIndex = childIdx;
         this.dragStartInsertIndex = childIdx;
         const pl = this.liftedPositions.get(node.id);
@@ -1781,8 +1799,27 @@ export class LayoutLiftedStrategy implements DragStrategy {
       const nonDraggedIds = [...currentChildIds].sort(
         (a, b) => (idToOrder.get(a) ?? 0) - (idToOrder.get(b) ?? 0),
       );
+      // SPACE CONVERSION: `currentInsertIndex` indexes the VISIBLE sibling
+      // list (calculateReorderIndex's basis) but `nonDraggedIds` additionally
+      // contains INVISIBLE flow children (zero-size frames a Figma import
+      // leaves behind), so a raw splice landed one slot short of the
+      // placeholder for every invisible child before the drop slot — "drag
+      // the Footer to the end, it commits before the last section".
+      // Re-anchor: the index means "insert before visible sibling N", or
+      // after the LAST visible sibling when it points past the end.
+      const visibleIds = this.getLayoutSiblingRects(draggedIdSet)
+        .map(s => s.id)
+        .filter(id => nonDraggedIds.includes(id));
+      let spliceIdx: number;
+      if (visibleIds.length === 0) {
+        spliceIdx = Math.min(this.currentInsertIndex, nonDraggedIds.length);
+      } else if (this.currentInsertIndex >= visibleIds.length) {
+        spliceIdx = nonDraggedIds.indexOf(visibleIds[visibleIds.length - 1]) + 1;
+      } else {
+        spliceIdx = nonDraggedIds.indexOf(visibleIds[this.currentInsertIndex]);
+      }
       const desiredOrder = [...nonDraggedIds];
-      desiredOrder.splice(this.currentInsertIndex, 0, ...sortedIds);
+      desiredOrder.splice(spliceIdx, 0, ...sortedIds);
 
       // ── TEMPLATED PAGE: reorder page sections in the PAGE source (not CSS) ──
       // On a page that uses a template, the canvas MERGES the page's sections

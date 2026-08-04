@@ -976,8 +976,48 @@ export default function Page() {
 }
 `);
 
+// ─────────────────────────────────────────────────────────────────────────
+// GHOST_SIBLING_COLUMN — a Figma-import shape: a column of ordered sections
+// with an INVISIBLE zero-size flow child ("ghost" empty frame) between them,
+// and a bordered footer. The reorder insert-index math walks VISIBLE
+// siblings while ranks/splices covered ALL children — one invisible child
+// shifted every index by one, so "drag footer to the end" compared equal to
+// its start slot and never committed. The bare `border` also locks the
+// generator's order/border key-collision fix at the e2e level.
+// ─────────────────────────────────────────────────────────────────────────
+export const GHOST_SIBLING_COLUMN = project(`
+/** @canvas { "viewports": [{"id":"desktop","width":1440}] } */
+'use client';
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Page" style={{
+      display: 'flex', flexDirection: 'column', gap: '0px',
+      width: '1440px', minHeight: '1300px',
+      background: '#0d0d1a',
+    }}>
+      <div data-id="nav" data-name="Nav" style={{
+        height: '200px', background: '#1a1a3a', order: '0',
+      }}></div>
+      <div data-id="ghost" data-name="EmptyFrame" style={{
+        width: 'auto', height: 'auto', order: '1',
+      }}></div>
+      <div data-id="hero" data-name="Hero" style={{
+        height: '300px', background: '#f5f5f7', order: '2',
+      }}></div>
+      <div data-id="footer" data-name="Footer" style={{
+        height: '300px', background: '#ffffff', border: '0', order: '3',
+      }}></div>
+      <div data-id="cta" data-name="CTA" style={{
+        height: '300px', background: '#3a1a1a', order: '4',
+      }}></div>
+    </div>
+  );
+}
+`);
+
 export const SEEDS = {
   COMPONENT_MASTER_2V,
+  GHOST_SIBLING_COLUMN,
   FLEX_COLUMN,
   FLEX_COLUMN_GAP,
   FLEX_ROW,
