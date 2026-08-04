@@ -20,7 +20,7 @@
 // purple, not tablet blue" find).
 
 import type * as t from '@babel/types';
-import { traverse, jsxTagName, type OracleViolation } from './shared';
+import { traverse, jsxTagName, jsxAttrs, stringAttr, type OracleViolation } from './shared';
 import { parseCanvasConfig } from '@/code/project/canvas-config';
 
 /** Collect the file's <style> template-literal CSS (same walk as
@@ -38,6 +38,56 @@ function collectStyleCSS(ast: t.File): string {
     },
   });
   return css;
+}
+
+/**
+ * DUPLICATE_BREAKPOINT_SECTION — a root section whose fixed width equals a
+ * configured viewport width AND whose visibility is display-toggled in the
+ * banded CSS is the fingerprint of "sections duplicated per breakpoint":
+ * a desktop stack and a tablet/mobile stack living side by side in the same
+ * flow, swapped with `display` rules. The pattern doubles page weight, makes
+ * reordering scramble (hidden twins shift flow indices), and any width the
+ * bands don't cover renders BOTH stacks. Responsiveness must be expressed as
+ * overrides on ONE section set instead. (Found on an AI responsive pass,
+ * 2026-08-05.)
+ */
+export function checkDuplicateBreakpointStack(code: string, ast: t.File, v: OracleViolation[]): void {
+  const vps = parseCanvasConfig(code)?.viewports ?? [];
+  if (vps.length === 0) return;
+  const byWidth = new Map<string, string>(vps.map((vp) => [`${vp.width}px`, vp.label ?? vp.id]));
+  const css = collectStyleCSS(ast);
+  if (!css || !/display\s*:/.test(css)) return;
+
+  traverse(ast, {
+    JSXElement(path: { node: t.JSXElement }) {
+      if (stringAttr(jsxAttrs(path.node.openingElement), 'data-id') !== 'root') return;
+      for (const child of path.node.children) {
+        if (child.type !== 'JSXElement') continue;
+        const attrs = jsxAttrs(child.openingElement);
+        const id = stringAttr(attrs, 'data-id');
+        if (!id) continue;
+        const styleAttr = attrs.find((a) => a.name.name === 'style');
+        const obj = styleAttr?.value?.type === 'JSXExpressionContainer'
+          && styleAttr.value.expression.type === 'ObjectExpression'
+          ? styleAttr.value.expression : null;
+        if (!obj) continue;
+        let width: string | null = null;
+        for (const p of obj.properties) {
+          if (p.type !== 'ObjectProperty' || p.computed || p.value.type !== 'StringLiteral') continue;
+          const key = p.key.type === 'Identifier' ? p.key.name : p.key.type === 'StringLiteral' ? p.key.value : null;
+          if (key === 'width') width = p.value.value;
+        }
+        if (!width || !byWidth.has(width)) continue;
+        const idRe = new RegExp(`\\[data-id="${id.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}"\\]\\s*\\{[^}]*display\\s*:`);
+        if (!idRe.test(css)) continue;
+        const name = stringAttr(attrs, 'data-name') ?? id;
+        v.push({
+          code: 'DUPLICATE_BREAKPOINT_SECTION', tier: 2,
+          message: `Root section '${name}' (data-id "${id}") is a per-breakpoint DUPLICATE: its fixed width '${width}' equals the ${byWidth.get(width)} viewport width and its visibility is display-toggled in the banded CSS. Never duplicate a section per breakpoint. Keep ONE fluid section (width '100%') and express every breakpoint difference as banded overrides on that same section and its children. Duplicate stacks double the page weight, scramble drag reordering (hidden twins shift flow order), and render BOTH stacks at any width the bands leave uncovered. Fold this section's differences into its twin as banded rules, then delete this section.`,
+        });
+      }
+    },
+  });
 }
 
 export function checkMediaBandDialect(code: string, ast: t.File, v: OracleViolation[]): void {
@@ -65,6 +115,31 @@ export function checkMediaBandDialect(code: string, ast: t.File, v: OracleViolat
       code: 'MEDIA_BAND_LOWER_BOUND', tier: 2,
       message: `Band head '@media (max-width: ${m[1]}px) and (min-width: ${minW}px)' uses an INTEGER lower bound — write 'min-width: ${suggested}'. An inclusive integer bound also matches the exact smaller breakpoint (the canvas mobile tile renders at exactly its width, so this band's rules leak onto it), and a +1 bound leaves a fractional gap where real phones (375.3px-class widths) fall back to desktop styles. The lower bound is always the NEXT-SMALLER breakpoint + 0.02.`,
     });
+  }
+
+  // ── MEDIA_TOP_BAND_CAPPED — no band may cap the widest breakpoint ──
+  // The widest viewport's look IS the base styles; bands exist only for
+  // SMALLER breakpoints. A band whose max-width reaches the widest viewport
+  // (e.g. `(max-width: 1440px) and (min-width: 810.02px)` when desktop is
+  // 1440) leaves every real screen WIDER than the cap uncovered — the base
+  // styles win there, so sections the band hides reappear on >1440px
+  // monitors (found on an AI responsive pass, 2026-08-05: duplicate tablet
+  // sections rendered alongside the desktop set on wide screens).
+  const largest = vpWidths[vpWidths.length - 1];
+  if (largest !== undefined) {
+    const capRe = /@(?:media|container)\s*\(max-width:\s*([\d.]+)px\)/g;
+    const flagged = new Set<string>();
+    let c: RegExpExecArray | null;
+    while ((c = capRe.exec(css)) !== null) {
+      const maxW = parseFloat(c[1]);
+      if (maxW >= largest && !flagged.has(c[1])) {
+        flagged.add(c[1]);
+        v.push({
+          code: 'MEDIA_TOP_BAND_CAPPED', tier: 2,
+          message: `Band '@media (max-width: ${c[1]}px)' caps the WIDEST breakpoint (${largest}px) — screens wider than ${c[1]}px match no band and fall back to base styles, so everything this band changes silently reverts there (a section it hides reappears on a >${c[1]}px monitor). The widest viewport's look must live in BASE styles (inline or unbanded CSS); write bands only for SMALLER breakpoints. To hide an element on the widest viewport, hide it in its BASE style and reveal it in the smaller bands instead.`,
+        });
+      }
+    }
   }
 
   // ── LANG_RULE_ORDER — global :lang rules must precede banded blocks ──

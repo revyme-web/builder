@@ -41,6 +41,7 @@ import { rankToOrder, pickPlaceholderOrder, normalizeFlowSpans } from './order-p
 import { commitOrderAssignments, computeLayoutBrackets } from './order-commit';
 import { queueMutation, flushNow, hasPendingDeferredFanOut } from '@/code/mutation/mutation-queue';
 import { commitExitToCanvas, flushExitToCanvas } from '../exit-commit';
+import { registerDragEndRestore } from '../drag-end-restores';
 import { computeExitCanvasPosition } from '../transform-reparent';
 import { repositionSignalOps } from '../reposition-signal';
 import { forceCanvasRender, flushAndForceStructuralRender } from '@/canvas/node-ops';
@@ -260,6 +261,10 @@ export class LayoutLiftedStrategy implements DragStrategy {
    *  Without this the other viewport tiles reflow/flicker as the code-first move
    *  commits live. Null when no replicas are hidden. */
   private hiddenReplicaSelector: string | null = null;
+  /** Set by the mid-drag handoff to CanvasDragStrategy: the gesture outlives
+   *  this strategy, so cleanup() must hand the synced-replica restore to the
+   *  drag-end registry instead of unhiding the twins mid-drag. */
+  private deferReplicaRestoreToDragEnd = false;
   /** Replica overlay copies stamped with an inline `display:none !important` at
    *  drag start (a stylesheet rule can't beat overlay edit mode's show rule).
    *  Cleared in the cleanup — drop AND cancel both pass through there. */
@@ -373,6 +378,7 @@ export class LayoutLiftedStrategy implements DragStrategy {
     // CSS, restored on drop/cancel in the cleanup. The SOURCE viewport (the one
     // being dragged) stays visible. No-op for a single-viewport context.
     this.hiddenReplicaSelector = null;
+    this.deferReplicaRestoreToDragEnd = false;
     const otherVpIds = Object.keys(getViewportWidths()).filter(v => v !== startVpId);
     if (otherVpIds.length > 0) {
       // An OPEN overlay whose trigger is being dragged must be hidden with its
@@ -1408,6 +1414,9 @@ export class LayoutLiftedStrategy implements DragStrategy {
             this.originalOrderValues.clear();
           }
           this.removePlaceholdersViaBridge();
+          // The drag continues under CanvasDragStrategy — keep the synced
+          // twins in the other viewports hidden until the gesture ends.
+          this.deferReplicaRestoreToDragEnd = true;
           this.cleanup();
 
           return {
@@ -3650,7 +3659,37 @@ export class LayoutLiftedStrategy implements DragStrategy {
       flushAndForceStructuralRender();
     }
     // Restore the synced replicas hidden in the other viewports on drag start
-    // (drop AND cancel both pass through here).
+    // (drop AND cancel both pass through here). EXCEPTION: the mid-drag
+    // handoff to CanvasDragStrategy also runs cleanup() while the GESTURE is
+    // still live — restoring there made the dragged node's other-viewport
+    // twin pop back visible and shadow the rest of the drag as a duplicate
+    // (replica → primary drag-out, 2026-08-05). The handoff sets
+    // deferReplicaRestoreToDragEnd; the restore then transfers to the
+    // DragCoordinator's drag-end reset (mouseup/cancel/detach), AFTER the
+    // drop flush has removed the twins from the other viewports' DOM.
+    if (this.deferReplicaRestoreToDragEnd
+      && (this.hiddenReplicaSelector || this.hiddenReplicaOverlays.length > 0)) {
+      const deferredSelector = this.hiddenReplicaSelector;
+      const deferredOverlays = this.hiddenReplicaOverlays;
+      this.hiddenReplicaSelector = null;
+      this.hiddenReplicaOverlays = [];
+      trace.action('layout-lifted:defer-replica-restore-to-drag-end', {
+        overlays: deferredOverlays.length, hasSelector: !!deferredSelector,
+      });
+      registerDragEndRestore(() => {
+        const endBridge = getCanvasBridge();
+        if (deferredOverlays.length > 0 && 'patchStyles' in endBridge) {
+          for (const h of deferredOverlays) {
+            (endBridge as PostMessageBridge).patchStyles(h.id, h.vpPrefix, { display: '' }, true);
+          }
+        }
+        if (deferredSelector) {
+          removeCanvasCSS(deferredSelector);
+          (endBridge as PostMessageBridge).repositionOverlays?.();
+        }
+      });
+    }
+    this.deferReplicaRestoreToDragEnd = false;
     if (this.hiddenReplicaOverlays.length > 0 && 'patchStyles' in bridge) {
       for (const h of this.hiddenReplicaOverlays) {
         (bridge as PostMessageBridge).patchStyles(h.id, h.vpPrefix, { display: '' }, true);

@@ -423,6 +423,29 @@ export interface ConvertOptions {
 
 /** Convert the plugin payload into paste-engine clipboard data. Pure and
  *  synchronous — asset uploads happen before this (see canvas/figma-paste). */
+/** True when an emitted div can never paint a pixel: no children, no text,
+ *  auto/zero size on both axes, no min sizes or padding to give it extent,
+ *  no growing flex (an empty fill child is a legit auto-layout spacer), and
+ *  no visible paint (background, border, shadow, outline). Such ghost frames
+ *  are invisible 0×0 flow children — see the strip site in emit(). */
+function isGhostFrame(node: ClipboardNode): boolean {
+  if (node.children.length > 0 || node.textContent) return false;
+  if (node.type !== 'div') return false;
+  const s = node.styles;
+  const zero = (v?: string) => !v || v === 'auto' || parseFloat(v) === 0;
+  if (!zero(s.width) || !zero(s.height)) return false;
+  if (!zero(s.minWidth) || !zero(s.minHeight)) return false;
+  if (Object.keys(s).some((k) => k.startsWith('padding') && parseFloat(s[k]) > 0)) return false;
+  if (s.flex && /^[1-9]/.test(s.flex.trim())) return false;
+  const bgTransparent = !s.backgroundColor
+    || s.backgroundColor === 'transparent'
+    || /^rgba\([^)]*,\s*0(\.0+)?\s*\)$/.test(s.backgroundColor);
+  if (!bgTransparent) return false;
+  if (s.background || s.backgroundImage || s.boxShadow || s.outline) return false;
+  if (Object.keys(s).some((k) => k.startsWith('border'))) return false;
+  return true;
+}
+
 export function convertFigmaPayload(payload: FigmaPayload, opts: ConvertOptions = {}): ClipboardData {
   const resolveAsset = opts.resolveAssetUrl ?? ((u: string) => u);
   const byId = new Map<string, FigmaPayloadNode>();
@@ -715,6 +738,18 @@ export function convertFigmaPayload(payload: FigmaPayload, opts: ConvertOptions 
           if (child.styles.position !== 'absolute') idx++;
         }
       }
+    }
+
+    // ── ghost-frame strip ──
+    // An EMPTY frame with auto/zero size and nothing to paint renders as an
+    // invisible 0×0 box — yet as a flow child it still occupies a real slot,
+    // which skewed every root reorder on imported pages (the ghost-sibling
+    // find, 2026-08-04). Nothing can ever make it visible, so drop it here.
+    // Roots are exempt: a deliberately copied empty frame must still paste.
+    if (!isRoot && src.kind === 'div' && isGhostFrame(node)) {
+      out.splice(out.indexOf(node), 1);
+      trace.action('figma-import:ghost-dropped', { id, name: src.name });
+      return null;
     }
     return node;
   };

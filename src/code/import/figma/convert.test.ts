@@ -491,3 +491,55 @@ describe('convertFigmaPayload — ids', () => {
     for (const id of ids) expect(id).toMatch(/^[a-z][a-z0-9_-]*$/);
   });
 });
+
+describe('convertFigmaPayload — ghost frames', () => {
+  const section = (children: string[]): FigmaPayloadNode => ({
+    id: 'sec', name: 'Section', kind: 'div', children, styles: {
+      display: 'flex', flexDirection: 'column', width: '1440px', height: '800px', background: '#000000',
+    },
+  });
+
+  it('drops an empty invisible auto-sized frame (the ghost-sibling shape)', () => {
+    const data = convertFigmaPayload(payload([
+      { id: 'ghost', name: 'Frame', kind: 'div', children: [], styles: {
+        backgroundColor: 'rgba(0, 0, 0, 0)', overflow: 'visible',
+      } },
+      { id: 'real', name: 'Card', kind: 'div', children: [], styles: {
+        width: '200px', height: '100px', background: '#ffffff',
+      } },
+      section(['ghost', 'real']),
+    ], ['sec']));
+    expect(data.nodes.find((n) => n.id === 'ghost')).toBeUndefined();
+    const sec = byId(data, 'sec');
+    expect(sec.children).toEqual(['real']);
+    // The surviving sibling takes flow slot 0 — no gap left by the ghost.
+    expect(byId(data, 'real').styles.order).toBe('0');
+  });
+
+  it('keeps an empty GROWING frame (auto-layout spacer)', () => {
+    const data = convertFigmaPayload(payload([
+      { id: 'spacer', name: 'Spacer', kind: 'div', children: [], styles: { flex: '1 0 0px' } },
+      section(['spacer']),
+    ], ['sec']));
+    expect(data.nodes.find((n) => n.id === 'spacer')).toBeTruthy();
+  });
+
+  it('keeps an empty frame that paints (background color)', () => {
+    const data = convertFigmaPayload(payload([
+      { id: 'dot', name: 'Dot', kind: 'div', children: [], styles: {
+        width: '8px', height: '8px', backgroundColor: '#ff0000',
+      } },
+      section(['dot']),
+    ], ['sec']));
+    expect(data.nodes.find((n) => n.id === 'dot')).toBeTruthy();
+  });
+
+  it('keeps a deliberately pasted empty ROOT frame', () => {
+    const data = convertFigmaPayload(payload([
+      { id: 'lonely', name: 'Frame', kind: 'div', children: [], styles: {
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+      } },
+    ], ['lonely']));
+    expect(data.nodes.find((n) => n.id === 'lonely')).toBeTruthy();
+  });
+});

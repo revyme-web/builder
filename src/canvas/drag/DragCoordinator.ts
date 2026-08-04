@@ -39,6 +39,7 @@ import { isComponentLikeFilePath } from '@/code/project/file-path-kind';
 import { forceCanvasRender, isPrimaryViewport, getActiveFilePath } from '@/canvas/node-ops';
 import { getViewportWidths } from '@/code/stores/viewport-store';
 import { getReplicaContext } from './replica-context';
+import { runDragEndRestores } from './drag-end-restores';
 
 // ─── Callbacks ─────────────────────────────────────────────────────────────
 // The coordinator doesn't know about Jotai, React, or the code generator.
@@ -1351,6 +1352,11 @@ export class DragCoordinator {
       trace.action('drag:end-drain-fan-out-defer', {});
     }
     flushNow();
+    // Deferred whole-gesture restores (synced-replica unhides handed over by
+    // a mid-drag strategy switch). AFTER the drop flush so the twins are
+    // already gone from the other viewports' DOM when the hide lifts — no
+    // one-frame flash of the pre-drag copies.
+    runDragEndRestores();
     // SUBTREE CACHE NUDGE — shift each dragged root's DESCENDANTS' cached
     // rects by the root's own start→end screen delta. The root's entry stays
     // fresh via the per-frame drag emits, but the descendants' do not: the

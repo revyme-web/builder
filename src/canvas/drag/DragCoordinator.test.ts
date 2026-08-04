@@ -4,6 +4,7 @@
 
 import { describe, test, it, expect, vi, beforeEach } from 'vitest';
 import { DragCoordinator, type DragCallbacks } from './DragCoordinator';
+import { registerDragEndRestore } from './drag-end-restores';
 import { flushNow } from '@/code/mutation/mutation-queue';
 import type { PendingUpdate, Transform } from '@/shared/types';
 import { findNodeRect } from '@/canvas/node-ops';
@@ -240,6 +241,45 @@ describe('DragCoordinator — strategy switching', () => {
     expect(mockStrategy.onCancel).toHaveBeenCalled();
     expect(callbacks.onDragStateChange).toHaveBeenCalledWith(false, expect.anything());
     expect(coordinator.isDragging).toBe(false);
+  });
+
+  // A mid-drag strategy handoff (layout-lifted → canvas) registers its
+  // synced-replica unhide as a DRAG-END restore — the coordinator must run
+  // it when the gesture actually ends, on drop AND on cancel. Restoring at
+  // strategy teardown instead made the dragged node's other-viewport twin
+  // reappear mid-drag as a visual duplicate (2026-08-05).
+  test('registered drag-end restores run on mouseUp', () => {
+    const callbacks = makeCallbacks();
+    const coordinator = new DragCoordinator(containerEl, contentEl, callbacks);
+    const restore = vi.fn();
+    registerDragEndRestore(restore);
+
+    (coordinator as any).isDragStarted = true;
+    (coordinator as any).activeStrategy = createMockStrategy('canvas', { canHandle: true, onEndUpdates: [] });
+    (coordinator as any).context = {
+      draggedNodes: [], selectedIds: [], viewportPrefix: '', contentEl,
+    };
+
+    coordinator.handleMouseUp();
+    expect(restore).toHaveBeenCalledTimes(1);
+    coordinator.handleMouseUp(); // idle mouseup: registry already drained
+    expect(restore).toHaveBeenCalledTimes(1);
+  });
+
+  test('registered drag-end restores run on cancel too', () => {
+    const callbacks = makeCallbacks();
+    const coordinator = new DragCoordinator(containerEl, contentEl, callbacks);
+    const restore = vi.fn();
+    registerDragEndRestore(restore);
+
+    (coordinator as any).isDragStarted = true;
+    (coordinator as any).activeStrategy = createMockStrategy('canvas');
+    (coordinator as any).context = {
+      draggedNodes: [], selectedIds: [], viewportPrefix: '',
+    };
+
+    coordinator.cancel();
+    expect(restore).toHaveBeenCalledTimes(1);
   });
 });
 

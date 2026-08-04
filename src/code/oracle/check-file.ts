@@ -34,7 +34,7 @@ import { checkOverlayDialect } from './checks/overlay-dialect';
 import { checkSvgShapeDialect } from './checks/svg-shape-dialect';
 import { checkMotionAppearHidden, checkMotionTransformDrift } from './checks/motion-appear';
 import { checkTranslationDialect } from './checks/translation-dialect';
-import { checkMediaBandDialect } from './checks/media-band-dialect';
+import { checkMediaBandDialect, checkDuplicateBreakpointStack } from './checks/media-band-dialect';
 import { checkComponentLinks, checkPageLinks } from './checks/link-rules';
 import { checkCmsRowNavMarker, checkCmsCollectionDialect, checkCmsNavDialect } from './checks/cms-dialect';
 
@@ -1051,11 +1051,20 @@ export function checkFile(
 
   // ── MEDIA BAND DIALECT (pages + components) — ranged @media heads need the
   //    fractional `<smaller-bp>.02px` lower bound (integer bounds leak onto
-  //    the exact smaller tile or gap fractional phones), and global :lang
-  //    rules must precede banded blocks or per-replica locale values never
-  //    paint (equal specificity — later wins). ─────────────────────────────
-  if ((kind === 'page' || kind === 'component') && /min-width|:lang\(/.test(code)) {
+  //    the exact smaller tile or gap fractional phones), no band may cap the
+  //    widest breakpoint (screens above the cap fall back to base styles),
+  //    and global :lang rules must precede banded blocks or per-replica
+  //    locale values never paint (equal specificity — later wins). ─────────
+  if ((kind === 'page' || kind === 'component') && /min-width|max-width|:lang\(/.test(code)) {
     checkMediaBandDialect(code, ast, v);
+  }
+
+  // ── DUPLICATE BREAKPOINT STACKS (pages + templates) — a root section with
+  //    a fixed width equal to a viewport width, display-toggled in banded
+  //    CSS, is a duplicated per-breakpoint section stack. Responsiveness
+  //    must be overrides on ONE section set. ───────────────────────────────
+  if ((kind === 'page' || kind === 'template') && /display\s*:/.test(code)) {
+    checkDuplicateBreakpointStack(code, ast, v);
   }
 
   // ── SVG SHAPE DIALECT (pages + components) — the shape/stroke controls,
