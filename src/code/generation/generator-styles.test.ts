@@ -3,7 +3,7 @@ import { transform } from '@babel/standalone';
 import {
   updateContainerQueryStyle, updateVariantStyleInCode, setConditionalStyleInCode,
   rewriteResponsiveBreakpoints, addResponsiveBreakpoint, removeResponsiveBreakpoint,
-  setConditionalOrderInCode,
+  setConditionalOrderInCode, clearContainerStylesInSubtree,
 } from './generator-styles';
 import { updateNodeInCode } from './generator-crud';
 import { parseJSXToNodes } from '../parsing/parser';
@@ -1516,5 +1516,56 @@ export default withResponsiveProps(Foo);
     expect(resolved.top).toBe('50.0743%');
     expect(resolved.right).toBeUndefined();
     expect(resolved.bottom).toBeUndefined();
+  });
+});
+
+// Exit-to-canvas must shed per-viewport overrides. A canvas node has no
+// viewports, so a `@media … [data-id=x] { display: none }` left behind keeps
+// hiding the node on that breakpoint even though the user can see it sitting on
+// the canvas — and dragging it back in re-hides it, because ENTRY only clears
+// the override for the viewport it lands in (user report 2026-08-04).
+describe('clearContainerStylesInSubtree — exit-to-canvas sheds @media overrides', () => {
+  const PAGE = `'use client';
+import React from 'react';
+export default function Page() {
+  return (
+    <div data-id="root" style={{ position: 'relative' }}>
+      <style>{\`
+    @media (max-width: 768px) {
+      [data-id="card"] { display: none !important; }
+      [data-id="card-label"] { font-size: 12px !important; }
+      [data-id="other"] { display: none !important; }
+    }
+  \`}</style>
+      <div data-id="card" style={{ position: 'absolute' }}>
+        <p data-id="card-label" style={{ position: 'relative' }}>Hi</p>
+      </div>
+      <div data-id="other" style={{ position: 'absolute' }}></div>
+    </div>
+  );
+}`;
+
+  test('drops the tablet display:none for the dragged node', () => {
+    const out = clearContainerStylesInSubtree(PAGE, 'card');
+    expect(out).not.toContain(`[data-id="card"]`);
+  });
+
+  test('drops overrides for DESCENDANTS too — they leave with the node', () => {
+    const out = clearContainerStylesInSubtree(PAGE, 'card');
+    expect(out).not.toContain(`[data-id="card-label"]`);
+  });
+
+  test('leaves every other node\'s overrides alone', () => {
+    const out = clearContainerStylesInSubtree(PAGE, 'card');
+    expect(out).toContain(`[data-id="other"] { display: none !important; }`);
+  });
+
+  test('no-op for a node with no overrides', () => {
+    const out = clearContainerStylesInSubtree(PAGE, 'other');
+    expect(clearContainerStylesInSubtree(out, 'other')).toBe(out);
+  });
+
+  test('unknown id is a no-op (never corrupts the style block)', () => {
+    expect(clearContainerStylesInSubtree(PAGE, 'nope')).toBe(PAGE);
   });
 });

@@ -102,11 +102,32 @@ vi.mock('../reparent-utils', () => ({
 vi.mock('@/code/mutation/mutation-queue', () => ({
   queueMutation: vi.fn(),
   flushNowDeferredDuringDrag: vi.fn(), flushNow: vi.fn(),
+  // The variant-exit clone copies the subtree's ::after border-overlay rules
+  // (`queueBorderOverlayDuplicates`), which reads the live code for its <style>
+  // block. Empty string = "no border rules to copy" → early return.
+  getCurrentCode: vi.fn(() => ''),
 }));
 
 vi.mock('@/shared/dom-utils', () => ({
   getStyleNum: vi.fn((el: HTMLElement, prop: string) => parseFloat((el.style as any)[prop]) || 0),
 }));
+
+// DELEGATING spy over the real seed. The clone exits re-seed the imperative
+// node cache from the post-flush code, and that is the half of the fix that
+// makes the forced render actually ship (see the mount-gating test at the
+// bottom of this file) — so the call site has to be observable, and its
+// ORDER relative to flushNow/forceCanvasRender has to be pinned.
+const seedNodesForCodeSpy = vi.fn();
+vi.mock('@/code/stores/store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/code/stores/store')>();
+  return {
+    ...actual,
+    seedNodesForCode: (...args: Parameters<typeof actual.seedNodesForCode>) => {
+      seedNodesForCodeSpy(...args);
+      return actual.seedNodesForCode(...args);
+    },
+  };
+});
 
 vi.mock('@/shared/pin-utils', () => ({
   getInsetState: vi.fn(() => ({
@@ -652,6 +673,144 @@ describe('AbsoluteInFrameStrategy', () => {
       expect(updates.length).toBeGreaterThanOrEqual(1);
       expect(updates[0].type).toBe('style');
     });
+  });
+
+  // ─── Component-VARIANT exit must mount the clone MID-DRAG ─────────────
+  //
+  // The variant exit doesn't move the source — it queues `addCanvasNode` for a
+  // brand-new CLONE and swaps the drag identity onto it. Nothing imperative can
+  // create that element's DOM, so the exit has to run the FULL synchronous
+  // pipeline right there. The deferred helpers only log and latch
+  // (`flushNowDeferredDuringDrag` returns without flushing;
+  // `forceCanvasRenderDeferredDuringDrag` just sets `_forceRenderOnNextFlush`)
+  // and the queue gate then HOLDS the mutations until the drop — so taking the
+  // deferred branch here left the clone with NO element for the entire drag:
+  // 391 null `getScreenCornersById` lookups in one traced 2.4s drag, the
+  // element frozen at its exit position until mouseup (user report 2026-08-03).
+  describe('component-variant exit flushes synchronously', () => {
+    test('queues the clone AND runs flushNow + forceCanvasRender, not the deferred pair', async () => {
+      const { isComponentFilePath } = await import('@/code/project/active-file-store');
+      const { forceCanvasRender, forceCanvasRenderDeferredDuringDrag } = await import('@/canvas/node-ops');
+      vi.mocked(isComponentFilePath).mockReturnValue(true);
+
+      const nodes = new Map([
+        ['parent-1', makeNode('parent-1', 'grandparent-1')],
+        ['node-1', {
+          id: 'node-1', parentId: 'parent-1', type: 'div', name: 'Card', tag: 'div',
+          children: [], attrs: {},
+          styles: { position: 'absolute', left: '10px', top: '5px' },
+        }],
+      ]) as any;
+
+      // `viewportPrefix: 'variant-1-'` on a component file IS the variant-exit
+      // condition (isComponentFile && viewportPrefix !== '').
+      const ctx = makeContext({
+        nodes,
+        draggedNodes: [makeDraggedNode({ id: 'node-1', startParentId: 'parent-1' })],
+        startMouse: { x: 500, y: 300 },
+        viewportPrefix: 'variant-1-',
+      });
+      strategy.onStart(ctx);
+
+      mockFindNodeRect.mockImplementation((nodeId: string) => {
+        if (nodeId === 'node-1') return new DOMRect(2000, 50, 200, 100);
+        if (nodeId === 'parent-1') return new DOMRect(0, 0, 400, 400);
+        return null;
+      });
+      for (let i = 0; i < 11; i++) {
+        strategy.onMove(ctx, { x: 2000 + i, y: 300 });
+      }
+
+      // The clone is queued (fresh id — never the source's).
+      const addCanvasNodeCalls = vi.mocked(queueMutation).mock.calls
+        .filter(([m]) => (m as { type: string }).type === 'addCanvasNode');
+      expect(addCanvasNodeCalls).toHaveLength(1);
+      const cloneId = (addCanvasNodeCalls[0][0] as { node: { id: string } }).node.id;
+      expect(cloneId).not.toBe('node-1');
+
+      // …and the drag identity is now the clone, so the element the rest of the
+      // drag patches is the one `addCanvasNode` creates.
+      expect(ctx.draggedNodes[0].id).toBe(cloneId);
+
+      // THE REGRESSION: the clone's element only exists if BOTH of these run
+      // now. The deferred pair would leave it unmounted until mouseup.
+      expect(flushNow).toHaveBeenCalled();
+      expect(forceCanvasRender).toHaveBeenCalled();
+      expect(flushNowDeferredDuringDrag).not.toHaveBeenCalled();
+      expect(forceCanvasRenderDeferredDuringDrag).not.toHaveBeenCalled();
+
+      // …and the cache seed runs BETWEEN them. Order is the whole point: the
+      // forced render reads the imperative cache mid-gesture, so a seed after
+      // it (or no seed at all) leaves the render skipped by the integrity
+      // guard and the clone unmounted.
+      expect(seedNodesForCodeSpy).toHaveBeenCalled();
+      const flushOrder = vi.mocked(flushNow).mock.invocationCallOrder[0];
+      const seedOrder = seedNodesForCodeSpy.mock.invocationCallOrder[0];
+      const renderOrder = vi.mocked(forceCanvasRender).mock.invocationCallOrder[0];
+      expect(flushOrder).toBeLessThan(seedOrder);
+      expect(seedOrder).toBeLessThan(renderOrder);
+    });
+
+    test('a plain (non-clone) unparent exit still defers — no mid-drag pipeline', () => {
+      const nodes = new Map([
+        ['parent-1', makeNode('parent-1', 'grandparent-1')],
+        ['node-1', { id: 'node-1', parentId: 'parent-1', type: 'div', tag: 'div', children: [], attrs: {},
+          styles: { position: 'absolute', left: '10px', top: '5px' } }],
+      ]) as any;
+      const ctx = makeContext({
+        nodes,
+        draggedNodes: [makeDraggedNode({ id: 'node-1', startParentId: 'parent-1' })],
+        startMouse: { x: 500, y: 300 },
+      });
+      strategy.onStart(ctx);
+      mockFindNodeRect.mockImplementation((nodeId: string) => {
+        if (nodeId === 'node-1') return new DOMRect(2000, 50, 200, 100);
+        if (nodeId === 'parent-1') return new DOMRect(0, 0, 400, 400);
+        return null;
+      });
+      for (let i = 0; i < 11; i++) strategy.onMove(ctx, { x: 2000 + i, y: 300 });
+
+      // The expensive synchronous pipeline stays off the common path.
+      expect(flushNowDeferredDuringDrag).toHaveBeenCalled();
+      expect(flushNow).not.toHaveBeenCalled();
+      expect(seedNodesForCodeSpy).not.toHaveBeenCalled();
+    });
+  });
+});
+
+// The gate the clone has to clear to become a real element mid-drag. During a
+// gesture Canvas.tsx's forced render reads the IMPERATIVE node cache (codeAtom
+// is stale — the setCode fan-out is stashed) and refuses to render a map that
+// lags the committed code, because doing so rebuilds the canvas WITHOUT a
+// just-committed node (live find 2026-07-29: a freshly drawn frame vanished).
+// A brand-new clone is exactly such a node, so the exit's flush alone leaves
+// the render skipped forever — the element only appears at mouseup. Re-seeding
+// the cache from the flushed code satisfies the guard on the merits.
+describe('render-integrity guard — why the clone exit re-seeds the node cache', () => {
+  const page = (extra: string) => `'use client';
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Page" style={{ position: 'relative' }}>
+      <div data-id="src-1" data-name="Card" style={{ position: 'absolute' }}></div>${extra}
+    </div>
+  );
+}`;
+  const WITHOUT_CLONE = page('');
+  const WITH_CLONE = page('\n      <div data-id="detach-clone-1" data-name="Card" style={{ position: \'absolute\' }}></div>');
+
+  test('a cache that lags the committed code SKIPS the render; seeding un-skips it', async () => {
+    const { seedNodesForCode, getCachedNodesMap } = await import('@/code/stores/store');
+    const { shouldSkipLaggingForcedRender } = await import('@/canvas/render-integrity');
+
+    // Pre-flush state: the clone exists in code but not in the cache.
+    seedNodesForCode(WITHOUT_CLONE);
+    expect(getCachedNodesMap().has('detach-clone-1')).toBe(false);
+    expect(shouldSkipLaggingForcedRender(WITH_CLONE, getCachedNodesMap())).toBe(true);
+
+    // What the exit now does after flushNow: re-derive from the committed code.
+    seedNodesForCode(WITH_CLONE);
+    expect(getCachedNodesMap().has('detach-clone-1')).toBe(true);
+    expect(shouldSkipLaggingForcedRender(WITH_CLONE, getCachedNodesMap())).toBe(false);
   });
 });
 

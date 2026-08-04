@@ -44,6 +44,7 @@ import { previewModeAtom } from './code/stores/editor-store';
 import { CollaborationProvider } from './canvas/collab/CollaborationProvider';
 import CollaborationLayer from './canvas/collab/CollaborationLayer';
 import { useIsViewer, useViewerReason, setOfflineMode } from './code/stores/viewer-mode-store';
+import { suspendBuilderTheme, resumeBuilderTheme } from '@/editor/builder-theme';
 // Sketch draw animations intentionally do NOT auto-play on the canvas —
 // it's an editing surface, and auto-playback on every preview exit /
 // page open is distracting noise. The animation runs in PREVIEW (and at
@@ -132,6 +133,10 @@ export default function App() {
   useEffect(() => {
     const root = document.documentElement;
     if (isComponentFile) {
+      // The builder theme writes the same inline properties, so it stands
+      // down for the duration — otherwise switching theme while inside a
+      // component would paint over the purple component-mode signal.
+      suspendBuilderTheme();
       root.style.setProperty('--accent', 'var(--accent-secondary)');
       // The FOREGROUND has to move with the fill. Overriding only --accent
       // left every accent-filled control (Publish, Variables, the active
@@ -152,6 +157,10 @@ export default function App() {
       root.style.removeProperty('--accent-strong');
       root.style.removeProperty('--accent-strong-fg');
       root.style.removeProperty('--border-focus');
+      // These removes wipe the builder theme's inline values too (same
+      // `<html>` style), so repaint it — without this, leaving a component
+      // dropped a Monochrome / Green Forest user back to the stock brass.
+      resumeBuilderTheme();
     }
     return () => {
       root.style.removeProperty('--accent');
@@ -159,6 +168,7 @@ export default function App() {
       root.style.removeProperty('--accent-strong');
       root.style.removeProperty('--accent-strong-fg');
       root.style.removeProperty('--border-focus');
+      resumeBuilderTheme();
     };
   }, [isComponentFile]);
 

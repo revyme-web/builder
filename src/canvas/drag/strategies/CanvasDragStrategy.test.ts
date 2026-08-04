@@ -119,6 +119,9 @@ vi.mock('@/code/mutation/mutation-queue', () => ({
   queueMutation: vi.fn(),
   flushNowDeferredDuringDrag: vi.fn(), flushNow: vi.fn(),
   syncQueueCode: vi.fn(),
+  // The entry's synchronous unhide pipeline seeds the node cache from the
+  // just-flushed code; '' parses to an empty map, which is all these tests need.
+  getCurrentCode: vi.fn(() => ''),
 }));
 
 vi.mock('../replica-context', () => ({
@@ -757,5 +760,87 @@ describe('CanvasDragStrategy', () => {
       expect(dropLineOps.hide).toHaveBeenCalled();
       expect(parentHighlightOps.hide).toHaveBeenCalled();
     });
+  });
+});
+
+// Entering a viewport that currently HIDES the node must make it visible on the
+// entry frame, not at mouseup. The hide is a `@media … { [data-id=x] {
+// display:none !important } }` rule in the page's <style> block: a stylesheet
+// `!important` beats every imperative per-element patch the drag has, so the
+// only way to drop it is to regenerate the code and re-render the block. The
+// entry queues that removal — but deferring the flush meant the node stayed
+// invisible for the whole entry-to-drop window ("it should not hide when I enter
+// primary", user report 2026-08-04).
+describe('entry into a viewport that hides the node', () => {
+  // This describe sits OUTSIDE the main one, so it needs its own reset —
+  // without it the first test's flushNow leaks into the second.
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  const RULE_CODE = (width: number) => `<div data-id="root" style={{position:'relative'}}>
+  <style>{\`
+    @media (max-width: ${width}px) {
+      [data-id="node-1"] { display: none !important; }
+    }
+  \`}</style>
+</div>`;
+
+  function runEntry(nodes: Map<string, any>) {
+    const ctx = makeContext({
+      draggedNodes: [makeDraggedNode({ id: 'node-1', startLeft: 100, startTop: 200, startParentId: null })],
+      startMouse: { x: 200, y: 300 },
+      viewportPrefix: '',
+      nodes,
+    });
+    const s = new CanvasDragStrategy();
+    s.onStart(ctx);
+    for (let i = 0; i < 3; i++) s.onMove(ctx, { x: 220, y: 320 });
+  }
+
+  function frameNodes() {
+    mockGetNodeHitsAtPoint.mockReturnValue([{ id: 'frame-1', vpPrefix: '' }]);
+    mockFindNodeRect.mockImplementation((nodeId: string) => {
+      if (nodeId === 'node-1') return new DOMRect(200, 300, 100, 50);
+      if (nodeId === 'frame-1') return new DOMRect(100, 100, 400, 400);
+      return null;
+    });
+    return new Map<string, any>([
+      ['frame-1', { id: 'frame-1', type: 'div', tag: 'div', parentId: null, children: [], styles: { position: 'relative' }, attrs: {} }],
+    ]);
+  }
+
+  test('runs the pipeline SYNCHRONOUSLY when a hide rule covers the entered viewport', async () => {
+    const { getDefaultStore } = await import('jotai');
+    const { codeAtom } = await import('@/code/stores/store');
+    const { forceCanvasRender, forceCanvasRenderDeferredDuringDrag } = await import('@/canvas/node-ops');
+    // desktop is the entered viewport and its width is 1440 in this harness.
+    getDefaultStore().set(codeAtom, RULE_CODE(1440));
+
+    runEntry(frameNodes());
+
+    // The unhide is queued…
+    expect(queueMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'updateContainerStyle', nodeId: 'node-1', maxWidth: 1440, styles: { display: '' },
+    }));
+    // …and committed + re-rendered NOW, because nothing imperative can beat a
+    // stylesheet !important. Deferring these is what left the node invisible.
+    expect(flushNow).toHaveBeenCalled();
+    expect(forceCanvasRender).toHaveBeenCalled();
+    expect(flushNowDeferredDuringDrag).not.toHaveBeenCalled();
+    expect(forceCanvasRenderDeferredDuringDrag).not.toHaveBeenCalled();
+  });
+
+  test('keeps the cheap DEFERRED path when no rule hides the entered viewport', async () => {
+    const { getDefaultStore } = await import('jotai');
+    const { codeAtom } = await import('@/code/stores/store');
+    const { forceCanvasRender } = await import('@/canvas/node-ops');
+    // A rule at the TABLET width only — the entered (desktop) viewport is clear,
+    // so this entry has nothing to unhide and must not pay for the pipeline.
+    getDefaultStore().set(codeAtom, RULE_CODE(768));
+
+    runEntry(frameNodes());
+
+    expect(flushNowDeferredDuringDrag).toHaveBeenCalled();
+    expect(flushNow).not.toHaveBeenCalled();
+    expect(forceCanvasRender).not.toHaveBeenCalled();
   });
 });

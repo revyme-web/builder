@@ -35,9 +35,11 @@ import { commitExitToCanvas, flushExitToCanvas } from '../exit-commit';
 import { buildCanvasCloneDescriptor } from '../clone-descriptor';
 import { queueBorderOverlayDuplicates, queueReplicaCreationUnhide } from '@/canvas/creators/creator-utils';
 import { commitOrderAssignments } from './order-commit';
-import { queueMutation, flushNow, flushNowDeferredDuringDrag } from '@/code/mutation/mutation-queue';
+import { queueMutation, flushNow, flushNowDeferredDuringDrag, getCurrentCode } from '@/code/mutation/mutation-queue';
 import { getViewportWidths } from '@/code/stores/viewport-store';
-import { moveNodeInCache, updateNodeInCache, getNodeFromCache } from '@/code/stores/store';
+import { moveNodeInCache, updateNodeInCache, getNodeFromCache, seedNodesForCode } from '@/code/stores/store';
+import { containerOverridesAtom, getOverridesAtWidth } from '@/code/stores/container-query-store';
+import { getDefaultStore } from 'jotai';
 
 
 
@@ -1596,6 +1598,17 @@ export class CanvasDragStrategy implements DragStrategy {
           // do it here or AbsoluteInFrameStrategy's first dynamic-pin ticks
           // (`left: N%`) resolve against the content root and the element
           // flies off at the reparent moment. `-1` = append, no order slots.
+          //
+          // Traced because the hazard above is a TIMING one and was otherwise
+          // invisible: this is a Comlink post, and the sandbox's matching
+          // `sandbox:reparentLive` is the only other end of it. Pairing the two
+          // timestamps measures how long the entered element spends carrying
+          // parent-local coords while still in its old DOM parent (53ms in the
+          // 2026-08-04 recording, with the properties panel re-rendering on
+          // every drag frame in between — same-origin iframe, same event loop).
+          trace.action('canvas-drag:entry-reparent-posted', {
+            nodeId: node.id, parentId: enteredParentId, cssLeft, cssTop,
+          });
           getCanvasBridge().reparentLive?.(node.id, context.viewportPrefix, enteredParentId, -1, moveStyles);
           patchNodeStyles(context.contentEl, node.id, context.viewportPrefix, { transform: orig });
           // Anchor the translate baseline at the new committed position.
@@ -1663,10 +1676,18 @@ export class CanvasDragStrategy implements DragStrategy {
         // from the entered vp's @container rule (no-op if it wasn't
         // there, which is the common case for plain canvas nodes).
         const enteredVpId = this.enteredVpId || 'desktop';
+        // True when that unhide actually REMOVES a live rule (rather than being
+        // the usual no-op) — the entered viewport currently hides this node.
+        // Drives the synchronous pipeline at the flush below; see there.
+        let unhidesLiveRule = false;
         {
           const vpWidths = getViewportWidths();
           const enteredVpWidth = vpWidths[enteredVpId] ?? 0;
+          const overrides = getDefaultStore().get(containerOverridesAtom);
           for (const node of draggedNodes) {
+            if (getOverridesAtWidth(overrides, node.id, enteredVpWidth).get('display')) {
+              unhidesLiveRule = true;
+            }
             queueMutation({
               type: 'updateContainerStyle',
               nodeId: node.id,
@@ -1675,7 +1696,7 @@ export class CanvasDragStrategy implements DragStrategy {
             });
           }
           trace.action('canvas-drag:entered-vp-display-unhide', {
-            enteredVpId, enteredVpWidth, nodeIds: draggedNodes.map(n => n.id),
+            enteredVpId, enteredVpWidth, unhidesLiveRule, nodeIds: draggedNodes.map(n => n.id),
           });
         }
         if (!isPrimaryViewport(enteredVpId)) {
@@ -1760,12 +1781,42 @@ export class CanvasDragStrategy implements DragStrategy {
 
         // Commit: mutations queue now; the drop's flushNow drains them in one
         // chain (mid-drag string work was the drag-start stall on big pages).
-        flushNowDeferredDuringDrag();
-        // Force iframe re-render so the element's DOM parent actually changes
-        // before the next patchStyles tick writes inline left/top. Without
-        // this, position:absolute coords get interpreted relative to the OLD
-        // parent and the element appears offset.
-        forceCanvasRenderDeferredDuringDrag();
+        //
+        // EXCEPT when the entry has to UNHIDE the node in the viewport it just
+        // entered. That hide is a `@media … { [data-id=x] { display:none
+        // !important } }` rule in the page's <style> block, and a stylesheet
+        // `!important` cannot be beaten by the imperative per-element patches
+        // the drag runs at 60fps — the ONLY way to drop it is to regenerate the
+        // code and re-render the block. Deferring that to the drop is exactly
+        // what the user saw: the node vanished the instant it entered the
+        // primary and only reappeared on mouseup ("it should not hide when I
+        // enter primary", 2026-08-04). So this one transition takes the full
+        // synchronous pipeline — the same trio the vp-only clone EXIT already
+        // uses for the mirror-image problem (materialising DOM mid-drag), and
+        // for the same reason: no imperative primitive can express it.
+        //
+        // Gated on `unhidesLiveRule` so the cost lands ONLY on the rare entry
+        // that actually has a rule to drop; every ordinary entry (no override
+        // at the entered width — the common case for plain canvas nodes) keeps
+        // the deferred path and pays nothing. Seeding the node cache from the
+        // freshly committed code is what makes the forced render survive
+        // Canvas.tsx's integrity guard mid-gesture — see the identical trio in
+        // AbsoluteInFrameStrategy's clone exit.
+        if (unhidesLiveRule) {
+          trace.action('canvas-drag:entry-sync-unhide-pipeline', {
+            enteredVpId, nodeIds: draggedNodes.map(n => n.id),
+          });
+          flushNow();
+          seedNodesForCode(getCurrentCode());
+          forceCanvasRender();
+        } else {
+          flushNowDeferredDuringDrag();
+          // Force iframe re-render so the element's DOM parent actually changes
+          // before the next patchStyles tick writes inline left/top. Without
+          // this, position:absolute coords get interpreted relative to the OLD
+          // parent and the element appears offset.
+          forceCanvasRenderDeferredDuringDrag();
+        }
         // The dragged node now lives in the entered viewport. Update
         // `interactingViewportIdAtom` (via Canvas's event listener) so
         // selection-overlay / pin-constraint-lines / style-write routing

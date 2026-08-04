@@ -9,7 +9,7 @@
 // Bridge-compatible: all DOM reads use findNodeRect/findNodeComputedStyle,
 // all DOM writes use patchNodeStyles. No getNodeEl() calls.
 
-import type { Point, PendingUpdate, Rect } from '@/shared/types';
+import type { Point, PendingUpdate, Rect, NodeMap } from '@/shared/types';
 import { buildCanvasCloneDescriptor, dropDynamicStyleBindings } from '../clone-descriptor';
 import type { DragContext, DragStrategy, DragMoveResult } from '../types';
 import { getParentCanvasOffsetById, getAbsoluteCanvasRectById } from '@/canvas/canvas-math';
@@ -46,8 +46,8 @@ import { trace } from '@/shared/debug-trace';
 import { motionPropsToCSSTransform, MOTION_TRANSFORM_PROPS } from '@/shared/motion-transform';
 import { calculateLayoutInsertIndexById } from '../reparent-utils';
 import { computeEntryParentLocalPosition, computeExitCanvasPosition } from '../transform-reparent';
-import { queueMutation, flushNow, flushNowDeferredDuringDrag } from '@/code/mutation/mutation-queue';
-import { moveNodeInCache, updateNodeInCache, getVariantOverriddenKeys, getNodeFromCache } from '@/code/stores/store';
+import { queueMutation, flushNow, flushNowDeferredDuringDrag, getCurrentCode } from '@/code/mutation/mutation-queue';
+import { moveNodeInCache, updateNodeInCache, getVariantOverriddenKeys, getNodeFromCache, seedNodesForCode } from '@/code/stores/store';
 
 /** Frames the element must be poking outside the non-layout parent before exit
  *  triggers. Instant (1) for non-layout — user expects "touch the canvas → unparent". */
@@ -1766,10 +1766,15 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
             // ── Canvas exit path (default) ─────────────────────────────
             this.exitedParent = true;
             this.exitOverrides = new Map();
-            // Set by the vp-only clone-extraction branch below — decides
-            // whether the post-loop flush runs the full synchronous
-            // pipeline (clone needs its DOM built) or defers to the drop.
+            // Set by EITHER clone-extraction branch below (component-VARIANT
+            // exit + vp-only replica extraction) — decides whether the
+            // post-loop flush runs the full synchronous pipeline (clone needs
+            // its DOM built) or defers to the drop.
             let usedCloneExtraction = false;
+            // Node map re-seeded from the post-flush code on the clone paths —
+            // the only map that actually contains the clone mid-gesture. Null
+            // on every deferred exit. See the flush selector below.
+            let seededNodes: NodeMap | null = null;
             trace.action('abs-in-frame:exit-begin', {
               parentId: this.parentId,
               vpId: this.vpId,
@@ -2056,6 +2061,22 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
                   window.dispatchEvent(new CustomEvent('revyme:select-viewport', {
                     detail: { nodeId: cloneId, vpId: 'desktop' },
                   }));
+                  // PUNCH THROUGH the drag-time render suppression — same
+                  // reason as the vp-only replica extraction below (which sets
+                  // this flag too): the clone is a BRAND-NEW node, so nothing
+                  // imperative can create its DOM. The deferred helpers only
+                  // log + latch (`flushNowDeferredDuringDrag` returns without
+                  // flushing; `forceCanvasRenderDeferredDuringDrag` just sets
+                  // `_forceRenderOnNextFlush`), and the queue gate then HOLDS
+                  // the mutations until the drop — so without this the clone's
+                  // element does not exist for the whole drag: every frame's
+                  // `getScreenCornersById` returned null (391 of them in one
+                  // traced 2.4s drag) and the element sat frozen at its exit
+                  // position, snapping into place only on mouseup (user report
+                  // 2026-08-03). The general suppression stays intact for every
+                  // OTHER transition — this is a one-shot cost at the exit
+                  // frame, not per-frame work.
+                  usedCloneExtraction = true;
                   trace.action('abs-in-frame:variant-exit-clone', {
                     cloneId, sourceVariant, cssLeft, cssTop,
                   });
@@ -2399,14 +2420,30 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
                 }
               }
             }
-            // The CLONE-extraction branch needs the FULL synchronous mid-drag
-            // pipeline (a brand-new node — no imperative primitive can create
-            // its DOM; deferring left the clone invisible until drop). Plain
-            // unparent exits defer like every other transition — running the
-            // 470KB string pipeline + render here was the "unparenting is
-            // slow" stall (5 mid-drag flushes in one traced session).
+            // EITHER clone-extraction branch (component-variant exit, vp-only
+            // replica extraction) needs the FULL synchronous mid-drag pipeline
+            // (a brand-new node — no imperative primitive can create its DOM;
+            // deferring left the clone invisible until drop). Plain unparent
+            // exits defer like every other transition — running the 470KB
+            // string pipeline + render here was the "unparenting is slow"
+            // stall (5 mid-drag flushes in one traced session).
             if (usedCloneExtraction) {
               flushNow();
+              // SEED THE IMPERATIVE NODE CACHE from the code flushNow just
+              // committed — WITHOUT this the flush above still mounts nothing.
+              // Mid-gesture the setCode fan-out is STASHED (deferred-drag-flush),
+              // so codeAtom / nodesAtom — and therefore the imperative cache —
+              // never learn about the clone. Canvas.tsx's forceRender reads that
+              // CACHE during a gesture and its integrity guard
+              // (`shouldSkipLaggingForcedRender`) SKIPS any render whose map is
+              // missing an id the committed code declares — which the clone's id
+              // always is. The render was swallowed and the element stayed absent
+              // for the whole drag (391 null `getScreenCornersById` lookups in one
+              // traced 2.4s drag). Seeding makes cache and code AGREE, which is
+              // exactly the precondition that guard tests — so it passes on the
+              // merits instead of being bypassed, and the stale-parse race it was
+              // added for (2026-07-29) stays covered.
+              seededNodes = seedNodesForCode(getCurrentCode());
               forceCanvasRender();
             } else {
               flushNowDeferredDuringDrag();
@@ -2415,11 +2452,13 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
             // Re-arm overlay-follow on the POST-SWAP (clone) ids. `beginOverlayFollow`
             // ran at drag START with the ORIGINAL ids — before the detach clone (and
             // its cloned overlay) existed — so the detached overlay sat frozen until
-            // the next drag. Now the clone overlay is in the live nodes map (flushNow
-            // applied the clone mutations), so re-arming makes it glide with its
-            // canvas-node trigger for the REST of this same drag. No-op when no
-            // dragged node owns an overlay.
-            beginOverlayFollow(getDefaultStore().get(nodesAtom), context.draggedNodes.map(n => n.id), context.contentEl);
+            // the next drag. Re-arming makes it glide with its canvas-node trigger
+            // for the REST of this same drag. No-op when no dragged node owns an
+            // overlay. Prefer the SEEDED map on the clone paths: `nodesAtom` derives
+            // from `codeAtom`, which the gesture stash leaves on the PRE-flush code,
+            // so it does not contain the cloned overlay this re-arm is looking for
+            // (and reading it can re-parse that stale code straight over the seed).
+            beginOverlayFollow(seededNodes ?? getDefaultStore().get(nodesAtom), context.draggedNodes.map(n => n.id), context.contentEl);
             // Mirror the entry-side event — the dragged node is now at
             // canvas root (no vpPrefix). SelectionOverlay /
             // PinConstraintLines / write-routing all key off

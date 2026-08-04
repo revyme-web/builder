@@ -357,8 +357,12 @@
        the #111111 panel, two units off --control-border's #292929. The border
        was therefore invisible and every control read as a solid raised slab.
        Now the fill is a faint lift and the BORDER defines the control, which
-       is both quieter and structurally different from the filled-pill idiom. */
-    --grid-line: rgba(255, 255, 255, 0.035);
+       is both quieter and structurally different from the filled-pill idiom.
+
+       Deliberately NEUTRAL and identical across every builder theme — this is
+       a surface, not an accent, and it fills ~36 sites (inputs, chat bubbles,
+       avatars) via the --control-bg alias. */
+    --grid-line: rgba(255, 255, 255, 0.05);
     /* See the :root note — recessed track, raised active segment. */
     --choice-bg: rgba(255, 255, 255, 0.035);
     --segmented-bg: #333333;

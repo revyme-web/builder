@@ -73,7 +73,7 @@ import { getSortedBreakpointWidths } from '../stores/viewport-store';
 import { transformAllResponsiveAttrs } from '../components/instance-prop-overrides';
 import { rewriteListConfigBreakpoints, addListConfigBreakpoint, removeListConfigBreakpoint } from './cms-responsive-gen';
 import { trace } from '@/shared/debug-trace';
-import { findTagClose, findJSXDataIdIndex, quoteStyleValue, findStyleObjectEnd, findMatchingCloseTagIndex } from './generator-utils';
+import { findTagClose, findJSXDataIdIndex, quoteStyleValue, findStyleObjectEnd, findMatchingCloseTagIndex, findSubtreeRange } from './generator-utils';
 import { updateNodeInCode } from './generator-crud';
 import { isIndexInsideSlotConst } from './slot-ops';
 
@@ -296,6 +296,36 @@ export function clearContainerStylesForNode(code: string, nodeId: string): strin
 
   const [fullMatch, prefix, , suffix] = blockMatch;
   return code.slice(0, blockMatch.index!) + prefix + newCss + suffix + code.slice(blockMatch.index! + fullMatch.length);
+}
+
+/**
+ * Remove ALL @media rules for a node AND every descendant in its JSX subtree.
+ *
+ * The exit-to-canvas twin of `stripDataResponsiveInSubtree`, and it exists for
+ * the same reason: per-viewport overrides are keyed to breakpoint widths, and a
+ * canvas node has no viewports. Leaving them behind means a node the user
+ * hid on tablet, dragged out to the canvas and dragged back in is STILL hidden
+ * on tablet — even though on the canvas it was plainly visible with no viewport
+ * to hide it in (user report 2026-08-04). Entry only unhides the viewport it
+ * lands in (`canvas-drag:entered-vp-display-unhide`), so anything not shed at
+ * exit survives the whole round trip.
+ *
+ * Subtree-wide, not node-only: dragging out a section takes its children with
+ * it, and their per-viewport rules are just as orphaned as the root's.
+ */
+export function clearContainerStylesInSubtree(code: string, nodeId: string): string {
+  const range = findSubtreeRange(code, nodeId);
+  if (!range) return code;
+  // Every id the dragged markup carries. Same idiom as overlay-gen's clone walk.
+  const ids = Array.from(
+    new Set(Array.from(code.slice(range.start, range.end).matchAll(/data-id="([^"]+)"/g), (m) => m[1])),
+  );
+  let out = code;
+  for (const id of ids) out = clearContainerStylesForNode(out, id);
+  if (out !== code) {
+    trace.action('generator:clear-container-styles-subtree', { nodeId, ids: ids.length });
+  }
+  return out;
 }
 
 /**

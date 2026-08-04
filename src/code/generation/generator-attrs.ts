@@ -8,7 +8,7 @@ import { parseJSX, findFirstElementByDataId, findAttribute, traverse } from '../
 import { SVG_SHAPE_TAGS } from '@/shared/constants';
 import { trace } from '@/shared/debug-trace';
 import { translateShapeGeometry, translatePathD } from '@/shared/svg-geometry';
-import { generate, findTagClose, findJSXDataIdIndex, findMatchingCloseTagIndex } from './generator-utils';
+import { generate, findTagClose, findJSXDataIdIndex, findMatchingCloseTagIndex, findSubtreeRange } from './generator-utils';
 
 // ─── Variant Style Update ───────────────────────────────────────────────────
 
@@ -99,22 +99,11 @@ export function updateHtmlAttrsInCode(
  * any instance nested inside a dragged section alike.
  */
 export function stripDataResponsiveInSubtree(code: string, nodeId: string): string {
-  const idIdx = findJSXDataIdIndex(code, nodeId);
-  if (idIdx === -1) return code;
-  const tagStart = code.lastIndexOf('<', idIdx);
-  const tagEnd = findTagClose(code, idIdx);
-  if (tagStart === -1 || tagEnd === -1) return code;
-
-  // Subtree end: the matching close tag for a normal element, the tag close
-  // itself when self-closing.
-  let subtreeEnd = tagEnd + 1;
-  if (code[tagEnd - 1] !== '/') {
-    const tagName = code.slice(tagStart + 1).match(/^[\w.]+/)?.[0];
-    if (tagName) {
-      const closeIdx = findMatchingCloseTagIndex(code, tagName, tagEnd + 1);
-      if (closeIdx !== -1) subtreeEnd = closeIdx + `</${tagName}>`.length;
-    }
-  }
+  // Subtree bounds live in `findSubtreeRange` (generator-utils) — shared with
+  // `clearContainerStylesInSubtree`, the other exit-to-canvas shed.
+  const range = findSubtreeRange(code, nodeId);
+  if (!range) return code;
+  const { start: tagStart, end: subtreeEnd } = range;
 
   const before = code.slice(tagStart, subtreeEnd);
   // Both quote styles: the value is JSON, emitted single-quoted; hand-written

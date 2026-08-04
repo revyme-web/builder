@@ -271,6 +271,15 @@ function MenuPanel({ items, hoverStyle, minWidth, onClose, style, rootRef, searc
 
         const hasSubmenu = (entry.submenuItems && entry.submenuItems.length > 0) || entry.hasSubmenu;
         const isOpen = openSubId === entry.id;
+        // Row is FILLED with --accent because its submenu is open. The resting
+        // text colour must then be omitted rather than overridden: both are
+        // plain single-class utilities, so which one wins depends on their
+        // order in the generated stylesheet, not on the order here. While the
+        // cursor sat on the row the `hover:` variant out-specified the resting
+        // colour and it looked right — the moment the cursor moved into the
+        // submenu the hover dropped and the label flipped back to
+        // --text-primary (white) on the gold fill, unreadable.
+        const accentFilled = isOpen && !entry.danger && !entry.disabled && hoverStyle === 'accent';
 
         return (
           <div key={entry.id} className="relative">
@@ -324,8 +333,11 @@ function MenuPanel({ items, hoverStyle, minWidth, onClose, style, rootRef, searc
                   : entry.danger
                     ? 'text-red-400 hover:bg-red-500/15 hover:text-red-300 cursor-pointer'
                     : entry.accent
-                      ? `text-[var(--accent-text)] font-semibold ${itemHoverClass} cursor-pointer`
-                      : `text-[var(--text-primary)] ${itemHoverClass} cursor-pointer`
+                      // While the submenu is open the row is filled with
+                      // --accent, so its resting text colour is OMITTED — see
+                      // the note on `accentFilled` below.
+                      ? `${accentFilled ? '' : 'text-[var(--accent-text)]'} font-semibold ${itemHoverClass} cursor-pointer`
+                      : `${accentFilled ? '' : 'text-[var(--text-primary)]'} ${itemHoverClass} cursor-pointer`
                 }
                 ${isOpen && !entry.danger && !entry.disabled
                   ? (hoverStyle === 'accent' ? 'bg-[var(--accent)] text-[var(--accent-fg)]' : 'bg-[var(--bg-hover)]')

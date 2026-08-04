@@ -553,3 +553,175 @@ describe('renameNode', () => {
     expect(flushed).toContain('data-id="bare-3" data-name="Bare"');
   });
 });
+
+// A canvas node has no viewports, so the per-viewport @media overrides it
+// carried must leave with it. They weren't being shed: a node hidden on tablet,
+// dragged out to the canvas and dragged back in came back STILL hidden on
+// tablet, because ENTRY only clears the override for the viewport it lands in
+// (user report 2026-08-04). This is the wiring check — the generator-level
+// behaviour lives in generator-styles.test.ts.
+describe('exit-to-canvas sheds per-viewport @media overrides', () => {
+  const HIDDEN_ON_TABLET = `<div data-id="root" style={{position: 'relative'}}>
+  <style>{\`
+    @media (max-width: 768px) {
+      [data-id="aura"] { display: none !important; }
+      [data-id="aura-kid"] { font-size: 11px !important; }
+      [data-id="sib"] { display: none !important; }
+    }
+  \`}</style>
+  <div data-id="aura" style={{position: 'absolute'}}><p data-id="aura-kid" style={{position: 'relative'}}>x</p></div>
+  <div data-id="sib" style={{position: 'absolute'}}></div>
+</div>`;
+
+  let flushed: string;
+  beforeEach(() => {
+    flushed = '';
+    initMutationQueue(HIDDEN_ON_TABLET, (code) => { flushed = code; }, () => {}, () => {});
+  });
+
+  test('the dragged node and its subtree lose their overrides; siblings keep theirs', () => {
+    cacheNode('aura', { position: 'absolute' });
+    queueMutation({
+      type: 'move', nodeId: 'aura', newParentId: null, canvasNode: true,
+      styles: { position: 'absolute', left: '100px', top: '50px' },
+    });
+    flushNow();
+
+    // Gone: the node would otherwise still be display:none on tablet after
+    // being dragged back in.
+    expect(flushed).not.toContain(`[data-id="aura"]`);
+    // Gone: descendants leave with the node.
+    expect(flushed).not.toContain(`[data-id="aura-kid"]`);
+    // Kept: an untouched sibling's override is none of this move's business.
+    expect(flushed).toContain(`[data-id="sib"] { display: none !important; }`);
+    // And the exit itself still worked.
+    expect(parseJSXToNodes(flushed).get('aura')?.isCanvasNode).toBe(true);
+    removeNodeFromCache('aura');
+  });
+
+  test('a normal reparent (not to canvas) keeps the overrides', () => {
+    cacheNode('aura', { position: 'absolute' });
+    queueMutation({ type: 'move', nodeId: 'aura', newParentId: 'sib', styles: {} });
+    flushNow();
+
+    expect(flushed).toContain(`[data-id="aura"]`);
+    removeNodeFromCache('aura');
+  });
+});
+
+// Every element drag drops through `flushNow` — the queue is HELD for the whole
+// gesture, then DragCoordinator.reset() drains it here. So this is the only
+// flush path that matters for drags, and it was the one path that never asked
+// the render-skip gate (`onBeforeFlush` → decideFlushRenderGate). That gate is
+// what stops a render-resolved mutation having its render marked away.
+//
+// The bug it let through (user report 2026-08-04): drag a node out of the TABLET
+// replica, then back into the DESKTOP primary. The entry queues
+// `updateContainerStyle {display:''}` to drop the "hidden on every non-source
+// viewport" rule the extraction wrote. The drop drained it and the code came out
+// correct — but DragCoordinator had already armed a position-only render skip
+// (it inspects the strategy's position updates, which know nothing about the
+// queue), so the render that rebuilds the @media→@container CSS was dropped and
+// the stale rule kept the node `display:none` on desktop. It stayed visible on
+// tablet, which is the "offset jump" the user was actually seeing.
+describe('flushNow consults the render-skip gate', () => {
+  const CODE = `<div data-id="root" style={{position: 'relative'}}>
+  <div data-id="aura" style={{position: 'absolute'}}></div>
+</div>`;
+
+  let seen: string[][];
+  beforeEach(() => {
+    seen = [];
+    initMutationQueue(CODE, () => {}, (types) => { seen.push([...types]); }, () => {});
+  });
+
+  test('hands the drained mutation types to the gate', () => {
+    queueMutation({ type: 'updateContainerStyle', nodeId: 'aura', maxWidth: 1061, styles: { display: '' } });
+    flushNow();
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toContain('updateContainerStyle');
+  });
+
+  test('a render-resolved mutation is visible to the gate so it can DISARM the skip', async () => {
+    const { flushIsFullyImperative } = await import('./render-resolved-mutations');
+    // The canvas→primary entry drop: a position commit AND the override removal.
+    queueMutation({ type: 'updateStyles', nodeId: 'aura', styles: { left: '10px' } });
+    queueMutation({ type: 'updateContainerStyle', nodeId: 'aura', maxWidth: 1061, styles: { display: '' } });
+    flushNow();
+
+    // Not fully imperative ⇒ decideFlushRenderGate returns 'disarm-skip' ⇒
+    // clearCanvasUpdate() ⇒ the post-drop render actually runs and rebuilds the
+    // @container CSS without the stale hide rule.
+    expect(flushIsFullyImperative(seen[0])).toBe(false);
+  });
+
+  test('a pure position drop still qualifies for the skip (the optimisation survives)', async () => {
+    const { flushIsFullyImperative } = await import('./render-resolved-mutations');
+    queueMutation({ type: 'updateStyles', nodeId: 'aura', styles: { left: '10px', top: '20px' } });
+    flushNow();
+
+    expect(flushIsFullyImperative(seen[0])).toBe(true);
+  });
+
+  test('an empty drain does not call the gate at all', () => {
+    flushNow();
+    expect(seen).toHaveLength(0);
+  });
+});
+
+// The ENTRY unhide, end to end through the real generator. Two things have to
+// hold at once, and they pull in opposite directions:
+//   · the entered viewport's hide must be GONE (else the node is invisible in
+//     the viewport the user just dragged it into), and
+//   · every OTHER viewport's hide must SURVIVE — that is what makes a
+//     tablet-only node stay tablet-only after a round trip through the canvas.
+// It also pins the shape of the fix: the rule is removed from the SOURCE, never
+// papered over with an inline `display`, so nothing is cemented into the user's
+// code by the drag.
+describe('entry unhide — per-viewport display override removal', () => {
+  const HIDDEN_ON_BOTH = `<div data-id="root" style={{position: 'relative'}}>
+  <style>{\`
+    @media (max-width: 1440px) and (min-width: 768.02px) {
+      [data-id="aura"] { display: none !important; }
+    }
+    @media (max-width: 768px) {
+      [data-id="aura"] { display: none !important; }
+      [data-id="sib"] { display: none !important; }
+    }
+  \`}</style>
+  <div data-id="aura" style={{position: 'absolute'}}></div>
+  <div data-id="sib" style={{position: 'absolute'}}></div>
+</div>`;
+
+  let flushed: string;
+  beforeEach(() => {
+    flushed = '';
+    initMutationQueue(HIDDEN_ON_BOTH, (code) => { flushed = code; }, () => {}, () => {});
+  });
+
+  test('entering DESKTOP drops the desktop hide and keeps the tablet one', () => {
+    queueMutation({ type: 'updateContainerStyle', nodeId: 'aura', maxWidth: 1440, styles: { display: '' } });
+    flushNow();
+
+    // Desktop band is gone…
+    expect(flushed).not.toMatch(/min-width:\s*768\.02px/);
+    // …tablet still hides it (a node extracted from tablet stays tablet-only).
+    expect(flushed).toMatch(/@media \(max-width: 768px\)[\s\S]*\[data-id="aura"\][\s\S]*display: none/);
+    // No inline display was cemented onto the element by the unhide.
+    const aura = parseJSXToNodes(flushed).get('aura');
+    expect(aura?.styles.display).toBeUndefined();
+  });
+
+  test('entering TABLET drops the tablet hide and keeps the desktop one', () => {
+    queueMutation({ type: 'updateContainerStyle', nodeId: 'aura', maxWidth: 768, styles: { display: '' } });
+    flushNow();
+
+    expect(flushed).toMatch(/min-width:\s*768\.02px[\s\S]*\[data-id="aura"\][\s\S]*display: none/);
+    // aura's tablet rule is gone; sib's is untouched.
+    expect(flushed).toMatch(/@media \(max-width: 768px\)[\s\S]*\[data-id="sib"\][\s\S]*display: none/);
+    const tabletBlock = flushed.slice(flushed.indexOf('@media (max-width: 768px)'));
+    expect(tabletBlock).not.toContain('[data-id="aura"]');
+    expect(parseJSXToNodes(flushed).get('aura')?.styles.display).toBeUndefined();
+  });
+});

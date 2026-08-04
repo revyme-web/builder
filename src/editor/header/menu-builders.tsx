@@ -36,6 +36,7 @@ import type { AutoPanSpeed } from '@/code/stores/user-preferences-store';
 import { previewModeAtom, shortcutsModalOpenAtom, exportDropdownOpenAtom } from '@/code/stores/editor-store';
 import { paletteOpenAtom } from '@/code/stores/palette-store';
 import { startOnboarding } from '@/editor/onboarding';
+import { BUILDER_THEMES } from '@/shared/builder-themes';
 
 type TabId = 'file' | 'edit' | 'insert' | 'view';
 
@@ -264,6 +265,22 @@ const pluginsSubmenu: DropdownMenuEntry[] = [
   { id: 'plugins-browse', label: 'Browse plugins…', onClick: stub('plugins-browse') },
   { id: 'plugins-manage', label: 'Manage installed', onClick: stub('plugins-manage') },
 ];
+
+/** Builder accent themes — recolours the EDITOR chrome (not the user's site).
+ *  Takes the live value + setter (same shape as buildPreferencesSubmenu) so
+ *  the checkmark tracks the selection; reading a module-level value here would
+ *  freeze it at whatever was active when LeftHeader last re-memoized. */
+export function buildThemeSubmenu(current: string, set: (id: string) => void): DropdownMenuEntry[] {
+  return BUILDER_THEMES.map((t) => ({
+    id: `builder-theme-${t.id}`,
+    label: t.label,
+    trailingIcon: current === t.id ? <CheckGlyph /> : null,
+    onClick: () => {
+      set(t.id);
+      trace.action('menu:builder-theme', { id: t.id });
+    },
+  }));
+}
 
 // Tiny check glyph used to mark the active state on toggle/select
 // preference rows. Renders in DropdownMenuItem's `trailingIcon` slot

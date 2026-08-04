@@ -22,11 +22,12 @@ import {
   showRulersAtom,
   useSmoothZoomAtom,
   showPixelGridAtom,
+  builderThemeAtom,
 } from '@/code/stores/user-preferences-store';
 import { trace } from '@/shared/debug-trace';
 import { backend } from '@/backend';
 import { getProjectId } from '@/backend/project-id';
-import { buildTabs, buildPreferencesSubmenu } from './menu-builders';
+import { buildTabs, buildPreferencesSubmenu, buildThemeSubmenu } from './menu-builders';
 import ProjectChip from './ProjectChip';
 import KeyboardShortcutsModal from '@/editor/ui/KeyboardShortcutsModal';
 import DropdownMenu, { type DropdownMenuEntry } from '@/design-system/DropdownMenu';
@@ -108,6 +109,9 @@ export function LogoButton() {
   const [showRulers, setShowRulers] = useAtom(showRulersAtom);
   const [useSmoothZoom, setUseSmoothZoom] = useAtom(useSmoothZoomAtom);
   const [showPixelGrid, setShowPixelGrid] = useAtom(showPixelGridAtom);
+  // Builder chrome accent — the top-level "Theme" entry below. In the deps so
+  // the submenu's checkmark re-renders on selection.
+  const [builderTheme, setBuilderTheme] = useAtom(builderThemeAtom);
 
   const items: DropdownMenuEntry[] = useMemo(() => {
     const preferencesSubmenu = buildPreferencesSubmenu(
@@ -190,11 +194,25 @@ export function LogoButton() {
         submenuItems: tab.items,
         onClick: () => {}, // parent items with submenus need a no-op
       })),
+      { type: 'separator' as const },
+      // Builder chrome accent — a top-level entry rather than a row inside
+      // View, because it's a personal appearance preference, not a document
+      // command like the File/Edit/Insert/View group above.
+      //
+      // NOT gated on `isViewer`: recolouring your own editor changes nothing
+      // about the project, so a read-only collaborator can still use it.
+      {
+        id: 'logo-theme',
+        label: 'Theme',
+        submenuItems: buildThemeSubmenu(builderTheme, setBuilderTheme),
+        onClick: () => {},
+      },
     ];
   }, [
     isViewer, hasActiveSubscription, setSettingsOpen, setSettingsSection,
     directSelectionEnabled, autoPanSpeed, autoFocusLayers, showRulers, useSmoothZoom, showPixelGrid,
     setDirectSelectionEnabled, setAutoPanSpeed, setAutoFocusLayers, setShowRulers, setUseSmoothZoom, setShowPixelGrid,
+    builderTheme, setBuilderTheme,
   ]);
 
   return (

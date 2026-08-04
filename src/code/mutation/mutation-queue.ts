@@ -53,6 +53,7 @@ import {
 import {
   updateContainerQueryStyle,
   clearContainerStylesForNode,
+  clearContainerStylesInSubtree,
   updateVariantStyleInCode,
   setConditionalOrderInCode,
   setConditionalStyleInCode,
@@ -973,6 +974,29 @@ export function flushNow(): void {
 
   // Process any remaining queued mutations synchronously
   if (queue.length > 0) {
+    // SAME render-skip decision the async path makes (processQueue below) —
+    // this drain skipped it entirely, and that is how a render-resolved
+    // mutation got marked away. Every element drag drops through HERE (the
+    // queue is held for the whole gesture, then reset() drains it), so the one
+    // gate that exists to stop `updateContainerStyle` having its render
+    // skipped was never asked on the only path that matters for drags.
+    //
+    // What that cost: dragging a canvas node back into the PRIMARY viewport
+    // queues `updateContainerStyle {display:''}` to drop the "hidden on every
+    // non-source viewport" rule the extraction wrote. The drop drained it —
+    // the code came out correct — but DragCoordinator's position-only
+    // optimisation had already armed `markCanvasUpdate()` (it inspects the
+    // strategy's position updates, which know nothing about queued mutations),
+    // so the render that rebuilds the @media→@container CSS was dropped with
+    // `CanvasRenderer:skip-canvasUpdating`. The stale rule stayed in the
+    // iframe and the node was invisible on desktop while still showing on
+    // tablet — the user's "it HIDES the primary when I re-enter" (2026-08-04).
+    // `decideFlushRenderGate` disarms exactly this; it just never ran.
+    //
+    // Pure position drops are unaffected: their queue holds only
+    // `updateStyles`, which IS fully imperative, so the gate re-arms the skip.
+    onBeforeFlush?.(queue.map((m) => m.type));
+
     const mutations = coalesceMoves(queue.splice(0));
     const codeBefore = currentCode; // pre-mutation baseline for the syntax gate
     let code = healDuplicateLayoutAttrs(currentCode);
@@ -2254,6 +2278,17 @@ function applyMutationCore(code: string, mutation: Mutation): string {
           // command — sheds it, on the dragged node AND any instance nested in
           // a dragged section.
           nextCode = stripDataResponsiveInSubtree(nextCode, mutation.nodeId);
+          // The per-viewport @media OVERRIDES die with the viewport for exactly
+          // the same reason, and they were being left behind. A node hidden on
+          // tablet (`@media … [data-id=x] { display: none }`) kept that rule
+          // while sitting on the canvas — where it was plainly visible, with no
+          // viewport to hide it in — and dragging it back in re-hid it on tablet
+          // (user report 2026-08-04). Entry only clears the override for the
+          // viewport it lands in (`canvas-drag:entered-vp-display-unhide`), so
+          // whatever isn't shed here survives the whole round trip. Subtree-wide,
+          // like the `data-responsive` shed above: a dragged section takes its
+          // children out too, and their rules are just as orphaned.
+          nextCode = clearContainerStylesInSubtree(nextCode, mutation.nodeId);
           // An overlay TRIGGER carries `onClick={() => set<id>Open(...)}` plus a
           // page-level `{<id>Open && <overlay/>}` block backed by useState +
           // useLayoutEffect — the SAME module-scope crash class as the effects

@@ -309,6 +309,32 @@ export function findMatchingCloseTagIndex(code: string, tagName: string, fromIdx
   return -1;
 }
 
+/** Character range of a node's WHOLE JSX subtree — its opening tag through its
+ *  matching close tag (or through the tag close when self-closing). Returns
+ *  null when the id isn't in the code or the tag is malformed.
+ *
+ *  Extracted from `stripDataResponsiveInSubtree` when a second exit-to-canvas
+ *  cleanup needed the same bounds (per-viewport @media rules — see
+ *  `clearContainerStylesInSubtree`). Anything that must shed state for a
+ *  dragged node AND everything nested inside it wants this range. */
+export function findSubtreeRange(code: string, nodeId: string): { start: number; end: number } | null {
+  const idIdx = findJSXDataIdIndex(code, nodeId);
+  if (idIdx === -1) return null;
+  const tagStart = code.lastIndexOf('<', idIdx);
+  const tagEnd = findTagClose(code, idIdx);
+  if (tagStart === -1 || tagEnd === -1) return null;
+
+  let end = tagEnd + 1;
+  if (code[tagEnd - 1] !== '/') {
+    const tagName = code.slice(tagStart + 1).match(/^[\w.]+/)?.[0];
+    if (tagName) {
+      const closeIdx = findMatchingCloseTagIndex(code, tagName, tagEnd + 1);
+      if (closeIdx !== -1) end = closeIdx + `</${tagName}>`.length;
+    }
+  }
+  return { start: tagStart, end };
+}
+
 /**
  * Serialize a CSS style value as a valid JS string literal for emission
  * into a `style={{ … }}` object.

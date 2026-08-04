@@ -946,6 +946,36 @@ export default withResponsiveProps(Card);
   },
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────
+// REPLICA_ABSOLUTE_EXIT — TWO viewports, so the tablet tile is a REPLICA of
+// the desktop primary. `root` is NON-layout (position:relative, no flex) and
+// holds an absolute child directly. Reproduces the user-reported freeze:
+// dragging the absolute child out of the REPLICA to the canvas leaves the
+// element stale/unmoving for the whole drag, only snapping into place on
+// mouseup — while the same drag from the PRIMARY tile is smooth.
+// ─────────────────────────────────────────────────────────────────────────
+export const REPLICA_ABSOLUTE_EXIT = project(`
+/** @canvas { "viewports": [{"id":"desktop","label":"Desktop","width":1440,"isPrimary":true,"order":0,"height":600},{"id":"tablet","label":"Tablet","width":768,"order":1,"height":600}], "positions": {"desktop":{"x":0,"y":0},"tablet":{"x":1600,"y":0}} } */
+'use client';
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Page" style={{
+      position: 'relative',
+      width: '100%', minHeight: '600px',
+      background: '#0d0d1a',
+    }}>
+      <div data-id="abs-child" data-name="AbsChild" style={{
+        position: 'absolute',
+        left: '60px', top: '60px',
+        width: '120px', height: '120px',
+        background: '#66ccff',
+      }}></div>
+    </div>
+  );
+}
+`);
+
 export const SEEDS = {
   COMPONENT_MASTER_2V,
   FLEX_COLUMN,
@@ -974,6 +1004,7 @@ export const SEEDS = {
   REPLICA_ABS_DRAG,
   LOCALE_TEXT,
   COMPONENT_MASTER,
+  REPLICA_ABSOLUTE_EXIT,
 } as const;
 
 export type SeedName = keyof typeof SEEDS;

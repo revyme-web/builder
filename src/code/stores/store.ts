@@ -216,8 +216,23 @@ function deriveAndCacheNodes(code: string, filePath: string, version: number): v
       // for the PAGE view (below), NOT here. Previously we resolved the template against the `/` route's
       // overrides, so the master wrongly painted the Home page's values (e.g. a border var's modal default
       // was ignored in favour of the per-page border). No route propOverrides for the master view.
+      // `code` — NOT a re-read of projectFS — is the source of truth for the
+      // ACTIVE file (sub-components still resolve from `fs`; that's what
+      // parseProjectFile's codeOverride means). For the nodesAtom caller the
+      // two are the same string: activeCodeAtom's getter IS
+      // `projectFS.readFile(activeFilePath)`. They diverge only in the
+      // canvas-first windows, where `code` is the committed truth and projectFS
+      // is deliberately behind — `activeCodeAtom`'s SETTER does the projectFS
+      // write, and the deferred-drag-flush stash skips it for a whole gesture.
+      // Passing `undefined` here silently re-read the stale file on any project
+      // with a `components/` or `icons/` folder (i.e. nearly all of them), so
+      // `seedNodesForCode(committedCode)` returned the PRE-commit tree: a
+      // mid-drag clone extraction seeded 19 nodes without the clone it had just
+      // committed, `shouldSkipLaggingForcedRender` then vetoed the render for
+      // that exact id, and the dragged element stayed unmounted until mouseup
+      // (user trace 2026-08-04). Undo/redo's restore seed had the same hole.
       _cachedNodes = (hasComponents || hasIconSets || hasCdnImport)
-        ? parseProjectFile(filePath, projectFS, undefined, undefined)
+        ? parseProjectFile(filePath, projectFS, code, undefined)
         : parseJSXToNodes(code);
 
       trace.fn('nodesAtom:parse', {

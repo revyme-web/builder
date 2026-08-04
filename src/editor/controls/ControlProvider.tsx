@@ -49,6 +49,9 @@ import { collectionSchemasAtom, collectionDataAtom } from '@/code/stores/cms-sto
 import { cmsPageMetaAtom } from '@/code/stores/cms-page-store';
 import { trace } from '@/shared/debug-trace';
 
+// One shared reference for "this selection has no styles" — see `baseStyles`.
+const EMPTY_STYLES: Record<string, string> = {};
+
 // ─── Context ────────────────────────────────────────────────────────────────
 
 export interface ControlContextValue {
@@ -208,9 +211,24 @@ export function ControlProvider({ children }: { children: ReactNode }) {
   // inner-last order let the inner's internal `width: 'auto'` clobber the
   // wrapper's `width: '100%'`, so the Size tool showed an uneditable "auto"
   // for every FIT text (live find 2026-07-13).
-  const baseStyles = isFitWrapper && fitInnerNode
-    ? { ...fitInnerNode.styles, ...node!.styles }
-    : node?.styles ?? {};
+  // MEMOISED — the identity of this object is load-bearing, not just its
+  // contents. It feeds the `styles` memo below, whose result feeds
+  // `effectiveStyles`' useNodesComputed DEPS; a fresh object here rebuilds that
+  // selectAtom every render, and jotai's useAtomValue re-subscribes + calls its
+  // own rerender() whenever the atom identity changes → unbounded render loop.
+  // Both branches used to allocate: `{ ...inner, ...node }` on every FIT-wrapper
+  // render, and `{}` on every render with NO resolvable node — which is exactly
+  // the state a component-variant drag-out lands in (the exit clone's
+  // addCanvasNode is still queued, so the selected id isn't in the map yet). The
+  // panel then re-rendered ~10k times/second until mouseup and the canvas froze
+  // behind it (user report 2026-08-02). EMPTY_STYLES keeps the no-node case on
+  // one shared reference.
+  const baseStyles = useMemo(
+    () => (isFitWrapper && fitInnerNode
+      ? { ...fitInnerNode.styles, ...node!.styles }
+      : node?.styles ?? EMPTY_STYLES),
+    [isFitWrapper, fitInnerNode, node],
+  );
 
   // Merge overrides on top of base styles so controls show correct values:
   // 1. Locale overrides (when in non-default locale)

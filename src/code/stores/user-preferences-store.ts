@@ -79,3 +79,11 @@ export const useSmoothZoomAtom = atomWithStorage<boolean>(
 export const showPixelGridAtom = atomWithStorage<boolean>(
   'revyme:prefs:showPixelGrid', true,
 );
+
+/** Builder accent theme id — recolours the EDITOR chrome (`--accent` and
+ *  friends in `src/styles/globals.css`), not the user's project tokens.
+ *  Palettes live in `shared/builder-themes.ts`; the DOM write + light/dark
+ *  re-paint live in `editor/builder-theme.ts`, which subscribes to this. */
+export const builderThemeAtom = atomWithStorage<string>(
+  'revyme:prefs:builderTheme', 'default',
+);
