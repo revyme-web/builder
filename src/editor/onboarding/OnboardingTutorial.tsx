@@ -26,8 +26,12 @@ import { getDefaultStore } from 'jotai';
 import { leftPanelAtom, type LeftPanelId } from '@/code/stores/left-panel-store';
 import { selectedIdsAtom, nodesAtom } from '@/code/stores/store';
 import { trace } from '@/shared/debug-trace';
+import { isTemplatePromptArmed } from '@/code/stores/fresh-site-store';
 
-const STORAGE_KEY = 'revyme-onboarding-completed';
+// Exported so the fresh-site template prompt can hand the first-run tour
+// back after it's dismissed (see NewWebsiteTemplatesModal).
+export const ONBOARDING_COMPLETED_KEY = 'revyme-onboarding-completed';
+const STORAGE_KEY = ONBOARDING_COMPLETED_KEY;
 
 // Global flag — other components can read it to disable click-outside
 // handlers while the tour owns the screen.
@@ -322,6 +326,15 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
     setMounted(true);
     const completed = localStorage.getItem(STORAGE_KEY);
     if (!completed) {
+      // A brand-new cloud website shows the "start from a template" prompt
+      // first — auto-starting the tour under that modal would stack two
+      // overlays. The prompt re-triggers the tour itself (startOnboarding)
+      // when it's dismissed. Armed happens in ProjectLoader BEFORE App
+      // mounts, so a one-time check here is race-free.
+      if (isTemplatePromptArmed()) {
+        trace.action('onboarding:deferred-for-template-prompt');
+        return;
+      }
       const timer = setTimeout(() => {
         trace.action('onboarding:auto-start');
         setIsVisible(true);

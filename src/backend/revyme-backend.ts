@@ -641,3 +641,80 @@ export async function remixTemplateShare(
   trace.action('template:remix-share', json);
   return json;
 }
+
+/** Marketplace listing row, as returned by the public
+ *  `GET /api/templates/approved` endpoint (subset we consume). */
+export interface ApprovedTemplate {
+  id: string;
+  slug: string | null;
+  name: string;
+  byline: string | null;
+  description: string | null;
+  category: string | null;
+  pricing_type: string;
+  price_cents: number | null;
+  closed_source: boolean;
+  thumbnail_url: string | null;
+  preview_url: string | null;
+  author: string | null;
+  avatar: string | null;
+}
+
+/** The marketplace's canonical free/paid predicate — there is no boolean
+ *  column; "paid" means `pricing_type === 'paid'` AND a positive price.
+ *  Mirrors `assertPaidTemplateAccess` in the backend and the landing
+ *  page's price filter. */
+export function isFreeTemplate(t: Pick<ApprovedTemplate, 'pricing_type' | 'price_cents'>): boolean {
+  return !(t.pricing_type === 'paid' && (t.price_cents ?? 0) > 0);
+}
+
+/**
+ * Free approved marketplace templates — for the fresh-website "start from
+ * a template" prompt. The `/approved` endpoint is public and unfiltered;
+ * the free/paid split is applied client-side (same as the landing page's
+ * marketplace browser).
+ */
+export async function listFreeTemplates(): Promise<ApprovedTemplate[]> {
+  const res = await fetch(url('/api/templates/approved'));
+  if (!res.ok) {
+    trace.error('template:list-approved-failed', { status: res.status });
+    throw new Error(`Failed to load templates: ${res.status}`);
+  }
+  const json = (await res.json()) as { templates: ApprovedTemplate[] };
+  const free = (json.templates ?? []).filter(isFreeTemplate);
+  trace.action('template:list-free', { total: json.templates?.length ?? 0, free: free.length });
+  return free;
+}
+
+/**
+ * Apply an approved template INTO an existing EMPTY website — the
+ * backend deep-copies media and rewrites this website's row in place
+ * (stamping `is_remix` + `remix_template_id`), so the builder URL stays
+ * `/builder/<websiteId>`. Rejected once the site has any content.
+ */
+export async function remixTemplateIntoWebsite(
+  templateId: string,
+  websiteId: string,
+): Promise<{ website_id: string; template_id: string }> {
+  const res = await fetch(url(`/api/templates/remix/${encodeURIComponent(templateId)}`), {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ intoWebsiteId: websiteId }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    trace.error('template:remix-into-failed', { templateId, websiteId, status: res.status, body: text });
+    // Surface the backend's message (paid gate / "already has content")
+    // instead of a bare status code — same policy as remixTemplate.
+    let msg = `Remix failed: ${res.status}`;
+    try {
+      const j = JSON.parse(text) as { error?: { message?: string } };
+      if (j?.error?.message) msg = j.error.message;
+    } catch { /* non-JSON body */ }
+    throw new Error(msg);
+  }
+  const json = (await res.json()) as { website_id: string; template_id: string };
+  trace.action('template:remix-into', json);
+  return json;
+}

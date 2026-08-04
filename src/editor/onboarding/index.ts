@@ -1,1 +1,1 @@
-export { OnboardingTutorial, startOnboarding } from './OnboardingTutorial';
+export { OnboardingTutorial, startOnboarding, ONBOARDING_COMPLETED_KEY } from './OnboardingTutorial';

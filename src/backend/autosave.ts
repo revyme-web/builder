@@ -121,8 +121,37 @@ if (import.meta.hot) {
   });
 }
 
+/** While held, saves are deferred instead of scheduled. Used by the
+ *  fresh-site template prompt: the boot machinery writes into projectFS
+ *  even with zero user edits (the initial fit-all persists
+ *  `_meta/page-camera.json` and rides the autosave), and that PUT fills
+ *  the still-empty backend row — which the remix-into endpoint refuses
+ *  to overwrite. Holding keeps the row at `'{}'` for the whole decision
+ *  window; release re-schedules anything deferred. */
+let isHeld = false;
+export function setAutosaveHeld(held: boolean): void {
+  if (isHeld === held) return;
+  isHeld = held;
+  trace.action('autosave:held-changed', { held, pendingSave });
+  if (!held && pendingSave && !_disposed) {
+    if (debounceTimer !== null) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      startSave();
+    }, DEBOUNCE_MS);
+  }
+}
+
 export function triggerAutosave(opts?: { force?: boolean }): void {
   if (_disposed) { trace.action('autosave:skipped-disposed-generation'); return; }
+  if (isHeld) {
+    // Remember that something wants saving, but don't schedule — the
+    // release path re-arms the debounce.
+    pendingSave = true;
+    getStore().set(saveStatusAtom, 'unsaved');
+    trace.action('autosave:deferred-while-held');
+    return;
+  }
   // Cloud AND local mode both persist through the backend singleton —
   // LocalBackend writes localStorage, RevymeBackend PUTs the API. (An old
   // `VITE_REVYME_CLOUD` gate here made local mode silently never save:
@@ -151,6 +180,20 @@ export function triggerAutosave(opts?: { force?: boolean }): void {
   trace.action('autosave:queued', { debounceMs: DEBOUNCE_MS });
 }
 
+/** Drop any queued save WITHOUT running it. Used right before a deliberate
+ *  full reload after the backend row was rewritten server-side (template
+ *  apply into a fresh website): a debounced save or the unload beacon would
+ *  PUT this tab's stale empty scaffold OVER the freshly applied template
+ *  files. */
+export function cancelPendingAutosave(): void {
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  pendingSave = false;
+  trace.action('autosave:cancelled-pending');
+}
+
 // Register beforeunload handler to flush any pending save synchronously.
 // navigator.sendBeacon is used because fetch() is cancelled on unload.
 //
@@ -165,6 +208,13 @@ const UNLOAD_HOOK_KEY = '__revymeAutosaveUnloadHook';
 function onBeforeUnloadSave(): void {
     if (_disposed) return;
     if (!pendingSave) return;
+    if (isHeld) {
+      // Held = the fresh-site prompt is still deciding. The only deferred
+      // content is the boot scaffold (a reload reseeds it identically) —
+      // beaconing it would fill the row the remix-into endpoint needs empty.
+      trace.action('autosave:beacon-skipped', { reason: 'held for template prompt' });
+      return;
+    }
     if (isSaving) {
       trace.action('autosave:beacon-skipped', { reason: 'save already in progress' });
       return;

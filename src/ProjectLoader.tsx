@@ -27,6 +27,7 @@ import { overlayEditingIdAtom } from '@/code/stores/overlay-store';
 import { shapeEditingIdAtom, groupEditingIdAtom } from '@/code/stores/shape-edit-store';
 import { queueMutation, flushNow, setForceRender } from '@/code/mutation/mutation-queue';
 import { setClosedSource } from '@/code/stores/closed-source-store';
+import { setTemplatePromptArmed, templatePromptDismissKey } from '@/code/stores/fresh-site-store';
 import { setViewerMode } from '@/code/stores/viewer-mode-store';
 import { setProjectName } from '@/code/stores/project-store';
 import { setCredits } from '@/code/stores/credits-store';
@@ -233,6 +234,18 @@ export default function ProjectLoader() {
       } else {
         projectFS.loadSnapshot(createEmptyProject());
         trace.action('project-loader:seeded-empty', { fileCount: projectFS.listFiles().length });
+        // Brand-new cloud website (dashboard creates rows with zero files):
+        // arm the "start from a template" prompt so the user can begin from
+        // a free marketplace template instead of a blank canvas. Viewers
+        // can't remix; an unresolved id can't be applied to; a previous
+        // dismissal on this site means they chose to start from scratch.
+        if (
+          CLOUD_ENABLED && id !== 'local' && role !== 'viewer' &&
+          !localStorage.getItem(templatePromptDismissKey(id))
+        ) {
+          setTemplatePromptArmed(true);
+          trace.action('project-loader:template-prompt-armed', { id });
+        }
       }
 
       // 4b. Sync built-in code components to latest templates (ensures new controls like 'upload' are available)

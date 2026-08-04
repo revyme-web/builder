@@ -4,7 +4,12 @@
 // app now — ProjectBackend is project CRUD + workspace lookups only.)
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RevymeBackend } from './revyme-backend';
+import {
+  RevymeBackend,
+  isFreeTemplate,
+  listFreeTemplates,
+  remixTemplateIntoWebsite,
+} from './revyme-backend';
 
 // API_URL comes from VITE_API_URL at module import — mirror the module's
 // exact fallback (empty string → relative URLs through the dispatcher) so
@@ -158,5 +163,44 @@ describe('RevymeBackend — roles and workspace lookups', () => {
 
     setResponse({ error: 'nope' }, { status: 500 });
     expect(await backend.listWorkspaceFonts('ws-1')).toEqual([]);
+  });
+});
+
+describe('Template flow — free templates + remix-into', () => {
+  const free = { id: 't1', name: 'Folio', pricing_type: 'free', price_cents: null };
+  const freeZeroPrice = { id: 't2', name: 'Zero', pricing_type: 'paid', price_cents: 0 };
+  const paid = { id: 't3', name: 'Pro', pricing_type: 'paid', price_cents: 2900 };
+
+  it('isFreeTemplate mirrors the backend paid predicate', () => {
+    expect(isFreeTemplate(free)).toBe(true);
+    // pricing_type 'paid' with no positive price is NOT gated server-side —
+    // must not be hidden client-side either.
+    expect(isFreeTemplate(freeZeroPrice)).toBe(true);
+    expect(isFreeTemplate(paid)).toBe(false);
+  });
+
+  it('listFreeTemplates GETs /approved and filters out paid rows', async () => {
+    setResponse({ templates: [free, paid, freeZeroPrice] });
+    const rows = await listFreeTemplates();
+    expect(calls[0].url).toBe(`${API}/api/templates/approved`);
+    expect(rows.map((t) => t.id)).toEqual(['t1', 't2']);
+  });
+
+  it('remixTemplateIntoWebsite POSTs intoWebsiteId with credentials', async () => {
+    setResponse({ success: true, website_id: 'w1', template_id: 't1' });
+    const out = await remixTemplateIntoWebsite('t1', 'w1');
+    expect(calls[0].url).toBe(`${API}/api/templates/remix/t1`);
+    expect(calls[0].init.method).toBe('POST');
+    expect(calls[0].init.credentials).toBe('include');
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ intoWebsiteId: 'w1' });
+    expect(out.website_id).toBe('w1');
+  });
+
+  it('remixTemplateIntoWebsite surfaces the backend error message', async () => {
+    setResponse(
+      { error: { message: 'This website already has content — remix into a new website instead' } },
+      { status: 400 },
+    );
+    await expect(remixTemplateIntoWebsite('t1', 'w1')).rejects.toThrow(/already has content/);
   });
 });

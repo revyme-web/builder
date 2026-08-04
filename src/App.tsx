@@ -35,6 +35,7 @@ import PluginVideoPickerHost from './plugins/PluginVideoPickerHost';
 import { UploadInstructionsModal } from './plugins/UploadInstructionsModal';
 import { CommandPalette } from './editor/command-palette/CommandPalette';
 import { OnboardingTutorial } from './editor/onboarding';
+import NewWebsiteTemplatesModal from './cloud/NewWebsiteTemplatesModal';
 import { linkedComponentModalUrlAtom } from './cloud/components/linked-component-modal-store';
 import { usePrefetchCdnMetadataForActiveFile } from './cloud/components/cdn-metadata-hook';
 import { useSetAtom } from 'jotai';
@@ -274,6 +275,11 @@ export default function App() {
           viewers: the creator tools it walks through aren't in their
           stripped toolbar, so the steps would have no anchor. */}
       {!isViewer && <OnboardingTutorial />}
+      {/* "Start from a template" prompt — brand-new cloud websites only
+          (ProjectLoader arms it when the site loads with zero files).
+          Offers free marketplace templates; closing keeps the blank
+          canvas. Cloud-gated so the OSS build tree-shakes it out. */}
+      {CLOUD_ENABLED && !isViewer && <NewWebsiteTemplatesModal />}
       {/* Plugin editor overlay — Monaco split with live iframe preview
           for Tier 2 (in-browser-authored) plugins. Reads
           `pluginEditorFileAtom`; null = closed. */}

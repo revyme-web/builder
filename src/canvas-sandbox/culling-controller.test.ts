@@ -301,3 +301,122 @@ describe('CullingController — overlay portal', () => {
     expect(artboard.style.display).toBe('none');   // ordinary root, still culled
   });
 });
+
+// ─── SVG roots + in-viewport granularity ─────────────────────────────────────
+
+/** Mock a canvas-space box onto any element (jsdom has no layout). Works for
+ *  SVG too — `offset*` isn't on SVGElement, defineProperty puts it there. */
+function withBox<T extends Element>(el: T, box: { left: number; top: number; width: number; height: number }): T {
+  Object.defineProperty(el, 'offsetLeft', { get: () => box.left });
+  Object.defineProperty(el, 'offsetTop', { get: () => box.top });
+  Object.defineProperty(el, 'offsetWidth', { get: () => box.width });
+  Object.defineProperty(el, 'offsetHeight', { get: () => box.height });
+  return el;
+}
+
+describe('CullingController — SVG roots', () => {
+  let container: HTMLElement;
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  it('culls an offscreen root-level SVG shape (it is not an HTMLElement)', () => {
+    const c = new CullingController(container);
+    const svg = withBox(document.createElementNS('http://www.w3.org/2000/svg', 'svg'), { left: 5000, top: 0, width: 40, height: 40 });
+    svg.setAttribute('data-node-id', 'shape-1');
+    container.appendChild(svg);
+    // Guard the premise: if this ever becomes true, the bug this pins is gone.
+    expect(svg instanceof HTMLElement).toBe(false);
+
+    c.onTransform(0, 0, 1);
+    c.evaluate();
+
+    // Was skipped entirely by the old `instanceof HTMLElement` filter, so a
+    // page built from shapes culled nothing at all.
+    expect((svg as unknown as HTMLElement).style.display).toBe('none');
+    expect(svg.getAttribute('data-culled')).toBe('true');
+  });
+});
+
+describe('CullingController — inside a live artboard', () => {
+  let container: HTMLElement;
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  /** An artboard wide enough to stay on screen across these camera moves,
+   *  holding one node at `box`. (A tile whose OWN box leaves the screen is
+   *  culled as a root — that path is covered above and would mask the
+   *  granularity these tests are about.) */
+  function artboardWith(box: { left: number; top: number; width: number; height: number }, position: string) {
+    const vp = makeRoot(container, 'desktop', { left: 0, top: 0, width: 20000, height: 600 }, true);
+    const node = withBox(document.createElement('div'), box);
+    node.setAttribute('data-node-id', 'rect-1');
+    node.style.position = position;
+    vp.appendChild(node);
+    return { vp, node };
+  }
+
+  it('culls an absolutely-positioned node that is offscreen, though its artboard is not', () => {
+    const c = new CullingController(container);
+    const { vp, node } = artboardWith({ left: 14000, top: 0, width: 40, height: 40 }, 'absolute');
+
+    c.onTransform(0, 0, 1);
+    c.evaluate();
+
+    expect(vp.style.display).not.toBe('none'); // tile is on screen — stays
+    expect(node.style.display).toBe('none');   // its content need not be
+  });
+
+  it('leaves IN-FLOW children alone — hiding one would collapse the layout', () => {
+    const c = new CullingController(container);
+    const { node } = artboardWith({ left: 14000, top: 0, width: 40, height: 40 }, 'relative');
+
+    c.onTransform(0, 0, 1);
+    c.evaluate();
+
+    expect(node.style.display).not.toBe('none');
+  });
+
+  it('spends no placeholder on an in-viewport cull', () => {
+    const c = new CullingController(container);
+    artboardWith({ left: 14000, top: 0, width: 40, height: 40 }, 'absolute');
+
+    c.onTransform(0, 0, 1);
+    c.evaluate();
+
+    // One div per hidden shape would spend back what culling just saved — and
+    // it would sit offscreen where nobody can see it anyway.
+    expect(container.querySelector('[data-culling-placeholder="rect-1"]')).toBeNull();
+  });
+
+  it('survives the per-render prune — its parent is the artboard, not the container', () => {
+    const c = new CullingController(container);
+    const { node } = artboardWith({ left: 14000, top: 0, width: 40, height: 40 }, 'absolute');
+
+    c.onTransform(0, 0, 1);
+    c.evaluate();
+    expect(node.style.display).toBe('none');
+
+    // `restoreReNested` used to compare against the container, which every
+    // in-viewport entry fails — culling would undo itself each render cycle.
+    c.pruneStale();
+    expect(node.style.display).toBe('none');
+  });
+
+  it('restores it when the camera brings it back', () => {
+    const c = new CullingController(container);
+    const { node } = artboardWith({ left: 14000, top: 0, width: 40, height: 40 }, 'absolute');
+
+    c.onTransform(0, 0, 1);
+    c.evaluate();
+    expect(node.style.display).toBe('none');
+
+    c.onTransform(-13800, 0, 1); // 14000 → x=200 on screen
+    c.evaluate();
+    expect(node.style.display).not.toBe('none');
+    expect(node.hasAttribute('data-culled')).toBe(false);
+  });
+});
