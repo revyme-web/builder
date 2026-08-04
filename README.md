@@ -7,9 +7,7 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](./LICENSE)
 [![Website](https://img.shields.io/badge/revyme.com-visit-black)](https://revyme.com)
 
-Revyme is an open-source visual website builder. You design on a canvas — drag, resize,
-set type, build components, animate — and you get a clean Next.js project you can read,
-edit, deploy anywhere, and keep forever.
+Revyme is an open-source visual website builder. You design on a canvas — drag, resize, build components, animate — and you get a clean Next.js project you can read, edit, deploy anywhere, and keep forever.
 
 No proprietary file format. No export step that mangles your work. No lock-in.
 
