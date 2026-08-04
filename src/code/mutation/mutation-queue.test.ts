@@ -725,3 +725,47 @@ describe('entry unhide — per-viewport display override removal', () => {
     expect(parseJSXToNodes(flushed).get('aura')?.styles.display).toBeUndefined();
   });
 });
+
+// The REPLICA entry's end state, through the real generator. "Exists only on
+// tablet" is expressed as a PAIR: base inline `display:'none'` (hides it
+// everywhere) + a tablet `@media` override that reveals it there. Both halves
+// must survive the flush — the drag now commits them mid-gesture rather than at
+// mouseup, so this pins that the synchronous commit produces the same code the
+// deferred one did.
+describe('replica entry — the base-hide + per-vp-unset pair', () => {
+  const CANVAS_NODE = `<div data-id="root" style={{position: 'relative'}}>
+  <div data-id="aura" style={{position: 'absolute'}}></div>
+</div>`;
+
+  let flushed: string;
+  beforeEach(() => {
+    flushed = '';
+    initMutationQueue(CANVAS_NODE, (code) => { flushed = code; }, () => {}, () => {});
+  });
+
+  test('commits both halves: inline display:none and the tablet unset', () => {
+    // What the entry queues when a canvas node enters the tablet replica.
+    queueMutation({ type: 'updateStyles', nodeId: 'aura', styles: { display: 'none' } });
+    queueMutation({ type: 'updateContainerStyle', nodeId: 'aura', maxWidth: 768, styles: { display: 'unset' } });
+    flushNow();
+
+    // Half one — the base hide, so the node shows on no OTHER viewport.
+    expect(parseJSXToNodes(flushed).get('aura')?.styles.display).toBe('none');
+    // Half two — the tablet rule that reveals it there. This is the half that
+    // needs a <style> re-render, and the half the drag used to defer.
+    expect(flushed).toMatch(/@media \(max-width: 768px\)[\s\S]*\[data-id="aura"\][\s\S]*display: unset/);
+  });
+
+  test('a later entry into the primary lifts the base hide without touching tablet', () => {
+    queueMutation({ type: 'updateStyles', nodeId: 'aura', styles: { display: 'none' } });
+    queueMutation({ type: 'updateContainerStyle', nodeId: 'aura', maxWidth: 768, styles: { display: 'unset' } });
+    flushNow();
+    // …then the node is dragged out and back into the primary: the base hide is
+    // cleared ('' removes the property) and tablet's rule is left alone.
+    queueMutation({ type: 'updateStyles', nodeId: 'aura', styles: { display: '' } });
+    flushNow();
+
+    expect(parseJSXToNodes(flushed).get('aura')?.styles.display).toBeUndefined();
+    expect(flushed).toMatch(/@media \(max-width: 768px\)[\s\S]*\[data-id="aura"\]/);
+  });
+});

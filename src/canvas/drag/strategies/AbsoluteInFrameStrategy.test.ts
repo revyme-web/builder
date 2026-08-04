@@ -108,6 +108,21 @@ vi.mock('@/code/mutation/mutation-queue', () => ({
   getCurrentCode: vi.fn(() => ''),
 }));
 
+// Observable bridge — the clone exit hands the drag lock to the clone through
+// it, and the ORDER of that call relative to the forced render is the contract
+// under test (see the ghost-copy case at the bottom of this file).
+const bridgeCalls: string[] = [];
+const mockSetDragLockedNodeIds = vi.fn((ids: string[]) => { bridgeCalls.push(`lock:${ids.join(',')}`); });
+vi.mock('@/canvas/canvas-bridge', () => ({
+  getCanvasBridge: () => ({
+    setDragLockedNodeIds: (ids: string[]) => mockSetDragLockedNodeIds(ids),
+    reparentLive: vi.fn(),
+    patchStyles: vi.fn(),
+    liveRefitGroup: vi.fn(),
+    patchAttrsAndStyles: vi.fn(),
+  }),
+}));
+
 vi.mock('@/shared/dom-utils', () => ({
   getStyleNum: vi.fn((el: HTMLElement, prop: string) => parseFloat((el.style as any)[prop]) || 0),
 }));
@@ -739,6 +754,44 @@ describe('AbsoluteInFrameStrategy', () => {
       expect(flushNowDeferredDuringDrag).not.toHaveBeenCalled();
       expect(forceCanvasRenderDeferredDuringDrag).not.toHaveBeenCalled();
 
+      // THE GHOST-COPY CONTRACT. The renderer SKIPS removing a drag-locked
+      // element (a lifted node lives at the content root mid-gesture and must
+      // not be wiped). The lock set is sandbox state updated by its own bridge
+      // message, and DragCoordinator only moves the lock onto the swapped id
+      // AFTER this strategy returns — i.e. BEHIND the render. The sandbox then
+      // rendered still believing the SOURCE was locked, kept the source's
+      // element in the variant tile although the map no longer had it, and the
+      // user saw a duplicate sitting on the variant root for the rest of the
+      // drag (gone on mouseup, when the unlocked render finally swept it —
+      // design-component masters, 2026-08-04). Locking the CLONE before the
+      // render is not the answer either — `patchCanvasNodes`' build branch
+      // skips locked nodes too, and a brand-new clone has no element anywhere,
+      // so it would never be created (the follow-up report: "the node
+      // completely disappears until I mouse up"). The set in force across the
+      // render must contain NEITHER id; the clone is locked after.
+      const renderOrder = vi.mocked(forceCanvasRender).mock.invocationCallOrder[0];
+      const lockCalls = mockSetDragLockedNodeIds.mock.calls;
+      const lockOrders = mockSetDragLockedNodeIds.mock.invocationCallOrder;
+
+      // THE set in force at render time is the LAST one posted before it.
+      let effective: string[] | null = null;
+      for (let i = 0; i < lockCalls.length; i++) {
+        if (lockOrders[i] < renderOrder) effective = lockCalls[i][0];
+      }
+      expect(effective).not.toBeNull();
+      // Neither id may be locked across the render:
+      //   source locked  → its stale element survives the remove sweep (ghost);
+      //   clone locked   → the build branch skips it and it is never created.
+      expect(effective).not.toContain('node-1');
+      expect(effective).not.toContain(cloneId);
+
+      // …and the clone IS locked again once the render has been posted, so no
+      // later render wipes or resurrects it.
+      const relockIdx = lockCalls.findIndex((c, i) => lockOrders[i] > renderOrder && c[0].includes(cloneId));
+      expect(relockIdx).toBeGreaterThanOrEqual(0);
+      // The SOURCE is never locked again after the swap.
+      expect(mockSetDragLockedNodeIds).not.toHaveBeenCalledWith(['node-1']);
+
       // …and the cache seed runs BETWEEN them. Order is the whole point: the
       // forced render reads the imperative cache mid-gesture, so a seed after
       // it (or no seed at all) leaves the render skipped by the integrity
@@ -746,7 +799,6 @@ describe('AbsoluteInFrameStrategy', () => {
       expect(seedNodesForCodeSpy).toHaveBeenCalled();
       const flushOrder = vi.mocked(flushNow).mock.invocationCallOrder[0];
       const seedOrder = seedNodesForCodeSpy.mock.invocationCallOrder[0];
-      const renderOrder = vi.mocked(forceCanvasRender).mock.invocationCallOrder[0];
       expect(flushOrder).toBeLessThan(seedOrder);
       expect(seedOrder).toBeLessThan(renderOrder);
     });

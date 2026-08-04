@@ -194,6 +194,12 @@ export class CanvasDragStrategy implements DragStrategy {
   private lastHoverVpId: string | undefined;
   /** True when drop line is showing — suppresses parent highlight (mutually exclusive) */
   private dropLineActive = false;
+  /**
+   * Variant tiles this gesture hid IMPERATIVELY, `${nodeId}|${vpPrefix}` → the
+   * `display` to restore. See `mirrorVariantSoloHideLive` for why the code write
+   * alone isn't enough mid-drag.
+   */
+  private liveVariantHides = new Map<string, string>();
 
   // ─── Multi-select per-node entry state ──────────────────────────────────
 
@@ -1117,6 +1123,71 @@ export class CanvasDragStrategy implements DragStrategy {
     }
   }
 
+  // ─── Live mirror of the variant solo-hide ────────────────────────────────
+
+  /**
+   * Apply the variant hide `hideInAllOthers` just QUEUED to the DOM, now.
+   *
+   * A canvas node entering a design-component variant becomes solo on that
+   * variant: the code write sets `hidden = [every other variant]`, and on the
+   * next render `Renderer.ts` turns that into `display: 'none'` on the copy in
+   * each hidden variant's tile (the `hiddenOnVariants` branch of style
+   * resolution). Mid-drag that render never lands on those copies — the node is
+   * DRAG-LOCKED, and `patch-children-skip-locked` skips the whole child, styles
+   * included. Meanwhile `reparentLive` HAS already inserted the element into
+   * every tile of the entered parent (one node, many viewports), so the primary
+   * tile shows a second live copy for the rest of the gesture and only loses it
+   * on mouseup, when the locks clear and a full render finally reaches it.
+   *
+   * Page replicas don't have this problem: their hide is an `@container` rule,
+   * and a stylesheet applies to a locked element just fine. Only the component
+   * path needs the per-element mirror — which is why this is design-components
+   * only (user report 2026-08-04).
+   *
+   * Restores the ENTERED variant on the way through, so moving between variants
+   * inside one gesture doesn't leave the previous one dark.
+   */
+  private mirrorVariantSoloHideLive(
+    contentEl: HTMLElement,
+    nodeId: string,
+    hiddenVariants: string[],
+    enteredVpId: string,
+    originalDisplay: string,
+  ): void {
+    for (const variant of hiddenVariants) {
+      const prefix = getViewportPrefix(variant);
+      const key = `${nodeId}|${prefix}`;
+      if (this.liveVariantHides.has(key)) continue;
+      this.liveVariantHides.set(key, originalDisplay);
+      patchNodeStyles(contentEl, nodeId, prefix, { display: 'none' });
+    }
+    this.restoreLiveVariantHide(contentEl, nodeId, getViewportPrefix(enteredVpId));
+    trace.action('canvas-drag:variant-solo-hide-live', {
+      nodeId, enteredVpId, hiddenVariants, originalDisplay,
+    });
+  }
+
+  /** Undo one mirrored hide. `originalDisplay` is '' for a node with no display
+   *  of its own — and '' DELETES the inline property, which is exactly right. */
+  private restoreLiveVariantHide(contentEl: HTMLElement, nodeId: string, prefix: string): void {
+    const key = `${nodeId}|${prefix}`;
+    if (!this.liveVariantHides.has(key)) return;
+    patchNodeStyles(contentEl, nodeId, prefix, { display: this.liveVariantHides.get(key)! });
+    this.liveVariantHides.delete(key);
+    trace.action('canvas-drag:variant-solo-hide-restore', { nodeId, prefix });
+  }
+
+  /** Drop every mirrored hide — entry into the PRIMARY variant (the node goes
+   *  back to being shared, so no tile stays dark) and gesture teardown, where a
+   *  cancelled drag would otherwise strand an invisible copy. */
+  private restoreAllLiveVariantHides(contentEl: HTMLElement): void {
+    if (this.liveVariantHides.size === 0) return;
+    for (const key of Array.from(this.liveVariantHides.keys())) {
+      const sep = key.lastIndexOf('|');
+      this.restoreLiveVariantHide(contentEl, key.slice(0, sep), key.slice(sep + 1));
+    }
+  }
+
   // ─── Single-select: existing containment detection (backward compat) ──────
 
   private detectSingleNodeContainment(
@@ -1409,6 +1480,20 @@ export class CanvasDragStrategy implements DragStrategy {
         // hideInAllOthers (so the entered's container/variant override doesn't
         // bleed into smaller replicas via min-width-bounded @media rules).
         const enteringNonPrimaryVp = !isPrimaryViewport(dropVpId);
+        // Set by the two write sites below that produce the pair described in
+        // the comment above (base inline `display:'none'` + the entered vp's
+        // `display:'unset'` @container override). Those halves land through
+        // DIFFERENT channels: the inline one is in the move mutation's styles
+        // and reaches the DOM instantly, the override needs the code regenerate
+        // + <style> re-render. Deferring the second half is what made a node
+        // entering a REPLICA vanish for the whole drag and pop back on mouseup
+        // (user report 2026-08-04). Read at the flush below.
+        //
+        // Tracked at the WRITE SITES rather than re-derived from
+        // `enteringNonPrimaryVp` so the gate can't drift: the pair is skipped
+        // for component instances and component files, and a predicate that
+        // didn't know that would send those down the expensive path for nothing.
+        let writesVpVisibility = false;
         // The dragged node lives in the START viewport (canvas root for
         // canvas nodes, vpPrefix=''). Reading its rect / computed dims via
         // dropVpId would query a non-existent prefixed element and fall back
@@ -1577,6 +1662,8 @@ export class CanvasDragStrategy implements DragStrategy {
           const isComponentFile = isComponentFilePath(getActiveFilePath());
           if (enteringNonPrimaryVp && !isInstance && !isComponentFile) {
             moveStyles.display = 'none';
+            // Half one of the visibility pair — see `writesVpVisibility`.
+            writesVpVisibility = true;
           }
           // `canvasNode: false` — canvas-node ENTERING a viewport tree.
           // Without the explicit false, the move generator's
@@ -1722,7 +1809,8 @@ export class CanvasDragStrategy implements DragStrategy {
             const isInstance =
               draggedNode?.isComponentInstance === true ||
               draggedNode?.isCodeComponent === true;
-            for (const hideUpdate of rctx.hideInAllOthers(node.id)) {
+            const hideUpdates = rctx.hideInAllOthers(node.id);
+            for (const hideUpdate of hideUpdates) {
               if (!isInstance && hideUpdate.type === 'updateContainerStyle') {
                 const targetVpId = Object.keys(vpWidths).find(
                   k => vpWidths[k] === hideUpdate.maxWidth,
@@ -1730,6 +1818,18 @@ export class CanvasDragStrategy implements DragStrategy {
                 if (targetVpId && isPrimaryViewport(targetVpId)) continue;
               }
               queueMutation(hideUpdate as any);
+            }
+            // Mirror the hide we just queued into the DOM — the mid-drag render
+            // can't reach the locked copies. See `mirrorVariantSoloHideLive`.
+            for (const u of hideUpdates) {
+              if (u.type !== 'setVariantVisibility') continue;
+              this.mirrorVariantSoloHideLive(
+                context.contentEl,
+                node.id,
+                (u as any).hiddenVariants as string[],
+                enteredVpId,
+                getNodeFromCache(node.id)?.styles?.display ?? '',
+              );
             }
             // Component instances skip the unhide. `display: 'unset' !important`
             // would force the wrapper to `display: inline` (initial value
@@ -1753,6 +1853,9 @@ export class CanvasDragStrategy implements DragStrategy {
               const cachedNode = getNodeFromCache(node.id);
               const originalDisplay = cachedNode?.styles?.display ?? '';
               queueReplicaCreationUnhide(node.id, enteredVpId, vpWidths[enteredVpId] ?? 0, originalDisplay);
+              // Half two of the visibility pair — the STYLESHEET half, the one
+              // no imperative patch can express. See `writesVpVisibility`.
+              writesVpVisibility = true;
             }
             // SOLO-REPLICA marker. A canvas-node entering ONLY this
             // replica (hidden on every other vp) starts its life in
@@ -1777,34 +1880,53 @@ export class CanvasDragStrategy implements DragStrategy {
               trace.action('canvas-drag:set-replica-solo', { nodeId: node.id, soloVpId: enteredVpId });
             }
           }
+        } else {
+          // Entering the PRIMARY variant — the node is shared again, so drop any
+          // tile this gesture darkened on an earlier entry into a variant.
+          // Without this, variant-1 → primary in one gesture leaves the primary
+          // copy stuck at `display:none` (the mirror's own version of the bug it
+          // exists to fix).
+          this.restoreAllLiveVariantHides(context.contentEl);
         }
 
         // Commit: mutations queue now; the drop's flushNow drains them in one
         // chain (mid-drag string work was the drag-start stall on big pages).
         //
-        // EXCEPT when the entry has to UNHIDE the node in the viewport it just
-        // entered. That hide is a `@media … { [data-id=x] { display:none
-        // !important } }` rule in the page's <style> block, and a stylesheet
-        // `!important` cannot be beaten by the imperative per-element patches
-        // the drag runs at 60fps — the ONLY way to drop it is to regenerate the
-        // code and re-render the block. Deferring that to the drop is exactly
-        // what the user saw: the node vanished the instant it entered the
-        // primary and only reappeared on mouseup ("it should not hide when I
-        // enter primary", 2026-08-04). So this one transition takes the full
-        // synchronous pipeline — the same trio the vp-only clone EXIT already
-        // uses for the mirror-image problem (materialising DOM mid-drag), and
-        // for the same reason: no imperative primitive can express it.
+        // EXCEPT when this entry changes the node's PER-VIEWPORT VISIBILITY.
+        // That state lives (at least half of it) in a `@media { [data-id=x] {
+        // display: … !important } }` rule in the page's <style> block, and a
+        // stylesheet `!important` cannot be beaten by the imperative
+        // per-element patches the drag runs at 60fps — the only way to change
+        // it is to regenerate the code and re-render the block. Two entries
+        // need that, and BOTH were deferring it to the drop:
         //
-        // Gated on `unhidesLiveRule` so the cost lands ONLY on the rare entry
-        // that actually has a rule to drop; every ordinary entry (no override
-        // at the entered width — the common case for plain canvas nodes) keeps
-        // the deferred path and pays nothing. Seeding the node cache from the
-        // freshly committed code is what makes the forced render survive
+        //   · `unhidesLiveRule` — entering a viewport that currently HIDES the
+        //     node (a vp-only-extracted clone re-entering its primary). The
+        //     rule must go, or the node is invisible in the viewport the user
+        //     just dragged it into ("it should not hide when I enter primary").
+        //
+        //   · `writesVpVisibility` — entering a REPLICA, which CREATES the
+        //     hide: base inline `display:'none'` + the entered vp's
+        //     `display:'unset'` override. The inline half reaches the DOM
+        //     instantly and the stylesheet half doesn't, so deferring left the
+        //     node hidden EVERYWHERE for the whole drag ("the moment it enters
+        //     the replica it's completely hidden and only appears on mouse
+        //     up"). Clearing a rule and writing one are the same problem.
+        //
+        // Both take the full synchronous pipeline — the same trio the vp-only
+        // clone EXIT uses for the mirror-image problem (materialising DOM
+        // mid-drag), for the same reason: no imperative primitive expresses it.
+        //
+        // The gate stays NARROW. An ordinary canvas node entering the PRIMARY
+        // with no overrides — the common case — writes no visibility at all and
+        // keeps the deferred path, paying nothing. Seeding the node cache from
+        // the freshly committed code is what makes the forced render survive
         // Canvas.tsx's integrity guard mid-gesture — see the identical trio in
         // AbsoluteInFrameStrategy's clone exit.
-        if (unhidesLiveRule) {
+        if (unhidesLiveRule || writesVpVisibility) {
           trace.action('canvas-drag:entry-sync-unhide-pipeline', {
-            enteredVpId, nodeIds: draggedNodes.map(n => n.id),
+            enteredVpId, unhidesLiveRule, writesVpVisibility,
+            nodeIds: draggedNodes.map(n => n.id),
           });
           flushNow();
           seedNodesForCode(getCurrentCode());
@@ -2691,6 +2813,12 @@ export class CanvasDragStrategy implements DragStrategy {
   }
 
   onCancel(context: DragContext): void {
+    // The variant hide this gesture painted was never committed — undo it, or
+    // the copy stays invisible in tiles the reverted code says are visible.
+    // `onEnd` deliberately does NOT do this: there the drop DID commit the
+    // hide, so what we painted already matches the code and clearing it would
+    // un-hide the primary copy right where the user reported seeing it.
+    this.restoreAllLiveVariantHides(context.contentEl);
     // Restore each node to its lift state — original transform + lift
     // left/top — so the element snaps back exactly where it started.
     for (const node of context.draggedNodes) {
@@ -2760,6 +2888,9 @@ export class CanvasDragStrategy implements DragStrategy {
     // in the atomic final-patch section).
     this.originalTransforms.clear();
     this.committedPos.clear();
+    // Bookkeeping only — the DOM restore, when one is owed, already ran in
+    // `onCancel`. See `mirrorVariantSoloHideLive`.
+    this.liveVariantHides.clear();
     this.enteredParentId = null;
     this.enteredParentEl = null;
     this.enteredVpId = 'desktop';

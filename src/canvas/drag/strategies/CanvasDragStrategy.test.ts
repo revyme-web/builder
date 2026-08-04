@@ -784,11 +784,11 @@ describe('entry into a viewport that hides the node', () => {
   \`}</style>
 </div>`;
 
-  function runEntry(nodes: Map<string, any>) {
+  function runEntry(nodes: Map<string, any>, vpPrefix = '') {
     const ctx = makeContext({
       draggedNodes: [makeDraggedNode({ id: 'node-1', startLeft: 100, startTop: 200, startParentId: null })],
       startMouse: { x: 200, y: 300 },
-      viewportPrefix: '',
+      viewportPrefix: vpPrefix,
       nodes,
     });
     const s = new CanvasDragStrategy();
@@ -796,8 +796,8 @@ describe('entry into a viewport that hides the node', () => {
     for (let i = 0; i < 3; i++) s.onMove(ctx, { x: 220, y: 320 });
   }
 
-  function frameNodes() {
-    mockGetNodeHitsAtPoint.mockReturnValue([{ id: 'frame-1', vpPrefix: '' }]);
+  function frameNodes(vpPrefix = '') {
+    mockGetNodeHitsAtPoint.mockReturnValue([{ id: 'frame-1', vpPrefix }]);
     mockFindNodeRect.mockImplementation((nodeId: string) => {
       if (nodeId === 'node-1') return new DOMRect(200, 300, 100, 50);
       if (nodeId === 'frame-1') return new DOMRect(100, 100, 400, 400);
@@ -842,5 +842,172 @@ describe('entry into a viewport that hides the node', () => {
     expect(flushNowDeferredDuringDrag).toHaveBeenCalled();
     expect(flushNow).not.toHaveBeenCalled();
     expect(forceCanvasRender).not.toHaveBeenCalled();
+  });
+});
+
+// The REPLICA half of the same problem. Entering a non-primary viewport does not
+// CLEAR a hide — it CREATES one: base inline `display:'none'` (so the node shows
+// on no other viewport) plus the entered vp's `display:'unset'` @container
+// override to reveal it there. The inline half reaches the DOM instantly and the
+// stylesheet half cannot, so deferring the flush left the node hidden EVERYWHERE
+// for the whole drag: "the moment it enters the replica it's completely hidden
+// and only appears on mouse up" (user report 2026-08-04). `unhidesLiveRule` is
+// structurally blind to this — there is no pre-existing rule to find.
+describe('entry into a REPLICA writes the visibility pair', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  const NO_RULES = `<div data-id="root" style={{position:'relative'}}></div>`;
+
+  function replicaNodes() {
+    mockGetNodeHitsAtPoint.mockReturnValue([{ id: 'frame-1', vpPrefix: 'tablet-' }]);
+    mockFindNodeRect.mockImplementation((nodeId: string) => {
+      if (nodeId === 'node-1') return new DOMRect(200, 300, 100, 50);
+      if (nodeId === 'frame-1') return new DOMRect(100, 100, 400, 400);
+      return null;
+    });
+    return new Map<string, any>([
+      ['frame-1', { id: 'frame-1', type: 'div', tag: 'div', parentId: null, children: [], styles: { position: 'relative' }, attrs: {} }],
+    ]);
+  }
+
+  function runReplicaEntry() {
+    const ctx = makeContext({
+      draggedNodes: [makeDraggedNode({ id: 'node-1', startLeft: 100, startTop: 200, startParentId: null })],
+      startMouse: { x: 200, y: 300 },
+      viewportPrefix: '',
+      nodes: replicaNodes(),
+    });
+    const s = new CanvasDragStrategy();
+    s.onStart(ctx);
+    for (let i = 0; i < 3; i++) s.onMove(ctx, { x: 220, y: 320 });
+  }
+
+  test('takes the synchronous pipeline even though no rule existed beforehand', async () => {
+    const { getDefaultStore } = await import('jotai');
+    const { codeAtom } = await import('@/code/stores/store');
+    const { forceCanvasRender, forceCanvasRenderDeferredDuringDrag } = await import('@/canvas/node-ops');
+    getDefaultStore().set(codeAtom, NO_RULES);
+
+    runReplicaEntry();
+
+    // The entry writes the base hide half…
+    expect(queueMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'move', nodeId: 'node-1', styles: expect.objectContaining({ display: 'none' }),
+    }));
+    // …so the stylesheet half has to land NOW, not at mouseup.
+    expect(flushNow).toHaveBeenCalled();
+    expect(forceCanvasRender).toHaveBeenCalled();
+    expect(flushNowDeferredDuringDrag).not.toHaveBeenCalled();
+    expect(forceCanvasRenderDeferredDuringDrag).not.toHaveBeenCalled();
+  });
+
+  test('the PRIMARY entry with nothing to change still takes the cheap path', async () => {
+    const { getDefaultStore } = await import('jotai');
+    const { codeAtom } = await import('@/code/stores/store');
+    const { forceCanvasRender } = await import('@/canvas/node-ops');
+    getDefaultStore().set(codeAtom, NO_RULES);
+
+    // Same drag, entering the PRIMARY: no rule to clear and no pair to write.
+    const ctx = makeContext({
+      draggedNodes: [makeDraggedNode({ id: 'node-1', startLeft: 100, startTop: 200, startParentId: null })],
+      startMouse: { x: 200, y: 300 },
+      viewportPrefix: '',
+      nodes: (() => {
+        mockGetNodeHitsAtPoint.mockReturnValue([{ id: 'frame-1', vpPrefix: '' }]);
+        mockFindNodeRect.mockImplementation((nodeId: string) => {
+          if (nodeId === 'node-1') return new DOMRect(200, 300, 100, 50);
+          if (nodeId === 'frame-1') return new DOMRect(100, 100, 400, 400);
+          return null;
+        });
+        return new Map<string, any>([
+          ['frame-1', { id: 'frame-1', type: 'div', tag: 'div', parentId: null, children: [], styles: { position: 'relative' }, attrs: {} }],
+        ]);
+      })(),
+    });
+    const s = new CanvasDragStrategy();
+    s.onStart(ctx);
+    for (let i = 0; i < 3; i++) s.onMove(ctx, { x: 220, y: 320 });
+
+    expect(flushNowDeferredDuringDrag).toHaveBeenCalled();
+    expect(flushNow).not.toHaveBeenCalled();
+    expect(forceCanvasRender).not.toHaveBeenCalled();
+  });
+});
+
+describe('entry into a design-component VARIANT mirrors the hide into the DOM', () => {
+  // The code write alone is invisible mid-drag: the node is drag-locked, so
+  // `patch-children-skip-locked` skips the copy in every OTHER variant's tile —
+  // styles included — while `reparentLive` has already inserted one there. The
+  // user saw the node appear in the primary tile for the whole gesture and
+  // vanish on mouseup (2026-08-04). Page replicas hide via an `@container` rule,
+  // which reaches a locked element fine — hence component-only.
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  async function runVariantEntry() {
+    const { getReplicaContext } = await import('../replica-context');
+    const { getActiveFilePath } = await import('@/canvas/node-ops');
+    (getActiveFilePath as any).mockReturnValue('components/PoVuZa.tsx');
+    (getReplicaContext as any).mockReturnValue({
+      isPrimary: false, isComponent: true, vpId: 'variant-1', variantName: 'variant-1',
+      vpWidth: 400, allVpWidths: { default: 400, 'variant-1': 400 },
+      hideInThis: vi.fn(() => ({ nodeId: 'node-1', type: 'updateVariantStyle', variantName: 'variant-1', styles: { display: 'none' } })),
+      // Solo on variant-1 → hidden on `default`, whose tile prefix is ''.
+      hideInAllOthers: vi.fn(() => [
+        { nodeId: 'node-1', type: 'setVariantVisibility', hiddenVariants: ['default'], allVariants: ['default', 'variant-1'] },
+      ]),
+      styleUpdate: vi.fn(() => []),
+      exitToCanvas: vi.fn(() => ({ nodeId: 'node-1', type: 'move', newParentId: null, canvasNode: true, styles: {} })),
+      deleteUpdate: vi.fn(() => []),
+    });
+    mockGetNodeHitsAtPoint.mockReturnValue([{ id: 'frame-1', vpPrefix: 'variant-1-' }]);
+    mockFindNodeRect.mockImplementation((nodeId: string) => {
+      if (nodeId === 'node-1') return new DOMRect(200, 300, 100, 50);
+      if (nodeId === 'frame-1') return new DOMRect(100, 100, 400, 400);
+      return null;
+    });
+    const ctx = makeContext({
+      draggedNodes: [makeDraggedNode({ id: 'node-1', startLeft: 100, startTop: 200, startParentId: null })],
+      startMouse: { x: 200, y: 300 },
+      viewportPrefix: '',
+      nodes: new Map<string, any>([
+        ['frame-1', { id: 'frame-1', type: 'div', tag: 'div', parentId: null, children: [], styles: { position: 'relative' }, attrs: {} }],
+      ]),
+    });
+    const s = new CanvasDragStrategy();
+    s.onStart(ctx);
+    for (let i = 0; i < 3; i++) s.onMove(ctx, { x: 220, y: 320 });
+    return { s, ctx };
+  }
+
+  /** Every (prefix, display) pair painted on node-1. */
+  const displayPatches = () => mockPatchNodeStyles.mock.calls
+    .filter(c => c[1] === 'node-1' && c[3] && 'display' in c[3])
+    .map(c => ({ prefix: c[2], display: c[3].display }));
+
+  test('paints display:none on the hidden variant tile, not just in code', async () => {
+    await runVariantEntry();
+
+    // The code write still happens…
+    expect(queueMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'setVariantVisibility', nodeId: 'node-1', hiddenVariants: ['default'],
+    }));
+    // …AND the tile it hides is darkened now, because no mid-drag render will.
+    expect(displayPatches()).toContainEqual({ prefix: '', display: 'none' });
+  });
+
+  test('never darkens the variant being dragged into', async () => {
+    await runVariantEntry();
+    expect(displayPatches()).not.toContainEqual({ prefix: 'variant-1-', display: 'none' });
+  });
+
+  test('onCancel undoes the paint — the hide was never committed', async () => {
+    const { s, ctx } = await runVariantEntry();
+    expect(displayPatches()).toContainEqual({ prefix: '', display: 'none' });
+
+    s.onCancel(ctx);
+
+    // Restored to the node's own display (none of its own → '' DELETES the
+    // inline property). Without this a cancelled drag strands an invisible copy.
+    expect(displayPatches()).toContainEqual({ prefix: '', display: '' });
   });
 });

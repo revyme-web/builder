@@ -25,6 +25,7 @@ import { SNAP_THRESHOLD, nodeAcceptsChildren } from '@/shared/constants';
 import { updateNodeStyles, vpIdFromPrefix, isPrimaryViewport, getActiveFilePath, patchNodeStyles, findNodeRect, findNodeComputedStyle, findNodeComputedStyles, findChildRects, getNodeHitsAtPoint, forceCanvasRender, parseRectCacheKey, forceCanvasRenderDeferredDuringDrag } from '@/canvas/node-ops';
 import { isOverlayNode } from '@/code/parsing/overlay-parser';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
+import type { PostMessageBridge } from '@/canvas-sandbox/bridge-host';
 import { getIframeOffset, screenPointToCanvas } from '../helpers/coords';
 import { getScreenCornersById, pointInQuad, isFullyInsideQuad, isFullyOutsideQuad, nodeOrAncestorHasRotationOrSkewById, cornersAreAxisAligned , matrixHasRotationSkewOrFlip } from '@/canvas/resize/geometry-utils';
 import { isComponentFilePath, isIconSetFilePath } from '@/code/project/active-file-store';
@@ -2428,6 +2429,38 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
             // string pipeline + render here was the "unparenting is slow"
             // stall (5 mid-drag flushes in one traced session).
             if (usedCloneExtraction) {
+              // RELEASE EVERY DRAG LOCK ACROSS THIS RENDER, then re-lock the
+              // clone after it. The lock set is sandbox state carried by its own
+              // bridge message on the same Comlink remote as `render`, so post
+              // order IS apply order — which means the set the mid-drag render
+              // sees is whatever we posted last, and it has to contain NEITHER
+              // id. `patchCanvasNodes` skips locked nodes in BOTH directions
+              // (Renderer.ts) and each direction bites a different id here:
+              //
+              //   · SOURCE still locked → its stale element is skipped by the
+              //     remove sweep and lingers in the variant tile after the map
+              //     dropped it: a ghost copy sitting on the variant root for the
+              //     rest of the drag, swept only by the post-drop render.
+              //   · CLONE already locked → the build branch's skip fires
+              //     instead. That skip exists to stop a render RESURRECTING an
+              //     element a strategy moved imperatively (reparentLive /
+              //     liftNode) from a stale snapshot — but a freshly extracted
+              //     clone has no element ANYWHERE and must be built, so locking
+              //     it first makes it invisible until mouseup.
+              //
+              // Both were reported on design-component masters within an hour of
+              // each other (2026-08-04) because they are the same ordering bug
+              // seen from its two ends. Latent until the clone paths started
+              // rendering mid-drag: with no mid-drag render, neither skip had a
+              // render to act on. DragCoordinator re-sets the same clone ids a
+              // moment later — idempotent.
+              const lockBridge = getCanvasBridge();
+              const canLock = !!lockBridge && 'setDragLockedNodeIds' in lockBridge;
+              const cloneIds = context.draggedNodes.map(n => n.id);
+              if (canLock) {
+                (lockBridge as PostMessageBridge).setDragLockedNodeIds([]);
+                trace.action('abs-in-frame:clone-exit-locks-released', { cloneIds });
+              }
               flushNow();
               // SEED THE IMPERATIVE NODE CACHE from the code flushNow just
               // committed — WITHOUT this the flush above still mounts nothing.
@@ -2445,6 +2478,13 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
               // added for (2026-07-29) stays covered.
               seededNodes = seedNodesForCode(getCurrentCode());
               forceCanvasRender();
+              // RE-LOCK the clone AFTER the render is posted. Same channel, so
+              // FIFO puts it strictly behind — the render sees the empty set,
+              // every later render sees the clone locked and leaves it alone.
+              if (canLock) {
+                (lockBridge as PostMessageBridge).setDragLockedNodeIds(cloneIds);
+                trace.action('abs-in-frame:clone-exit-lock-handoff', { lockIds: cloneIds });
+              }
             } else {
               flushNowDeferredDuringDrag();
               forceCanvasRenderDeferredDuringDrag();
