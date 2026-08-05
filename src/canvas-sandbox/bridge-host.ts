@@ -148,6 +148,9 @@ export class PostMessageBridge implements CanvasBridge {
     layoutCss?: string,
     /** File-switch renders: disable the per-element subtree-skip (see RenderInput). */
     distrustPatchKeys?: boolean,
+    /** Same-file distrusted renders (undo/redo restore): keep culling state —
+     *  the file-switch cull reset exists for cross-file id collisions only. */
+    preserveCulling?: boolean,
   ): void {
     if (transform) this.currentTransform = { ...transform };
     // Maps don't survive structured cloning the way objects do — Comlink
@@ -169,6 +172,7 @@ export class PostMessageBridge implements CanvasBridge {
       cmsCollections,
       localeOverrides: localeOverridesObj,
       distrustPatchKeys,
+      preserveCulling,
       // Epoch for stale-emission rejection (see the allRects handler).
       renderSeq: ++this.renderSeq,
     };

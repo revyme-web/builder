@@ -59,6 +59,30 @@ describe('CanvasRenderer intentional-render invariants', () => {
     r.render(stateA);
     expect(renders.length).toBe(1);
   });
+
+  // Undo is A→B→A: subtree signatures of the RESTORED state can match patch
+  // keys stamped back at A, so imperative DOM residue from B (a pasted
+  // subtree) hides behind the matching key and survives the restore render
+  // ("undone paste stays on canvas until the next structural edit",
+  // 2026-08-05). Restore renders must distrust stored keys — but as a
+  // SAME-FILE distrust they preserve culling (the file-switch cull reset is
+  // for cross-file id collisions and costs a full re-measure).
+  it('distrustPatchKeys opt forwards distrust=true + preserveCulling=true to the bridge', () => {
+    const { r, renders } = makeRenderer();
+    r.render(input('A'), { intentional: true, distrustPatchKeys: true });
+    expect(renders.length).toBe(1);
+    const args = renders[0] as unknown[];
+    expect(args[11]).toBe(true); // distrustPatchKeys (12th positional arg)
+    expect(args[12]).toBe(true); // preserveCulling (13th positional arg)
+  });
+
+  it('renders without the opt leave patch keys trusted (args undefined)', () => {
+    const { r, renders } = makeRenderer();
+    r.render(input('A'));
+    const args = renders[0] as unknown[];
+    expect(args[11]).toBeUndefined();
+    expect(args[12]).toBeUndefined();
+  });
 });
 
 // The two-flush drop race (live find 2026-07-24): a toolbar drop into a parent

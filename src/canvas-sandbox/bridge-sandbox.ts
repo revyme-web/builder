@@ -209,7 +209,7 @@ const api: SandboxApi = {
       // Restore every cull (real DOM for the switch render + its measures) and
       // drop the replay cache; the post-render evaluate re-culls whatever is
       // genuinely offscreen in the NEW file.
-      if (input.distrustPatchKeys) {
+      if (input.distrustPatchKeys && !input.preserveCulling) {
         getCulling()?.restoreAll();
         clearMeasureReplayCache();
       }
@@ -298,7 +298,7 @@ const api: SandboxApi = {
       // every later read saw only culled zeros ("measured: 3" trace, user
       // report 2026-07-27). A new file needs ONE full measure before any
       // culling; the idle evaluate re-culls at the SETTLED camera.
-      if (!input.distrustPatchKeys) getCulling()?.evaluate();
+      if (!input.distrustPatchKeys || input.preserveCulling) getCulling()?.evaluate();
       // AFTER the sync re-cull: culled roots whose content was PATCHED this
       // render (marked data-culled-dirty by patchElement) re-materialise so
       // the measure below emits their REAL new geometry — otherwise the grey

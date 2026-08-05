@@ -217,7 +217,7 @@ export class CanvasRenderer {
    *  exactly the undo-after-skipped-commit case: the DOM has imperatively
    *  diverged from it, so "already forwarded" is FALSE in DOM terms — the
    *  stale-lineHeight-after-Cmd+Z bug, 2026-07-21). */
-  render(input: RenderInput, opts?: { intentional?: boolean }): void {
+  render(input: RenderInput, opts?: { intentional?: boolean; distrustPatchKeys?: boolean }): void {
     // These skips must NOT consume `canvasUpdating` — a render that bails for
     // one of them (e.g. the `interacting`→false flip render that fires just
     // before the drop's setCode render) would otherwise eat the markCanvasUpdate
@@ -285,6 +285,18 @@ export class CanvasRenderer {
       input.cmsCollections,
       input.localeOverrides,
       input.layoutCss,
+      // Undo/redo restores set this: an undo is A→B→A, so the restored
+      // state's subtree signatures can MATCH patch keys stamped back at A —
+      // any DOM residue that arrived imperatively during B (paste insertion,
+      // skipped-render commits) then hides behind the matching key and the
+      // patch pass never reconciles it away ("undone paste stays on canvas
+      // until the next structural edit", 2026-08-05). Same class + same
+      // mechanism as file-switch renders; keys re-stamp during the
+      // distrusted walk, so the next render skips normally.
+      opts?.distrustPatchKeys,
+      // Same-file distrust (undo) keeps culling — the file-switch cull reset
+      // guards cross-file id collisions and would cost a full re-measure here.
+      opts?.distrustPatchKeys ? true : undefined,
     );
     this.rememberForward(input, viewportsJson);
     // The owed structural render (if any) just reached the iframe.

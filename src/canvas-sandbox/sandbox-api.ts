@@ -51,6 +51,10 @@ export interface RenderInput {
    * keys are re-stamped during it, so the NEXT same-file render skips again.
    */
   distrustPatchKeys?: boolean;
+  /** With distrustPatchKeys, on a SAME-FILE render (undo/redo restore): skip
+   *  the file-switch culling reset — that reset exists for cross-file id
+   *  collisions and costs a full re-materialize + re-measure. */
+  preserveCulling?: boolean;
   /** Host-stamped render epoch — echoed back on allRects for stale-emission
    *  rejection across file switches (see protocol.ts allRects.renderSeq). */
   renderSeq?: number;

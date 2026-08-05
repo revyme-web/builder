@@ -424,11 +424,17 @@ function restoreToFileAndSelection(targetFile: string, targetSel: string[]): voi
       // removed node never leaves a stale selection).
       applyRestoredSelection(targetSel);
     };
-    // 300ms (measured): at 34ms the reselect's React pass (~105ms — overlay +
-    // tool column) ran BEFORE the iframe's render+measure and pushed the
-    // visual + the overlay catch-up late. At 300 it lands after the fan-out
-    // (250) with the rect caches fresh, so the overlay positions correctly
-    // the moment it re-renders. Fenced: any next undo/redo applies it first.
+    // PRIMARY trigger: the iframe's renderComplete (Canvas.tsx
+    // onRenderComplete → finishPendingRestore) — that's the moment the
+    // restore's visual is painted AND the allRects measure has landed, so
+    // the reselect's React pass (~105ms — overlay + tool column) can't
+    // push the visual late and the overlay positions from fresh rects.
+    // Typically ~60-70ms after the keypress (the Framer-parity "selection
+    // follows undo instantly" feel, 2026-08-06). This timer is the
+    // FALLBACK for renders that never complete (sandbox mid-rebuild,
+    // dropped render): 300ms measured as safely after the deferred
+    // fan-out (250ms). Fenced: any next undo/redo applies or supersedes
+    // the pending finish first.
     _restoreFinishTimer = setTimeout(finishPendingRestore, 300);
     return;
   }

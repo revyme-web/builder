@@ -184,6 +184,36 @@ export class CanvasDragStrategy implements DragStrategy {
     if ((this.originalTransforms.get(nodeId) ?? '') !== '') return cached;
     const lp = this.lastPositions.get(nodeId);
     if (!lp) return cached;
+    // `lastPositions` is in the node's CURRENT parent's coordinate space:
+    // canvas-root css for top-level nodes, PARENT-LOCAL after a per-node
+    // live reparent (the entry rebases startLeft/startTop). Converting a
+    // parent-local value with the root-space math below projected the rect
+    // one whole parent-offset away — the exit detector then saw the
+    // just-entered node "outside" its parent and the multi-drag flapped
+    // enter→exit→enter at ~14Hz, queueing a move + mid-drag render per
+    // cycle (the oscillation report, 2026-08-05). Parent-local values get
+    // the parent's screen origin added; a transformed parent falls back to
+    // the cached bridge rect (fresh to ~1 frame — every per-frame patch
+    // emits a rectUpdate).
+    const rState = this.nodeReparentStates.get(nodeId);
+    if (rState?.reparented && rState.confirmedParentId) {
+      const vpId = vpIdFromPrefix(context.viewportPrefix);
+      if (hasNonIdentityTransform(findNodeComputedStyle(rState.confirmedParentId, vpId, 'transform'))) {
+        return cached;
+      }
+      const parentRect = findNodeRect(rState.confirmedParentId, vpId);
+      if (!parentRect) return cached;
+      const left = parentRect.left + lp.left * context.transform.scale;
+      const top = parentRect.top + lp.top * context.transform.scale;
+      return {
+        left, top,
+        x: left, y: top,
+        width: cached.width,
+        height: cached.height,
+        right: left + cached.width,
+        bottom: top + cached.height,
+      } as ReturnType<typeof findNodeRect>;
+    }
     const off = getIframeOffset();
     const left = lp.left * context.transform.scale + context.transform.x + off.x;
     const top = lp.top * context.transform.scale + context.transform.y + off.y;
@@ -856,6 +886,42 @@ export class CanvasDragStrategy implements DragStrategy {
     }
     this.lastHoverVpId = vpIdFromPrefix(hoverVpPrefix);
 
+    // ── Group layout target (cursor-based) ──────────────────────────────────
+    // Multi-drag over a flex/grid container behaves like a single-node drag:
+    // ONE drop-line at the cursor's slot, no per-node live reparent, and
+    // onEnd commits every dragged node into that slot as consecutive
+    // siblings (the reference behavior — user report 2026-08-05; before this,
+    // layout targets were a dead end: the per-node path skipped them and the
+    // multi onEnd branch never committed the confirmed parent). Reuses the
+    // single-select entry fields + hysteresis — one gesture is either single
+    // or multi, never both.
+    const groupTargetId = this.detectGroupLayoutTargetId(
+      cursorHits, hoverVpPrefix, this.lastHoverVpId, skipIds, nodes, mouseScreen,
+    );
+    if (groupTargetId !== this.candidateParentId) {
+      this.candidateParentId = groupTargetId;
+      this.framesInCandidateParent = groupTargetId ? 1 : 0;
+      this.entryConfirmed = false;
+      if (this.enteredParentId) {
+        this.enteredParentId = null;
+        this.enteredParentEl = null;
+        this.enteredInsertIndex = -1;
+        dropLineOps.hide();
+        parentHighlightOps.hide();
+      }
+    } else if (groupTargetId) {
+      this.framesInCandidateParent++;
+      if (!this.entryConfirmed && this.framesInCandidateParent >= ENTRY_GRACE_FRAMES) {
+        this.entryConfirmed = true;
+        this.enteredParentId = groupTargetId;
+        this.enteredParentEl = null;
+        this.enteredVpId = this.lastHoverVpId;
+        trace.action('canvas-drag:multi-layout-entry-confirmed', {
+          parentId: groupTargetId, vpId: this.lastHoverVpId, nodeCount: draggedNodes.length,
+        });
+      }
+    }
+
     // Mutations queued per-frame are flushed in one batch at the end so the
     // renderer reparents N elements in a single render cycle.
     let pendingFlush = false;
@@ -943,6 +1009,15 @@ export class CanvasDragStrategy implements DragStrategy {
         }
       }
       if (rState.reparented) continue;
+
+      // Group layout mode owns the gesture — no per-node absolute entries
+      // while the cursor hovers (or has confirmed) a layout container.
+      // Mixed per-node reparents + a group drop-line would commit the
+      // selection into two different parents on mouseup.
+      if (groupTargetId || this.enteredParentId) {
+        this.multiEntryDetector!.clearNode(node.id);
+        continue;
+      }
 
       // ─── Per-node entry detection — hit-test at the node's CENTER ───
       // (Not the cursor — multi-select, each node moves on its own offset.)
@@ -1148,6 +1223,78 @@ export class CanvasDragStrategy implements DragStrategy {
       flushNowDeferredDuringDrag();
       forceCanvasRenderDeferredDuringDrag();
     }
+
+    // Drop-line / empty-layout preview for the group layout target — same
+    // affordance the single-select path shows.
+    this.updateLayoutDropPreview(context, draggedIds, mouseScreen);
+  }
+
+  /** Cursor-based LAYOUT-ONLY drop-target resolution for multi-select drags.
+   *  Trimmed mirror of the single-select bestFrame walk: layout containers
+   *  accept on cursor-over; component instances resolve to their layout
+   *  parent (drop-line BETWEEN instances, never inside); a non-layout frame
+   *  under the cursor BLOCKS the walk (the per-node absolute entry owns that
+   *  case). Returns null when no layout target applies. */
+  private detectGroupLayoutTargetId(
+    cursorHits: ReturnType<typeof getNodeHitsAtPoint>,
+    hoverVpPrefix: string,
+    hoverVpId: string,
+    skipIds: Set<string>,
+    nodes: DragContext['nodes'],
+    mouseScreen: Point,
+  ): string | null {
+    let bestFrame: { id: string; rect: any } | null = null;
+    let blocked = false;
+    for (const hit of cursorHits) {
+      if (hit.vpPrefix !== hoverVpPrefix) continue;
+      if (skipIds.has(hit.id)) continue;
+      if (hit.id === 'root') continue; // root fallback below
+      if (hit.id.startsWith('layout::') || hit.id === 'children-slot') continue;
+      if (hitIsOverComponentInstance(hit.id, nodes)) {
+        const wrapperId = instanceWrapperIdForHit(hit.id, nodes);
+        const parentId = wrapperId ? nodes.get(wrapperId)?.parentId : null;
+        const parentNode: any = parentId ? nodes.get(parentId) : null;
+        const parentIsInstanceOwned = !!parentNode
+          && (!!parentNode.componentFile || !!parentNode.componentInstanceId || parentNode.isCodeComponent === true);
+        if (parentId && parentNode && !parentIsInstanceOwned && !skipIds.has(parentId)
+            && !parentId.startsWith('layout::') && parentId !== 'children-slot') {
+          const parentLayout = detectParentLayoutById(parentId, hoverVpId);
+          if (parentLayout === 'flex' || parentLayout === 'grid') {
+            const parentRect = findNodeRect(parentId, hoverVpId);
+            if (parentRect) { bestFrame = { id: parentId, rect: parentRect }; break; }
+          }
+        }
+        blocked = true; break;
+      }
+      const candidateNode = nodes.get(hit.id);
+      if (!candidateNode) continue;
+      if (!nodeAcceptsChildren(candidateNode)) continue;
+      const layout = detectParentLayoutById(hit.id, hoverVpId);
+      if (layout === 'flex' || layout === 'grid') {
+        const rect = findNodeRect(hit.id, hoverVpId);
+        if (rect) bestFrame = { id: hit.id, rect };
+        else blocked = true;
+      } else {
+        blocked = true; // non-layout frame: per-node absolute entry owns it
+      }
+      break;
+    }
+    bestFrame = applyLayoutEdgeMagnet(bestFrame as any, mouseScreen, nodes, hoverVpId) as any;
+    if (!bestFrame && !blocked) {
+      // Root fallback (mirror of the single path): a flex/grid page root
+      // accepts a group drop when the cursor sits inside it.
+      const rootRect = findNodeRect('root', hoverVpId);
+      const inside = rootRect &&
+        mouseScreen.x >= rootRect.left && mouseScreen.x <= rootRect.right &&
+        mouseScreen.y >= rootRect.top && mouseScreen.y <= rootRect.bottom;
+      if (inside && !skipIds.has('root')) {
+        const layout = detectParentLayoutById('root', hoverVpId);
+        if (layout === 'flex' || layout === 'grid') {
+          bestFrame = { id: 'root', rect: rootRect };
+        }
+      }
+    }
+    return bestFrame?.id ?? null;
   }
 
   // ─── Live mirror of the variant solo-hide ────────────────────────────────
@@ -2149,9 +2296,18 @@ export class CanvasDragStrategy implements DragStrategy {
     }
 
 
-    // Layout parent entry: drop line OR parent highlight (mutually exclusive).
-    // Has children → drop line (shows insertion position), no parent highlight.
-    // Empty container → parent highlight only, no drop line.
+    this.updateLayoutDropPreview(context, draggedIds, mouseScreen);
+
+    return null; // no strategy switch
+  }
+
+  /** Drop-line / empty-layout preview for a confirmed layout parent entry.
+   *  Drop line OR parent highlight (mutually exclusive): has children →
+   *  drop line (shows insertion position); empty container → the
+   *  empty-layout-drop affordance. Shared by the single-select containment
+   *  tail and the multi-select group-layout path (which drives the same
+   *  enteredParentId fields). */
+  private updateLayoutDropPreview(context: DragContext, draggedIds: Set<string>, mouseScreen: Point): void {
     this.dropLineActive = false;
     if (this.enteredParentId && !this.liveReparented) {
       const vpId = this.lastHoverVpId || vpIdFromPrefix(context.viewportPrefix);
@@ -2189,8 +2345,6 @@ export class CanvasDragStrategy implements DragStrategy {
         }
       }
     }
-
-    return null; // no strategy switch
   }
 
   onEnd(context: DragContext): PendingUpdate[] {
@@ -2538,7 +2692,14 @@ export class CanvasDragStrategy implements DragStrategy {
     // the drop commit then erased it). Cleared in resetState() after all
     // update-building is done.
 
-    if (isMultiSelect) {
+    // Multi-select GROUP-LAYOUT drop: a confirmed cursor layout target routes
+    // the WHOLE selection through the layout-parent commit branch below — it
+    // already loops draggedNodes, anchors by sibling id, renumbers `order`,
+    // and mirrors replica bands. Only per-node absolute reparents (and plain
+    // canvas moves) take the per-node branch. `liveReparented` is never set
+    // by the multi path, so the code-first sub-branch stays single-only.
+    const multiLayoutDrop = isMultiSelect && !!this.enteredParentId && !this.liveReparented;
+    if (isMultiSelect && !multiLayoutDrop) {
       // ─── Multi-select: per-node updates based on individual parent state ───
       for (const node of context.draggedNodes) {
         const rState = this.nodeReparentStates.get(node.id);
@@ -2627,7 +2788,23 @@ export class CanvasDragStrategy implements DragStrategy {
           enteringNonPrimaryFlexVp,
         });
 
-        for (const node of context.draggedNodes) {
+        // Commit order = VISUAL order along the container's main axis, not
+        // selection order. Every node shares one insertBeforeId anchor, so
+        // queue order becomes sibling order — a multi-drop then lands the
+        // nodes in the order the user sees them on screen. Screen rects
+        // (live AABBs) are the one space all dragged nodes share.
+        const commitNodes = [...context.draggedNodes];
+        if (isMultiSelect && (parentLayout === 'flex' || parentLayout === 'grid')) {
+          const sortDirection = getFlexDirectionById(this.enteredParentId, dropVpId);
+          const sortVpId = vpIdFromPrefix(context.viewportPrefix);
+          const axisOf = (n: { id: string }) => {
+            const r = findNodeRect(n.id, sortVpId);
+            return sortDirection === 'column' ? (r?.top ?? 0) : (r?.left ?? 0);
+          };
+          commitNodes.sort((a, b) => axisOf(a) - axisOf(b));
+        }
+
+        for (const node of commitNodes) {
           if (parentLayout === 'flex' || parentLayout === 'grid') {
             const moveStyles: Record<string, string> = {
               position: 'relative',

@@ -4,6 +4,7 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { nextFrames } from '@/shared/dom-utils';
 import { getCanvasRenderer } from './CanvasRenderer';
+import { finishPendingRestore } from '@/code/mutation/history';
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { codeAtom, nodesAtom, selectedNodeAtom, selectedIdsAtom, hoveredIdAtom, hoveredNodeIdAtom, hoveredViewportIdAtom, canvasInteractingAtom, mapItemIndexAtom, mapContextAtom, updatingFromCanvasAtom, marqueeViewportSpreadAtom, getNodesSnapshot, getCachedNodesMap } from '../code/stores/store';
 import type { CanvasNode } from '../code/parsing/parser';
@@ -404,6 +405,18 @@ export default function Canvas() {
       // without bridging, dropped code components stayed empty until the
       // user resized/moved them (which forces another render cycle).
       window.dispatchEvent(new Event('revyme:render-complete'));
+      // Undo/redo restore-finish (version bump + reselect) is EVENT-DRIVEN
+      // off this signal: renderComplete means the restore's visual is in the
+      // iframe and the allRects measure landed (it precedes this emit), so
+      // the selection overlay + properties panel can update NOW (~60-70ms
+      // after the keypress) instead of waiting out the 300ms worst-case
+      // timer (which stays as the fallback when a render never completes —
+      // sandbox mid-rebuild). One rAF so trailing corners/computed cache
+      // emits process first — same paint-timing reason as the clears above.
+      // No-op when no restore is pending; a rapid next undo supersedes the
+      // pending finish before this fires (cancelPendingRestore), making the
+      // deferred call a harmless no-op too.
+      nextFrames(1, () => finishPendingRestore());
     },
 
     onNodeMouseDown: (nodeId, _event) => {
@@ -720,7 +733,10 @@ export default function Canvas() {
       hasOverrides: !!overrideNodes,
       nodeCount: freshNodes.size,
     });
-    if (mode === 'patch') renderer.render(freshInput, { intentional: true });
+    // distrustPatchKeys: an undo/redo restore recreates a PAST state, so
+    // per-element patch keys stamped back then can coincide with the new
+    // signatures and subtree-skip stale DOM (see the render() call site).
+    if (mode === 'patch') renderer.render(freshInput, { intentional: true, distrustPatchKeys: true });
     else renderer.forceRender(freshInput);
   });
 
