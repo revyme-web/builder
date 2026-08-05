@@ -51,7 +51,7 @@ import { emitAllMeasures } from './sandbox/measure';
 import {
   setCollectionGhostsHidden, patchStyles, patchMultipleStyles, injectCSS, removeCSS,
   setCanvasTokenVar, loadFontInIframe, setCanvasTokensCSS, setInnerHTML, setAttribute,
-  setChildShapeAttribute, patchAttrsAndStyles,
+  setChildShapeAttribute, patchAttrsAndStyles, previewPatchStyles, previewRestoreStyles,
 } from './sandbox/style-handlers';
 import {
   getRect, getChildRects, getComputedValues, getContainerRect, getElementIdsAtPoint,
@@ -340,6 +340,8 @@ const api: SandboxApi = {
   setCollectionGhostsHidden,
   patchStyles,
   patchMultipleStyles,
+  previewPatchStyles,
+  previewRestoreStyles,
   injectCSS,
   removeCSS,
   setCanvasTokenVar,

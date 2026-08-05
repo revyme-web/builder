@@ -103,11 +103,15 @@ function SplitButton({ active, icon, onClick, onChevronClick, title }: {
       >
         {icon}
       </button>
+      {/* The chevron sits on the TOOLBAR surface, not on the accent pill —
+          so its active color must be --accent (visible on the surface by
+          definition), never --accent-fg (invisible on themes whose accent
+          is light: accent-fg is dark-on-dark there). */}
       <button
         onClick={onChevronClick}
         className={`flex items-center justify-center w-[12px] h-[32px] transition-colors ${
           active
-            ? 'text-[var(--accent-fg)] opacity-70 hover:opacity-100'
+            ? 'text-[var(--accent)] opacity-80 hover:opacity-100'
             : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-sm)]'
         }`}
         style={{ border: 'none', cursor: 'pointer', backgroundColor: 'transparent' }}

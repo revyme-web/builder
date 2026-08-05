@@ -114,6 +114,33 @@ function hitIsOverComponentInstance(hitId: string, nodes: DragContext['nodes']):
   return false;
 }
 
+/** The OUTERMOST instance WRAPPER node id for a hit that is (or is inside) a
+ *  component instance. The wrapper is the node with `componentFile` and NO
+ *  `componentInstanceId` (LayersPanel's isComponentInstance definition) — an
+ *  EXPANDED root (`inst:rootId`) also carries componentFile, so naively
+ *  treating the first instance-ish node as the wrapper resolved its parent to
+ *  the wrapper ITSELF and put the drop-line INSIDE the instance (between the
+ *  master's internal children — user report 2026-08-05 round 2). Climb the
+ *  parent chain until the true wrapper; null when the hit isn't
+ *  instance-related. */
+function instanceWrapperIdForHit(hitId: string, nodes: DragContext['nodes']): string | null {
+  // Seed: the hit itself, or the colon form's outer id (`inst:internal`).
+  const colon = hitId.indexOf(':');
+  let curId: string | null | undefined = nodes.has(hitId)
+    ? hitId
+    : (colon > 0 && nodes.get(hitId.slice(0, colon)) ? hitId.slice(0, colon) : null);
+  const seen = new Set<string>();
+  while (curId && !seen.has(curId)) {
+    const n: any = nodes.get(curId);
+    if (!n) return null;
+    if (n.componentFile && !n.componentInstanceId) return curId; // the real wrapper
+    if (!n.componentInstanceId && !n.componentFile && n.isCodeComponent !== true) return null; // left instance territory without finding one
+    seen.add(curId);
+    curId = n.parentId;
+  }
+  return null;
+}
+
 /** Per-node reparent tracking — whether a node has been live-reparented into its confirmed parent */
 interface NodeReparentState {
   reparented: boolean;
@@ -1264,11 +1291,35 @@ export class CanvasDragStrategy implements DragStrategy {
       // Template + the `children-slot`) belong to the template's own file —
       // never a drop parent on a page (same guard the other strategies apply).
       if (hit.id.startsWith('layout::') || hit.id === 'children-slot') continue;
-      // Component INSTANCE (or its expanded internals) — never a drop target.
-      // Its content is owned by the master, so inserting page content would
-      // corrupt the instance. BLOCK entry entirely (suppress, don't fall
-      // through to an ancestor behind it) — you can't drop ON an instance.
-      if (hitIsOverComponentInstance(hit.id, nodes)) { suppressEntry = true; break; }
+      // Component INSTANCE (or its expanded internals) — never a drop target
+      // ITSELF: its content is owned by the master, so inserting page content
+      // would corrupt the instance. BUT an in-flow instance sitting in a
+      // flex/grid parent occupies a layout SLOT — hovering it while dragging
+      // means "insert into the parent at this position", exactly like
+      // hovering a plain flex child. Blocking entry outright meant a
+      // container filled with instances could NEVER show the between-slots
+      // drop-line (the cursor is always over one — user report 2026-08-05).
+      // Resolve the instance's LAYOUT PARENT as the candidate; suppress only
+      // when the parent isn't a layout container.
+      if (hitIsOverComponentInstance(hit.id, nodes)) {
+        const wrapperId = instanceWrapperIdForHit(hit.id, nodes);
+        const parentId = wrapperId ? nodes.get(wrapperId)?.parentId : null;
+        const parentNode: any = parentId ? nodes.get(parentId) : null;
+        // The candidate parent must live OUTSIDE any instance (not a wrapper,
+        // not expanded internals) — the drop-line goes BETWEEN instances,
+        // never inside one.
+        const parentIsInstanceOwned = !!parentNode
+          && (!!parentNode.componentFile || !!parentNode.componentInstanceId || parentNode.isCodeComponent === true);
+        if (parentId && parentNode && !parentIsInstanceOwned && !skipIds.has(parentId)
+            && !parentId.startsWith('layout::') && parentId !== 'children-slot') {
+          const parentLayout = detectParentLayoutById(parentId, hoverVpId);
+          if (parentLayout === 'flex' || parentLayout === 'grid') {
+            const parentRect = findNodeRect(parentId, hoverVpId);
+            if (parentRect) { bestFrame = { id: parentId, rect: parentRect }; break; }
+          }
+        }
+        suppressEntry = true; break;
+      }
       const node = nodes.get(hit.id);
       if (!node) continue;
       const tag = (node as any).tag || node.type || 'div';

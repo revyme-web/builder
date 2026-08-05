@@ -211,6 +211,59 @@ export function patchStyles(nodeId: string, vpPrefix: string, styles: Record<str
     }
 }
 
+// ─── Motion-preview patches (snapshot-based restore) ────────────────────────
+// The AnimationTool's Enter/Hover editors inject the animation's FROM state as
+// a live !important preview (opacity: 0, transform, …) and must restore the
+// element EXACTLY on close. Restoring to the node's AUTHORED styles is not
+// enough: nodes with a live runtime animation (e.g. a code-component instance
+// with an Appear effect) carry framer-motion's post-animation values as INLINE
+// styles (`opacity: 1`) that node.styles knows nothing about. A model-based
+// restore DELETED that inline opacity, the frozen enter-state (opacity 0)
+// re-asserted, and the element stayed invisible until a full reload replayed
+// the appear animation (live find 2026-08-05). So: snapshot the element's
+// actual inline values before the first preview write, restore those exact
+// values on close — lift/restore = DOM truth.
+//
+// Registry: `${vpPrefix}|${nodeId}` → camelKey → prior inline value. Only the
+// FIRST write per key snapshots (repeat applies during slider drags keep the
+// original resting value). Wiped per-node on restore; an iframe reload drops
+// DOM and registry together, so entries can't outlive their elements.
+const previewInlineSnapshots = new Map<string, Map<string, string>>();
+
+export function previewPatchStyles(nodeId: string, vpPrefix: string, styles: Record<string, string>): void {
+  if (!contentRoot) return;
+  const el = findElByNodeId(contentRoot, vpPrefix, nodeId);
+  if (el) {
+    const regKey = `${vpPrefix}|${nodeId}`;
+    let snap = previewInlineSnapshots.get(regKey);
+    if (!snap) { snap = new Map(); previewInlineSnapshots.set(regKey, snap); }
+    for (const key of Object.keys(styles)) {
+      if (snap.has(key)) continue;
+      snap.set(key, el.style.getPropertyValue(toKebab(key)));
+    }
+  }
+  patchStyles(nodeId, vpPrefix, styles, true);
+}
+
+/** Restore preview keys: prior inline value when one was snapshotted (a runtime
+ *  animation's resting write), else the caller's resting/authored value, else
+ *  remove. `resting` carries the parent's model-based fallbacks and defines the
+ *  base key set; the snapshot's keys are unioned in so nothing injected leaks. */
+export function previewRestoreStyles(nodeId: string, vpPrefix: string, resting: Record<string, string>): void {
+  if (!contentRoot) return;
+  const regKey = `${vpPrefix}|${nodeId}`;
+  const snap = previewInlineSnapshots.get(regKey);
+  previewInlineSnapshots.delete(regKey);
+  const targets = new Set([...Object.keys(resting), ...(snap ? snap.keys() : [])]);
+  if (targets.size === 0) return;
+  const restoreMap: Record<string, string> = {};
+  for (const key of targets) {
+    const prior = snap?.get(key);
+    restoreMap[key] = prior != null && prior !== '' ? prior : (resting[key] ?? '');
+  }
+  patchStyles(nodeId, vpPrefix, restoreMap, false);
+}
+
 /** Refresh scope for a layout-affecting patch: the element's LAYOUT PARENT
  *  when it has one — a flow-affecting change (position flip, size, order,
  *  margin…) re-flows the SIBLINGS, and refreshing only the patched

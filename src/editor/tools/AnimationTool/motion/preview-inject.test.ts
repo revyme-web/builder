@@ -65,4 +65,38 @@ describe('restorePreview — teardown returns to the RESTING value, not removed'
     restorePreview(el, [], undefined);
     expect(el.style.getPropertyValue('transform')).toBe('');
   });
+
+  // The appear-node bug (2026-08-05): a live runtime animation (framer) OWNS the
+  // element's inline opacity — after the appear plays, `opacity: 1` sits inline
+  // and node.styles has no opacity. The old restore removed the key entirely, the
+  // frozen enter-state (opacity 0) re-asserted, and the node stayed invisible
+  // until a reload replayed the animation. Restore must prefer the PRIOR INLINE
+  // value over the (absent) authored one.
+  it('restores a runtime-written inline value the preview overwrote (appear opacity)', () => {
+    const el = document.createElement('div');
+    el.style.setProperty('opacity', '1'); // framer's post-appear inline write
+    applyPreview(el, { opacity: '0' });   // Enter preview
+    expect(el.style.getPropertyValue('opacity')).toBe('0');
+    restorePreview(el, ['opacity'], {});  // no AUTHORED opacity — prior inline must win
+    expect(el.style.getPropertyValue('opacity')).toBe('1');
+    expect(el.style.getPropertyPriority('opacity')).toBe('');
+  });
+
+  it('re-applies during a slider drag keep the ORIGINAL prior value, not the preview', () => {
+    const el = document.createElement('div');
+    el.style.setProperty('opacity', '1');
+    applyPreview(el, { opacity: '0' });
+    applyPreview(el, { opacity: '0.3' }); // scrub — must NOT re-snapshot 0
+    restorePreview(el, ['opacity'], {});
+    expect(el.style.getPropertyValue('opacity')).toBe('1');
+  });
+
+  it('prior-inline transform wins over unconditional clearing', () => {
+    const el = document.createElement('div');
+    el.style.setProperty('transform', 'translateX(10px)'); // runtime-owned resting transform
+    applyPreview(el, { y: '-70' });
+    expect(el.style.getPropertyValue('transform')).toContain('translateY(-70px)');
+    restorePreview(el, [], undefined);
+    expect(el.style.getPropertyValue('transform')).toBe('translateX(10px)');
+  });
 });

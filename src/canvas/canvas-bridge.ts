@@ -63,6 +63,16 @@ export interface CanvasBridge {
   /** Patch inline styles on a canvas element. 60fps safe. */
   patchStyles(nodeId: string, vpPrefix: string, styles: Record<string, string>, important?: boolean): void;
 
+  /** Motion-preview !important patch that snapshots each key's PRIOR inline
+   *  value sandbox-side on first write — so the paired restore can put back
+   *  exactly what the DOM had (a live appear animation's `opacity: 1` is a
+   *  framer-written inline value node.styles knows nothing about). Optional:
+   *  PostMessageBridge only. */
+  previewPatchStyles?(nodeId: string, vpPrefix: string, styles: Record<string, string>): void;
+  /** Restore previewed keys: snapshotted inline value → `resting` fallback →
+   *  remove. Optional: PostMessageBridge only. */
+  previewRestoreStyles?(nodeId: string, vpPrefix: string, resting: Record<string, string>): void;
+
   /** Atomic attrs + styles patch — exists so SVG wrapper normalization
    *  can land `viewBox` and `width/height/left/top` in the SAME iframe
    *  message. Splitting them across two Comlink calls leaves a one-frame

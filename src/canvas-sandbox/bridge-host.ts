@@ -181,6 +181,14 @@ export class PostMessageBridge implements CanvasBridge {
     this.remote?.patchStyles(nodeId, vpPrefix, styles, important);
   }
 
+  previewPatchStyles(nodeId: string, vpPrefix: string, styles: Record<string, string>): void {
+    this.remote?.previewPatchStyles(nodeId, vpPrefix, styles);
+  }
+
+  previewRestoreStyles(nodeId: string, vpPrefix: string, resting: Record<string, string>): void {
+    this.remote?.previewRestoreStyles(nodeId, vpPrefix, resting);
+  }
+
   /** Imperative-first delete: drop every copy of the node from the iframe DOM now,
    *  so the canvas reflects the delete on the keystroke instead of after the async
    *  re-parse + re-render (~0.3s). The removeNode code mutation makes it permanent. */

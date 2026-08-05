@@ -138,6 +138,14 @@ export interface SandboxApi {
     important: boolean,
   ): void | Promise<void>;
   patchMultipleStyles(updates: PatchUpdate[]): void | Promise<void>;
+  /** Motion-preview !important patch that SNAPSHOTS each key's prior inline
+   *  value on first write, so previewRestoreStyles can put back exactly what
+   *  the DOM had (a runtime animation's `opacity: 1` lives inline, not in
+   *  node.styles — model-based restore left appear-nodes invisible). */
+  previewPatchStyles(nodeId: string, vpPrefix: string, styles: Record<string, string>): void | Promise<void>;
+  /** Restore previewed keys: snapshotted prior inline value → caller's resting
+   *  fallback → remove. Unions the snapshot's keys into `resting`'s key set. */
+  previewRestoreStyles(nodeId: string, vpPrefix: string, resting: Record<string, string>): void | Promise<void>;
 
   // ─── Queries ───────────────────────────────────────────────────────────
   getRect(nodeId: string, vpPrefix: string): RectLike | null | Promise<RectLike | null>;

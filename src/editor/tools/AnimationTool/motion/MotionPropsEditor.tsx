@@ -107,6 +107,15 @@ export function buildTransformPreview(props: Record<string, string>): string {
   return parts.join(' ');
 }
 
+// Pre-preview INLINE values per parent-frame element (camel key → prior inline
+// value, '' = none). The preview overwrites inline styles a live runtime
+// animation may OWN — e.g. an Appear node's framer-written `opacity: 1` — and
+// node.styles knows nothing about those, so restore must put back the DOM's
+// own prior value, not just the authored one. Only the FIRST write per key
+// records (slider re-applies keep the original). The sandbox keeps the twin
+// registry for iframe elements (style-handlers previewPatchStyles).
+const localPreviewSnapshots = new WeakMap<HTMLElement, Map<string, string>>();
+
 /** Apply !important preview styles to a DOM element.
  *  Also forwards to bridge in iframe mode so the visible iframe shows the preview.
  *  Pass nodeId + vpId for bridge forwarding (optional — omit for local-only preview). */
@@ -116,16 +125,27 @@ export function applyPreview(el: HTMLElement | null, props: Record<string, strin
   // (primary tile / non-iframe). Replicas live in the sandbox iframe, where
   // querySelector returns null; the bridge below covers those.
   if (el) {
+    let snap = localPreviewSnapshots.get(el);
+    if (!snap) { snap = new Map(); localPreviewSnapshots.set(el, snap); }
+    const record = (camel: string, kebab: string) => {
+      if (!snap!.has(camel)) snap!.set(camel, el.style.getPropertyValue(kebab));
+    };
     for (const [key, value] of Object.entries(props)) {
       if (!value || MOTION_TRANSFORM_KEYS.has(key)) continue;
       const kebab = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+      record(key, kebab);
       el.style.setProperty(kebab, value, 'important');
     }
     if (props.autoAlpha !== undefined) {
+      record('opacity', 'opacity');
+      record('visibility', 'visibility');
       el.style.setProperty('opacity', props.autoAlpha, 'important');
       el.style.setProperty('visibility', parseFloat(props.autoAlpha) === 0 ? 'hidden' : 'inherit', 'important');
     }
-    if (transformCSS) el.style.setProperty('transform', transformCSS, 'important');
+    if (transformCSS) {
+      record('transform', 'transform');
+      el.style.setProperty('transform', transformCSS, 'important');
+    }
   }
   // Forward to sandbox iframe / the actual replica tile — ALWAYS (this is what
   // makes the preview land on the selected viewport regardless of iframe mode).
@@ -141,7 +161,11 @@ export function applyPreview(el: HTMLElement | null, props: Record<string, strin
       bridgeStyles.visibility = parseFloat(props.autoAlpha) === 0 ? 'hidden' : 'inherit';
     }
     if (transformCSS) bridgeStyles.transform = transformCSS;
-    getCanvasBridge().patchStyles(nodeId, prefix, bridgeStyles, true);
+    const bridge = getCanvasBridge();
+    // previewPatchStyles snapshots each key's prior INLINE value sandbox-side
+    // before the first !important write, so restore can put it back exactly.
+    if (bridge.previewPatchStyles) bridge.previewPatchStyles(nodeId, prefix, bridgeStyles);
+    else bridge.patchStyles(nodeId, prefix, bridgeStyles, true);
   }
 }
 
@@ -170,36 +194,51 @@ export function clearPreview(el: HTMLElement | null, props: Record<string, strin
   }
 }
 
-/** RESTORE preview keys to the element's RESTING (authored) values instead of
- *  removing them. The preview overwrites the element's OWN inline value — e.g. a
- *  bar's `height: 52px` becomes `height: 0 !important`. Plain removal then wipes
- *  the 52px and the element collapses (the Renderer's diff-patch won't re-add an
- *  unchanged value). So we re-set each key from `restingStyles` (the node's source
- *  style); keys with no authored value (opacity/transform) are removed → default.
- *  Non-`!important` writes replace the preview's `!important` declaration. */
+/** RESTORE preview keys on close. Priority per key: the element's PRIOR inline
+ *  value (snapshotted before the first preview write — a live runtime
+ *  animation's `opacity: 1` lives inline, not in node.styles) → the node's
+ *  RESTING (authored) value from `restingStyles` (a bar's `height: 52px` the
+ *  preview overwrote) → removal (default). Plain removal alone wiped both the
+ *  authored 52px (bar-collapses bug) and framer's post-appear opacity (node
+ *  invisible until reload, 2026-08-05). Non-`!important` writes replace the
+ *  preview's `!important` declaration. */
 export function restorePreview(el: HTMLElement | null, keys: string[], restingStyles: Record<string, string> | undefined, nodeId?: string, vpId?: string): void {
   const restOf = (k: string): string | null => {
     const v = restingStyles?.[k];
     return v != null && v !== '' ? v : null;
   };
   if (el) {
-    for (const key of keys) {
-      if (MOTION_TRANSFORM_KEYS.has(key)) continue;
+    const snap = localPreviewSnapshots.get(el);
+    localPreviewSnapshots.delete(el);
+    // Union: the caller's tracked keys + every key the snapshot recorded
+    // (covers transform/visibility, which the tracker doesn't carry).
+    const targets = new Set<string>([
+      ...keys.filter((k) => !MOTION_TRANSFORM_KEYS.has(k)),
+      ...(snap ? snap.keys() : []),
+    ]);
+    for (const key of targets) {
       const kebab = key.replace(/([A-Z])/g, '-$1').toLowerCase();
-      const v = restOf(key);
+      const prior = snap?.get(key);
+      const v = prior != null && prior !== '' ? prior : restOf(key);
       if (v != null) el.style.setProperty(kebab, v); else el.style.removeProperty(kebab);
     }
-    el.style.removeProperty('transform');
+    // Snapshot-less sessions (legacy callers) still clear the injected transform.
+    if (!targets.has('transform')) el.style.removeProperty('transform');
   }
   if (nodeId) {
     const prefix = getViewportPrefix(vpId || 'desktop');
-    const bridgeStyles: Record<string, string> = {};
+    // Model-based fallbacks only — the sandbox overlays its own inline
+    // snapshot on top (previewRestoreStyles) and unions in any snapshotted
+    // keys missing here.
+    const bridgeResting: Record<string, string> = {};
     for (const key of keys) {
       if (MOTION_TRANSFORM_KEYS.has(key)) continue;
-      bridgeStyles[key] = restOf(key) ?? '';
+      bridgeResting[key] = restOf(key) ?? '';
     }
-    bridgeStyles.transform = '';
-    getCanvasBridge().patchStyles(nodeId, prefix, bridgeStyles);
+    bridgeResting.transform = restOf('transform') ?? '';
+    const bridge = getCanvasBridge();
+    if (bridge.previewRestoreStyles) bridge.previewRestoreStyles(nodeId, prefix, bridgeResting);
+    else bridge.patchStyles(nodeId, prefix, bridgeResting);
   }
 }
 
