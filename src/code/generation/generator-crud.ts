@@ -372,6 +372,25 @@ export function updateNodeTextInCode(code: string, nodeId: string, newText: stri
   }
 }
 
+/** Visible text of a children list, read THROUGH inline element wrappers —
+ *  rich-text keeps color/weight marks as `<span>`/`<motion.span>` runs, so a
+ *  direct-JSXText-only read returns '' for span-wrapped text. That empty read
+ *  is how a no-op text edit on a VARIANT tile wrote
+ *  `{variant === 'x' ? 'CONTACT US' : ''}` and every OTHER tile's text
+ *  vanished (user file 2026-08-05). */
+function collectDeepJsxText(children: t.Node[]): string {
+  let out = '';
+  for (const c of children) {
+    if (c.type === 'JSXText') out += (c as t.JSXText).value;
+    else if (c.type === 'JSXExpressionContainer' && (c as t.JSXExpressionContainer).expression.type === 'StringLiteral') {
+      out += ((c as t.JSXExpressionContainer).expression as t.StringLiteral).value;
+    } else if (c.type === 'JSXElement') {
+      out += collectDeepJsxText((c as t.JSXElement).children as t.Node[]);
+    }
+  }
+  return out.trim();
+}
+
 /**
  * Set the text of one element FOR A SPECIFIC VARIANT.
  *
@@ -397,6 +416,10 @@ export function updateVariantTextInCode(
 
   const ast = parseJSX(code);
   if (!ast) return code;
+
+  // Set by the no-op guard below — return the ORIGINAL string untouched
+  // (running Babel generate would reformat the whole file for zero change).
+  let textUnchanged = false;
 
   findFirstElementByDataId(ast, nodeId, (path) => {
     // GENERAL read: each variant branch (and the fallback) may be a string LITERAL or an IDENTIFIER (a
@@ -440,20 +463,30 @@ export function updateVariantTextInCode(
       if (cursor?.type === 'StringLiteral') literals['default'] = cursor.value;
       else if (cursor?.type === 'Identifier') vars['default'] = cursor.name;
     } else {
-      let txt = '';
-      for (const c of path.node.children) {
-        if (c.type === 'JSXText') txt += (c as t.JSXText).value.trim();
-        else if (c.type === 'JSXExpressionContainer' && (c as t.JSXExpressionContainer).expression.type === 'StringLiteral') {
-          txt += ((c as t.JSXExpressionContainer).expression as t.StringLiteral).value;
-        }
-      }
-      literals['default'] = txt;
+      // DEEP read — see collectDeepJsxText: span-wrapped text must not read
+      // as '' or every non-edited variant's text is written empty.
+      literals['default'] = collectDeepJsxText(path.node.children as t.Node[]);
     }
 
     // Apply the edit to the TARGET variant only (primary = the `default` fallback). Callers may pass the
     // primary as its variant name OR as the 'desktop' viewport id — both map to the fallback, so editing
     // the primary text updates the trailing literal instead of minting a dead `=== 'desktop'` branch.
     const key = (variantName === primaryName || variantName === 'desktop') ? 'default' : variantName;
+
+    // NO-OP edit (double-click into text edit, click away without typing):
+    // the effective text for this variant is unchanged — keep the children
+    // EXACTLY as they are. Rewriting them would flatten inline span
+    // formatting (rich-text color marks) for zero benefit.
+    const existingForKey = vars[key] !== undefined
+      ? null
+      : literals[key] ?? (key !== 'default' && vars['default'] !== undefined ? null : literals['default']);
+    if (existingForKey != null && existingForKey === newText) {
+      trace.action('generator:updateVariantTextInCode-noop', { nodeId, variantName });
+      textUnchanged = true;
+      path.stop();
+      return;
+    }
+
     literals[key] = newText;
     delete vars[key];
 
@@ -487,6 +520,8 @@ export function updateVariantTextInCode(
     }
     path.stop();
   });
+
+  if (textUnchanged) return code;
 
   try {
     return generate(ast, { retainLines: false, concise: false }, code).code;
@@ -563,9 +598,8 @@ export function setVariantTextBindingInCode(
         base = readExpr(expr); // plain {item.field} | {prop} | {'literal'}
       }
     } else {
-      let txt = '';
-      for (const c of path.node.children) if (c.type === 'JSXText') txt += (c as t.JSXText).value.trim();
-      base = { kind: 'literal', value: txt };
+      // DEEP read — same span-wrapped-text hazard as updateVariantTextInCode.
+      base = { kind: 'literal', value: collectDeepJsxText(path.node.children as t.Node[]) };
     }
 
     const isPrimary = variantName === primaryName || variantName === 'desktop';

@@ -219,7 +219,9 @@ function CollectionListView({
         {!hasAnyCollections && (
         <button
           onClick={onNewCollection}
-          className="flex items-center gap-1.5 rounded-md bg-blue-600/90 px-3 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-blue-500 cursor-pointer"
+          // Accent tokens, not hardcoded blue — --accent-fg is the per-theme
+          // "label on accent" pairing (near-black on the gold/Amber themes).
+          className="flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-3 py-1.5 text-[11px] font-medium text-[var(--accent-fg,#0d1017)] transition-[filter] hover:brightness-110 cursor-pointer"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />

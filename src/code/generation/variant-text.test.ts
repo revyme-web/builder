@@ -279,3 +279,44 @@ export default Card;`;
     expect(out).toMatch(/['"]NEW['"]/);          // primary text applied
   });
 });
+
+describe('span-wrapped text + no-op edits (the vanishing-text bug)', () => {
+  // Rich-text keeps color marks as inline (motion.)span runs. The base read
+  // walked only DIRECT JSXText children → '' → a no-op edit on a variant
+  // tile wrote `{variant === 'x' ? 'CONTACT US' : ''}` and every other
+  // tile's text vanished (user file 2026-08-05).
+  const SPAN_COMP = `'use client';
+import React from 'react';
+import { motion } from 'framer-motion';
+
+const variantConfig = [
+  { name: 'default', label: 'White', x: 0, y: 0, isPrimary: true },
+  { name: 'variant-3', label: 'Dark', x: 420, y: 0 },
+];
+
+function Button({ initialVariant = 'default' }) {
+  const [variant, setVariant] = React.useState(initialVariant);
+  return (
+    <motion.div data-id="root">
+      <motion.p data-id="label"><motion.span layout={true} style={{ color: 'rgb(21, 21, 21)' }}>CONTACT US</motion.span></motion.p>
+    </motion.div>
+  );
+}
+export default Button;`;
+
+  test('NO-OP edit on a variant tile leaves the file byte-identical (span preserved)', () => {
+    const out = updateVariantTextInCode(SPAN_COMP, 'label', 'variant-3', 'CONTACT US');
+    expect(out).toBe(SPAN_COMP);
+  });
+
+  test('REAL edit on a variant tile keeps the span text as the fallback, never empty', () => {
+    const out = updateVariantTextInCode(SPAN_COMP, 'label', 'variant-3', 'REACH OUT');
+    expect(out).toMatch(/variant === ['"]variant-3['"] \? ['"]REACH OUT['"] : ['"]CONTACT US['"]/);
+    expect(out).not.toMatch(/: ['"]{2}\}/); // no empty fallback branch
+  });
+
+  test('NO-OP edit on the PRIMARY leaves the file byte-identical', () => {
+    const out = updateVariantTextInCode(SPAN_COMP, 'label', 'default', 'CONTACT US');
+    expect(out).toBe(SPAN_COMP);
+  });
+});
