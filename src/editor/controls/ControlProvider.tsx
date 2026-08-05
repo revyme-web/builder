@@ -24,7 +24,7 @@ import { isDefaultLocaleAtom, localeOverridesAtom } from '@/code/stores/locale-s
 import { queueMutation, flushNow } from '@/code/mutation/mutation-queue';
 import { removeComponentPropProjectWide } from '@/code/features/remove-component-prop';
 import { propagateToGhosts } from '@/code/generation/map-ghost-propagate';
-import { updateNodeStyles, getContentRoot, getViewportPrefix, forceCanvasRender, parseRectCacheKey } from '@/canvas/node-ops';
+import { updateNodeStyles, getContentRoot, getViewportPrefix, forceCanvasRender, parseRectCacheKey, vpIdFromPrefix } from '@/canvas/node-ops';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { makeGhostId } from '@/shared/ghost-id';
 import { detectValueSource, BORDER_LONGHANDS, type ValueSource } from '@/code/features/variable-ops';
@@ -500,11 +500,25 @@ export function ControlProvider({ children }: { children: ReactNode }) {
     // the next full render, and the commit writes plain inline styles.
     const important = 'backdropFilter' in styles || 'WebkitBackdropFilter' in styles;
     for (const id of selectedIds) {
+      // COMPONENT MASTER: a variant's committed override is applied by
+      // framer-motion as an INLINE style on its tile — unlike a page
+      // replica's @container rule, whose `!important` naturally beats this
+      // plain live patch. So the fan-out OVERWROTE every variant tile's own
+      // value during a primary drag ("all variants sync while I drag the
+      // color, restore on mouseup", 2026-08-05). Skip tiles whose variant
+      // object carries its OWN value for the dragged key — those tiles are
+      // not supposed to follow the base.
+      const mv = isComponentFile ? getNodesSnapshot().get(id)?.motionVariants : null;
       for (const prefix of prefixes) {
+        if (mv) {
+          const variantName = prefix === '' ? 'default' : vpIdFromPrefix(prefix);
+          const own = variantName !== 'default' ? mv[variantName]?.[key] : undefined;
+          if (own != null && own !== '') continue;
+        }
         bridge.patchStyles(id, prefix, styles, important);
       }
     }
-  }, [selectedIds, isComponentVariantViewport, isReplica, vpId]);
+  }, [selectedIds, isComponentVariantViewport, isReplica, vpId, isComponentFile]);
 
   // Map-aware style update: routes writes to map data when editing a ghost item
   // Track which properties we've already auto-bound during this session

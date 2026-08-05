@@ -1787,6 +1787,12 @@ export function moveNodeInCode(
   canvasNode?: boolean,
   sourceVpWidth?: number,
   sourceVariant?: string,
+  /** Splice the node BEFORE this sibling id (visual anchor). Preferred over
+   *  `insertIndex`: the index is visual-space and lands one off whenever CSS
+   *  `order` makes JSX order diverge from visual order. Falls back to the
+   *  index when the anchor isn't found among the parent's JSX children
+   *  (e.g. a template node living in another file). */
+  insertBeforeId?: string,
 ): string {
   trace.fn('generator.moveNodeInCode', { nodeId, newParentId, insertIndex, sourceVpWidth, sourceVariant });
   let result = code;
@@ -1807,6 +1813,10 @@ export function moveNodeInCode(
     newParentId != null &&
     canvasNode !== true &&
     sourceVariant == null &&
+    // Anchor-id splices need the AST path — the fast path only knows
+    // positional indexes and would reintroduce the visual/JSX divergence
+    // the anchor exists to fix.
+    insertBeforeId == null &&
     newParentId !== cheapOutermostDataId(result)
   ) {
     const fast = moveNodeIntoParentFast(result, nodeId, newParentId, insertIndex ?? null);
@@ -2456,6 +2466,30 @@ export function moveNodeInCode(
       if (fillEmptyMapBody(path.node as t.JSXElement, removedNode as t.JSXElement)) {
         path.stop();
         return;
+      }
+      // ANCHOR-FIRST: splice before the named sibling. Immune to every
+      // index-space divergence (CSS `order` reorders, `<style>` children,
+      // siblings the rect walk missed). Falls through to the index logic
+      // when the anchor isn't a JSX child here (template node in another
+      // file) — and to append when neither resolves.
+      if (insertBeforeId) {
+        const children = path.node.children;
+        let anchorPos = -1;
+        for (let i = 0; i < children.length; i++) {
+          const c = children[i];
+          if (c.type !== 'JSXElement') continue;
+          const hit = c.openingElement.attributes.some((a: t.JSXAttribute | t.JSXSpreadAttribute) =>
+            a.type === 'JSXAttribute' && a.name.name === 'data-id'
+            && a.value?.type === 'StringLiteral' && a.value.value === insertBeforeId);
+          if (hit) { anchorPos = i; break; }
+        }
+        if (anchorPos >= 0) {
+          trace.action('generator:moveNodeInCode-anchor-insert', { nodeId, insertBeforeId });
+          children.splice(anchorPos, 0, t.jsxText('\n    '), removedNode!);
+          path.stop();
+          return;
+        }
+        trace.action('generator:moveNodeInCode-anchor-missing', { nodeId, insertBeforeId });
       }
       if (insertIndex != null && insertIndex >= 0) {
         // Insert at specific index among JSXElement + JSXExpressionContainer children.

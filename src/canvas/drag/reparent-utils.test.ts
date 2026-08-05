@@ -1,7 +1,7 @@
 // reparent-utils.test.ts — Tests for shared drag reparent utilities.
 
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { applyLayoutEdgeMagnet, calculateLayoutInsertIndexById, computeLayoutInsertOrderUpdates, computeReorderAssignments, flexForFlowChildEnteringFlex } from './reparent-utils';
+import { applyLayoutEdgeMagnet, calculateLayoutInsertIndexById, computeLayoutInsertOrderUpdates, computeReorderAssignments, computeReplicaOrderMirrorUpdates, flexForFlowChildEnteringFlex } from './reparent-utils';
 
 // Mock trace to prevent side effects
 vi.mock('@/shared/debug-trace', () => ({
@@ -399,5 +399,92 @@ describe('template {children} slot as a drop sibling', () => {
       { nodeId: 'dragged', order: -1 },
       { nodeId: 'KaPoJo-3', order: 1 },
     ]);
+  });
+});
+
+describe('computeReplicaOrderMirrorUpdates', () => {
+  // Tablet carries an independent order map (band `order: !important` per
+  // section); a primary drop wrote base orders only, so on tablet the new
+  // node's base order was evaluated inside a foreign numbering and landed
+  // anywhere ("tablet jumped way above Capabilities", 2026-08-05). The
+  // mirror inserts the node after the SAME predecessor in the band's own
+  // sequence and renumbers that band 0..N. Mobile (no order band) is
+  // skipped and keeps inheriting base.
+  // Base (desktop) visual order after the drop: hero, robot, services, NEW, about, marquee
+  const desired = ['hero', 'robot', 'services', 'new-section', 'about', 'marquee'];
+  const baseStyles: Record<string, Record<string, string>> = {
+    hero: { order: '0' }, robot: { order: '1' }, services: { order: '2' },
+    about: { order: '4' }, marquee: { order: '5' },
+  };
+  // Tablet band (max-width 768): INDEPENDENT arrangement — marquee moved up.
+  // vpId->width map with a mobile vp that has NO order band.
+  const overrides = new Map([
+    ['hero', new Map([[768, new Map([['order', '0']])]])],
+    ['marquee', new Map([[768, new Map([['order', '1']])]])],
+    ['robot', new Map([[768, new Map([['order', '2']])]])],
+    ['services', new Map([[768, new Map([['order', '3']])]])],
+    ['about', new Map([[768, new Map([['order', '4']])]])],
+  ]);
+  const vpWidths = { desktop: 1440, tablet: 768, mobile: 375 };
+
+  test('inserts after the same predecessor in the band sequence and renumbers 0..N', () => {
+    const updates = computeReplicaOrderMirrorUpdates({
+      draggedIds: ['new-section'],
+      desiredVisualOrder: desired,
+      getNodeStyles: (id: string) => baseStyles[id],
+      overrides,
+      vpWidths,
+      dropVpId: 'desktop',
+    });
+    // Only the tablet band gets writes (mobile has no order map).
+    expect(updates.every((u: any) => u.maxWidth === 768)).toBe(true);
+    const byId = Object.fromEntries(updates.map((u: any) => [u.nodeId, u.styles.order]));
+    // Tablet sequence was [hero, marquee, robot, services, about]; predecessor
+    // on desktop is `services` → new lands right after services THERE:
+    // [hero, marquee, robot, services, new-section, about] → 0..5
+    expect(byId).toEqual({
+      hero: '0', marquee: '1', robot: '2', services: '3', 'new-section': '4', about: '5',
+    });
+    expect(updates.every((u: any) => u.type === 'updateContainerStyle')).toBe(true);
+  });
+
+  test('a viewport with no order band emits nothing (stays base-synced)', () => {
+    const updates = computeReplicaOrderMirrorUpdates({
+      draggedIds: ['new-section'],
+      desiredVisualOrder: desired,
+      getNodeStyles: (id: string) => baseStyles[id],
+      overrides: new Map(),
+      vpWidths,
+      dropVpId: 'desktop',
+    });
+    expect(updates).toEqual([]);
+  });
+
+  test('drop at the very top anchors before the successor', () => {
+    const updates = computeReplicaOrderMirrorUpdates({
+      draggedIds: ['new-section'],
+      desiredVisualOrder: ['new-section', 'hero', 'robot', 'services', 'about', 'marquee'],
+      getNodeStyles: (id: string) => baseStyles[id],
+      overrides,
+      vpWidths,
+      dropVpId: 'desktop',
+    });
+    const byId = Object.fromEntries(updates.map((u: any) => [u.nodeId, u.styles.order]));
+    // Successor = hero → new lands before hero in the tablet sequence.
+    expect(byId['new-section']).toBe('0');
+    expect(byId['hero']).toBe('1');
+  });
+
+  test('template-merge ids are skipped from the writes', () => {
+    const updates = computeReplicaOrderMirrorUpdates({
+      draggedIds: ['new-section'],
+      desiredVisualOrder: ['layout::header', 'hero', 'new-section', 'about'],
+      getNodeStyles: (id: string) => baseStyles[id],
+      overrides: new Map([['hero', new Map([[768, new Map([['order', '0']])]])]]),
+      vpWidths: { tablet: 768 },
+      dropVpId: 'desktop',
+    });
+    expect(updates.some((u: any) => u.nodeId.startsWith('layout::'))).toBe(false);
+    expect(updates.some((u: any) => u.nodeId === 'new-section')).toBe(true);
   });
 });

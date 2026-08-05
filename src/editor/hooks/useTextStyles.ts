@@ -28,12 +28,20 @@ import { TEXT_MARK_SPAN_PROPS, getInlineSpanPropertyState } from '@/code/generat
 import { useControl } from '../controls/ControlProvider';
 import { trace } from '@/shared/debug-trace';
 
+/** Matches an inline span run in rich textContent — plain `<span` OR the
+ *  motionized `<motion.span` a design-component variant pass produces. The
+ *  literal `'<span'` probe was blind to motion.span, so inside variant
+ *  components the flatten below never fired and a span's baked color beat
+ *  every variant color forever ("button text won't change color", 2026-08-05).
+ *  Twin of the AST-level isInlineSpanElement, which always handled both. */
+const INLINE_SPAN_RE = /<(?:motion\.)?span\b/;
+
 /** Cheap guard: does this node's rich content actually carry an inline `<span>`
  *  override for `property`? Inline-style keys in our JSX are camelCase
  *  identifiers (`color:` / `fontWeight:`), so a word-boundary key probe avoids
  *  queuing a no-op strip (and an unnecessary re-parse) when no span has it. */
 function spanContentCarriesProp(textContent: string, property: string): boolean {
-  if (!textContent.includes('<span')) return false;
+  if (!INLINE_SPAN_RE.test(textContent)) return false;
   return new RegExp(`\\b${property}\\s*:`).test(textContent);
 }
 
@@ -176,7 +184,7 @@ export function useTextStyles(): UseTextStylesReturn {
         // props aren't span-overridable). Plain (non-rich) nodes fall through.
         if (TEXT_MARK_SPAN_PROPS.has(property)) {
           const node = selectedIds.length > 0 ? getNodesSnapshot().get(selectedIds[0]) : undefined;
-          if (node?.hasMixedContent && node.textContent.includes('<span')) {
+          if (node?.hasMixedContent && INLINE_SPAN_RE.test(node.textContent)) {
             const state = getInlineSpanPropertyState(node.textContent, property, v);
             trace.fn('useTextStyles.get', {
               property, mode: 'node-rich', value: state.value, isMixed: state.isMixed,

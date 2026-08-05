@@ -680,7 +680,7 @@ export class CanvasDragOrchestrator {
         if (update.styles) updateNodeInCache(update.nodeId, update.styles);
         // Move changes parent — DOM must be fully rebuilt (can't patch reparenting)
         this.opts.renderer.setStructuralPending(true);
-        queueMutation({ type: 'move', nodeId: update.nodeId, newParentId: update.newParentId ?? null, styles: update.styles, index: update.newIndex, canvasNode: update.canvasNode });
+        queueMutation({ type: 'move', nodeId: update.nodeId, newParentId: update.newParentId ?? null, styles: update.styles, index: update.newIndex, insertBeforeId: update.insertBeforeId, canvasNode: update.canvasNode });
         // Same fade as a sibling reorder: a reparent (canvas→section / section→canvas)
         // mounts the selection overlay at the STALE drag spot before the new-slot rect
         // remeasures (async). Pulse so SelectionFade hides → fades in once it settles.

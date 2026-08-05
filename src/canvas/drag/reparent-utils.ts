@@ -19,6 +19,9 @@ import { detectParentLayoutById, getFlexDirectionById } from './types';
 import { trace } from '@/shared/debug-trace';
 import { calculateGridDrop } from './grid-drop';
 import { findNodeComputedStyle } from '@/canvas/node-ops';
+import { getOverridesAtWidth, type ContainerOverrideMap } from '@/code/stores/container-query-store';
+import { isPrimaryViewport } from '@/shared/constants';
+import type { PendingUpdate } from '@/shared/types';
 
 
 
@@ -122,6 +125,71 @@ export function computeReorderAssignments(
  * @param getNodeStyles  - Reads a node's inline `order` style (caller-provided
  *                         to keep the helper free of NodeMap imports).
  */
+/** The JSX splice ANCHOR for a visual-space insert: the id of the visible
+ *  flow sibling occupying slot `insertIndex` (the node the drop must land
+ *  BEFORE), or null to append. Reads the SAME child basis as
+ *  `computeLayoutInsertOrderUpdates` so the anchor always agrees with the
+ *  order renumbering. `layout::` / slot ids are skipped FORWARD — they're
+ *  template-merge artifacts that don't exist in the page file's JSX, and a
+ *  drop right before the footer must resolve to "append after the last real
+ *  section". Why an anchor at all: `insertIndex` is visual-space; splicing it
+ *  positionally into JSX children lands one slot off whenever CSS `order`
+ *  reorders siblings or non-visual children exist ("line showed below
+ *  Capabilities, landed above" — templated page, 2026-08-05). */
+export function computeLayoutInsertAnchorId(
+  parentId: string,
+  vpId: string,
+  insertIndex: number,
+  draggedIds: string[],
+  getNodeOrder: (nodeId: string) => string | undefined,
+): string | undefined {
+  const draggedSet = new Set(draggedIds);
+  const existing = sortChildRectsByFlow(
+    findVisibleChildRects(parentId, vpId).filter(c => !draggedSet.has(c.id)),
+    getNodeOrder,
+  );
+  for (let i = Math.max(0, insertIndex); i < existing.length; i++) {
+    const id = existing[i].id;
+    if (id.startsWith('layout::') || id === 'children-slot') continue;
+    return id;
+  }
+  return undefined; // append at end
+}
+
+/** The drop-viewport visual order AFTER an insert: visible flow-sorted
+ *  siblings (minus dragged) with the dragged ids spliced at `insertIndex`.
+ *  SHARED basis for the order renumber (computeLayoutInsertOrderUpdates),
+ *  the JSX splice anchor (computeLayoutInsertAnchorId) and the per-viewport
+ *  order mirror (computeReplicaOrderMirrorUpdates) — all three MUST agree
+ *  on the same child set or the drop lands differently per consumer.
+ *
+ *  Reads the same child set `calculateLayoutInsertIndexById` does — the
+ *  `insertIndex` was computed against `findVisibleChildRects` (filters
+ *  hidden / 0×0). Reading the full unfiltered list here would let hidden
+ *  siblings shift the slot count (drop lands one early — see the
+ *  zero-size-ghost memory case). */
+export function buildDesiredVisualOrder(
+  parentId: string,
+  vpId: string,
+  insertIndex: number,
+  draggedIds: string[],
+  getNodeOrder: (nodeId: string) => string | undefined,
+): string[] {
+  const draggedSet = new Set(draggedIds);
+  const existing = sortChildRectsByFlow(
+    findVisibleChildRects(parentId, vpId).filter(c => !draggedSet.has(c.id)),
+    getNodeOrder,
+  );
+  const out: string[] = [];
+  for (let i = 0; i <= existing.length; i++) {
+    if (i === insertIndex) for (const id of draggedIds) out.push(id);
+    if (i < existing.length) out.push(existing[i].id);
+  }
+  // insertIndex past the end (or -1 clamp): dragged not yet placed → append.
+  if (!out.some(id => draggedSet.has(id))) for (const id of draggedIds) out.push(id);
+  return out;
+}
+
 export function computeLayoutInsertOrderUpdates(
   parentId: string,
   vpId: string,
@@ -130,24 +198,6 @@ export function computeLayoutInsertOrderUpdates(
   direction: 'column' | 'row',
   getNodeOrder: (nodeId: string) => string | undefined,
 ): { nodeId: string; order: number }[] {
-  // Must read the same child set `calculateLayoutInsertIndexById` does —
-  // the `insertIndex` we receive was computed against
-  // `findVisibleChildRects` (filters hidden / 0×0). If we read the full
-  // unfiltered list here, hidden siblings shift our slot count and the
-  // dragged node lands in a different position than where the drop-line
-  // showed. Concrete repro: a `display:none` sibling sits at position
-  // 0 in the unfiltered list. The visible-list `insertIndex=2` becomes
-  // unfiltered-list position 3, so the renumber lands the new node one
-  // slot earlier than intended.
-  const childRects = findVisibleChildRects(parentId, vpId);
-  const draggedSet = new Set(draggedIds);
-  // Flow order, not geometric order — see sortChildRectsByFlow. Must match
-  // the basis calculateLayoutInsertIndexById computed `insertIndex` against.
-  const existing = sortChildRectsByFlow(
-    childRects.filter(c => !draggedSet.has(c.id)),
-    getNodeOrder,
-  );
-
   // NO early-out when the siblings carry no explicit `order`.
   //
   // It used to return [] there, which left the inserted child (and its
@@ -162,14 +212,7 @@ export function computeLayoutInsertOrderUpdates(
   // no-op: with no explicit order, flow order IS DOM order, so 0,1,2… over that
   // same sequence renders identically. It happens once per parent; afterwards
   // the explicit-order path above takes over.
-
-  const desiredVisualOrder: string[] = [];
-  for (let i = 0; i <= existing.length; i++) {
-    if (i === insertIndex) {
-      for (const id of draggedIds) desiredVisualOrder.push(id);
-    }
-    if (i < existing.length) desiredVisualOrder.push(existing[i].id);
-  }
+  const desiredVisualOrder = buildDesiredVisualOrder(parentId, vpId, insertIndex, draggedIds, getNodeOrder);
 
   trace.action('reparent-utils:computeLayoutInsertOrderUpdates', {
     parentId, vpId, insertIndex, draggedIds, direction,
@@ -184,6 +227,81 @@ export function computeLayoutInsertOrderUpdates(
   // from the writes. On pages (no slot in the list) it degrades to the same
   // sequential 0..N this returned before.
   return computeReorderAssignments(desiredVisualOrder);
+}
+
+/**
+ * Mirror a flow INSERT into every viewport that carries an INDEPENDENT
+ * section-order map (an `@media` band with `order: !important` rules for the
+ * parent's children — created when the user reorders sections on that
+ * replica). Without this, the drop's renumber writes BASE orders only: the
+ * inserted node has no band entry, so on that viewport its base order is
+ * evaluated inside a foreign numbering and it lands anywhere ("in TABLET it
+ * jumped way above Capabilities", 2026-08-05; mobile — no order band —
+ * correctly inherited base).
+ *
+ * Placement rule: the node lands relative to the SAME NEIGHBOURS as on the
+ * drop viewport — right after its predecessor in that band's OWN sequence
+ * (falling back to before its successor, then append). The whole band
+ * sequence is then renumbered 0..N: partial writes would recreate the very
+ * collision class this prevents. A viewport whose band has NO order entries
+ * is skipped entirely — it keeps inheriting base and stays synced.
+ *
+ * Pure — all inputs passed in — so it's unit-testable without stores.
+ */
+export function computeReplicaOrderMirrorUpdates(opts: {
+  /** The inserted node ids (in their own relative order). */
+  draggedIds: string[];
+  /** Drop-viewport visual order AFTER the insert, dragged included — the
+   *  same list computeLayoutInsertOrderUpdates renumbers from. */
+  desiredVisualOrder: string[];
+  /** Base inline styles per sibling id (effective-order fallback). */
+  getNodeStyles: (id: string) => Record<string, string> | undefined;
+  overrides: ContainerOverrideMap;
+  /** vpId -> width for every viewport on the page. */
+  vpWidths: Record<string, number>;
+  /** The viewport the drop happened on — its space is already handled by
+   *  the regular renumber (base or replica-routed). */
+  dropVpId: string;
+}): PendingUpdate[] {
+  const { draggedIds, desiredVisualOrder, getNodeStyles, overrides, vpWidths, dropVpId } = opts;
+  const draggedSet = new Set(draggedIds);
+  const others = desiredVisualOrder.filter((id) => !draggedSet.has(id));
+  const firstDragged = desiredVisualOrder.findIndex((id) => draggedSet.has(id));
+  if (firstDragged === -1) return [];
+  const predecessorId = firstDragged > 0 ? desiredVisualOrder[firstDragged - 1] : null;
+  const successorId = desiredVisualOrder.slice(firstDragged).find((id) => !draggedSet.has(id)) ?? null;
+
+  const updates: PendingUpdate[] = [];
+  for (const [vpId, width] of Object.entries(vpWidths)) {
+    if (vpId === dropVpId || isPrimaryViewport(vpId) || !width) continue;
+    const hasBandOrders = others.some((id) => getOverridesAtWidth(overrides, id, width).has('order'));
+    if (!hasBandOrders) continue; // inherits base — stays synced, leave it
+
+    // This viewport's OWN current sequence: band order ?? base order,
+    // ties broken by drop-viewport relative position (stable).
+    const seq = others
+      .map((id, i) => {
+        const band = getOverridesAtWidth(overrides, id, width).get('order');
+        const base = getNodeStyles(id)?.order;
+        const parsed = parseInt(band ?? base ?? '', 10);
+        return { id, ord: Number.isFinite(parsed) ? parsed : i, tie: i };
+      })
+      .sort((a, b) => a.ord - b.ord || a.tie - b.tie)
+      .map((e) => e.id);
+
+    let at = seq.length;
+    if (predecessorId && seq.includes(predecessorId)) at = seq.indexOf(predecessorId) + 1;
+    else if (successorId && seq.includes(successorId)) at = seq.indexOf(successorId);
+    seq.splice(at, 0, ...draggedIds);
+
+    trace.action('reparent-utils:replica-order-mirror', { vpId, width, predecessorId, successorId, seq });
+    seq.forEach((id, i) => {
+      // Template-merge artifacts live in another file — never write to them.
+      if (id.startsWith('layout::') || id === 'children-slot') return;
+      updates.push({ nodeId: id, type: 'updateContainerStyle', maxWidth: width, styles: { order: String(i) } });
+    });
+  }
+  return updates;
 }
 
 

@@ -64,6 +64,13 @@ export interface PendingUpdate {
   styles?: Record<string, string>;
   newParentId?: string | null;
   newIndex?: number;
+  /** For move: id of the VISIBLE sibling the node must be spliced BEFORE in
+   *  the JSX. `newIndex` is a VISUAL-space index; splicing it positionally
+   *  breaks whenever JSX order diverges from visual order (CSS `order`
+   *  reorders, template-injected `<style>` children, siblings missing from
+   *  the rect walk). The anchor id is immune to every index-space mismatch.
+   *  Generators use it first and fall back to `newIndex`. */
+  insertBeforeId?: string;
   descriptor?: NewNodeDescriptor;
   maxWidth?: number;
   variantName?: string;

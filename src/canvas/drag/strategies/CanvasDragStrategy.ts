@@ -20,7 +20,7 @@ import { isFullyInsideQuad, cornersFromRect, pointInQuad , matrixHasRotationSkew
 import { dropLineOps } from '@/canvas/selection/drop-line-store';
 import { parentHighlightOps } from '@/canvas/selection/parent-highlight-store';
 import { trace } from '@/shared/debug-trace';
-import { calculateLayoutInsertIndexById, computeLayoutInsertOrderUpdates, applyLayoutEdgeMagnet, flexForFlowChildEnteringFlex } from '../reparent-utils';
+import { calculateLayoutInsertIndexById, computeLayoutInsertOrderUpdates, computeLayoutInsertAnchorId, computeReplicaOrderMirrorUpdates, buildDesiredVisualOrder, applyLayoutEdgeMagnet, flexForFlowChildEnteringFlex } from '../reparent-utils';
 import { computeEntryParentLocalPosition, computeExitCanvasPosition, traceTransformReparent } from '../transform-reparent';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { getIframeOffset, screenPointToCanvas, screenRectToCanvas } from '../helpers/coords';
@@ -2349,6 +2349,12 @@ export class CanvasDragStrategy implements DragStrategy {
               type: 'move',
               newParentId: this.enteredParentId!,
               newIndex: this.enteredInsertIndex >= 0 ? this.enteredInsertIndex : undefined,
+              // Anchor by SIBLING ID too — the visual index splices wrong in
+              // JSX space once CSS `order` diverges from source order (see
+              // computeLayoutInsertAnchorId).
+              insertBeforeId: this.enteredInsertIndex >= 0
+                ? computeLayoutInsertAnchorId(this.enteredParentId!, dropVpId, this.enteredInsertIndex, [info.sourceId], (id) => context.nodes.get(id)?.styles?.order)
+                : undefined,
               styles: { position: 'relative', left: '', top: '', right: '', bottom: '', ...(enterFlex ? { flex: enterFlex } : {}) },
             });
             // Renumber siblings if the parent has explicit `order` styles —
@@ -2368,6 +2374,17 @@ export class CanvasDragStrategy implements DragStrategy {
             // order lands in `variants[X].order` on a component master's
             // variant tile (user report 2026-07-27).
             updates.push(...commitOrderAssignments(orderUpdates, context.contentEl, dropVpId));
+            // Viewports with an INDEPENDENT @media order map need their own
+            // band write for the inserted node — see
+            // computeReplicaOrderMirrorUpdates ("tablet jumped way above").
+            updates.push(...computeReplicaOrderMirrorUpdates({
+              draggedIds: [info.sourceId],
+              desiredVisualOrder: buildDesiredVisualOrder(this.enteredParentId!, dropVpId, this.enteredInsertIndex >= 0 ? this.enteredInsertIndex : 0, [info.sourceId], (id) => context.nodes.get(id)?.styles?.order),
+              getNodeStyles: (id) => context.nodes.get(id)?.styles,
+              overrides: getDefaultStore().get(containerOverridesAtom),
+              vpWidths: getViewportWidths(),
+              dropVpId,
+            }));
           } else {
             // No-layout parent: convert clone's canvas position back to
             // parent-relative coords. Use the clone's live screen rect
@@ -2606,6 +2623,10 @@ export class CanvasDragStrategy implements DragStrategy {
               type: 'move',
               newParentId: this.enteredParentId,
               newIndex: this.enteredInsertIndex >= 0 ? this.enteredInsertIndex : undefined,
+              // Anchor by SIBLING ID too — see computeLayoutInsertAnchorId.
+              insertBeforeId: this.enteredInsertIndex >= 0
+                ? computeLayoutInsertAnchorId(this.enteredParentId, dropVpId, this.enteredInsertIndex, context.draggedNodes.map(n => n.id), (id) => context.nodes.get(id)?.styles?.order)
+                : undefined,
               styles: moveStyles,
             });
           } else {
@@ -2641,6 +2662,17 @@ export class CanvasDragStrategy implements DragStrategy {
             // reflows → layout={true} FLIP animates the position smoothly.
             updates.push(...commitOrderAssignments(orderUpdates, context.contentEl, dropVpId));
           }
+          // Viewports with an INDEPENDENT @media order map need their own
+          // band write for the inserted node(s) — see
+          // computeReplicaOrderMirrorUpdates ("tablet jumped way above").
+          updates.push(...computeReplicaOrderMirrorUpdates({
+            draggedIds: context.draggedNodes.map(n => n.id),
+            desiredVisualOrder: buildDesiredVisualOrder(this.enteredParentId, dropVpId, this.enteredInsertIndex >= 0 ? this.enteredInsertIndex : 0, context.draggedNodes.map(n => n.id), (id) => context.nodes.get(id)?.styles?.order),
+            getNodeStyles: (id) => context.nodes.get(id)?.styles,
+            overrides: getDefaultStore().get(containerOverridesAtom),
+            vpWidths: getViewportWidths(),
+            dropVpId,
+          }));
         }
 
         for (const node of context.draggedNodes) {

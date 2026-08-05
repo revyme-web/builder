@@ -215,7 +215,7 @@ export type Mutation =
   /** Move an element to a new position within its parent (reorder children). */
   | { type: 'reorder'; nodeId: string; parentId: string; index: number }
   /** Move an element to a different parent. Optionally update styles and set insert index. */
-  | { type: 'move'; nodeId: string; newParentId: string | null; styles?: Record<string, string>; index?: number; canvasNode?: boolean; sourceVpWidth?: number; sourceVariant?: string }
+  | { type: 'move'; nodeId: string; newParentId: string | null; styles?: Record<string, string>; index?: number; insertBeforeId?: string; canvasNode?: boolean; sourceVpWidth?: number; sourceVariant?: string }
   /** Delete an element and all its children. */
   | { type: 'removeNode'; nodeId: string }
   /** Set the data-name attribute on an element (display name in layers panel). */
@@ -2390,7 +2390,7 @@ function applyMutationCore(code: string, mutation: Mutation): string {
           // canvasNode block above).
           nextCode = stripDataResponsiveInSubtree(nextCode, mutation.nodeId);
         }
-        let moved = moveNodeInCode(nextCode, mutation.nodeId, mutation.newParentId, moveStyles, mutation.index, mutation.canvasNode, mutation.sourceVpWidth, mutation.sourceVariant);
+        let moved = moveNodeInCode(nextCode, mutation.nodeId, mutation.newParentId, moveStyles, mutation.index, mutation.canvasNode, mutation.sourceVpWidth, mutation.sourceVariant, mutation.insertBeforeId);
         // CMS prop-binding round-trip (the reference "Missing" parity). Compare the
         // node's map scope before vs after the move:
         //  • LEFT its source map (canvas, or a frame outside the `.map()`) →

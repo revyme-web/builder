@@ -94,3 +94,43 @@ describe('planSpanFlatten', () => {
     })).toEqual({ strip: false });
   });
 });
+
+describe('motion.span runs (design-component variantized text)', () => {
+  // The variant pass motionizes inner spans (`<span>` → `<motion.span
+  // layout={true}>`). The cheap `'<span'` probe was blind to them, so inside
+  // variant components the flatten NEVER fired — a span's baked color beat
+  // every variant color forever ("button text won't change color", 2026-08-05).
+  const MOTION_SPAN_CONTENT =
+    `<motion.span layout={true} style={{ color: 'rgb(21, 21, 21)' }}>CONTACT US</motion.span>`;
+
+  test('base write strips the motion.span color', () => {
+    const plan = planSpanFlatten({
+      property: 'color',
+      hasMixedContent: true,
+      textContent: MOTION_SPAN_CONTENT,
+      isScopedWrite: false,
+    });
+    expect(plan.strip).toBe(true);
+  });
+
+  test('variant-scoped write hoists the motion.span color then strips', () => {
+    const plan = planSpanFlatten({
+      property: 'color',
+      hasMixedContent: true,
+      textContent: MOTION_SPAN_CONTENT,
+      isScopedWrite: true,
+    });
+    expect(plan.strip).toBe(true);
+    expect(plan.hoistValue).toBe('rgb(21, 21, 21)');
+  });
+
+  test('still no-ops when the motion.span does not carry the property', () => {
+    const plan = planSpanFlatten({
+      property: 'fontSize',
+      hasMixedContent: true,
+      textContent: MOTION_SPAN_CONTENT,
+      isScopedWrite: false,
+    });
+    expect(plan.strip).toBe(false);
+  });
+});

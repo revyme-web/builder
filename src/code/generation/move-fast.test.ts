@@ -173,3 +173,32 @@ describe('leading <style> child — non-visual, never a slot', () => {
     expect(ids.indexOf('chip')).toBeLessThan(ids.indexOf('c'));
   });
 });
+
+describe('insertBeforeId anchor — visual/JSX divergence', () => {
+  // After one order-based reorder, CSS `order` no longer matches JSX order.
+  // A visual insertIndex spliced positionally then lands one slot off — the
+  // anchor id is immune ("still not working bro" round 2, 2026-08-05).
+  // JSX order: works BEFORE services, but CSS order renders services first.
+  const DIVERGED = PAGE(`    <div data-id="root" data-name="Page">
+      <style>{\`x\`}</style>
+      <div data-id="hero" data-name="Hero" style={{ order: '0' }}></div>
+      <div data-id="works" data-name="Works" style={{ order: '3' }}></div>
+      <div data-id="services" data-name="Services" style={{ order: '2' }}></div>
+      <div data-id="about" data-name="About" style={{ order: '4' }}></div>
+    </div>`) + `\nconst canvasNodes = (<>\n  <div data-id="chip" data-canvas-node="true" style={{ position: 'absolute' }}></div>\n</>);`;
+
+  it('splices BEFORE the anchor sibling regardless of index', () => {
+    // Visual drop "after services, before works": anchor = works. A naive
+    // visual index (3) would splice before about — wrong.
+    const out = moveNodeInCode(DIVERGED, 'chip', 'root', undefined, 3, undefined, undefined, undefined, 'works');
+    const ids = childIdsOf(out, 'root');
+    expect(ids.indexOf('chip')).toBe(ids.indexOf('works') - 1);
+  });
+
+  it('falls back to the visual index when the anchor is not a JSX child', () => {
+    const out = moveNodeInCode(DIVERGED, 'chip', 'root', undefined, 1, undefined, undefined, undefined, 'layout::site-footer');
+    const ids = childIdsOf(out, 'root');
+    // index 1 among visual slots (style skipped): before works
+    expect(ids.indexOf('chip')).toBe(ids.indexOf('works') - 1);
+  });
+});
