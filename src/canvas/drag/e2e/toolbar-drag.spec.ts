@@ -69,8 +69,9 @@ test.describe('ToolbarDragStrategy', () => {
     await expect(line).toHaveAttribute('data-insert-index', '1');
 
     await page.mouse.up();
-    // After mouseup, JSX children of root should have the new frame
-    // between hero and features in visual order.
+    // An insert into an ordered parent lands in TWO flushes ~30ms apart —
+    // read straight after mouseup and you catch the pre-insert list.
+    await editor.waitForRootChildren(4);
     const visual = await editor.getRootChildrenVisualOrder();
     expect(visual.length).toBe(4);
     expect(visual[0]).toBe('hero');
@@ -96,6 +97,7 @@ test.describe('ToolbarDragStrategy', () => {
     await expect(line).toHaveAttribute('data-insert-index', '1');
 
     await page.mouse.up();
+    await editor.waitForRootChildren(4);
     const visual = await editor.getRootChildrenVisualOrder();
     expect(visual[0]).toBe('hero');
     expect(visual[2]).toBe('features');

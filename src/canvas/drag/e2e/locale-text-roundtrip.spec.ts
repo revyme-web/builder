@@ -36,6 +36,11 @@ test.describe('locale text roundtrip', () => {
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     const editorEl = sandbox.locator('[contenteditable="true"]').first();
     await expect(editorEl).toBeVisible({ timeout: 5_000 });
+    // VISIBLE ≠ FOCUSED. TipTap mounts, then takes a frame to place the
+    // caret; typing into that gap loses the first keystroke and the
+    // select-all replacement eats the second instead ("Peintre" → "eintre",
+    // reproduced ~1 run in 3). Let focus settle before driving the keyboard.
+    await page.waitForTimeout(250);
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
     await page.keyboard.type('Peintre');
     await page.keyboard.press('Escape');

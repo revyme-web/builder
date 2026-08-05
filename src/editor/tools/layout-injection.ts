@@ -211,6 +211,34 @@ export function injectFlexLayoutOnFrame(
   const node = nodes.get(nodeId);
   if (!node) return;
 
+  // PARENT FIRST — the ordering is load-bearing. Each child conversion below
+  // clears left/top/right/bottom, and updateNodeStyles' style-override-removal
+  // path synchronously flushes + force-renders the code AS QUEUED SO FAR. With
+  // children first, that render shipped the half-converted state — child
+  // `position:relative` inside a NOT-yet-flex parent — and the child visibly
+  // flashed at the parent's 0,0 before the flex centering landed (user trace
+  // 2026-08-05). Parent first, every mid-injection flush renders a flex parent:
+  // still-absolute children ignore it (identical to the pre-action frame) and
+  // converted children center immediately.
+  //
+  // If the element is currently hidden (`display: 'none'`), don't
+  // overwrite `display` here — Visible:No must stay independent of
+  // Layout config (standard). The flex props alone are enough;
+  // a later unhide auto-restores `display: 'flex'` via
+  // `updateNodeStyles`'s auto-display-restore.
+  const isHidden = node.styles?.display === 'none';
+  const layoutStyles: Record<string, string> = {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+  if (!isHidden) layoutStyles.display = 'flex';
+  updateNodeStyles({
+    id: nodeId,
+    styles: layoutStyles,
+    contentEl,
+  });
+
   const childIds: string[] = [];
   for (const childId of node.children) {
     const childNode = nodes.get(childId);
@@ -259,24 +287,6 @@ export function injectFlexLayoutOnFrame(
     });
     childIds.push(childId);
   }
-
-  // If the element is currently hidden (`display: 'none'`), don't
-  // overwrite `display` here — Visible:No must stay independent of
-  // Layout config (standard). The flex props alone are enough;
-  // a later unhide auto-restores `display: 'flex'` via
-  // `updateNodeStyles`'s auto-display-restore.
-  const isHidden = node.styles?.display === 'none';
-  const layoutStyles: Record<string, string> = {
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-  if (!isHidden) layoutStyles.display = 'flex';
-  updateNodeStyles({
-    id: nodeId,
-    styles: layoutStyles,
-    contentEl,
-  });
 
   trace.action('layout-injection:add', { nodeId, childCount: childIds.length, isHidden });
 }

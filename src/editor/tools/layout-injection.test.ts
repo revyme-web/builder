@@ -101,6 +101,22 @@ describe('injectFlexLayoutOnFrame', () => {
     });
   });
 
+  it('writes the PARENT before any child — ordering is load-bearing', () => {
+    // A child's inset removal synchronously flushes + force-renders the code
+    // as queued so far. Children-first shipped a half-converted frame (child
+    // position:relative inside a not-yet-flex parent) and the child flashed
+    // at the parent's 0,0 before centering (user trace 2026-08-05).
+    const nodes = makeNodes(
+      makeNode('parent', ['c1', 'c2']),
+      makeNode('c1', [], { position: 'absolute', left: '10px', top: '20px' }),
+      makeNode('c2', [], { position: 'absolute', left: '30px', top: '40px' }),
+    );
+    injectFlexLayoutOnFrame('parent', nodes);
+    const order = updateNodeStyles.mock.calls.map(c => c[0].id);
+    expect(order[0]).toBe('parent');
+    expect(order).toEqual(['parent', 'c1', 'c2']);
+  });
+
   it('makes each child a flow child: position relative + cleared insets + flex 0 0 auto', () => {
     const nodes = makeNodes(
       makeNode('parent', ['c1']),

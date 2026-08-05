@@ -173,7 +173,7 @@ import { parseOverlayTriggerCalls } from '../parsing/overlay-parser';
 import { wrapInFitSVGInCode, unwrapFitSVGInCode } from '../generation/fit-text-gen';
 import { removeDanglingConnectionsInCode } from '../variants/connection-config';
 import { setSketchAnimInCode, removeSketchAnimInCode } from '../sketch/sketch-anim-gen';
-import { projectFS, installBuiltInCodeComponent } from '../project/project-fs';
+import { projectFS, projectVersionAtom, installBuiltInCodeComponent } from '../project/project-fs';
 import { clearCanvasStyles } from '@/canvas/node-ops';
 import type { PresetToken } from '@/shared/types';
 
@@ -765,6 +765,41 @@ const IMPORT_AFFECTING_TYPES = new Set([
  *  re-declares any missing overlay useState so validation can't be tripped by a
  *  tangled component-variant sequence (esp. the variant-exit path, which uses
  *  addCanvasNode/removeNode — NOT the move handler's heal). */
+/** Preset mutations write app/globals.css as a SIDE EFFECT of applyMutation —
+ *  the page-code fan-out can't announce them: onFlush's setCode carries the
+ *  UNCHANGED page code, activeCodeAtom skips identical content and never bumps
+ *  projectVersion, so presetTokensAtom (a version-gated view of globals.css)
+ *  stayed stale. A freshly created preset only showed up on the NEXT create's
+ *  click-time panel bump — "create preset does nothing the first time" (user
+ *  trace 2026-08-05: parsePresetTokens read the old CSS 17ms BEFORE the queued
+ *  addPresetToken wrote the new one; the panels bump synchronously at click,
+ *  the queue applies later). The queue announces the write itself, AFTER
+ *  applying. Add/remove are discrete clicks → bump immediately. Value edits
+ *  are slider-hot (a preset color drag flushes per tick, and presetUsageAtom's
+ *  full-project scan hangs off the version) → trailing debounce, matching the
+ *  edit panels' own debouncedBump cadence. */
+const GLOBALS_CSS_ADD_REMOVE_TYPES = new Set<Mutation['type']>(['addPresetToken', 'removePresetToken']);
+const GLOBALS_CSS_VALUE_TYPES = new Set<Mutation['type']>(['updatePresetToken', 'setDarkTokenValue']);
+let _globalsCssBumpTimer: ReturnType<typeof setTimeout> | null = null;
+
+function bumpVersionForGlobalsCssMutations(mutations: Mutation[]): void {
+  const bump = () => getDefaultStore().set(projectVersionAtom, (v) => v + 1);
+  if (mutations.some((m) => GLOBALS_CSS_ADD_REMOVE_TYPES.has(m.type))) {
+    if (_globalsCssBumpTimer !== null) { clearTimeout(_globalsCssBumpTimer); _globalsCssBumpTimer = null; }
+    trace.action('mutation-queue:globals-css-bump', { immediate: true });
+    bump();
+    return;
+  }
+  if (mutations.some((m) => GLOBALS_CSS_VALUE_TYPES.has(m.type))) {
+    if (_globalsCssBumpTimer !== null) clearTimeout(_globalsCssBumpTimer);
+    _globalsCssBumpTimer = setTimeout(() => {
+      _globalsCssBumpTimer = null;
+      trace.action('mutation-queue:globals-css-bump', { immediate: false });
+      bump();
+    }, 300);
+  }
+}
+
 const OVERLAY_STRUCTURAL_TYPES = new Set<Mutation['type']>([
   'move', 'addCanvasNode', 'removeNode', 'cloneCanvasOverlay',
   'createOverlay', 'removeOverlay',
@@ -1003,6 +1038,9 @@ export function flushNow(): void {
     for (const m of mutations) {
       code = applyMutation(code, m);
     }
+    // globals.css side-effect writes are committed at this point regardless of
+    // what the syntax gate below decides about the PAGE code — announce them.
+    bumpVersionForGlobalsCssMutations(mutations);
     code = reglideInsertedParents(code, mutations);
     // Heal any overlay runtime orphaned by a structural mutation BEFORE import
     // sync (so the re-declared useState keeps the React import). PRUNE first —
@@ -1857,6 +1895,9 @@ function processQueue(): void {
   for (const m of mutations) {
     code = applyMutation(code, m);
   }
+  // globals.css side-effect writes are committed at this point regardless of
+  // what validation below decides about the PAGE code — announce them.
+  bumpVersionForGlobalsCssMutations(mutations);
   code = reglideInsertedParents(code, mutations);
 
   // Prune duplicate/orphan overlay elements (ghost from a canvas↔viewport

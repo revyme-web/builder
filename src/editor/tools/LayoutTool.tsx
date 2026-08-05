@@ -1061,7 +1061,40 @@ export default function LayoutTool({ styles, nodeId, onUpdate, onUpdateMultiple,
         childData.push({ id: childId, styles: childStyles });
       }
 
-      // Step 3: Remove layout from parent + inject resolved dimensions.
+      // Steps 3–5 order is LOAD-BEARING (mirror of injectFlexLayoutOnFrame's
+      // parent-first rule): the child/parent writes below carry property
+      // REMOVALS, and updateNodeStyles' style-override-removal path
+      // synchronously flushes + force-renders the code AS QUEUED SO FAR.
+      // Clearing the parent's flex before the children got their absolute
+      // positions shipped an intermediate frame with relative children in a
+      // non-flex parent — the children visibly stacked at the parent's 0,0
+      // before jumping to their spots (user report 2026-08-05, same glitch
+      // class as add-layout). So: lock dims (additive, no flush) → children
+      // absolute (they pin to their captured spots; the still-flex parent is
+      // invisible once they leave the flow) → clear parent layout LAST.
+
+      // Step 3: Lock auto-like parent dims to px FIRST — purely additive.
+      // Must precede the children going absolute, or an auto-sized parent
+      // collapses to 0 in the intermediate frame once its flow empties.
+      if (Object.keys(parentDims).length > 0) {
+        updateNodeStyles({ id: nodeId, styles: { ...parentDims }, contentEl });
+      }
+
+      // Step 4: Apply captured positions to children + clear grid child props
+      for (const { id, styles: childStyles } of childData) {
+        updateNodeStyles({
+          id,
+          styles: {
+            ...childStyles,
+            gridColumn: '', gridRow: '', alignSelf: '', justifySelf: '', order: '',
+            flexGrow: '', flexShrink: '', flexBasis: '', flex: '',
+          },
+          contentEl,
+        });
+      }
+
+      // Step 5: Remove layout from parent — every child is absolute now, so
+      // the removal-triggered flush/render ships the final state.
       // On a REPLICA viewport, writing `display: ''` removes the property
       // from the @container rule — but the BASE inline style still has
       // `display: 'flex'`, so the merged effective on this replica falls
@@ -1081,23 +1114,9 @@ export default function LayoutTool({ styles, nodeId, onUpdate, onUpdateMultiple,
           columnCount: '', columnGap: '',
           columnRule: '', columnRuleStyle: '', columnRuleWidth: '', columnRuleColor: '',
           columnWidth: '',
-          ...parentDims,
         },
         contentEl,
       });
-
-      // Step 4: Apply captured positions to children + clear grid child props
-      for (const { id, styles: childStyles } of childData) {
-        updateNodeStyles({
-          id,
-          styles: {
-            ...childStyles,
-            gridColumn: '', gridRow: '', alignSelf: '', justifySelf: '', order: '',
-            flexGrow: '', flexShrink: '', flexBasis: '', flex: '',
-          },
-          contentEl,
-        });
-      }
 
       trace.action('layout:remove', { nodeId, childCount: childData.length, parentDims });
     } else if (isTextNode) {

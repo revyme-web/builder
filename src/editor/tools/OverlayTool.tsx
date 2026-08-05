@@ -10,7 +10,7 @@ import TransitionPanel from './AnimationTool/TransitionPanel';
 import { TransitionCurveIcon, summarizeTransition } from './AnimationTool/CurvePreview';
 import { useControl } from '../controls/ControlProvider';
 import { overlayCallsAtom, overlayTriggerCallsAtom, overlayEditingIdAtom } from '@/code/stores/overlay-store';
-import { getOverlayForNode, getTriggerForNode, resolveOverlayConfig, type OverlayCall, type OverlayTriggerCall } from '@/code/parsing/overlay-parser';
+import { getOverlayForNode, getTriggerForNode, resolveOverlayConfig, parseOverlayTriggerCalls, type OverlayCall, type OverlayTriggerCall } from '@/code/parsing/overlay-parser';
 import { queueMutation, flushNow, getCurrentCode } from '@/code/mutation/mutation-queue';
 import { stateVarName } from '@/code/generation/overlay-gen';
 import { selectedIdsAtom, nodesAtom, isComponentFileAtom, isLayoutFileAtom } from '@/code/stores/store';
@@ -489,6 +489,25 @@ function OverlayAddButton({ nodeId, onCreated }: { nodeId: string; onCreated?: (
   }, [open]);
 
   const handleCreate = useCallback((type: 'relative' | 'fixed') => {
+    // STALE-ATOM GUARD: during an undo/redo canvas-first restore, codeAtom —
+    // and the overlay atoms this panel renders from — lag the committed file
+    // by up to ~300ms (setCode fan-out 250ms + version bump 300ms), so this
+    // "+" can be showing although the trigger ALREADY has an overlay. Every
+    // click in that window minted a NEW overlay (-2, -3, … — the id counter
+    // is monotonic and each create is its own history entry), which the user
+    // experienced as "undo/redo keeps adding overlays" (trace 2026-08-05).
+    // The queue's currentCode is authoritative at any instant — re-check the
+    // trigger there and re-open the EXISTING overlay instead of twinning it.
+    try {
+      const existing = parseOverlayTriggerCalls(getCurrentCode())
+        .find((t) => t.triggerId === nodeId);
+      if (existing) {
+        trace.action('overlay-tool:create-skip-existing', { nodeId, existingId: existing.config.targetId });
+        setOpen(false);
+        onCreated?.(existing.config.targetId);
+        return;
+      }
+    } catch { /* no active file (tests) — proceed with create */ }
     const overlayId = generateOverlayId(nodeId);
     const overlayConfig: OverlayConfig = {
       type,

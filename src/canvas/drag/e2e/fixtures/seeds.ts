@@ -1015,7 +1015,67 @@ export default function Page() {
 }
 `);
 
+// ─────────────────────────────────────────────────────────────────────────
+// HANDOFF_TWO_VP — a flow parent to drag OUT of and a separate non-layout
+// frame to drag INTO, rendered in two viewport tiles.
+//
+// Built for the mid-drag STRATEGY HANDOFF: dragging a flow child over a
+// different frame commits an exit-to-canvas and swaps LayoutLifted for
+// CanvasDrag *while the gesture is still live*. Two viewports because the
+// hide covering the dragged node's synced twins is gesture-scoped — the
+// handoff used to run the old strategy's cleanup, which un-hid the twin
+// mid-drag and painted it as a duplicate (2026-08-05).
+// ─────────────────────────────────────────────────────────────────────────
+export const HANDOFF_TWO_VP = project(`
+/** @canvas {
+  "viewports": [
+    { "id": "desktop", "label": "Desktop", "width": 1440, "isPrimary": true, "order": 0 },
+    { "id": "tablet", "label": "Tablet", "width": 810, "isPrimary": false, "order": 1 }
+  ],
+  "positions": {
+    "desktop": { "x": 0, "y": 0 },
+    "tablet": { "x": 1560, "y": 0 }
+  }
+} */
+'use client';
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Page" style={{
+      display: 'flex', flexDirection: 'column', gap: '24px',
+      width: '100%', minHeight: '900px', position: 'relative',
+      background: '#0d0d1a', padding: '40px',
+    }}>
+      <div data-id="source-box" data-name="Source" style={{
+        display: 'flex', flexDirection: 'column', gap: '12px',
+        width: '100%', position: 'relative', padding: '16px',
+        background: '#1a1a3a', flex: '0 0 auto', order: '0',
+      }}>
+        <div data-id="chip-a" data-name="ChipA" style={{
+          width: '100%', height: '80px', background: '#3355ff',
+          position: 'relative', flex: '0 0 auto', order: '0',
+        }}></div>
+        <div data-id="chip-b" data-name="ChipB" style={{
+          width: '100%', height: '80px', background: '#ffcc33',
+          position: 'relative', flex: '0 0 auto', order: '1',
+        }}></div>
+      </div>
+      <div data-id="target-box" data-name="Target" style={{
+        display: 'flex', flexDirection: 'column', gap: '12px',
+        width: '100%', height: '320px', position: 'relative', padding: '16px',
+        background: '#2a1a1a', flex: '0 0 auto', order: '1',
+      }}>
+        <div data-id="chip-c" data-name="ChipC" style={{
+          width: '100%', height: '80px', background: '#33cc88',
+          position: 'relative', flex: '0 0 auto', order: '0',
+        }}></div>
+      </div>
+    </div>
+  );
+}
+`);
+
 export const SEEDS = {
+  HANDOFF_TWO_VP,
   COMPONENT_MASTER_2V,
   GHOST_SIBLING_COLUMN,
   FLEX_COLUMN,

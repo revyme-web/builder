@@ -115,8 +115,15 @@ export const FRAME_TAGS = new Set([
   'figure', 'figcaption', 'details', 'summary', 'fieldset', 'form',
   'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'table', 'thead', 'tbody', 'tr', 'td', 'th',
   'dialog', 'menu', 'address', 'blockquote',
+  // `button` is a container in HTML (flex children are fine) and the
+  // Accessibility tool offers it as a frame tag — without frame status a
+  // converted frame lost its Element dropdown (no way back), drop-target
+  // behavior, and frame panel tools. Leaf text-buttons (insert-toolbar CTA,
+  // form submit) keep their dblclick text edit — that gate is content-aware
+  // (textContent check runs before the empty-frame branch).
+  'button',
   'motion.div', 'motion.section', 'motion.article', 'motion.header', 'motion.footer', 'motion.nav',
-  'motion.main', 'motion.aside', 'motion.ul', 'motion.ol', 'motion.li',
+  'motion.main', 'motion.aside', 'motion.ul', 'motion.ol', 'motion.li', 'motion.button',
   // `motion.create(Link)` wrapper — a link-wrapped frame (renders as a
   // block-level <a>) that can contain children, so it's a frame, not text.
   'MotionLink',

@@ -20,6 +20,7 @@ const FRAME_TAG_OPTIONS = [
   { value: 'main', label: 'main' },
   { value: 'figure', label: 'figure' },
   { value: 'figcaption', label: 'figcaption' },
+  { value: 'button', label: 'button' },
 ];
 
 const TEXT_TAG_OPTIONS = [
@@ -73,7 +74,30 @@ export default function AccessibilityTool() {
     if (!nodeId || value === elementTag) return;
     trace.action('accessibility-tool:change-tag', { nodeId, from: elementTag, to: value });
     queueMutation({ type: 'changeTag', nodeId, newTag: value });
-  }, [nodeId, elementTag]);
+    if (value === 'button') {
+      // `<button>` is the one frame tag with UA chrome (buttonface fill,
+      // outset border, system font, buttontext color) AND form behavior — the
+      // default type is "submit", so a converted frame inside a <form> would
+      // submit the form on click on the published site. Neutralize both so
+      // the conversion is purely semantic: explicit type="button", plus
+      // inherit/transparent for every UA channel the node doesn't author
+      // itself (an authored fill/border/typography wins untouched).
+      queueMutation({ type: 'updateHtmlAttrs', nodeId, attrs: { type: 'button' } });
+      const s = node?.styles ?? {};
+      const neutral: Record<string, string> = {};
+      if (!s.backgroundColor && !s.background) neutral.backgroundColor = 'transparent';
+      if (!Object.keys(s).some((k) => k.startsWith('border'))) neutral.border = 'none';
+      if (!s.fontFamily) neutral.fontFamily = 'inherit';
+      if (!s.fontSize) neutral.fontSize = 'inherit';
+      if (!s.color) neutral.color = 'inherit';
+      if (Object.keys(neutral).length > 0) {
+        queueMutation({ type: 'updateStyles', nodeId, styles: neutral });
+      }
+    } else if (elementTag === 'button') {
+      // Leaving button: drop the type attr — it's button-specific.
+      queueMutation({ type: 'updateHtmlAttrs', nodeId, attrs: { type: '' } });
+    }
+  }, [nodeId, elementTag, node]);
 
   const handleToggle = useCallback(() => {
     const next = !open;

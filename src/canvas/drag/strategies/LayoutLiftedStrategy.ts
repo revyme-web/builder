@@ -3597,8 +3597,29 @@ export class LayoutLiftedStrategy implements DragStrategy {
     const vpNodeId = this.viewportNodeId || this.parentNodeId;
     if (!vpNodeId) return null;
     const bridgeRect = findNodeRect(vpNodeId, this.currentVpId);
-    if (bridgeRect) return { left: bridgeRect.left, top: bridgeRect.top, width: bridgeRect.width, height: bridgeRect.height };
-    return null;
+    if (!bridgeRect) return null;
+    // UNION with the root's direct children (sections) + the drag's source
+    // parent — NOT the root box alone. An imported page root carries the
+    // viewport's FIXED height (e.g. `height: '900px'` from the vp config)
+    // while its sections overflow far below; the root box alone said
+    // "outside the viewport" for any drag below that line, so exit-detection
+    // fired on the FIRST move, the hit-test picked an overlapping frame from
+    // another branch as a "new parent", and the gesture exit-committed +
+    // switched to canvas before the placeholder ever showed — reorder inside
+    // a below-the-fold layout was unreachable (user trace 2026-08-05,
+    // `layout-lifted:exit-parent` 3ms after `drag:start`). The bounds that
+    // mean "still over the page" are the CONTENT bounds.
+    let left = bridgeRect.left, top = bridgeRect.top;
+    let right = bridgeRect.left + bridgeRect.width, bottom = bridgeRect.top + bridgeRect.height;
+    const union = (r: { left: number; top: number; width: number; height: number } | null) => {
+      if (!r) return;
+      left = Math.min(left, r.left); top = Math.min(top, r.top);
+      right = Math.max(right, r.left + r.width); bottom = Math.max(bottom, r.top + r.height);
+    };
+    const rootNode = getNodeFromCache(vpNodeId);
+    for (const childId of rootNode?.children ?? []) union(findNodeRect(childId, this.currentVpId));
+    if (this.parentNodeId && this.parentNodeId !== vpNodeId) union(findNodeRect(this.parentNodeId, this.currentVpId));
+    return { left, top, width: right - left, height: bottom - top };
   }
 
   /**

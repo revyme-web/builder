@@ -88,18 +88,14 @@ test.describe('LayoutLiftedStrategy', () => {
     expect(footerTag).toMatch(/[^b]order: '/);
   });
 
-  // Row-flex reorder via Playwright pointer events doesn't commit the
-  // drop in this harness even though the column case does. The lift +
-  // placeholder UI fires (mid-drag screenshot shows col-c gone from
-  // its slot, blue selection box on col-b under cursor), but the
-  // strategy never writes any `order` styles on mouseup. Same drag
-  // mechanics work fine for column. Investigation note for follow-up:
-  // probably a `mouseToParentLocal` / row-axis edge case specific to
-  // the synthesised pointermove sequence. Real-user row drags work in
-  // the editor today, so this is a test-harness quirk, not a product
-  // regression — leaving the test as `.skip` so we don't claim coverage
-  // we don't actually have.
-  test.skip('row-flex reorder works the same as column (TODO: harness flake)', async ({ page }) => {
+  // Row-direction reorder. This spent a while as `test.skip` ("harness
+  // flake": lift + placeholder fired but no `order` ever committed).
+  // Re-driven 2026-08-05 with a full trace: the drag now seeds at the
+  // right visible-sibling index, moves the placeholder, and commits
+  // col-a:0 / col-c:1 / col-b:2 — the index-space seeding fix is what
+  // had been missing. Keep it running: row is the axis where a
+  // parent-local mouse-conversion regression would show up first.
+  test('row-flex reorder works the same as column', async ({ page }) => {
     const editor = new EditorPage(page);
     await editor.gotoWithSeed('FLEX_ROW');
 

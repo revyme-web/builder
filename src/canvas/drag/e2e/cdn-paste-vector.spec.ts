@@ -16,6 +16,13 @@ import { test, expect, type Frame } from '@playwright/test';
 const VECTOR_URL = 'https://assets.revyme.app/vectors/ViLiTi@81babf14ba7dc7ca.js';
 
 test('paste CDN vector URL into /builder/noauth and see what happens', async ({ page, context, browserName }) => {
+  // MANUAL DIAGNOSTIC, not a regression test: this drives /builder/noauth
+  // (cloud-mode routing) and fetches a live bundle from assets.revyme.app,
+  // so it fails in the default local run for environmental reasons that say
+  // nothing about the product. Kept runnable on demand:
+  //   E2E_CDN=1 npx playwright test cdn-paste --headed
+  test.skip(!process.env.E2E_CDN, 'manual CDN diagnostic — set E2E_CDN=1 to run');
+
   // ─── Capture EVERYTHING ───────────────────────────────────────────────
   const consoleEvents: Array<{ src: string; type: string; text: string; loc?: string }> = [];
   const networkRequests: Array<{ url: string; status?: number; method: string; resourceType: string }> = [];

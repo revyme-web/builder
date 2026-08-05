@@ -1292,3 +1292,62 @@ describe('computeMergedTemplatedOrder', () => {
     expect(new Set(out).size).toBe(out.length);
   });
 });
+
+describe('getViewportScreenRect — content-bounds union', () => {
+  // Imported pages carry the viewport's FIXED height on root (e.g. 900px from
+  // the vp config) while sections overflow below it. Exit-detection against
+  // the root box alone said "outside the viewport" for any cursor below that
+  // line — `exit-parent` fired on the FIRST move and the gesture
+  // exit-committed + switched to canvas before the reorder placeholder ever
+  // showed (user trace 2026-08-05). The bounds must be the CONTENT bounds:
+  // root ∪ its top-level sections ∪ the drag's source parent.
+  function primeStrategy(s: LayoutLiftedStrategy) {
+    (s as any).viewportNodeId = 'root';
+    (s as any).parentNodeId = 'parent-1';
+    (s as any).currentVpId = 'desktop';
+  }
+
+  it('unions the root box with overflowing sections and the source parent', () => {
+    const s = new LayoutLiftedStrategy();
+    nodeCache.set('root', {
+      id: 'root', tag: 'div', type: 'div', styles: {},
+      children: ['section-1', 'section-2'], parentId: null, isCanvasNode: false,
+    });
+    setupNodeRects({
+      root: { x: 0, y: 0, width: 1440, height: 900 },
+      'section-1': { x: 0, y: 0, width: 1440, height: 900 },
+      'section-2': { x: 0, y: 900, width: 1440, height: 700 }, // below the fold
+      'parent-1': { x: 100, y: 1200, width: 600, height: 500 },
+    });
+    primeStrategy(s);
+    const rect = (s as any).getViewportScreenRect();
+    // A cursor at y=1250 (inside the below-fold layout) must be INSIDE.
+    expect(rect).toEqual({ left: 0, top: 0, width: 1440, height: 1700 });
+  });
+
+  it('equals the root box when nothing overflows', () => {
+    const s = new LayoutLiftedStrategy();
+    nodeCache.set('root', {
+      id: 'root', tag: 'div', type: 'div', styles: {},
+      children: ['section-1'], parentId: null, isCanvasNode: false,
+    });
+    setupNodeRects({
+      root: { x: 0, y: 0, width: 1440, height: 900 },
+      'section-1': { x: 0, y: 0, width: 1440, height: 880 },
+      'parent-1': { x: 100, y: 100, width: 600, height: 300 },
+    });
+    primeStrategy(s);
+    expect((s as any).getViewportScreenRect()).toEqual({ left: 0, top: 0, width: 1440, height: 900 });
+  });
+
+  it('sections with missing rects are skipped, not fatal', () => {
+    const s = new LayoutLiftedStrategy();
+    nodeCache.set('root', {
+      id: 'root', tag: 'div', type: 'div', styles: {},
+      children: ['cold-section'], parentId: null, isCanvasNode: false,
+    });
+    setupNodeRects({ root: { x: 0, y: 0, width: 1440, height: 900 } });
+    primeStrategy(s);
+    expect((s as any).getViewportScreenRect()).toEqual({ left: 0, top: 0, width: 1440, height: 900 });
+  });
+});
