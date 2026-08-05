@@ -9,7 +9,7 @@
 
 import { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { useAtomValue, useSetAtom, useStore } from 'jotai';
-import { codeAtom, stableCodeAtom, nodesAtom, selectedNodeAtom, selectedIdsAtom, updatingFromCanvasAtom, variableModalRequestAtom } from '@/code/stores/store';
+import { codeAtom, stableCodeAtom, nodesAtom, selectedNodeAtom, selectedIdsAtom, updatingFromCanvasAtom, variableModalRequestAtom, componentToolRevealAtom } from '@/code/stores/store';
 import { enterComponentFile } from '@/canvas/component-navigation';
 import { projectFS, projectVersionAtom, stableProjectVersionAtom } from '@/code/project/project-fs';
 import { activeFilePathAtom, componentBreadcrumbAtom } from '@/code/project/active-file-store';
@@ -131,6 +131,24 @@ export default function ComponentPropsTool() {
   const nodes = useAtomValue(nodesAtom);
   const jotaiStore = useStore();
   const selectedId = useAtomValue(selectedNodeAtom);
+  // ─── Double-click reveal: scroll to this tool + flash it ────────────────
+  // Canvas double-click on a code-component instance bumps
+  // `componentToolRevealAtom` (see component-navigation's revealComponentTool)
+  // instead of opening the code overlay — the panel guides the user here.
+  const revealNonce = useAtomValue(componentToolRevealAtom);
+  const revealRef = useRef<HTMLDivElement>(null);
+  const [revealFlash, setRevealFlash] = useState(false);
+  const revealSeenRef = useRef(revealNonce);
+  useEffect(() => {
+    // Skip mount / re-mounts — only a bump AFTER this tool is up counts
+    // (the nonce is global and persists across selections).
+    if (revealSeenRef.current === revealNonce) return;
+    revealSeenRef.current = revealNonce;
+    revealRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setRevealFlash(true);
+    const t = setTimeout(() => setRevealFlash(false), 1400);
+    return () => clearTimeout(t);
+  }, [revealNonce]);
   // Read STABLE code: this only drives display values (parsed instance props,
   // responsive overrides). Live code is set via `setCode(...)` below. The
   // stable mirror means a fast drag's per-reparent file writes don't trigger
@@ -1989,8 +2007,23 @@ export default function ComponentPropsTool() {
 
   // ─── Code component controls rendering (rich typed controls) ──────────────────────
   if (hasComponentControls) {
+    // The wrapper carries the double-click reveal (see the effect at the top):
+    // it scrolls the WHOLE component tool — header, Edit Code, and every
+    // control row — into view and rings it in the component purple for a
+    // beat. The ring is INSET: an outset box-shadow on this full-width block
+    // painted outside the border box and the panel's scroll container clipped
+    // its left/right edges ("borders cut off" report). The transition runs
+    // both ways, so the ring fades out.
     return (
       <>
+      <div
+        ref={revealRef}
+        className="rounded-[var(--radius-md)] transition-[box-shadow,background-color] duration-500"
+        style={revealFlash ? {
+          boxShadow: 'inset 0 0 0 1.5px var(--accent-secondary, #a855f7)',
+          backgroundColor: 'color-mix(in srgb, var(--accent-secondary, #a855f7) 8%, transparent)',
+        } : undefined}
+      >
         {componentHeader}
         {/* Same px-2 + pl-3 as ToolSection so code component control labels line up
             with Styles / Layout / Position labels (ControlLabel's chevron
@@ -2144,8 +2177,11 @@ export default function ComponentPropsTool() {
             })}
           </div>
         </div>
-        <ToolDivider />
-        {variableModal}
+      </div>
+      {/* Divider + modal host sit OUTSIDE the reveal ring — the ring frames
+          the tool itself, not the separator to the next section. */}
+      <ToolDivider />
+      {variableModal}
       </>
     );
   }

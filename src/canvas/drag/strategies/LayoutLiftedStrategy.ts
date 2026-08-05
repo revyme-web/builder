@@ -1167,7 +1167,7 @@ export class LayoutLiftedStrategy implements DragStrategy {
     if (!gripAxis) {
       // Determine off-parent state inline (don't wait for the
       // exit/re-entry block below — it runs AFTER the patch).
-      const viewportScreenRect = this.getViewportScreenRect();
+      const viewportScreenRect = this.getViewportScreenRect(new Set(draggedNodes.map(n => n.id)));
       const cursorOffParent = !!viewportScreenRect && !isInsideRect(mouseScreen, viewportScreenRect);
       if (cursorOffParent) {
         const primary = draggedNodes[0];
@@ -1259,7 +1259,7 @@ export class LayoutLiftedStrategy implements DragStrategy {
       // back in. Only when the cursor reaches the actual canvas (outside any
       // viewport) does the user truly mean to detach. Same intent as canvas-
       // node drag: stay parented until the cursor leaves all viewports.
-      const viewportScreenRect = this.getViewportScreenRect();
+      const viewportScreenRect = this.getViewportScreenRect(new Set(draggedNodes.map(n => n.id)));
       if (!viewportScreenRect) {
         // COLD-RECT EARLY-OUT: the viewport root's rect isn't in the bridge
         // cache yet (typical on the very FIRST drag after page load, before the
@@ -3593,7 +3593,7 @@ export class LayoutLiftedStrategy implements DragStrategy {
    * Get the viewport/root ancestor's screen bounds (for exit detection).
    * Uses bridge rects via findNodeRect.
    */
-  private getViewportScreenRect(): Rect | null {
+  private getViewportScreenRect(excludeIds?: ReadonlySet<string>): Rect | null {
     const vpNodeId = this.viewportNodeId || this.parentNodeId;
     if (!vpNodeId) return null;
     const bridgeRect = findNodeRect(vpNodeId, this.currentVpId);
@@ -3609,6 +3609,13 @@ export class LayoutLiftedStrategy implements DragStrategy {
     // a below-the-fold layout was unreachable (user trace 2026-08-05,
     // `layout-lifted:exit-parent` 3ms after `drag:start`). The bounds that
     // mean "still over the page" are the CONTENT bounds.
+    //
+    // `excludeIds` = the DRAGGED nodes. When the drag IS a root section, its
+    // own rect is one of root's children — and the lifted element follows
+    // the cursor, so unioning it makes the bounds CHASE the pointer and the
+    // exit can never fire ("can't drag a section out to canvas, the
+    // placeholder stays" — regression report same day). The bounds must
+    // describe the page WITHOUT the thing being dragged.
     let left = bridgeRect.left, top = bridgeRect.top;
     let right = bridgeRect.left + bridgeRect.width, bottom = bridgeRect.top + bridgeRect.height;
     const union = (r: { left: number; top: number; width: number; height: number } | null) => {
@@ -3617,7 +3624,10 @@ export class LayoutLiftedStrategy implements DragStrategy {
       right = Math.max(right, r.left + r.width); bottom = Math.max(bottom, r.top + r.height);
     };
     const rootNode = getNodeFromCache(vpNodeId);
-    for (const childId of rootNode?.children ?? []) union(findNodeRect(childId, this.currentVpId));
+    for (const childId of rootNode?.children ?? []) {
+      if (excludeIds?.has(childId)) continue;
+      union(findNodeRect(childId, this.currentVpId));
+    }
     if (this.parentNodeId && this.parentNodeId !== vpNodeId) union(findNodeRect(this.parentNodeId, this.currentVpId));
     return { left, top, width: right - left, height: bottom - top };
   }

@@ -1340,6 +1340,31 @@ describe('getViewportScreenRect — content-bounds union', () => {
     expect((s as any).getViewportScreenRect()).toEqual({ left: 0, top: 0, width: 1440, height: 900 });
   });
 
+  it('EXCLUDES the dragged section from the union — its lifted rect follows the cursor', () => {
+    // Dragging a ROOT SECTION: the section is one of root's children, and its
+    // live rect tracks the pointer. Unioning it made the bounds chase the
+    // cursor — exit-detection could never fire and the section was
+    // undetachable from the page (regression report 2026-08-05).
+    const s = new LayoutLiftedStrategy();
+    nodeCache.set('root', {
+      id: 'root', tag: 'div', type: 'div', styles: {},
+      children: ['section-1', 'dragged-section'], parentId: null, isCanvasNode: false,
+    });
+    setupNodeRects({
+      root: { x: 0, y: 0, width: 1440, height: 900 },
+      'section-1': { x: 0, y: 0, width: 1440, height: 900 },
+      // The dragged section mid-gesture, hanging off the page's right edge:
+      'dragged-section': { x: 1600, y: 200, width: 600, height: 400 },
+    });
+    (s as any).viewportNodeId = 'root';
+    (s as any).parentNodeId = 'root';
+    (s as any).currentVpId = 'desktop';
+    const rect = (s as any).getViewportScreenRect(new Set(['dragged-section']));
+    // Bounds stay the page's — a cursor at x=1700 (over the dragged clone,
+    // off the page) must test OUTSIDE so the exit can fire.
+    expect(rect).toEqual({ left: 0, top: 0, width: 1440, height: 900 });
+  });
+
   it('sections with missing rects are skipped, not fatal', () => {
     const s = new LayoutLiftedStrategy();
     nodeCache.set('root', {

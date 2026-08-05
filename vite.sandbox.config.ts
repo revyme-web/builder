@@ -37,13 +37,39 @@ function sandboxStubsPlugin(): Plugin {
   };
 }
 
+/**
+ * PRODUCTION FIX for CDN-loaded marketplace components (2026-08-05): the
+ * importmap in index.html resolves the bundles' bare `react` /
+ * `react/jsx-runtime` / `framer-motion` specifiers to `/runtime-bridge*.ts`.
+ * In dev, Vite serves + transpiles those .ts files on request. A production
+ * build emitted NO file at those paths — the importmap still pointed at
+ * `.ts` source, every CDN component's dependency fetch 404'd, and the
+ * import failed with "Failed to fetch dynamically imported module": pasted
+ * marketplace components rendered BLANK on prod only (user report, console
+ * showed the three 404s + `sandbox-cdn:load-failed`). Fix: build the three
+ * bridges as real entries at STABLE unhashed paths (`/runtime-bridge.js`)
+ * and rewrite the importmap targets at build time. Rollup code-splits the
+ * shared react/motion modules into common chunks imported by BOTH the main
+ * bundle and the bridge entries, so CDN components still share the
+ * sandbox's exact React instance — the whole point of the bridge files.
+ */
+function runtimeBridgeImportmapPlugin(): Plugin {
+  return {
+    name: 'runtime-bridge-importmap-build',
+    apply: 'build',
+    transformIndexHtml(html) {
+      return html.replace(/\/(runtime-bridge(?:-jsx|-motion)?)\.ts/g, '/$1.js');
+    },
+  };
+}
+
 export default defineConfig({
   root: path.resolve(__dirname, 'src/canvas-sandbox'),
   // Own cache — see vite.preview.config.ts for rationale (multiple Vite
   // servers in one workspace stomp on `node_modules/.vite/deps/` if they
   // share it).
   cacheDir: path.resolve(__dirname, 'node_modules/.vite-sandbox'),
-  plugins: [react(), sandboxStubsPlugin()],
+  plugins: [react(), sandboxStubsPlugin(), runtimeBridgeImportmapPlugin()],
   server: {
     port: 5174,
     strictPort: true,
@@ -105,5 +131,25 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, 'dist/sandbox'),
     emptyOutDir: true,
+    rollupOptions: {
+      // Vite's app build drops entry export signatures by default — the built
+      // runtime-bridge.js came out as 86 bytes of side-effect imports with NO
+      // exports, an empty module to any CDN bundle importing `react`. 'strict'
+      // keeps every re-export on the bridge entries.
+      preserveEntrySignatures: 'strict',
+      input: {
+        index: path.resolve(__dirname, 'src/canvas-sandbox/index.html'),
+        'runtime-bridge': path.resolve(__dirname, 'src/canvas-sandbox/runtime-bridge.ts'),
+        'runtime-bridge-jsx': path.resolve(__dirname, 'src/canvas-sandbox/runtime-bridge-jsx.ts'),
+        'runtime-bridge-motion': path.resolve(__dirname, 'src/canvas-sandbox/runtime-bridge-motion.ts'),
+      },
+      output: {
+        // Bridges at STABLE root paths — the importmap references them by
+        // exact URL (see runtimeBridgeImportmapPlugin); everything else
+        // keeps the default hashed name.
+        entryFileNames: (chunk) =>
+          chunk.name.startsWith('runtime-bridge') ? '[name].js' : 'assets/[name]-[hash].js',
+      },
+    },
   },
 });

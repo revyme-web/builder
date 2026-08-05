@@ -13,11 +13,26 @@
 // same iframe would mix the two render models and break either editing perf
 // or preview fidelity.
 
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
 const src = path.resolve(__dirname, 'src');
+
+/** Same production fix as vite.sandbox.config.ts (see the long comment
+ *  there): the importmap's `/runtime-bridge*.ts` targets only exist on the
+ *  dev server — build them as stable `.js` entries + rewrite the map, or
+ *  CDN-loaded marketplace components 404 their `react` import and render
+ *  blank in the deployed preview. */
+function runtimeBridgeImportmapPlugin(): Plugin {
+  return {
+    name: 'runtime-bridge-importmap-build',
+    apply: 'build',
+    transformIndexHtml(html) {
+      return html.replace(/\/(runtime-bridge(?:-jsx|-motion)?)\.ts/g, '/$1.js');
+    },
+  };
+}
 
 export default defineConfig({
   root: path.resolve(__dirname, 'src/preview-sandbox'),
@@ -28,7 +43,7 @@ export default defineConfig({
   // restarts because each server boots, rebuilds, then the next server
   // invalidates again. Separate cacheDir per config keeps them disjoint.
   cacheDir: path.resolve(__dirname, 'node_modules/.vite-preview'),
-  plugins: [react()],
+  plugins: [react(), runtimeBridgeImportmapPlugin()],
   server: {
     port: 5175,
     strictPort: true,
@@ -79,5 +94,20 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, 'dist/preview-sandbox'),
     emptyOutDir: true,
+    rollupOptions: {
+      // See vite.sandbox.config.ts: without this the bridge entries build
+      // with ZERO exports (empty module for CDN bundles importing `react`).
+      preserveEntrySignatures: 'strict',
+      input: {
+        index: path.resolve(__dirname, 'src/preview-sandbox/index.html'),
+        'runtime-bridge': path.resolve(__dirname, 'src/preview-sandbox/runtime-bridge.ts'),
+        'runtime-bridge-jsx': path.resolve(__dirname, 'src/preview-sandbox/runtime-bridge-jsx.ts'),
+        'runtime-bridge-motion': path.resolve(__dirname, 'src/preview-sandbox/runtime-bridge-motion.ts'),
+      },
+      output: {
+        entryFileNames: (chunk) =>
+          chunk.name.startsWith('runtime-bridge') ? '[name].js' : 'assets/[name]-[hash].js',
+      },
+    },
   },
 });

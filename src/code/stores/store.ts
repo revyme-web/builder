@@ -997,6 +997,15 @@ export interface VariableModalRequest {
 
 export const variableModalRequestAtom = atom<VariableModalRequest | null>(null);
 
+/** One-shot reveal signal for the properties panel's Component tool. Bumped by
+ *  the canvas double-click on a code-component INSTANCE (component-navigation's
+ *  `revealComponentTool` setter): instead of opening the full code overlay, the
+ *  panel scrolls the Component section into view and flashes it — "here is
+ *  where you edit this". The overlay stays reachable via the library panel and
+ *  the tool's own Edit Code button. Nonce (not boolean) so repeat double-clicks
+ *  re-trigger even when the previous flash already ended. */
+export const componentToolRevealAtom = atom(0);
+
 // ─── Async Parse ────────────────────────────────────────────────────────────
 
 let lastParsedCode = _cachedCode;

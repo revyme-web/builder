@@ -84,6 +84,49 @@ export default Same;
   });
 });
 
+describe('enterComponentFile — code component entry routing', () => {
+  beforeEach(() => {
+    projectFS.writeFile('components/Kaleido.tsx', `
+/** @controls { "wedges": { "type": "number" } } */
+function Kaleido() { return <div />; }
+export default Kaleido;
+`);
+  });
+
+  const baseSetters = () => ({
+    setActiveFile: vi.fn(),
+    setBreadcrumb: vi.fn(),
+    setSelectedIds: vi.fn(),
+    setUpdatingFromCanvas: vi.fn(),
+    setInteractingViewport: vi.fn(),
+    getNodes: () => new Map(),
+  });
+
+  it('prefers revealComponentTool (canvas dbl-click) over the code overlay', () => {
+    const setters = baseSetters();
+    const openCodeEditor = vi.fn();
+    const revealComponentTool = vi.fn();
+    enterComponentFile(
+      { fromFilePath: 'app/page.client.tsx', componentFilePath: 'components/Kaleido.tsx' },
+      { ...setters, openCodeEditor, revealComponentTool },
+    );
+    expect(revealComponentTool).toHaveBeenCalledTimes(1);
+    expect(openCodeEditor).not.toHaveBeenCalled();
+    expect(setters.setActiveFile).not.toHaveBeenCalled(); // no navigation either
+  });
+
+  it('opens the code overlay when only openCodeEditor is provided (library / Edit Code)', () => {
+    const setters = baseSetters();
+    const openCodeEditor = vi.fn();
+    enterComponentFile(
+      { fromFilePath: 'app/page.client.tsx', componentFilePath: 'components/Kaleido.tsx' },
+      { ...setters, openCodeEditor },
+    );
+    expect(openCodeEditor).toHaveBeenCalledWith('components/Kaleido.tsx');
+    expect(setters.setActiveFile).not.toHaveBeenCalled();
+  });
+});
+
 describe('enterComponentFile — auto-switches the left panel to Layers', () => {
   const noopSetters = {
     setActiveFile: () => {},

@@ -24,6 +24,7 @@ import {
   mapItemIndexAtom,
   getNodeFromCache,
   variableModalRequestAtom,
+  componentToolRevealAtom,
 } from '@/code/stores/store';
 import {
   isComponentFilePath,
@@ -1045,6 +1046,10 @@ export class CanvasMouseController {
             setInteractingViewport: this.opts.setInteractingViewport,
             getNodes: () => this.store.get(nodesAtom),
             openCodeEditor: (file: string) => this.store.set(componentEditorFileAtom, file),
+            // Double-click on a code-component instance: guide the user to the
+            // Component tool in the properties panel (scroll + flash) instead
+            // of dropping them into the full code overlay.
+            revealComponentTool: () => this.store.set(componentToolRevealAtom, (n) => n + 1),
             setSuppressSelectionOverlay: (v: boolean) => this.store.set(suppressSelectionOverlayAtom, v),
           },
         );

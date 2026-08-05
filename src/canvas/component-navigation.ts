@@ -363,6 +363,11 @@ export interface EnterComponentSetters {
    * — different surfaces have different overlays (Code component editor vs canvas).
    */
   openCodeEditor?: (componentFilePath: string) => void;
+  /** When set, a code-component entry reveals the properties panel's
+   *  Component tool (scroll + flash) INSTEAD of opening the code overlay.
+   *  Takes precedence over `openCodeEditor`. Canvas double-click passes
+   *  this; explicit "edit code" entry points don't. */
+  revealComponentTool?: () => void;
   /**
    * Suppress the SelectionBorder / corner / parent-highlight overlays
    * for one render cycle while the iframe transitions to the new
@@ -438,12 +443,24 @@ export function enterComponentFile(
 ): void {
   const { fromFilePath, componentFilePath, initialVariant = 'default', focusNodeId, focusVariantName, entryMode = 'instance' } = options;
 
-  // Code components: open the code editor instead of the master canvas.
+  // Code components: no master canvas to navigate into.
   const compCode = projectFS.readFile(componentFilePath);
-  if (compCode && hasComponentControls(compCode) && setters.openCodeEditor) {
-    trace.action('enter-component:open-code-editor', { componentFilePath });
-    setters.openCodeEditor(componentFilePath);
-    return;
+  if (compCode && hasComponentControls(compCode)) {
+    // Canvas double-click on an instance passes `revealComponentTool`: scroll
+    // the properties panel to the Component tool + flash it ("here is where
+    // you edit this") instead of throwing the user into the full code
+    // overlay. The overlay stays reachable via the library panel and the
+    // tool's own Edit Code button (those callers pass only openCodeEditor).
+    if (setters.revealComponentTool) {
+      trace.action('enter-component:reveal-component-tool', { componentFilePath });
+      setters.revealComponentTool();
+      return;
+    }
+    if (setters.openCodeEditor) {
+      trace.action('enter-component:open-code-editor', { componentFilePath });
+      setters.openCodeEditor(componentFilePath);
+      return;
+    }
   }
 
   // Same-file no-op: double-clicking inside a component master view
