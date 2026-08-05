@@ -254,6 +254,85 @@ describe('injectFlexLayoutOnFrame', () => {
     injectFlexLayoutOnFrame('parent', nodes);
     expect(findNodeSize).toHaveBeenCalledWith('c1', 'desktop');
   });
+
+  // ── Replica neutralization ────────────────────────────────────────────────
+  // On a NON-PRIMARY viewport, '' clears only delete this vp's band override —
+  // the primary's absolute left/top/transform cascade back into the
+  // now-relative child (insets/translate offset `position: relative` elements
+  // too) and shove it out of the injected layout (tablet-only layout bug,
+  // 2026-08-05). Base-carried properties must get explicit NEUTRAL overrides.
+
+  it('replica: base insets become explicit "auto" overrides, not removals', () => {
+    const nodes = makeNodes(
+      makeNode('parent', ['c1']),
+      makeNode('c1', [], { position: 'absolute', left: '50%', top: '120px' }),
+    );
+    injectFlexLayoutOnFrame('parent', nodes, 'tablet');
+    const childCall = updateNodeStyles.mock.calls.find(c => c[0].id === 'c1');
+    expect(childCall?.[0].styles).toMatchObject({
+      position: 'relative',
+      left: 'auto',
+      top: 'auto',
+      flex: '0 0 auto',
+    });
+  });
+
+  it('replica: insets the base does NOT carry stay "" (no band noise)', () => {
+    const nodes = makeNodes(
+      makeNode('parent', ['c1']),
+      makeNode('c1', [], { position: 'absolute', left: '10px' }),
+    );
+    injectFlexLayoutOnFrame('parent', nodes, 'tablet');
+    const childCall = updateNodeStyles.mock.calls.find(c => c[0].id === 'c1');
+    expect(childCall?.[0].styles.left).toBe('auto');
+    expect(childCall?.[0].styles.top).toBe('');
+    expect(childCall?.[0].styles.right).toBe('');
+    expect(childCall?.[0].styles.bottom).toBe('');
+  });
+
+  it('replica: translate-only base transform becomes "none" to mask the base', () => {
+    const nodes = makeNodes(
+      makeNode('parent', ['c1']),
+      makeNode('c1', [], { position: 'absolute', left: '50%', transform: 'translateX(-50%)' }),
+    );
+    injectFlexLayoutOnFrame('parent', nodes, 'tablet');
+    const childCall = updateNodeStyles.mock.calls.find(c => c[0].id === 'c1');
+    expect(childCall?.[0].styles.transform).toBe('none');
+  });
+
+  it('replica: residual rotate/scale survives the translate strip (not "none")', () => {
+    const nodes = makeNodes(
+      makeNode('parent', ['c1']),
+      makeNode('c1', [], { transform: 'translateX(-50%) rotate(5deg)' }),
+    );
+    injectFlexLayoutOnFrame('parent', nodes, 'tablet');
+    const childCall = updateNodeStyles.mock.calls.find(c => c[0].id === 'c1');
+    expect(childCall?.[0].styles.transform).toMatch(/rotate\(5deg\)/);
+    expect(childCall?.[0].styles.transform).not.toMatch(/translate/);
+  });
+
+  it('replica: base alignSelf is masked with "auto"', () => {
+    const nodes = makeNodes(
+      makeNode('parent', ['c1']),
+      makeNode('c1', [], { alignSelf: 'center' }),
+    );
+    injectFlexLayoutOnFrame('parent', nodes, 'tablet');
+    const childCall = updateNodeStyles.mock.calls.find(c => c[0].id === 'c1');
+    expect(childCall?.[0].styles.alignSelf).toBe('auto');
+  });
+
+  it('primary keeps plain removals ("" clears) — behavior unchanged', () => {
+    const nodes = makeNodes(
+      makeNode('parent', ['c1']),
+      makeNode('c1', [], { position: 'absolute', left: '50%', top: '120px', transform: 'translateX(-50%)', alignSelf: 'center' }),
+    );
+    injectFlexLayoutOnFrame('parent', nodes, 'desktop');
+    const childCall = updateNodeStyles.mock.calls.find(c => c[0].id === 'c1');
+    expect(childCall?.[0].styles.left).toBe('');
+    expect(childCall?.[0].styles.top).toBe('');
+    expect(childCall?.[0].styles.transform).toBe('');
+    expect(childCall?.[0].styles.alignSelf).toBe('');
+  });
 });
 
 // ─── shouldInjectLayoutOnAuto ──────────────────────────────────────────────

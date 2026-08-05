@@ -239,6 +239,16 @@ export function injectFlexLayoutOnFrame(
     contentEl,
   });
 
+  // REPLICA NEUTRALIZATION — on a non-primary viewport the '' clears below
+  // only DELETE this vp's band override, and the PRIMARY's absolute-layout
+  // left/top/transform cascade straight back into the now-relative child
+  // (left/top/translate offset `position: relative` elements too), shoving
+  // it out of the injected layout (user report 2026-08-05: tablet-only
+  // layout, child kept desktop's left:50% + top:120px + translateX(-50%)).
+  // Any base-carried inset/transform gets an explicit NEUTRAL override in
+  // this vp's band instead of a removal. Primary keeps '' (real removal).
+  const neutralize = !isPrimaryViewport(vpId);
+
   const childIds: string[] = [];
   for (const childId of node.children) {
     const childNode = nodes.get(childId);
@@ -247,10 +257,10 @@ export function injectFlexLayoutOnFrame(
 
     const childStyles: Record<string, string> = {
       position: 'relative',
-      left: '',
-      top: '',
-      right: '',
-      bottom: '',
+      left: neutralize && childNodeStyles.left ? 'auto' : '',
+      top: neutralize && childNodeStyles.top ? 'auto' : '',
+      right: neutralize && childNodeStyles.right ? 'auto' : '',
+      bottom: neutralize && childNodeStyles.bottom ? 'auto' : '',
     };
 
     // Lock %/vw/etc. (parent-relative) to px when entering layout, but KEEP
@@ -271,13 +281,19 @@ export function injectFlexLayoutOnFrame(
     if (childNodeStyles.flexGrow) childStyles.flexGrow = '';
     if (childNodeStyles.flexShrink) childStyles.flexShrink = '';
     if (childNodeStyles.flexBasis) childStyles.flexBasis = '';
-    if (childNodeStyles.alignSelf) childStyles.alignSelf = '';
+    // A base alignSelf must be MASKED on a replica ('auto' = flex initial),
+    // same reasoning as the insets above.
+    if (childNodeStyles.alignSelf) childStyles.alignSelf = neutralize ? 'auto' : '';
 
     if (childNodeStyles.transform) {
-      childStyles.transform = childNodeStyles.transform
+      const stripped = childNodeStyles.transform
         .replace(/translate[XY]?\([^)]*\)/g, '')
         .replace(/translate3d\([^)]*\)/g, '')
-        .trim() || '';
+        .trim();
+      // Replica + fully-translate transform: '' would just drop the band
+      // entry and the base translate would re-apply — write 'none' to mask
+      // it. A residual (rotate/scale) part is written as-is on both paths.
+      childStyles.transform = stripped || (neutralize ? 'none' : '');
     }
 
     updateNodeStyles({
