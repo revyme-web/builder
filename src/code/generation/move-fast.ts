@@ -85,7 +85,10 @@ export function directChildStarts(code: string, start: number, end: number): num
       if (code[i + 1] === '/') break; // hit the parent's own close tag
       const tm = /^<([A-Za-z][\w.]*)/.exec(code.slice(i, i + 48));
       if (!tm) return null;
-      starts.push(i);
+      // `<style>` children are NOT slots — they render no box, so the visual
+      // index producers never count them. Must match the AST path's counting
+      // (moveNodeInCode) or the two paths splice at different positions.
+      if (tm[1] !== 'style') starts.push(i);
       const gt = findTagClose(code, i + 1);
       if (gt === -1 || gt >= end) return null;
       if (code[gt - 1] === '/') { i = gt + 1; continue; }

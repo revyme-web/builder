@@ -3626,7 +3626,21 @@ export class LayoutLiftedStrategy implements DragStrategy {
     const rootNode = getNodeFromCache(vpNodeId);
     for (const childId of rootNode?.children ?? []) {
       if (excludeIds?.has(childId)) continue;
-      union(findNodeRect(childId, this.currentVpId));
+      // Not every root child bounds the page:
+      //  · `layout::` placeholders aren't real elements.
+      //  · OVERLAY nodes are portaled + display:none outside overlay mode —
+      //    their cached rect is a zero/origin-anchored sliver. Unioning one
+      //    pinned the bounds to the canvas top-left, so a section could be
+      //    dragged out to the RIGHT but never to the LEFT (the cursor can't
+      //    go left of screen x=0 — templated-page report 2026-08-05).
+      //  · Zero-size rects generally (hidden per-viewport sections, cold
+      //    cache) carry no visual bounds — skip rather than anchor.
+      if (childId.startsWith('layout::')) continue;
+      const childNode = getNodeFromCache(childId);
+      if (childNode?.attrs?.['data-overlay']) continue;
+      const r = findNodeRect(childId, this.currentVpId);
+      if (!r || (r.width === 0 && r.height === 0)) continue;
+      union(r);
     }
     if (this.parentNodeId && this.parentNodeId !== vpNodeId) union(findNodeRect(this.parentNodeId, this.currentVpId));
     return { left, top, width: right - left, height: bottom - top };

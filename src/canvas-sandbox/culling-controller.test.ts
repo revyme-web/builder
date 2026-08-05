@@ -420,3 +420,62 @@ describe('CullingController — inside a live artboard', () => {
     expect(node.hasAttribute('data-culled')).toBe(false);
   });
 });
+
+describe('viewport tile with visibly-overflowing content (fixed-height root)', () => {
+  // A page root carrying the vp config's FIXED height (900px) while sections
+  // flow far below paints outside the tile box. Culling by the box alone hid
+  // the whole page once the 900px sliver left the screen — including the
+  // overflowing sections still visibly on screen ("zoom in and it
+  // disappears", 2026-08-05). The tile box must extend by its scrollable
+  // overflow when the tile doesn't clip.
+  let container: HTMLElement;
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  function makeOverflowingTile(scrollHeight: number): HTMLElement {
+    const el = document.createElement('div');
+    el.setAttribute('data-viewport', 'desktop');
+    Object.defineProperty(el, 'offsetLeft', { get: () => 0 });
+    // Tile box: 1440×900 sitting ABOVE the visible rect (camera y=+1000 —
+    // the user zoomed/panned to the overflow area below the fold).
+    Object.defineProperty(el, 'offsetTop', { get: () => 0 });
+    Object.defineProperty(el, 'offsetWidth', { get: () => 1440 });
+    Object.defineProperty(el, 'offsetHeight', { get: () => 900 });
+    Object.defineProperty(el, 'scrollWidth', { get: () => 1440 });
+    Object.defineProperty(el, 'scrollHeight', { get: () => scrollHeight });
+    container.appendChild(el);
+    return el;
+  }
+
+  it('stays live while the overflowing content is on screen', () => {
+    const c = new CullingController(container);
+    const tile = makeOverflowingTile(4000); // sections flow to y=4000
+    // Camera panned down: visible canvas rect is y ∈ [1200, 1968]. The 900px
+    // box is fully above it — the OLD logic culled here.
+    c.onTransform(0, -1200, 1);
+    c.evaluate();
+    expect(tile.style.display).not.toBe('none');
+  });
+
+  it('still culls once even the overflowing content is off screen', () => {
+    const c = new CullingController(container);
+    const tile = makeOverflowingTile(4000);
+    // Camera far below ALL content (content ends at 4000; margin is 200).
+    c.onTransform(0, -5000, 1);
+    c.evaluate();
+    expect(tile.style.display).toBe('none');
+  });
+
+  it('a clipping tile keeps the plain box (overflow hidden)', () => {
+    const c = new CullingController(container);
+    const tile = makeOverflowingTile(4000);
+    tile.style.overflowY = 'hidden';
+    tile.style.overflowX = 'hidden';
+    c.onTransform(0, -1200, 1);
+    c.evaluate();
+    // Clipped content can't be seen — the 900px box governs, and it's gone.
+    expect(tile.style.display).toBe('none');
+  });
+});

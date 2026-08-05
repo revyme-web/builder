@@ -280,10 +280,26 @@ export class CullingController {
   private boxOf(el: HTMLElement): Box {
     const meta = this.culled.get(el);
     if (meta) return meta.box;
-    // Viewport tiles clip/contain their content — their own box IS the
-    // visual bounds.
+    // Viewport tiles: the tile's own box is the visual bounds ONLY while
+    // nothing escapes it. A page root carrying the viewport config's FIXED
+    // height (`height: '900px'`) with sections flowing past it (overflow
+    // visible — the default) paints far below the tile box — culling by the
+    // box alone hid the page the moment the 900px sliver left the screen,
+    // visible overflowing sections and all ("zoom in and it disappears",
+    // user report 2026-08-05; an auto-height root was immune because its box
+    // covers the content). Extend the box by the tile's scrollable overflow
+    // unless the tile itself clips/scrolls. `scroll*` is the same class of
+    // layout read as the `offset*` right next to it (no extra forced layout),
+    // and reports only right/bottom overflow — matching the page dialect
+    // (sections flow down). A root that clips its own overflow stays at the
+    // plain box automatically: its scrollable overflow never reaches the tile.
     if (el.hasAttribute('data-viewport')) {
-      return offsetBox(el);
+      const box = offsetBox(el);
+      const cs = getComputedStyle(el);
+      const clips = (v: string) => v === 'hidden' || v === 'clip' || v === 'scroll' || v === 'auto';
+      if (!clips(cs.overflowX) && (el.scrollWidth ?? 0) > box.width) box.width = el.scrollWidth;
+      if (!clips(cs.overflowY) && (el.scrollHeight ?? 0) > box.height) box.height = el.scrollHeight;
+      return box;
     }
     // Canvas-node roots can have absolutely-positioned children far OUTSIDE
     // their own box (overflow visible). Culling by the root box alone hides

@@ -1365,6 +1365,35 @@ describe('getViewportScreenRect — content-bounds union', () => {
     expect(rect).toEqual({ left: 0, top: 0, width: 1440, height: 900 });
   });
 
+  it('skips portaled overlays and zero rects — an origin-anchored sliver must not pin the bounds', () => {
+    // Templated-page report 2026-08-05: the root has an OVERLAY child
+    // (display:none outside overlay mode → zero/origin-anchored cached rect).
+    // Unioning it pinned bounds.left to screen x=0 — sections could be
+    // dragged out to the RIGHT but never to the LEFT.
+    const s = new LayoutLiftedStrategy();
+    nodeCache.set('root', {
+      id: 'root', tag: 'div', type: 'div', styles: {},
+      children: ['section-1', 'overlay-1', 'hidden-1', 'layout::header'], parentId: null, isCanvasNode: false,
+    });
+    nodeCache.set('overlay-1', {
+      id: 'overlay-1', tag: 'div', type: 'div', styles: {},
+      attrs: { 'data-overlay': '{"type":"relative","triggerId":"section-1"}' },
+      children: [], parentId: 'root', isCanvasNode: false,
+    });
+    setupNodeRects({
+      root: { x: 800, y: 0, width: 1440, height: 900 },
+      'section-1': { x: 800, y: 0, width: 1440, height: 900 },
+      'overlay-1': { x: 0, y: 0, width: 200, height: 300 },   // origin-anchored portal sliver
+      'hidden-1': { x: 0, y: 0, width: 0, height: 0 },        // display:none per-vp section
+    });
+    (s as any).viewportNodeId = 'root';
+    (s as any).parentNodeId = 'root';
+    (s as any).currentVpId = 'desktop';
+    const rect = (s as any).getViewportScreenRect();
+    // Bounds = the tile, NOT stretched to x=0 by the overlay/hidden slivers.
+    expect(rect).toEqual({ left: 800, top: 0, width: 1440, height: 900 });
+  });
+
   it('sections with missing rects are skipped, not fatal', () => {
     const s = new LayoutLiftedStrategy();
     nodeCache.set('root', {

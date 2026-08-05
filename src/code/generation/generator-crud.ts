@@ -2460,12 +2460,22 @@ export function moveNodeInCode(
       if (insertIndex != null && insertIndex >= 0) {
         // Insert at specific index among JSXElement + JSXExpressionContainer children.
         // Expressions like {children} occupy a visual slot on canvas and must be counted.
+        // `<style>` elements do NOT: they render no box, so every visual index
+        // producer (drop line, reorder, computeLayoutInsertOrderUpdates) is
+        // blind to them — counting one here shifted the whole insert a slot
+        // early on any page whose root leads with a responsive-override
+        // `<style>` block ("line showed below Capabilities, landed above",
+        // templated page 2026-08-05).
         const children = path.node.children;
         let slotCount = 0;
         let insertPos = children.length; // fallback: append at end
 
         for (let i = 0; i < children.length; i++) {
-          if (children[i].type === 'JSXElement' || children[i].type === 'JSXExpressionContainer') {
+          const c = children[i];
+          const isStyleEl = c.type === 'JSXElement'
+            && c.openingElement.name.type === 'JSXIdentifier'
+            && c.openingElement.name.name === 'style';
+          if ((c.type === 'JSXElement' && !isStyleEl) || c.type === 'JSXExpressionContainer') {
             if (slotCount === insertIndex) {
               insertPos = i;
               break;

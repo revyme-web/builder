@@ -130,12 +130,17 @@ export default function LinkedComponentModal({ isOpen, onClose, cdnUrl, instance
           type="button"
           onClick={() => handleUnlink(true)}
           disabled={!!busy}
-          className="w-full h-8 text-xs font-medium text-white rounded-[var(--radius-lg)] transition-[filter] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          // text-[var(--accent-fg)], NOT text-white: the label sits ON the
+          // accent fill, and light accents (stock gold, Amber) need a
+          // near-black label — --accent-fg is the per-theme "label on accent"
+          // token (builder-themes.ts).
+          className="w-full h-8 text-xs font-medium text-[var(--accent-fg,#0d1017)] rounded-[var(--radius-lg)] transition-[filter] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           // `--accent` is the editor's primary accent (blue by
           // default). `App.tsx` swaps it to `--accent-secondary`
           // (purple) on `<html>` whenever the active file is a
-          // component master, so this single token gives us the
-          // right color in both contexts without a manual check.
+          // component master — and swaps `--accent-fg` to
+          // `--accent-secondary-fg` in the same pass — so this token
+          // pair gives the right fill AND label in both contexts.
           style={{ backgroundColor: 'var(--accent, #cec997)' }}
         >
           {busy === 'all' ? 'Unlinking…' : 'Unlink & Replace All'}

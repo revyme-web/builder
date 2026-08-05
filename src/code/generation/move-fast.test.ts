@@ -134,3 +134,42 @@ describe('directChildStarts', () => {
     expect(starts!.length).toBe(3); // <a>, {expr}, <b/>
   });
 });
+
+describe('leading <style> child — non-visual, never a slot', () => {
+  // Templated/imported pages carry a responsive-override <style> block as the
+  // root's FIRST JSX child. Visual index producers (drop line, reorder) are
+  // blind to it, so counting it as a slot spliced every indexed insert one
+  // slot early — "line showed below Capabilities, landed above" (2026-08-05).
+  const STYLED_ROOT = PAGE(`    <div data-id="root" data-name="Page">
+      <style>{\`[data-id="a"] { padding: 4px !important; }\`}</style>
+      <div data-id="a" data-name="A"></div>
+      <div data-id="b" data-name="B"></div>
+      <div data-id="c" data-name="C"></div>
+    </div>`) + `\nconst canvasNodes = (<>\n  <div data-id="chip" data-canvas-node="true" style={{ position: 'absolute' }}></div>\n</>);`;
+
+  it('directChildStarts skips <style>', () => {
+    const region = `<style>{\`x\`}</style><div data-id="a"></div><div data-id="b"></div>`;
+    const starts = directChildStarts(region, 0, region.length);
+    expect(starts).not.toBeNull();
+    expect(starts!.length).toBe(2); // a + b only
+  });
+
+  it('fast path: insertIndex 2 lands AFTER b (visual index space)', () => {
+    const out = moveNodeIntoParentFast(STYLED_ROOT, 'chip', 'root', 2);
+    if (out !== null) {
+      expect(childIdsOf(out, 'root').filter(id => id !== 'style')).toEqual(
+        expect.arrayContaining(['a', 'b', 'chip', 'c']),
+      );
+      const ids = childIdsOf(out, 'root');
+      expect(ids.indexOf('chip')).toBeGreaterThan(ids.indexOf('b'));
+      expect(ids.indexOf('chip')).toBeLessThan(ids.indexOf('c'));
+    }
+  });
+
+  it('AST path (moveNodeInCode): insertIndex 2 lands AFTER b', () => {
+    const out = moveNodeInCode(STYLED_ROOT, 'chip', 'root', undefined, 2);
+    const ids = childIdsOf(out, 'root');
+    expect(ids.indexOf('chip')).toBeGreaterThan(ids.indexOf('b'));
+    expect(ids.indexOf('chip')).toBeLessThan(ids.indexOf('c'));
+  });
+});

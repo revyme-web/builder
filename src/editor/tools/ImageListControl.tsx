@@ -1,11 +1,13 @@
 // ImageListControl.tsx — an ORDERED LIST of images for code-component
 // @controls (control type "imageList"). The panel row shows a preview swatch +
 // count and opens a ToolPopup with one sub-row per image (thumbnail, index,
-// reorder, remove) plus an "Add image" row that opens the NATIVE media picker
-// (ImageSearchModal — the same Unsplash/upload/URL modal the Fill tool uses)
-// and APPENDS the chosen image. Value is the same pipe-separated URL string
-// convention the multi `upload` control uses ("a|b|c" — JSX-attribute-safe,
-// no quotes), so components parse it identically.
+// reorder, remove) plus an "Add image" row. Both the "Add image" row and each
+// EXISTING row's thumbnail/label open the NATIVE media picker
+// (ImageSearchModal — the same Unsplash/upload/URL modal the Fill tool uses):
+// Add APPENDS the chosen image, a row click REPLACES that row's image in
+// place. Value is the same pipe-separated URL string convention the multi
+// `upload` control uses ("a|b|c" — JSX-attribute-safe, no quotes), so
+// components parse it identically.
 
 import { useRef, useState } from 'react';
 import { ToolRow } from '../controls';
@@ -29,7 +31,9 @@ const parseUrls = (v: string): string[] => (v ? v.split('|').filter(Boolean) : [
 
 export default function ImageListControl({ label, value, onChange }: ImageListControlProps) {
   const [open, setOpen] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  /** Who the native picker is choosing for: 'append' = the Add-image row,
+   *  a number = replace THAT row's image in place, null = closed. */
+  const [pickerFor, setPickerFor] = useState<number | 'append' | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const urls = parseUrls(value);
 
@@ -72,11 +76,20 @@ export default function ImageListControl({ label, value, onChange }: ImageListCo
       <ToolPopup isOpen={open} onClose={() => setOpen(false)} title={label} anchorRef={btnRef}>
         {urls.map((url, idx) => (
           <div key={`${url}-${idx}`} className="flex items-center gap-2 min-w-0">
-            <div
-              className="w-8 h-[var(--control-height)] rounded-md border border-[var(--control-border)] flex-shrink-0"
-              style={{ backgroundColor: '#ffffff', backgroundImage: `url("${url}")`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-            />
-            <span className="flex-1 text-xs text-[var(--text-secondary)] truncate">Image {idx + 1}</span>
+            {/* Thumbnail + label = a REPLACE button: opens the same native
+                picker and swaps this row's image in place (reorder/remove
+                stay separate targets to the right). */}
+            <button
+              onClick={() => setPickerFor(idx)}
+              className="flex-1 flex items-center gap-2 min-w-0 group cursor-pointer"
+              title="Replace image"
+            >
+              <div
+                className="w-8 h-[var(--control-height)] rounded-md border border-[var(--control-border)] group-hover:border-[var(--control-border-hover)] flex-shrink-0 transition-colors"
+                style={{ backgroundColor: '#ffffff', backgroundImage: `url("${url}")`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+              />
+              <span className="flex-1 text-left text-xs text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] truncate transition-colors">Image {idx + 1}</span>
+            </button>
             <button
               onClick={() => move(idx, -1)}
               disabled={idx === 0}
@@ -92,19 +105,28 @@ export default function ImageListControl({ label, value, onChange }: ImageListCo
             <RemoveButton onClick={() => remove(idx)} />
           </div>
         ))}
-        <ControlActionRow onClick={() => setPickerOpen(true)} center>
+        <ControlActionRow onClick={() => setPickerFor('append')} center>
           + Add image
         </ControlActionRow>
       </ToolPopup>
 
       {/* Native media picker — the same Unsplash / upload / URL modal the
-          Fill tool opens. Self-closes on select; each pick APPENDS. */}
+          Fill tool opens. Self-closes on select; a pick APPENDS ('append')
+          or REPLACES the clicked row's image (numeric pickerFor). */}
       <ImageSearchModal
-        isOpen={pickerOpen}
-        onClose={() => setPickerOpen(false)}
+        isOpen={pickerFor !== null}
+        onClose={() => setPickerFor(null)}
         onSelect={(url) => {
-          commit([...urls, url]);
-          trace.action('image-list:picked', { url: url.slice(0, 80) });
+          if (typeof pickerFor === 'number') {
+            const next = [...urls];
+            next[pickerFor] = url;
+            commit(next);
+            trace.action('image-list:replaced', { idx: pickerFor, url: url.slice(0, 80) });
+          } else {
+            commit([...urls, url]);
+            trace.action('image-list:picked', { url: url.slice(0, 80) });
+          }
+          setPickerFor(null);
         }}
       />
     </ToolRow>

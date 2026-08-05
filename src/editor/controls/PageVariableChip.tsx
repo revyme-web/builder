@@ -94,7 +94,10 @@ export default function PageVariableChip({ name, onRemove, selectable }: { name:
             ) : selectable.options.map((o) => (
               <button key={o.name} type="button" className={MENU_ITEM}
                 onClick={() => { trace.action('page-variable-chip:select', { name: o.name }); selectable.onSelect(o.name); setOpen(false); }}>
-                <span className="w-3 shrink-0 text-white/90 group-hover:text-[var(--accent-fg)]">
+                {/* text-primary, not white: the menu sits on --dropdown-bg,
+                    which is LIGHT in light mode — a white check was invisible
+                    there. Hover keeps accent-fg (label on the accent fill). */}
+                <span className="w-3 shrink-0 text-[var(--text-primary)]/90 group-hover:text-[var(--accent-fg)]">
                   {o.name === name && !isMissing ? (
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                   ) : null}
