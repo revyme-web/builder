@@ -532,3 +532,53 @@ describe('history — camera persist is editor state, not content', () => {
     expect(projectFS.readFile('_meta/page-camera.json')).toBe('{"moved":true}');
   });
 });
+
+describe('history — rapid undo/redo supersedes the deferred restore-finish', () => {
+  // The mid-burst glitch (2026-08-05): undo #2's fence RAN undo #1's deferred
+  // finish; its version bump made codeAtom (a version-gated ProjectFS view)
+  // recompute to #1's restored code — BEFORE #2's diffs landed, with #2's own
+  // bump deferred 300ms — so React repainted the canvas one state BACK right
+  // after the canvas-first patch. A superseded finish must be DROPPED: only
+  // the burst's LAST restore may bump + reselect.
+  let bumps: number;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    bumps = 0;
+    projectFS.loadSnapshot(new Map([['app/page.tsx', 'v1']]));
+    initHistory('v1', () => {}, () => 'app/page.tsx', () => { bumps++; });
+    projectFS.writeFile('app/page.tsx', 'v2');
+    pushHistoryImmediate('v2');
+    projectFS.writeFile('app/page.tsx', 'v3');
+    pushHistoryImmediate('v3');
+  });
+
+  // Drain any still-pending finish so module state never leaks across tests.
+  afterEach(() => { finishPendingRestore(); vi.useRealTimers(); });
+
+  test('mid-burst press drops the prior finish; only the last restore bumps', () => {
+    undo(); // v3 → v2, finish #1 deferred 300ms
+    expect(bumps).toBe(0);
+    undo(); // v2 → v1 — must DROP finish #1, not run it (the stale bump)
+    expect(bumps).toBe(0);
+    vi.advanceTimersByTime(300);
+    expect(bumps).toBe(1); // exactly one settle for the whole burst
+    expect(projectFS.readFile('app/page.tsx')).toBe('v1');
+  });
+
+  test('undo→redo alternation never runs a stale finish before the restore', () => {
+    undo(); // v3 → v2
+    redo(); // v2 → v3 — drops undo's pending finish
+    expect(bumps).toBe(0);
+    vi.advanceTimersByTime(300);
+    expect(bumps).toBe(1);
+    expect(projectFS.readFile('app/page.tsx')).toBe('v3');
+  });
+
+  test('an empty-stack press still applies the pending finish', () => {
+    undo();
+    undo(); // stack now empty; the SECOND restore's finish is pending
+    expect(undo()).toBe(false); // no-op press — nothing supersedes the finish
+    expect(bumps).toBe(1);      // so it ran here, not 300ms later
+  });
+});

@@ -1879,12 +1879,20 @@ export function startResize(
     });
   }
 
+  // Latches on the first pointermove with actual travel. A plain CLICK on a
+  // handle (down + up, no travel) must commit NOTHING: liveStyles still hold
+  // the SEEDED base values at that point, and pushing them through the commit
+  // re-bakes them — the viewport branch parsed the page root's seeded
+  // width:'100%' as 100 and shrank the breakpoint 1440→100 on a bare click.
+  let didMove = false;
+
   const onMove = (e: PointerEvent) => {
     // Mouse delta in screen pixels. The FROZEN lift basis converts
     // it directly into local CSS units (the basis already includes
     // canvas zoom + every ancestor / own transform, 2D and 3D).
     const screenDx = e.clientX - curStartX;
     const screenDy = e.clientY - curStartY;
+    if (screenDx !== 0 || screenDy !== 0) didMove = true;
 
     let deltaX: number, deltaY: number;
     if (liftBasis) {
@@ -2376,6 +2384,19 @@ export function startResize(
     // sandbox's element refs.
     if (isBakedGroup) getCanvasBridge().clearGroupResizeBake?.(nodeId);
 
+    // Zero pointer travel = a click, not a resize. Skip every commit path —
+    // no style write, no viewport-config write, no history entry (see the
+    // didMove declaration for the viewport 1440→100 shrink this caused).
+    // The stale-reveal gates and interaction outline key off the flags
+    // cleared here, not off the commit, so plain cleanup is safe.
+    if (!didMove) {
+      trace.action('resize:end:no-move', { nodeId, vpId });
+      styleHelperOps.hide();
+      onInteracting(false);
+      dragStateOps.set(false);
+      return;
+    }
+
     // Commit — write only the properties that matter for this pin configuration.
     // Overlay nodes: only commit width/height — position is managed by portal system.
     // Commit ONLY the axis this handle actually resized. `liveStyles` is seeded
@@ -2440,8 +2461,11 @@ export function startResize(
       const resizedVpId = nodeAttrs['data-viewport'] || vpId;
       // Width comes from finalStyles when this handle resizes the X axis;
       // otherwise fall back to the existing measurement so the callback
-      // gets a consistent number even on pure-vertical resize.
-      const newWidth = parseInt(finalStyles.width) || curWidth;
+      // gets a consistent number even on pure-vertical resize. px ONLY:
+      // the page root's base width is '100%' and parseInt('100%') is 100 —
+      // a % that leaks this far must fall back to the measured width, not
+      // become a 100px breakpoint.
+      const newWidth = (finalStyles.width?.endsWith('px') ? parseInt(finalStyles.width) : 0) || curWidth;
       // Height: only forward when the handle actually resizes Y. The
       // callback's contract is that height === 0 means "leave alone";
       // sending the live curHeight on a width-only drag would clobber the

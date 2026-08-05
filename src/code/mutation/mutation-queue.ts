@@ -1129,8 +1129,17 @@ export function flushNow(): void {
 // ─── Deferred drop fan-out ──────────────────────────────────────────────────
 let _deferNextFanOut = false;
 let _deferRaf: number | null = null;
+/** What the armed fan-out is FOR. 'drop' fan-outs carry a pushHistory the
+ *  next undo/redo must flush; 'restore' fan-outs are pure mirrors a newer
+ *  restore can safely supersede (settlePendingFanOutForHistory). */
+let _deferKind: 'drop' | 'restore' | null = null;
 
-function scheduleDeferredFanOut(delayMs = 32): void {
+function scheduleDeferredFanOut(delayMs = 32, kind: 'drop' | 'restore' = 'drop'): void {
+  // 'drop' is sticky: if a drop fan-out is armed and a restore re-requests,
+  // the pending apply still carries the drop's pushHistory — downgrading it
+  // to cancellable 'restore' would let the next undo silently drop that
+  // history capture.
+  _deferKind = _deferKind === 'drop' ? 'drop' : kind;
   if (_deferRaf !== null) return; // already scheduled — the callback reads the LATEST currentCode
   // setTimeout — NOT requestAnimationFrame. The whole point of the defer is
   // to let the sandbox iframe (same-origin ⇒ same event loop) process its
@@ -1145,6 +1154,7 @@ function scheduleDeferredFanOut(delayMs = 32): void {
   setPreferCacheSnapshot(true);
   _deferRaf = setTimeout(() => {
     _deferRaf = null;
+    _deferKind = null;
     setPreferCacheSnapshot(false);
     onFlush?.(currentCode);
     onAfterFlush?.();
@@ -1152,6 +1162,7 @@ function scheduleDeferredFanOut(delayMs = 32): void {
 }
 
 function cancelDeferredFanOut(): void {
+  _deferKind = null;
   if (_deferRaf === null) return;
   clearTimeout(_deferRaf as unknown as ReturnType<typeof setTimeout>);
   _deferRaf = null;
@@ -1180,8 +1191,9 @@ export function scheduleQueueFanOut(): void {
   // iframe's render+measure window; the visual + overlay + live panel are
   // already correct from the seed, so panels reconciling to the parsed truth
   // a quarter-second later is imperceptible. Same fences (empty-flush
-  // applies, file-switch cancels, next undo forces).
-  scheduleDeferredFanOut(250);
+  // applies, file-switch cancels, next undo/redo CANCELS — see
+  // settlePendingFanOutForHistory).
+  scheduleDeferredFanOut(250, 'restore');
 }
 
 /** Drag-END fan-out: a drag whose commits flushed MID-gesture (enter/exit
@@ -1225,6 +1237,23 @@ export function flushPendingFanOut(): void {
   setPreferCacheSnapshot(false);
   onFlush?.(currentCode);
   onAfterFlush?.();
+}
+
+/** History fence (undo/redo entry): land or drop the pending deferred fan-out.
+ *  A DROP-kind fan-out must FLUSH — its apply carries the pushHistory that
+ *  lets this undo capture the drop. A RESTORE-kind fan-out is SUPERSEDED by
+ *  the restore about to run: its setCode is a skip-identical no-op and its
+ *  pushHistory diffs nothing, but flushing it still queued a React pass over
+ *  the PREVIOUS restore's code that repainted the canvas one state BACK
+ *  ~15ms after the new restore's canvas-first patch — the rapid-Cmd+Z
+ *  "flips between undo and redo states" glitch (user trace 2026-08-05). */
+export function settlePendingFanOutForHistory(): void {
+  if (_deferRaf !== null && _deferKind === 'restore' && !_deferNextFanOut) {
+    trace.action('mutation-queue:restore-fan-out-superseded', { codeLength: currentCode.length });
+    cancelDeferredFanOut();
+    return;
+  }
+  flushPendingFanOut();
 }
 
 // ─── Internal ──────────────────────────────────────────────────────────────

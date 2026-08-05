@@ -5,7 +5,7 @@
 
 import { trace } from '@/shared/debug-trace';
 import { projectFS } from '../project/project-fs';
-import { flushPendingFanOut } from './mutation-queue';
+import { settlePendingFanOutForHistory } from './mutation-queue';
 
 const MAX_HISTORY = 100;
 const DEBOUNCE_MS = 300; // Group rapid changes (e.g., drag scrubbing)
@@ -377,9 +377,10 @@ export function syncHistoryCode(code: string): void {
 // wasted parse of the WRONG code, pre-visual), while the selection pass
 // queued another React task ahead of the visual. Deferring both ~34ms (just
 // after the restore's 32ms fan-out timer, so setCode lands first) lets the
-// canvas revert at the first yield. finishPendingRestore() is the fence:
-// rapid Cmd+Z spam / any next undo/redo applies the pending finish
-// synchronously before proceeding, so state never interleaves.
+// canvas revert at the first yield. The fences: an undo/redo that finds the
+// stack EMPTY applies the pending finish (finishPendingRestore); one that
+// will actually restore SUPERSEDES it (cancelPendingRestore) — running it
+// there was the rapid-Cmd+Z glitch, see cancelPendingRestore.
 let _restoreFinishTimer: ReturnType<typeof setTimeout> | null = null;
 let _restoreFinishFn: (() => void) | null = null;
 export function finishPendingRestore(): void {
@@ -387,6 +388,22 @@ export function finishPendingRestore(): void {
   const fn = _restoreFinishFn;
   _restoreFinishFn = null;
   fn?.();
+}
+
+/** Drop a pending deferred restore-finish WITHOUT running it. Only valid when
+ *  a NEW restore is about to run: that restore's own finish bumps the version
+ *  against NEWER file state and reselects its own target, so nothing here is
+ *  lost. Running the stale finish instead was the rapid-Cmd+Z glitch: its
+ *  version bump made codeAtom (a version-gated ProjectFS view) eagerly
+ *  recompute to the PREVIOUS restore's code — the new diffs land after this
+ *  fence and their own bump is deferred 300ms — and the React pass it
+ *  scheduled repainted the canvas one state BACK ~15ms after the new
+ *  restore's canvas-first patch (user trace 2026-08-05: every mid-burst
+ *  press flipped forward then back, settling only 300ms after the last). */
+function cancelPendingRestore(): void {
+  if (_restoreFinishTimer !== null) { clearTimeout(_restoreFinishTimer); _restoreFinishTimer = null; }
+  if (_restoreFinishFn !== null) trace.action('history:restore-finish-superseded', {});
+  _restoreFinishFn = null;
 }
 
 function restoreToFileAndSelection(targetFile: string, targetSel: string[]): void {
@@ -423,15 +440,18 @@ function restoreToFileAndSelection(targetFile: string, targetSel: string[]): voi
 
 /** Undo — restore previous project state */
 export function undo(): boolean {
-  // A drag-drop may have DEFERRED its setCode fan-out (+ pushHistory) to rAF
-  // for perf — force it NOW so this undo captures the drop, not the state
-  // before it.
-  flushPendingFanOut();
-  finishPendingRestore(); // apply a prior restore's deferred bump/reselect first
+  // A drag-drop may have DEFERRED its setCode fan-out (+ pushHistory) — a
+  // DROP-kind fan-out is forced NOW so this undo captures the drop, not the
+  // state before it; a RESTORE-kind one is cancelled as superseded.
+  settlePendingFanOutForHistory();
   // Land any pending debounced change first (snapshot + diff + push).
   commitPendingHistory();
 
-  if (undoStack.length === 0) return false;
+  if (undoStack.length === 0) {
+    finishPendingRestore(); // nothing supersedes the pending finish — run it
+    return false;
+  }
+  cancelPendingRestore(); // THIS restore's own finish bumps + reselects
 
   const entry = undoStack.pop()!;
   // Apply diffs in reverse (restore old content)
@@ -452,10 +472,13 @@ export function undo(): boolean {
 
 /** Redo — restore next project state */
 export function redo(): boolean {
-  flushPendingFanOut(); // land any deferred drop fan-out first (see undo)
-  finishPendingRestore(); // apply a prior restore's deferred bump/reselect first
+  settlePendingFanOutForHistory(); // land a drop fan-out / cancel a restore one (see undo)
   commitPendingHistory(); // land any pending debounced change (may clear redoStack)
-  if (redoStack.length === 0) return false;
+  if (redoStack.length === 0) {
+    finishPendingRestore(); // nothing supersedes the pending finish — run it
+    return false;
+  }
+  cancelPendingRestore(); // THIS restore's own finish bumps + reselects
 
   const entry = redoStack.pop()!;
   // Apply diffs forward (restore new content)

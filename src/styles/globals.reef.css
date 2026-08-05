@@ -57,6 +57,9 @@
 
     /* Accent — Figma blue primary, component-purple secondary */
     --accent: #14b8a6;
+    /* Label ON the accent fill: white on this teal is only 2.5:1, near-black
+       is 7.6:1 — the ink is the AA-passing pairing. */
+    --accent-fg: #0d1017;
     --accent-hover: #0d9488;
     --accent-muted: #99f6e4;
     --accent-surface: #f0fdfa;
@@ -155,6 +158,7 @@
 
     /* Accent — Figma blue (brightened hover), component-purple secondary */
     --accent: #14b8a6;
+    --accent-fg: #0d1017;
     --accent-hover: #2dd4bf;
     --accent-muted: #115e59;
     --accent-surface: rgba(20, 184, 166, 0.14);
@@ -295,5 +299,7 @@ html.theme-transition *::after {
   background-color: var(--accent);
 }
 .vp-add-item:hover span {
-  color: #fff !important;
+  /* NOT #fff: the label sits ON the accent fill — --accent-fg is the
+   * per-theme "label on accent" token (see builder-themes.ts). */
+  color: var(--accent-fg) !important;
 }
