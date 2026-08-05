@@ -392,7 +392,7 @@ describe('CanvasTextEditController', () => {
     controller.startEdit('node1', '<p>Hello</p>', 'desktop');
 
     expect(store.set).toHaveBeenCalledWith(isTextEditingAtom, true);
-    expect(bridge.startTextEdit).toHaveBeenCalledWith('node1', '', '<p>Hello</p>', false);
+    expect(bridge.startTextEdit).toHaveBeenCalledWith('node1', '', '<p>Hello</p>', false, []);
     expect(renderer.setTextEditing).toHaveBeenCalledWith(true);
     expect(iframeRef.current?.style.pointerEvents).toBe('auto');
     expect(controller.isEditing()).toBe(true);

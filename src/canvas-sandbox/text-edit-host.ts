@@ -158,6 +158,10 @@ function syncReplicaHtml(html: string): void {
     const vpId = vp.getAttribute('data-viewport');
     if (!vpId) continue;
     const isPrimary = vp.hasAttribute('data-viewport-primary');
+    // A tile whose variant has its OWN text override keeps its committed
+    // content — mirroring the primary's keystrokes into it would show the
+    // wrong text for the whole session (see syncExcludeVpIds).
+    if (syncExcludeVpIds.has(vpId)) continue;
     const targetId = isPrimary ? activeNodeId : `${vpId}-${activeNodeId}`;
     const target = findElByNodeId<Element>(vp, '', targetId);
     if (!target || target === activeElement) continue;
@@ -169,6 +173,15 @@ function syncReplicaHtml(html: string): void {
  *  live-sync logic can short-circuit. Set at startTextEdit, cleared on
  *  cancel/commit. Detected structurally — see startTextEdit. */
 let responsiveActiveNode = false;
+
+/** Tile vpIds whose VARIANT carries its own text override (conditionalText /
+ *  a per-variant text variable) — passed by the parent at startTextEdit.
+ *  The live keystroke mirror (syncReplicaHtml) skips these: typing on the
+ *  primary was overwriting every tile INCLUDING ones with their own content
+ *  (restored only at commit — the mid-typing "all variants sync" report,
+ *  2026-08-05; the same mirror also fired for panel font-size edits during
+ *  an active session, since a TipTap mark transaction is a content change). */
+let syncExcludeVpIds = new Set<string>();
 
 // ─── FIT text live re-fit (while typing) ─────────────────────────────────
 // When the edited element sits inside a FIT wrapper (`<svg data-node-id=…-svg>`
@@ -297,6 +310,10 @@ export function startTextEdit(
   vpPrefix: string,
   initialHtml?: string,
   isResponsive?: boolean,
+  /** Tile vpIds (variant names on a component master) whose variant carries
+   *  its OWN text override — the live keystroke mirror must not touch them.
+   *  See syncReplicaHtml. */
+  syncExcludeVpIdList?: string[],
 ): void {
   if (activeEditor) {
     // Already editing — clean up before starting a new one.
@@ -373,6 +390,10 @@ export function startTextEdit(
   // hook-resolved values until the next render. Skip sync entirely for
   // responsive nodes; commit-time JSX update propagates to all viewports.
   responsiveActiveNode = !!isResponsive;
+  syncExcludeVpIds = new Set(syncExcludeVpIdList ?? []);
+  trace.action('text-edit-host:session-config', {
+    nodeId, vpPrefix, isResponsive: !!isResponsive, syncExcludeVpIds: [...syncExcludeVpIds],
+  });
 
   // Mark the element so the renderer's diff loop skips it (data-editing guard
   // already exists in patchElement). Also so CSS reset / other systems can
@@ -771,6 +792,7 @@ function destroyEditor(): void {
   activeElement = null;
   savedInlineStyles = null;
   responsiveActiveNode = false;
+  syncExcludeVpIds = new Set();
   fitSvgEl = null;
   fitBaseStyles = null;
 }

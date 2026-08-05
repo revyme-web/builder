@@ -367,6 +367,11 @@ export interface SandboxApi {
      *  variant via its own React tree, so mirroring the editor's HTML to
      *  other viewports would briefly overwrite their hook-resolved values. */
     isResponsive?: boolean,
+    /** Tile vpIds (variant names on a component master) whose variant has its
+     *  OWN text override (`conditionalText` / per-variant text variable) —
+     *  the live keystroke mirror skips these so typing on the primary never
+     *  overwrites their committed content. */
+    syncExcludeVpIds?: string[],
   ): void | Promise<void>;
   /** Capture the final HTML and tear down the editor. Returns the HTML so
    *  the parent can persist it through its existing mutation pipeline. */

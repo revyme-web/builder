@@ -17,8 +17,13 @@ import {
 } from '../shape-edit-host';
 
   // ─── Text editing — TipTap mounts directly on the canvas element ───────
-export function startTextEdit(nodeId: string, vpPrefix: string, initialHtml?: string, isResponsive?: boolean): void {
-    startTextEditImpl(nodeId, vpPrefix, initialHtml, isResponsive);
+  // NOTE: this delegation must stay ARITY-COMPLETE with text-edit-host's
+  // signature. A fixed 4-arg version silently DROPPED `syncExcludeVpIds`
+  // (the parent's trace showed the list, the sandbox received []) — the
+  // live keystroke mirror kept overwriting variant tiles with their own
+  // text overrides even though both endpoints were correct (2026-08-05).
+export function startTextEdit(nodeId: string, vpPrefix: string, initialHtml?: string, isResponsive?: boolean, syncExcludeVpIds?: string[]): void {
+    startTextEditImpl(nodeId, vpPrefix, initialHtml, isResponsive, syncExcludeVpIds);
 }
 export function commitTextEdit(): { html: string } {
     return commitTextEditImpl();

@@ -22,7 +22,7 @@ import {
 import type { TextEditSnapshot, TextEditValue } from '@/canvas-sandbox/protocol';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { selectedIdsAtom, getNodesSnapshot } from '@/code/stores/store';
-import { isComponentVariantViewportAtom } from '@/code/stores/viewport-store';
+import { isComponentVariantViewportAtom, activeComponentVariantAtom } from '@/code/stores/viewport-store';
 import { queueMutation, setForceRender } from '@/code/mutation/mutation-queue';
 import { TEXT_MARK_SPAN_PROPS, getInlineSpanPropertyState } from '@/code/generation/generator-crud';
 import { useControl } from '../controls/ControlProvider';
@@ -159,11 +159,32 @@ export function planSpanFlatten(args: {
   return { strip: true, hoistValue: spanState.value };
 }
 
+/** Which VARIANT entries a span-hoist must ALSO be written to. Framer applies
+ *  variant entries INLINE over the base style, so hoisting the span's value
+ *  onto the base alone is not enough when variant entries carry the same
+ *  property: those entries were visually DEAD while the span shadowed them,
+ *  and the strip resurrects their stale values — editing variant-3's color
+ *  flipped every other tile to the entries' old white ("all the other variant
+ *  text went white", 2026-08-05). Every non-edited entry that carries the
+ *  property gets re-pointed at the hoisted value, so all tiles keep painting
+ *  exactly what the span painted. Exported for unit tests. */
+export function planVariantHoistFanout(
+  motionVariants: Record<string, Record<string, string>> | null | undefined,
+  property: string,
+  editedVariant: string | null,
+): string[] {
+  if (!motionVariants) return [];
+  return Object.entries(motionVariants)
+    .filter(([name, entry]) => name !== editedVariant && entry?.[property] != null && entry[property] !== '')
+    .map(([name]) => name);
+}
+
 export function useTextStyles(): UseTextStylesReturn {
   const isEditing = useAtomValue(isTextEditingAtom);
   const snapshot = useAtomValue(textEditSnapshotAtom);
   const selectedIds = useAtomValue(selectedIdsAtom);
   const isComponentVariantViewport = useAtomValue(isComponentVariantViewportAtom);
+  const activeComponentVariant = useAtomValue(activeComponentVariantAtom);
   const { styles, updateStyle, updateStyleLive, isReplica } = useControl();
   // A write that lands in a viewport-scoped `@media` rule (page replica) or a
   // variant object — NOT on the node's own base style. Drives the span-hoist
@@ -261,6 +282,14 @@ export function useTextStyles(): UseTextStylesReturn {
                   property, nodeId: id, value: plan.hoistValue,
                 });
                 queueMutation({ type: 'updateStyles', nodeId: id, styles: { [property]: plan.hoistValue } });
+                // Variant entries carrying this prop were shadowed by the span
+                // and hold STALE values — see planVariantHoistFanout. Re-point
+                // every non-edited entry at the hoisted value or the strip
+                // resurrects the stale ones over the hoisted base.
+                for (const vName of planVariantHoistFanout(node?.motionVariants, property, activeComponentVariant ?? null)) {
+                  trace.action('useTextStyles:hoist-span-to-variant', { property, nodeId: id, variantName: vName, value: plan.hoistValue });
+                  queueMutation({ type: 'updateVariantStyle', nodeId: id, variantName: vName, styles: { [property]: plan.hoistValue } });
+                }
               }
               trace.fn('useTextStyles.set', { property, nodeId: id, routing: 'flatten-spans' });
               queueMutation({ type: 'stripInlineSpanStyle', nodeId: id, property });
@@ -320,7 +349,7 @@ export function useTextStyles(): UseTextStylesReturn {
       trace.fn('useTextStyles.set', { property, value, routing: 'iframe mark' });
       bridge.editorCommand({ kind: 'mark', property, value });
     },
-    [isEditing, updateStyle, selectedIds, isScopedWrite],
+    [isEditing, updateStyle, selectedIds, isScopedWrite, activeComponentVariant],
   );
 
   // Live (per-frame) twin of `set`. NODE mode: DOM-only patch via

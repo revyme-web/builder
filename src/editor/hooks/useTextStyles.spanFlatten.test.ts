@@ -19,7 +19,7 @@ vi.mock('@/shared/debug-trace', () => ({
   trace: { action: vi.fn(), fn: vi.fn(), error: vi.fn(), dom: vi.fn() },
 }));
 
-import { planSpanFlatten } from './useTextStyles';
+import { planSpanFlatten, planVariantHoistFanout } from './useTextStyles';
 
 // The exact shape from the report: `<p>` at 16px, one span carrying 48px.
 const HEADLINE = `<span style={{ color: 'rgb(255, 255, 255)', fontSize: '48px', fontWeight: 'bold' }}><strong>Accounting software that handles it all.</strong></span>`;
@@ -132,5 +132,39 @@ describe('motion.span runs (design-component variantized text)', () => {
       isScopedWrite: false,
     });
     expect(plan.strip).toBe(false);
+  });
+});
+
+describe('planVariantHoistFanout', () => {
+  // The span shadowed every variant entry's value — after the strip those
+  // stale entries resurrect over the hoisted base (framer applies variant
+  // entries inline). Editing variant-3's color flipped every other tile to
+  // the entries' old white (2026-08-05).
+  const MV = {
+    default: { color: '#ffffff' },
+    'default-hover': { color: '#ffffff' },
+    'default-pressed': { color: '#ffffff' },
+    'variant-3-hover': { color: '#ffffff' },
+    'variant-3-pressed': { color: '#ffffff' },
+  };
+
+  test('returns every non-edited entry carrying the property', () => {
+    const out = planVariantHoistFanout(MV, 'color', 'variant-3');
+    expect(out.sort()).toEqual(['default', 'default-hover', 'default-pressed', 'variant-3-hover', 'variant-3-pressed'].sort());
+  });
+
+  test('excludes the edited variant', () => {
+    const out = planVariantHoistFanout(MV, 'color', 'default-hover');
+    expect(out).not.toContain('default-hover');
+    expect(out).toContain('default');
+  });
+
+  test('entries without the property are skipped', () => {
+    const out = planVariantHoistFanout({ default: { color: '#fff' }, open: { height: '10px' } }, 'color', 'v2');
+    expect(out).toEqual(['default']);
+  });
+
+  test('null variants → empty', () => {
+    expect(planVariantHoistFanout(null, 'color', 'v')).toEqual([]);
   });
 });

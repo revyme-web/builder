@@ -182,7 +182,23 @@ export function resolvePresetColor(color: string, tokens: PresetToken[]): string
 
 export function jsxStyleToHTML(jsx: string): string {
   try {
-    return jsx.replace(
+    // Normalize MOTIONIZED inline tags to their plain HTML forms. A design
+    // component's variant pass rewrites spans to `<motion.span layout={true}>`;
+    // materializing that literally creates an UNKNOWN `<motion.span>` DOM
+    // element — it still renders (unknown elements are inline, the style
+    // applies, so the canvas LOOKED right) but TipTap's ProseMirror parser
+    // drops unknown tags and keeps bare text, so entering text edit and
+    // blurring committed PLAIN text: the span's color mark vanished and
+    // white-on-white text "disappeared" (user repro 2026-08-05). The
+    // committed round-trip (htmlToJSX) re-emits plain `<span>`, which every
+    // layer handles.
+    const normalized = jsx
+      .replace(/<motion\.([a-zA-Z][\w-]*)/g, '<$1')
+      .replace(/<\/motion\.([a-zA-Z][\w-]*)>/g, '</$1>')
+      // The variantizer's `layout={true}` is a JSX-only prop — as HTML it
+      // would serialize into a junk attribute.
+      .replace(/\s+layout=\{true\}/g, '');
+    return normalized.replace(
       /style=\{\{([^}]*(?:\{[^}]*\}[^}]*)*)\}\}/g,
       (_, propsStr: string) => {
         const pairs = splitStyleProps(propsStr)

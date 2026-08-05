@@ -514,8 +514,8 @@ export class PostMessageBridge implements CanvasBridge {
    *                      resolves the hook independently, so DOM-mirroring
    *                      keystrokes across replicas just fights React.
    */
-  startTextEdit(nodeId: string, vpPrefix: string, initialHtml?: string, isResponsive?: boolean): void {
-    this.remote?.startTextEdit(nodeId, vpPrefix, initialHtml, isResponsive);
+  startTextEdit(nodeId: string, vpPrefix: string, initialHtml?: string, isResponsive?: boolean, syncExcludeVpIds?: string[]): void {
+    this.remote?.startTextEdit(nodeId, vpPrefix, initialHtml, isResponsive, syncExcludeVpIds);
   }
 
   /** Returns the final HTML (+ FIT re-fit values when the edited text sits in

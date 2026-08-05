@@ -744,12 +744,25 @@ export class CanvasTextEditController {
     const nodesNow = this.store.get(nodesAtom);
     const editingNode = nodesNow.get(stripGhostSuffix(nodeId));
     const isResponsive = !!editingNode?.textOverrides && Object.keys(editingNode.textOverrides).length > 0;
-    bridge.startTextEdit(nodeId, vpPrefix, textContent, isResponsive);
+    // Variant tiles with their OWN text override (a `{variant === 'x' ? … }`
+    // ternary or a per-variant text variable) keep their committed content —
+    // the sandbox's live keystroke mirror must skip them or typing on the
+    // primary overwrites every tile until commit restores them ("during
+    // typing they sync", 2026-08-05). 'default' is the edited fallback
+    // itself, never excluded.
+    const syncExcludeVpIds = [
+      ...Object.keys(editingNode?.conditionalText ?? {}),
+      ...Object.keys(editingNode?.conditionalTextVariable ?? {}),
+    ].filter((v) => v !== 'default');
+    bridge.startTextEdit(nodeId, vpPrefix, textContent, isResponsive, syncExcludeVpIds);
 
     // One undo entry per session: merge the creation that spawned this edit
     // with the content committed by it.
     holdHistoryCoalescing();
-    trace.action('canvas:text-edit-started', { nodeId, vpId: this.editingVpId });
+    trace.action('canvas:text-edit-started', {
+      nodeId, vpId: this.editingVpId, syncExcludeVpIds,
+      hasConditionalText: !!editingNode?.conditionalText,
+    });
   }
 
   // ─── dispose ──────────────────────────────────────────────────────────────

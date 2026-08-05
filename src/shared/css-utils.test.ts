@@ -411,3 +411,20 @@ describe('coerceCssNumberToPx — angle props', () => {
     expect(coerceCssNumberToPx('scale', '2')).toBe('2');
   });
 });
+
+describe('jsxStyleToHTML — motionized inline tags', () => {
+  // `<motion.span layout={true}>` materialized literally = unknown DOM
+  // element; it renders (styles apply) but ProseMirror drops unknown tags on
+  // text-edit seed → blur committed plain text and the span's color vanished
+  // (white-on-white "disappearing text", 2026-08-05).
+  it('normalizes motion.span to span and strips layout={true}', () => {
+    const jsx = `<motion.span layout={true} style={{ color: 'rgb(21, 21, 21)' }}>CONTACT US</motion.span>`;
+    const html = jsxStyleToHTML(jsx);
+    expect(html).toBe(`<span style="color: rgb(21, 21, 21)">CONTACT US</span>`);
+  });
+
+  it('plain spans pass through unchanged', () => {
+    const jsx = `<span style={{ fontWeight: '700' }}>bold</span> tail`;
+    expect(jsxStyleToHTML(jsx)).toBe(`<span style="font-weight: 700">bold</span> tail`);
+  });
+});
