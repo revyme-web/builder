@@ -511,6 +511,18 @@ function resolveConditionalText(
     // resolves the instance's `componentVariant`, not a blind null.
     variant = node.responsiveVariantMap[vpWidth] ?? node.componentVariant ?? null;
   }
+  // NESTED-instance fallback — the text twin of resolveVariantStyles' block:
+  // an instance nested inside another component (or on a plain page render,
+  // where variantName is null) has no responsiveVariantMap; its resolved
+  // variant lives ONLY in `componentVariant` (the baked `initialVariant`).
+  // Without this, a Button instance with initialVariant="variant-3" painted
+  // variant-3 STYLES (resolveVariantStyles has the fallback) but DEFAULT
+  // TEXT — "CONTACT US instead of the variant's text; live site correct,
+  // canvas wrong" (user report 2026-08-05).
+  if (!node.responsiveVariantMap && (!variant || variant === 'default')
+      && node.componentVariant && node.componentVariant !== 'default') {
+    variant = node.componentVariant;
+  }
   if (!variant) return null;
   return node.conditionalText[variant] ?? node.conditionalText['default'] ?? null;
 }
