@@ -59,6 +59,7 @@ import {
   setConditionalStyleInCode,
   updateBorderOverlayStyle,
   removeBorderOverlayStyle,
+  healSparseVariantDefaults,
 } from '../generation/generator-styles';
 import { setVariantVisibilityInCode } from '../generation/variant-visibility-gen';
 import {
@@ -1084,6 +1085,14 @@ export function flushNow(): void {
     // → undeclared `searchX` ref → crash. Neutralize the MISSING ones (page tree
     // too, not just canvasNodes); the marker stays so the tool shows "Missing".
     code = neutralizeMissingSearchFieldsInCode(code);
+    // ROOT-CAUSE HEAL for the sticky-residue class: components written before
+    // the CSS_NEUTRAL_FALLBACK seed carry `default: {}` next to sparse variant
+    // entries — framer-motion never resets a prop the target variant doesn't
+    // mention, so those values STICK on live after any breakpoint pass. The
+    // user can't know WHICH node is corrupted, so ANY edit to the file re-seeds
+    // every variant object. Cheap scan-only no-op when nothing is missing;
+    // validate-or-revert inside (can never make the file worse).
+    code = healSparseVariantDefaults(code);
 
     // SYNTAX GATE for the synchronous path. `processQueue` has always validated
     // + rolled back, but `flushNow` — which EVERY creator and the overlay tool
@@ -1957,6 +1966,11 @@ function processQueue(): void {
     // whose lifecycle useState stayed in the page. Heals the active file (page or
     // master). No-op when every referenced var is already declared.
     code = healMissingFormStateDeclarations(code);
+    // ROOT-CAUSE HEAL for the sticky-residue class (mirrors the flushNow hook):
+    // re-seed every sparse variant default so pre-CSS_NEUTRAL_FALLBACK
+    // components repair on ANY edit — the user can't know WHICH node carries
+    // `default: {}`. Scan-only no-op when healthy; validate-or-revert inside.
+    code = healSparseVariantDefaults(code);
   }
   const validationError = codeChanged ? validateGeneratedCode(code) : null;
   if (validationError) {

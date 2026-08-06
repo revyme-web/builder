@@ -1478,3 +1478,52 @@ describe('resolveResizedKeys (ordinal ownership)', () => {
     expect(out).not.toContain('392.02px');
   });
 });
+
+// ─── Animate-back seed: CSS-initial fallback (sticky variant residue) ────────
+// framer-motion never resets a prop the target variant doesn't mention. A
+// variant-only `flex`/`pointerEvents` with `default: {}` STUCK after any pass
+// through that variant (Nav logo centered on desktop after a breakpoint
+// crossing; buttons unclickable via pointerEvents residue — live find
+// 2026-08-06). When the base style carries no value, the default entry now
+// seeds the CSS INITIAL.
+
+describe('ensureDefaultHasBaseValues — CSS-initial fallback', () => {
+  const NAV_LIKE = `export default function Page() {
+const wrapVariants = {
+  default: {},
+  'variant-4': { pointerEvents: 'none' },
+};
+
+return (
+  <div data-id="root" style={{position: 'relative'}}>
+    <motion.div data-id="wrap" variants={wrapVariants} style={{display: 'flex', alignItems: 'center'}}></motion.div>
+  </div>
+);
+}`;
+
+  test('variant write of flex (no base flex) seeds default with the CSS initial', () => {
+    const result = updateVariantStyleInCode(NAV_LIKE, 'wrap', 'variant-4', { flex: '1 0 0px' });
+    expect(result).toMatch(/default:\s*\{[^}]*flex: '0 1 auto'/);
+    expect(result).toMatch(/'variant-4':\s*\{[^}]*flex: '1 0 0px'/);
+  });
+
+  test('heal path: ANY write to the variant unions its existing keys — pointerEvents residue gets its default seed', () => {
+    // variant-4 already carries pointerEvents (older write, default empty) —
+    // writing an unrelated prop must seed pointerEvents: 'auto' on default.
+    const result = updateVariantStyleInCode(NAV_LIKE, 'wrap', 'variant-4', { paddingTop: '8px' });
+    expect(result).toMatch(/default:\s*\{[^}]*pointerEvents: 'auto'/);
+  });
+
+  test('inline base still wins over the fallback', () => {
+    const withBase = NAV_LIKE.replace("style={{display: 'flex', alignItems: 'center'}}", "style={{display: 'flex', flex: '0 0 auto'}}");
+    const result = updateVariantStyleInCode(withBase, 'wrap', 'variant-4', { flex: '1 0 0px' });
+    expect(result).toMatch(/default:\s*\{[^}]*flex: '0 0 auto'/);
+    expect(result).not.toMatch(/default:\s*\{[^}]*flex: '0 1 auto'/);
+  });
+
+  test('INHERITED props are never force-seeded (no wrong initials)', () => {
+    const result = updateVariantStyleInCode(NAV_LIKE, 'wrap', 'variant-4', { color: '#fff' });
+    // color has no CSS_NEUTRAL_FALLBACK entry — default stays without it.
+    expect(result).not.toMatch(/default:\s*\{[^}]*color:/);
+  });
+});

@@ -85,6 +85,41 @@ const MOTION_TRANSFORM_NEUTRAL: Record<string, string> = {
   transformPerspective: '0',
 };
 
+/** CSS-INITIAL fallback for the animate-back seed — the LAST tier of
+ *  readBaseValues. When a variant write touches a prop the node's base style
+ *  doesn't carry (and it's not an SVG attr or motion transform), the default
+ *  entry previously got NOTHING — and framer-motion never resets a prop the
+ *  target variant doesn't mention, so the value STUCK after any pass through
+ *  that variant (live find 2026-08-06: a Nav wrapper's mobile-only
+ *  `flex: 1 0 0px` survived back to desktop after a breakpoint crossing —
+ *  logo centered until reload; the sibling `pointerEvents: none` residue made
+ *  buttons unclickable). Non-inherited props only: forcing initials on
+ *  INHERITED text props (color, font family/size/weight, lineHeight) would
+ *  sever inheritance — those are excluded deliberately, and the dialect
+ *  writes text styles inline on text nodes anyway (the inline base wins the
+ *  seed before this tier). */
+const CSS_NEUTRAL_FALLBACK: Record<string, string> = {
+  flex: '0 1 auto', flexGrow: '0', flexShrink: '1', flexBasis: 'auto',
+  alignSelf: 'auto', order: '0',
+  // Flex-CONTAINER props: UA stylesheets never set these, so their spec
+  // initials ARE the computed base on any element (unlike `display`, whose
+  // computed value is UA-per-tag — block for div, inline for span — and is
+  // therefore deliberately NOT seedable; where display matters the builder
+  // writes it inline and the inline tier wins the seed).
+  alignItems: 'normal', alignContent: 'normal', justifyContent: 'normal',
+  flexDirection: 'row', flexWrap: 'nowrap',
+  width: 'auto', height: 'auto',
+  minWidth: 'auto', minHeight: 'auto', maxWidth: 'none', maxHeight: 'none',
+  gap: '0px', rowGap: '0px', columnGap: '0px',
+  padding: '0px', paddingTop: '0px', paddingRight: '0px', paddingBottom: '0px', paddingLeft: '0px',
+  margin: '0px', marginTop: '0px', marginRight: '0px', marginBottom: '0px', marginLeft: '0px',
+  left: 'auto', top: 'auto', right: 'auto', bottom: 'auto',
+  borderRadius: '0px', opacity: '1',
+  backgroundColor: 'rgba(0, 0, 0, 0)', backgroundImage: 'none',
+  boxShadow: 'none', filter: 'none', backdropFilter: 'none',
+  pointerEvents: 'auto',
+};
+
 /** SVG presentation props whose BASE value lives as a tag ATTRIBUTE on
  *  shape/path elements (camel or kebab in JSX). Used by the animate-back
  *  seeding to give the default entry a real return value. Box/geometry
@@ -1206,6 +1241,289 @@ export function ensureVariantListWiring(code: string): string {
     .replace(/animate=\{initialVariant\}/g, "animate={['default', initialVariant]}");
 }
 
+/** The animate-back seed for `nodeId`, per prop, in tier order: inline style →
+ *  SVG presentation attr → motion-transform neutral → CSS initial
+ *  (CSS_NEUTRAL_FALLBACK). Extracted from updateVariantStyleInCode's closure so
+ *  healSparseVariantDefaults applies the IDENTICAL logic file-wide — two
+ *  implementations of the seed would drift. `pivotStyles` is the in-flight
+ *  write on the closure path (rotation-pivot mirror); the healer passes none. */
+function readBaseValuesForNode(
+  code: string,
+  nodeId: string,
+  props: string[],
+  pivotStyles?: Record<string, string>,
+): Record<string, string> {
+  const currentIdIdx = findJSXDataIdIndex(code, nodeId);
+  if (currentIdIdx === -1) return {};
+  // Find style={{ after data-id — TAG-BOUND: only accept a style attr on
+  // THIS tag. A styleless tag (e.g. a plain svg group child) must not read
+  // the NEXT tag's style object — that leaked a sibling's transformBox into
+  // this node's default entry as `x: 'fill-box'` (live find 2026-06-11;
+  // the jsx-tag-bound-regex lesson's exact failure mode).
+  const tagClose = findTagClose(code, currentIdIdx);
+  const searchEnd = tagClose === -1 ? Math.min(code.length, currentIdIdx + 2000) : tagClose;
+  const searchSlice = code.slice(currentIdIdx, searchEnd);
+  // SVG PRESENTATION props (fill/stroke family) carry their BASE as TAG
+  // ATTRS (`fill="#3b82f6"`, kebab `stroke-width="0"` or camel
+  // `strokeWidth="13"`), not inline style — without this fallback the
+  // animate-back seed silently skipped and a variant fill stuck on the
+  // live site when switching back to default (live report 2026-06-12,
+  // black fill never reverting to blue). Tag-bound: searchSlice only.
+  // Box/geometry attrs (width/height/x/y/d) are deliberately EXCLUDED —
+  // they belong to the attr channel, never to entry seeds.
+  const attrBase = (prop: string): string | null => {
+    if (!SVG_PRESENTATION_PROPS.has(prop)) return null;
+    const kebab = toKebab(prop);
+    for (const name of [prop, kebab]) {
+      const m = searchSlice.match(new RegExp(`\\s${name}="([^"]*)"`));
+      if (m) return m[1];
+    }
+    // No attr on the tag — the SVG spec default IS the base (except fill,
+    // whose spec default of black is too destructive to assume; our shapes
+    // always carry an explicit fill attr anyway).
+    return SVG_PRESENTATION_DEFAULTS[prop] ?? null;
+  };
+  const styleStart = searchSlice.indexOf('style={{');
+  if (styleStart === -1) {
+    // No inline style on this tag — presentation props still seed from
+    // ATTRS, and every requested motion transform prop needs its NEUTRAL
+    // animate-back value on the default entry.
+    const neutral: Record<string, string> = {};
+    for (const prop of props) {
+      const av = attrBase(prop);
+      if (av != null) { neutral[prop] = av; continue; }
+      if (prop in MOTION_TRANSFORM_NEUTRAL) { neutral[prop] = MOTION_TRANSFORM_NEUTRAL[prop]; continue; }
+      // Plain CSS prop with no base anywhere → seed its CSS initial (see
+      // CSS_NEUTRAL_FALLBACK — the sticky-residue class).
+      if (prop in CSS_NEUTRAL_FALLBACK) neutral[prop] = CSS_NEUTRAL_FALLBACK[prop];
+    }
+    return neutral;
+  }
+  const styleObjStart = currentIdIdx + styleStart + 'style={{'.length;
+  // Find matching }}
+  const posEnd = findStyleObjectEnd(code, styleObjStart);
+  const pos = posEnd === -1 ? code.length : posEnd;
+  const styleContent = code.slice(styleObjStart, pos);
+  const result: Record<string, string> = {};
+  for (const prop of props) {
+    // Match quoted OR unquoted-numeric inline values (motion props like
+    // `rotate: 14.1` are unquoted). ANCHORED at a key boundary — an
+    // unanchored `x\s*:` matched the trailing x of `transformBox:` and read
+    // its value ('fill-box') as the x base (live find 2026-06-11).
+    const propRegex = new RegExp(`(?:^|[,{\\s])${prop}\\s*:\\s*(?:'([^']*)'|"([^"]*)"|(-?\\d+(?:\\.\\d+)?))`);
+    const m = styleContent.match(propRegex);
+    if (m) { result[prop] = m[1] ?? m[2] ?? m[3] ?? ''; continue; }
+    // SVG presentation base from the tag's attrs (see attrBase above).
+    const av = attrBase(prop);
+    if (av != null) { result[prop] = av; continue; }
+    // A motion TRANSFORM prop set in some other variant but absent from the
+    // base/inline style needs an explicit NEUTRAL value on the default entry
+    // — otherwise framer-motion has no target to animate BACK to (rotate
+    // stays stuck when switching variant-1 → default). 0 for rotate/skew/
+    // translate, 1 for scale.
+    if (prop in MOTION_TRANSFORM_NEUTRAL) { result[prop] = MOTION_TRANSFORM_NEUTRAL[prop]; continue; }
+    // Plain CSS prop with no inline/attr base → seed its CSS initial so the
+    // default entry always states a return value (CSS_NEUTRAL_FALLBACK —
+    // framer never resets props the target variant doesn't mention; a
+    // mobile-only `flex`/`pointerEvents` stuck on desktop after a
+    // breakpoint crossing, 2026-08-06).
+    if (prop in CSS_NEUTRAL_FALLBACK) result[prop] = CSS_NEUTRAL_FALLBACK[prop];
+  }
+  // The rotation PIVOT (transformBox / transformOrigin) must be CONSTANT across
+  // variants. If it lives ONLY on the rotated variant, motion animates the
+  // origin into existence on the FIRST default→variant transition and the
+  // rotation wobbles / springs (subsequent toggles are fine once it's
+  // established). Mirror the pivot we're WRITING this pass onto the default
+  // entry too — harmless there (origin is irrelevant when rotate is 0) and it
+  // stops the origin from animating. No-op for non-rotation writes (styles has
+  // no pivot props).
+  if (pivotStyles) {
+    for (const p of ['transformBox', 'transformOrigin']) {
+      if (typeof pivotStyles[p] === 'string' && pivotStyles[p] !== '' && result[p] == null) {
+        result[p] = pivotStyles[p];
+      }
+    }
+  }
+  return result;
+}
+
+/** Keys a variant entry can carry that must NEVER be seeded into the default
+ *  entry: framer config objects (not styles) and SVG geometry (`d` belongs to
+ *  the attr channel — a morph target must not be flattened into rest state). */
+const VARIANT_SEED_SKIP_KEYS = new Set(['transition', 'transitionEnd', 'd']);
+
+/** Index of the `}` matching the `{` at `openIdx` — string-aware. -1 if unbalanced. */
+function findBraceEnd(code: string, openIdx: number): number {
+  let depth = 0;
+  let str: string | null = null;
+  for (let i = openIdx; i < code.length; i++) {
+    const ch = code[i];
+    if (str) {
+      if (ch === '\\') { i++; continue; }
+      if (ch === str) str = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') { str = ch; continue; }
+    if (ch === '{') depth++;
+    else if (ch === '}') { depth--; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+/** Top-level entries of a variants OBJECT literal (`default: {…}, 'variant-4':
+ *  {…}`), brace-aware — the flat `[^}]*` regexes elsewhere break on entries
+ *  carrying `transition: {…}`. Returns null on any shape it doesn't recognise
+ *  (spread, non-object value) so callers skip rather than guess. */
+function parseVariantEntries(
+  code: string,
+  objOpen: number,
+  objEnd: number,
+): { name: string; bodyStart: number; bodyEnd: number }[] | null {
+  const entries: { name: string; bodyStart: number; bodyEnd: number }[] = [];
+  let i = objOpen + 1;
+  while (i < objEnd) {
+    while (i < objEnd && /[\s,]/.test(code[i])) i++;
+    if (i >= objEnd) break;
+    const keyM = code.slice(i, Math.min(i + 200, objEnd)).match(/^(?:'([^']*)'|"([^"]*)"|([A-Za-z_$][\w$]*))\s*:/);
+    if (!keyM) return null;
+    const name = keyM[1] ?? keyM[2] ?? keyM[3];
+    i += keyM[0].length;
+    while (i < objEnd && /\s/.test(code[i])) i++;
+    if (code[i] !== '{') return null;
+    const bodyEnd = findBraceEnd(code, i);
+    if (bodyEnd === -1 || bodyEnd > objEnd) return null;
+    entries.push({ name, bodyStart: i, bodyEnd });
+    i = bodyEnd + 1;
+  }
+  return entries;
+}
+
+/** Top-level KEYS of one entry's object body — depth-1 only, so `transition:
+ *  { duration: 0.3 }` contributes `transition`, never `duration`. */
+function topLevelObjectKeys(code: string, bodyStart: number, bodyEnd: number): string[] {
+  const keys: string[] = [];
+  let i = bodyStart + 1;
+  while (i < bodyEnd) {
+    while (i < bodyEnd && /[\s,]/.test(code[i])) i++;
+    if (i >= bodyEnd) break;
+    const keyM = code.slice(i, Math.min(i + 200, bodyEnd)).match(/^(?:'([^']*)'|"([^"]*)"|([A-Za-z_$][\w$]*))\s*:/);
+    if (!keyM) break;
+    keys.push(keyM[1] ?? keyM[2] ?? keyM[3]);
+    i += keyM[0].length;
+    // Skip the VALUE up to the next top-level comma — string/bracket-aware.
+    let depth = 0;
+    let str: string | null = null;
+    while (i < bodyEnd) {
+      const ch = code[i];
+      if (str) {
+        if (ch === '\\') i++;
+        else if (ch === str) str = null;
+      } else if (ch === "'" || ch === '"' || ch === '`') str = ch;
+      else if (ch === '{' || ch === '[' || ch === '(') depth++;
+      else if (ch === '}' || ch === ']' || ch === ')') depth--;
+      else if (ch === ',' && depth === 0) break;
+      i++;
+    }
+  }
+  return keys;
+}
+
+/** FILE-WIDE sparse-default heal — the root-cause repair for the sticky-residue
+ *  class (live find 2026-08-06: a Nav built before CSS_NEUTRAL_FALLBACK carried
+ *  `default: {}` next to `'variant-4': { flex: '1 0 0px' }`; framer-motion never
+ *  resets a prop the target variant doesn't mention, so after ANY breakpoint
+ *  pass through variant-4 the flex stuck on desktop until reload — "completely
+ *  random" live-only breakage). The per-write heal in updateVariantStyleInCode
+ *  only repairs the ONE entry being touched; a user can't know which node in a
+ *  component is corrupted. This runs in the mutation-flush pipeline, so ANY
+ *  edit to a file re-establishes the invariant ensureVariantListWiring depends
+ *  on: the default entry states a base for every prop any entry animates.
+ *
+ *  Safety: seeds through the SAME readBaseValuesForNode tiers as the shipped
+ *  per-write heal (identical values, strictly wider coverage); only ADDS keys
+ *  missing from `default` (never touches an existing value); skips any object
+ *  whose shape it doesn't fully recognise; and validates the spliced result
+ *  with a real parse, reverting to the input on failure — the worst case is a
+ *  no-op, never a corrupted file. Idempotent: pass 2 finds nothing missing. */
+export function healSparseVariantDefaults(code: string): string {
+  if (code.indexOf('variants={') === -1) return code;
+
+  // WIRED objects only: a tag carrying both data-id and variants={Name}
+  // (plain or __applyInstanceSize-wrapped). An unreferenced const is dead
+  // weight, not animation state.
+  const wired = new Map<string, string>(); // varName → nodeId
+  const wireRe = /variants=\{(?:__applyInstanceSize\()?(\w+)/g;
+  let wm: RegExpExecArray | null;
+  while ((wm = wireRe.exec(code))) {
+    let tagStart = wm.index;
+    while (tagStart > 0 && code[tagStart] !== '<') tagStart--;
+    const tagClose = findTagClose(code, wm.index);
+    const tagSlice = code.slice(tagStart, tagClose === -1 ? Math.min(code.length, wm.index + 2000) : tagClose);
+    const idM = tagSlice.match(/data-id="([^"]*)"/);
+    if (idM && !wired.has(wm[1])) wired.set(wm[1], idM[1]);
+  }
+  if (wired.size === 0) return code;
+
+  // ONE pass for all const positions — a per-object regex would rescan the
+  // whole file per variants object (flushNow runs this on every mouseup).
+  const constOpen = new Map<string, number>(); // varName → index of its '{'
+  const constRe = /\bconst\s+(\w+)\s*=\s*\{/g;
+  let cm: RegExpExecArray | null;
+  while ((cm = constRe.exec(code))) {
+    if (wired.has(cm[1]) && !constOpen.has(cm[1])) constOpen.set(cm[1], cm.index + cm[0].length - 1);
+  }
+
+  const edits: { start: number; end: number; text: string }[] = [];
+  for (const [varName, nodeId] of wired) {
+    const objOpen = constOpen.get(varName);
+    if (objOpen === undefined) continue;
+    const objEnd = findBraceEnd(code, objOpen);
+    if (objEnd === -1) continue;
+    const entries = parseVariantEntries(code, objOpen, objEnd);
+    if (!entries) continue;
+    const def = entries.find((e) => e.name === 'default');
+    if (!def) continue; // hand-authored shape without our base layer — leave alone
+    const defaultKeys = new Set(topLevelObjectKeys(code, def.bodyStart, def.bodyEnd));
+    const missing: string[] = [];
+    for (const e of entries) {
+      if (e.name === 'default') continue;
+      for (const k of topLevelObjectKeys(code, e.bodyStart, e.bodyEnd)) {
+        if (VARIANT_SEED_SKIP_KEYS.has(k) || defaultKeys.has(k) || missing.includes(k)) continue;
+        missing.push(k);
+      }
+    }
+    if (missing.length === 0) continue;
+    const seed = readBaseValuesForNode(code, nodeId, missing);
+    if (Object.keys(seed).length === 0) continue;
+    let newInner = code.slice(def.bodyStart + 1, def.bodyEnd).trimEnd();
+    for (const [k, v] of Object.entries(seed)) {
+      if (newInner && !newInner.endsWith(',')) newInner += ',';
+      const key = k.startsWith('--') ? `'${k}'` : k;
+      // Motion transform props are numeric (unquoted), like the variant entries.
+      const isMotionNum = MOTION_TRANSFORM_PROPS.has(k) && /^-?\d+(\.\d+)?$/.test(v);
+      newInner += ` ${key}: ${isMotionNum ? v : quoteStyleValue(v)},`;
+    }
+    edits.push({ start: def.bodyStart + 1, end: def.bodyEnd, text: newInner });
+    trace.action('generator:heal-sparse-variant-defaults', { nodeId, varName, seeded: Object.keys(seed) });
+  }
+  if (edits.length === 0) return code;
+
+  let healed = code;
+  for (const e of edits.sort((a, b) => b.start - a.start)) {
+    healed = healed.slice(0, e.start) + e.text + healed.slice(e.end);
+  }
+  // VALIDATE-OR-REVERT: a heal must never make a file worse. Only runs when
+  // something was actually seeded (rare — once per corrupted file), so the
+  // parse cost never touches the hot no-op path.
+  try {
+    parseJSX(healed);
+  } catch (err) {
+    trace.error('generator:heal-sparse-variant-defaults-revert', { error: String(err) });
+    return code;
+  }
+  return healed;
+}
+
 export function updateVariantStyleInCode(
   code: string,
   nodeId: string,
@@ -1410,89 +1728,11 @@ function updateVariantStyleInCodeInner(
 
   // Helper: read base values from inline style={{...}} for the changed properties.
   // motion needs default variant to have base values so it knows what to animate BACK to.
-  const readBaseValues = (props: string[]): Record<string, string> => {
-    const currentIdIdx = findJSXDataIdIndex(code, nodeId);
-    if (currentIdIdx === -1) return {};
-    // Find style={{ after data-id — TAG-BOUND: only accept a style attr on
-    // THIS tag. A styleless tag (e.g. a plain svg group child) must not read
-    // the NEXT tag's style object — that leaked a sibling's transformBox into
-    // this node's default entry as `x: 'fill-box'` (live find 2026-06-11;
-    // the jsx-tag-bound-regex lesson's exact failure mode).
-    const tagClose = findTagClose(code, currentIdIdx);
-    const searchEnd = tagClose === -1 ? Math.min(code.length, currentIdIdx + 2000) : tagClose;
-    const searchSlice = code.slice(currentIdIdx, searchEnd);
-    // SVG PRESENTATION props (fill/stroke family) carry their BASE as TAG
-    // ATTRS (`fill="#3b82f6"`, kebab `stroke-width="0"` or camel
-    // `strokeWidth="13"`), not inline style — without this fallback the
-    // animate-back seed silently skipped and a variant fill stuck on the
-    // live site when switching back to default (live report 2026-06-12,
-    // black fill never reverting to blue). Tag-bound: searchSlice only.
-    // Box/geometry attrs (width/height/x/y/d) are deliberately EXCLUDED —
-    // they belong to the attr channel, never to entry seeds.
-    const attrBase = (prop: string): string | null => {
-      if (!SVG_PRESENTATION_PROPS.has(prop)) return null;
-      const kebab = toKebab(prop);
-      for (const name of [prop, kebab]) {
-        const m = searchSlice.match(new RegExp(`\\s${name}="([^"]*)"`));
-        if (m) return m[1];
-      }
-      // No attr on the tag — the SVG spec default IS the base (except fill,
-      // whose spec default of black is too destructive to assume; our shapes
-      // always carry an explicit fill attr anyway).
-      return SVG_PRESENTATION_DEFAULTS[prop] ?? null;
-    };
-    const styleStart = searchSlice.indexOf('style={{');
-    if (styleStart === -1) {
-      // No inline style on this tag — presentation props still seed from
-      // ATTRS, and every requested motion transform prop needs its NEUTRAL
-      // animate-back value on the default entry.
-      const neutral: Record<string, string> = {};
-      for (const prop of props) {
-        const av = attrBase(prop);
-        if (av != null) { neutral[prop] = av; continue; }
-        if (prop in MOTION_TRANSFORM_NEUTRAL) neutral[prop] = MOTION_TRANSFORM_NEUTRAL[prop];
-      }
-      return neutral;
-    }
-    const styleObjStart = currentIdIdx + styleStart + 'style={{'.length;
-    // Find matching }}
-    const posEnd = findStyleObjectEnd(code, styleObjStart);
-    const pos = posEnd === -1 ? code.length : posEnd;
-    const styleContent = code.slice(styleObjStart, pos);
-    const result: Record<string, string> = {};
-    for (const prop of props) {
-      // Match quoted OR unquoted-numeric inline values (motion props like
-      // `rotate: 14.1` are unquoted). ANCHORED at a key boundary — an
-      // unanchored `x\s*:` matched the trailing x of `transformBox:` and read
-      // its value ('fill-box') as the x base (live find 2026-06-11).
-      const propRegex = new RegExp(`(?:^|[,{\\s])${prop}\\s*:\\s*(?:'([^']*)'|"([^"]*)"|(-?\\d+(?:\\.\\d+)?))`);
-      const m = styleContent.match(propRegex);
-      if (m) { result[prop] = m[1] ?? m[2] ?? m[3] ?? ''; continue; }
-      // SVG presentation base from the tag's attrs (see attrBase above).
-      const av = attrBase(prop);
-      if (av != null) { result[prop] = av; continue; }
-      // A motion TRANSFORM prop set in some other variant but absent from the
-      // base/inline style needs an explicit NEUTRAL value on the default entry
-      // — otherwise framer-motion has no target to animate BACK to (rotate
-      // stays stuck when switching variant-1 → default). 0 for rotate/skew/
-      // translate, 1 for scale.
-      if (prop in MOTION_TRANSFORM_NEUTRAL) result[prop] = MOTION_TRANSFORM_NEUTRAL[prop];
-    }
-    // The rotation PIVOT (transformBox / transformOrigin) must be CONSTANT across
-    // variants. If it lives ONLY on the rotated variant, motion animates the
-    // origin into existence on the FIRST default→variant transition and the
-    // rotation wobbles / springs (subsequent toggles are fine once it's
-    // established). Mirror the pivot we're WRITING this pass onto the default
-    // entry too — harmless there (origin is irrelevant when rotate is 0) and it
-    // stops the origin from animating. No-op for non-rotation writes (styles has
-    // no pivot props).
-    for (const p of ['transformBox', 'transformOrigin']) {
-      if (typeof styles[p] === 'string' && styles[p] !== '' && result[p] == null) {
-        result[p] = styles[p];
-      }
-    }
-    return result;
-  };
+  // Module-level core (shared with healSparseVariantDefaults — the file-wide
+  // heal must seed IDENTICAL values or the two paths drift). `styles` rides
+  // along so the rotation-pivot mirror sees what this write carries.
+  const readBaseValues = (props: string[]): Record<string, string> =>
+    readBaseValuesForNode(code, nodeId, props, styles);
 
   // Check if this node has a variants={...} prop
   const tagEnd = code.indexOf('>', idIdx);

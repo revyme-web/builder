@@ -66,7 +66,10 @@ describe('compileComponentSpec', () => {
     const code = compileComponentSpec(menuSpec(), { nameFor, internalName: 'Menu' });
     expect(code).toContain('const connections =');
     expect(code).toMatch(/useState\(initialVariant\)/);
-    expect(code).toMatch(/onTap=\{\(\) => setVariant\(variant === 'default' \? 'open'/);
+    // Guarded handler form (no-match branches never call setVariant — the
+    // bubbled-ancestor-clobber fix, 2026-08-06).
+    expect(code).toMatch(/onTap=\{\(\) => \{\s*const _n = variant === 'default' \? 'open'/);
+    expect(code).toMatch(/if \(_n\) setVariant\(_n\);/);
   });
 
   it('emits a MotionConfig spring so transitions are smooth', () => {
