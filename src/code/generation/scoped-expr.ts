@@ -41,11 +41,35 @@ export function scopeKey(s: SerScope): string {
  *  useMediaQuery const. Bare `base` (no parens) when there are no overrides.
  *  Exported so instance-fx-gen reuses the SAME gating (one `__mqN` const can drive
  *  both a normal-node hover ternary and an instance-fx transform-range ternary). */
+/** Ternary-precedence key for a WIDTH-scoped override. max-width chains must
+ *  test the NARROWEST query first (outermost): at 375px BOTH `(max-width:
+ *  768px)` and `(max-width: 375px)` match, so array-order building let the
+ *  tablet branch shadow mobile — the Nav rendered its tablet variant on a
+ *  phone while the canvas (per-tile resolution) was correct (user report
+ *  2026-08-06). min-width is the inverse: widest first. Returns null for
+ *  non-width scopes (variant/locale), which keep their authored positions. */
+function scopeSpecificityKey(scope: SerScope): number | null {
+  const q = (scope as unknown as { query?: string })?.query;
+  if (!q) return null;
+  const mx = q.match(/max-width:\s*([\d.]+)px/);
+  if (mx) return parseFloat(mx[1]);
+  const mn = q.match(/min-width:\s*([\d.]+)px/);
+  if (mn) return -parseFloat(mn[1]); // widest min-width = most specific
+  return null;
+}
+
 export function buildScopedScalarExpr(
   code: string, base: string, responsive: Array<{ scope: SerScope; value: string }>,
 ): { code: string; expr: string } {
+  // Order width-scoped overrides most-specific-first among themselves (their
+  // slots in the array), leaving non-width scopes untouched. The reversed
+  // loop below makes the FIRST array entry the OUTERMOST ternary test.
+  const decorated = responsive.map((ov, i) => ({ ov, i, key: scopeSpecificityKey(ov.scope) }));
+  const widthSorted = decorated.filter(d => d.key != null).sort((a, b) => a.key! - b.key! || a.i - b.i);
+  let w = 0;
+  const ordered = decorated.map(d => (d.key != null ? widthSorted[w++].ov : d.ov));
   let expr = base;
-  for (const ov of [...responsive].reverse()) {
+  for (const ov of [...ordered].reverse()) {
     const t = scopeTest(code, ov.scope as ResolvedScope); code = t.code;
     if (t.test) expr = `${t.test} ? ${ov.value} : ${expr}`;
   }

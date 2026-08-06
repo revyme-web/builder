@@ -32,6 +32,29 @@ describe('Scroll Variant — page-level initialVariant control', () => {
     expect(getScrollVariant(out, 'hero')?.to).toBe('phone');
   });
 
+  it('WIDER-FIRST authored responsive scopes emit the NARROWEST query outermost (375 wins at 375px)', () => {
+    // The user's Nav spec authored overrides [768, 375]. buildScopedScalarExpr
+    // used to keep array order — the 768 gate tested first, and since BOTH
+    // max-width queries match at 375px, phones rendered the TABLET variant
+    // (live only; the canvas resolves per-tile — user report 2026-08-06).
+    const out = setScrollVariantInCode(PAGE, 'hero', {
+      trigger: 'sectionInView', from: 'default', viewport: 'top',
+      sections: [{ sectionId: 'about', to: 'variant-1' }],
+      responsive: [
+        { scope: { query: '(max-width: 768px)' }, from: 'variant-2', to: 'variant-3' },
+        { scope: { query: '(max-width: 375px)' }, from: 'variant-4', to: 'variant-4' },
+      ],
+    } as ScrollVariantSpec);
+    expect(parseJSX(out)).not.toBeNull();
+    const init = out.match(/useState\(\(([^)]+)\)\)/)?.[1] ?? '';
+    // Narrowest (375 → variant-4) must be the OUTERMOST test…
+    const first = init.match(/^(__mq\d+) \? 'variant-4'/);
+    expect(first).toBeTruthy();
+    // …and its gate must be the 375px query, with tablet next, base last.
+    expect(out).toMatch(new RegExp(`const ${first![1]} = useMediaQuery\\('\\(max-width: 375px\\)'\\)`));
+    expect(init).toMatch(/'variant-4' : __mq\d+ \? 'variant-2' : 'default'/);
+  });
+
   it('section bound to a VARIABLE re-queries getElementById(<var>) inside the handler (no cached ref)', () => {
     const out = setScrollVariantInCode(PAGE, 'hero', {
       trigger: 'sectionInView', from: 'default', viewport: 'middle',
