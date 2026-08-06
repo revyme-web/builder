@@ -372,6 +372,42 @@ export function sortChildrenByVisualOrder(
 
 // ─── Pure helpers (exported for testing) ────────────────────────────────────
 
+/** SHIFT+click range selection over the VISIBLE row list (the reference/Figma model):
+ *  EVERY selectable row between anchor and target in tree order — including
+ *  nested rows and parent+descendant pairs (shift-clicking from a deep child
+ *  up to an ancestor must select "everything on the way", user report
+ *  2026-08-06; an earlier ancestor-skip collapsed that whole range to just
+ *  the ancestor). Header rows and template chrome are skipped; the same node
+ *  visible in another viewport section is deduped. `redirect` is the
+ *  FIT-text wrapper redirect (injected so this stays pure/testable).
+ *  Returns null when there's no usable anchor/target — caller falls back to
+ *  an additive toggle. */
+export function computeRangeSelection(
+  rows: FlatLayer[],
+  anchorLayerId: string | null,
+  targetLayerId: string,
+  nodes: Map<string, CanvasNode>,
+  redirect: (nodeId: string, nodes: Map<string, CanvasNode>) => string | null,
+): string[] | null {
+  const anchorIdx = anchorLayerId ? rows.findIndex(r => r.id === anchorLayerId) : -1;
+  const targetIdx = rows.findIndex(r => r.id === targetLayerId);
+  if (anchorIdx < 0 || targetIdx < 0 || anchorIdx === targetIdx) return null;
+  const [lo, hi] = anchorIdx < targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
+  const rangeSet = new Set<string>();
+  const rangeIds: string[] = [];
+  for (let i = lo; i <= hi; i++) {
+    const row = rows[i];
+    if (!row.nodeId) continue; // viewport / variant header rows
+    const n = row.node;
+    if (!n || n.fromLayout || n.isChildrenSlot) continue;
+    const eff = redirect(row.nodeId, nodes) ?? row.nodeId;
+    if (rangeSet.has(eff)) continue;
+    rangeSet.add(eff);
+    rangeIds.push(eff);
+  }
+  return rangeIds.length > 0 ? rangeIds : null;
+}
+
 /** Precompute selection-related Sets for all layer rows in O(n). */
 export function computeSelectionSets(
   selectedLayerId: string | null,

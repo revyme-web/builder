@@ -192,3 +192,84 @@ describe('computeSelectionSets', () => {
     expect(result.lastHighlightedChildSet.size).toBe(0);
   });
 });
+
+// ─── computeRangeSelection (shift+click range, the reference/Figma model) ─────────────
+
+import { computeRangeSelection } from './LayersPanel';
+
+const noRedirect = () => null;
+
+/** Row list + node map for: root > [f1(c1), f2, f3, f4, f5] with c1 visible. */
+function rangeFixture() {
+  const nodes = new Map<string, CanvasNode>([
+    ['root', makeNode('root', ['f1', 'f2', 'f3', 'f4', 'f5'])],
+    ['f1', makeNode('f1', ['c1'], 'root')],
+    ['c1', makeNode('c1', [], 'f1')],
+    ['f2', makeNode('f2', [], 'root')],
+    ['f3', makeNode('f3', [], 'root')],
+    ['f4', makeNode('f4', [], 'root')],
+    ['f5', makeNode('f5', [], 'root')],
+  ]);
+  const row = (nodeId: string): FlatLayer => ({
+    id: `desktop:${nodeId}`, nodeId, node: nodes.get(nodeId)!,
+    depth: 0, hasChildren: false, isExpanded: false,
+  });
+  const header: FlatLayer = { ...makeLayer('__vp_desktop', null) };
+  const rows = [header, row('f1'), row('c1'), row('f2'), row('f3'), row('f4'), row('f5')];
+  return { nodes, rows };
+}
+
+describe('computeRangeSelection', () => {
+  test('anchor frame 1 → target frame 5 selects every visible row in order', () => {
+    const { nodes, rows } = rangeFixture();
+    const result = computeRangeSelection(rows, 'desktop:f1', 'desktop:f5', nodes, noRedirect);
+    expect(result).toEqual(['f1', 'c1', 'f2', 'f3', 'f4', 'f5']);
+  });
+
+  test('reverse direction (anchor 5 → target 1) selects the same range', () => {
+    const { nodes, rows } = rangeFixture();
+    const result = computeRangeSelection(rows, 'desktop:f5', 'desktop:f1', nodes, noRedirect);
+    expect(result).toEqual(['f1', 'c1', 'f2', 'f3', 'f4', 'f5']);
+  });
+
+  test('EVERY visible row in the span is selected — nested rows included', () => {
+    const { nodes, rows } = rangeFixture();
+    const result = computeRangeSelection(rows, 'desktop:f1', 'desktop:f3', nodes, noRedirect);
+    expect(result).toEqual(['f1', 'c1', 'f2', 'f3']); // c1 is visible in the span
+  });
+
+  test('deep child → ancestor selects everything on the way up (parent+descendant pairs allowed)', () => {
+    const { nodes, rows } = rangeFixture();
+    // Anchor at the expanded child c1, target its grandparent-level sibling
+    // range going UP to f1 (c1's own parent): both endpoints + span selected.
+    const result = computeRangeSelection(rows, 'desktop:c1', 'desktop:f1', nodes, noRedirect);
+    expect(result).toEqual(['f1', 'c1']);
+  });
+
+  test('range starting AT a child keeps the child', () => {
+    const { nodes, rows } = rangeFixture();
+    const result = computeRangeSelection(rows, 'desktop:c1', 'desktop:f3', nodes, noRedirect);
+    expect(result).toEqual(['c1', 'f2', 'f3']);
+  });
+
+  test('viewport header rows inside the range are skipped', () => {
+    const { nodes, rows } = rangeFixture();
+    // Header is row 0; put anchor before it is impossible — instead splice a
+    // header between f2 and f3 to prove mid-range headers are skipped.
+    const midHeader: FlatLayer = { ...makeLayer('__vp_tablet', null) };
+    const spliced = [...rows.slice(0, 4), midHeader, ...rows.slice(4)];
+    const result = computeRangeSelection(spliced, 'desktop:f1', 'desktop:f5', nodes, noRedirect);
+    expect(result).toEqual(['f1', 'c1', 'f2', 'f3', 'f4', 'f5']);
+  });
+
+  test('no anchor → null (caller falls back to toggle)', () => {
+    const { nodes, rows } = rangeFixture();
+    expect(computeRangeSelection(rows, null, 'desktop:f5', nodes, noRedirect)).toBeNull();
+    expect(computeRangeSelection(rows, 'desktop:gone', 'desktop:f5', nodes, noRedirect)).toBeNull();
+  });
+
+  test('anchor === target → null', () => {
+    const { nodes, rows } = rangeFixture();
+    expect(computeRangeSelection(rows, 'desktop:f2', 'desktop:f2', nodes, noRedirect)).toBeNull();
+  });
+});

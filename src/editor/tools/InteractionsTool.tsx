@@ -634,7 +634,9 @@ function AddInteractionMenu({ buttonRef, showSetVar, showClose, onSetVar, onClos
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
 
-  const itemCls = 'mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] whitespace-nowrap text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--accent)] cursor-pointer block';
+  // hover pairs bg accent WITH --accent-fg text — text-primary is white on
+  // dark themes and unreadable on a light accent (theme pairing rule).
+  const itemCls = 'mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] whitespace-nowrap text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] cursor-pointer block';
   return (
     <div className="relative" ref={ref}>
       <button

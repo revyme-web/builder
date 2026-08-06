@@ -30,11 +30,11 @@ import ToolDivider from '@/editor/controls/ToolDivider';
 // Row components + pure helpers, the drag-reorder handler, and the search filter
 // live in LayersPanel/ (Phase 7 god-file split, item 7.7). computeSelectionSets +
 // FlatLayer are re-exported below for existing importers of this module.
-import { LayerRow, computeSelectionSets, isNodeUnderOverlay, resolveDisplayForLayer, sortChildrenByVisualOrder, type FlatLayer } from './LayersPanel/rows';
+import { LayerRow, computeSelectionSets, computeRangeSelection, isNodeUnderOverlay, resolveDisplayForLayer, sortChildrenByVisualOrder, type FlatLayer } from './LayersPanel/rows';
 import { startLayerDrag, vpIdFromLayerId } from './LayersPanel/drag';
 import { filterLayersForSearch } from './LayersPanel/search';
 
-export { computeSelectionSets, type FlatLayer } from './LayersPanel/rows';
+export { computeSelectionSets, computeRangeSelection, type FlatLayer } from './LayersPanel/rows';
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -827,9 +827,17 @@ export default function LayersPanel() {
     if (!nodeId) return;
     // Same FIT-pair redirect as handleSelect — right-click must not select the inner.
     const ctxNodeId = redirectToFitTextWrapper(nodeId, nodes) ?? nodeId;
-    setSelectedIds([ctxNodeId]);
+    // Right-click on a row that's PART of the current multi-selection KEEPS
+    // the selection — the menu's actions (Create Layout, Make Component,
+    // Cut/Copy, …) read `selectedIds` and operate on all of it, exactly like
+    // right-clicking a multi-selection on the canvas. Re-targeting to the
+    // clicked row alone silently destroyed the multi-selection (user report
+    // 2026-08-06). Only a right-click OUTSIDE the selection re-targets.
+    if (!(selectedIds.length > 1 && selectedIds.includes(ctxNodeId))) {
+      setSelectedIds([ctxNodeId]);
+    }
     setContextMenu({ show: true, x: e.clientX, y: e.clientY, nodeId: ctxNodeId });
-  }, [setSelectedIds, setContextMenu, nodes]);
+  }, [setSelectedIds, setContextMenu, nodes, selectedIds]);
 
   // Inline rename
   // Double-click detection (ref lives in parent — survives child re-renders)
@@ -849,6 +857,34 @@ export default function LayersPanel() {
     }
   }, [renamingFromMenu]);
 
+  // SHIFT+click → RANGE select (the reference/Figma model): select EVERY visible row
+  // between the selection ANCHOR (the last plainly-clicked row — tracked as
+  // `selectedLayerId`; a Cmd-toggle updates it too) and the clicked row, in
+  // tree order — nested rows and parent+descendant pairs INCLUDED (a
+  // shift-click from a deep child up to an ancestor selects everything on
+  // the way, user report 2026-08-06). Cmd/Ctrl+click stays the INDIVIDUAL
+  // toggle (handleSelect additive). Rows are the on-screen `displayLayers`
+  // (expansion + search respected); header rows and template chrome are
+  // skipped. The anchor is KEPT, so a further shift+click re-ranges from
+  // the same start.
+  const handleRangeSelect = useCallback((layerId: string, nodeId: string) => {
+    const rangeIds = computeRangeSelection(
+      displayLayers, selectedLayerId, layerId, nodes, redirectToFitTextWrapper,
+    );
+    if (!rangeIds) {
+      // No usable anchor (nothing selected yet, or the anchor row is no
+      // longer visible) — fall back to an additive toggle so the click
+      // still does something sensible.
+      handleSelect(layerId, nodeId, selectedIds.length > 0);
+      return;
+    }
+    selectionFromLayerRef.current = true;
+    setSelectedIds(rangeIds);
+    const vpId = vpIdFromLayerId(layerId);
+    if (vpId) setInteractingVpId(vpId);
+    trace.action('layers:range-select', { anchor: selectedLayerId, target: layerId, count: rangeIds.length });
+  }, [displayLayers, selectedLayerId, selectedIds, nodes, handleSelect, setSelectedIds, setInteractingVpId]);
+
   // Wrap onSelect to detect double-clicks
   const handleLayerClick = useCallback((layerId: string, nodeId: string, e?: React.MouseEvent) => {
     const node = nodes.get(nodeId);
@@ -856,11 +892,16 @@ export default function LayersPanel() {
     // Layout and placeholder nodes are not selectable
     if (node?.fromLayout || node?.isChildrenSlot) return;
 
-    // Shift / Cmd / Ctrl + click → additive multi-select (same modifiers the
-    // canvas honors). Skip the double-click rename path entirely so a
-    // modifier-click only ever toggles the selection.
-    const additive = !!e && (e.shiftKey || e.metaKey || e.ctrlKey);
-    if (additive) {
+    // Modifier clicks skip the double-click rename path entirely.
+    // Cmd/Ctrl → individual toggle; Shift → range from the anchor.
+    const isToggle = !!e && (e.metaKey || e.ctrlKey);
+    const isRange = !!e && e.shiftKey && !isToggle;
+    if (isRange) {
+      lastLayerClickRef.current = { time: Date.now(), layerId };
+      handleRangeSelect(layerId, nodeId);
+      return;
+    }
+    if (isToggle) {
       lastLayerClickRef.current = { time: Date.now(), layerId };
       handleSelect(layerId, nodeId, true);
       return;
@@ -881,7 +922,7 @@ export default function LayersPanel() {
 
     // Single click → select
     handleSelect(layerId, nodeId);
-  }, [handleSelect, setRenamingId, nodes, isViewer]);
+  }, [handleSelect, handleRangeSelect, setRenamingId, nodes, isViewer]);
 
   const handleDoubleClickLayout = useCallback((node: CanvasNode) => {
     if (node.fromLayout) {

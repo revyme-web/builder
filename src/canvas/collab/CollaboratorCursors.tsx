@@ -216,7 +216,11 @@ function CollaboratorCursor({
             the pill to its content regardless of the containing block. */}
         <div
           onClick={handleClick}
-          className="absolute left-4 top-4 w-max flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[var(--text-primary)] text-[10px] font-medium whitespace-nowrap shadow-lg bg-[var(--accent)] cursor-pointer hover:scale-105 transition-transform"
+          // text-[var(--accent-fg)], NOT text-primary: the label sits ON the
+          // accent pill, and themes with a light accent pair it with a dark
+          // label — text-primary is white on dark themes (unreadable on
+          // khaki). --accent-fg is the per-theme "label on accent" token.
+          className="absolute left-4 top-4 w-max flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[var(--accent-fg)] text-[10px] font-medium whitespace-nowrap shadow-lg bg-[var(--accent)] cursor-pointer hover:scale-105 transition-transform"
           title={`Click to center on ${name}`}
         >
           {avatar ? (
@@ -269,7 +273,8 @@ function CollaboratorCursor({
       {/* `w-max` for the same reason as the on-canvas pill — the label
           is absolutely positioned inside a 32px-wide wrapper, so without
           an explicit content width it gets clamped and clips the name. */}
-      <div className="absolute left-1/2 -translate-x-1/2 mt-1 w-max px-2.5 py-1 rounded text-[var(--text-primary)] text-[9px] font-medium whitespace-nowrap shadow-md bg-[var(--accent)]">
+      {/* Label on accent → --accent-fg (same pairing rule as the pill above). */}
+      <div className="absolute left-1/2 -translate-x-1/2 mt-1 w-max px-2.5 py-1 rounded text-[var(--accent-fg)] text-[9px] font-medium whitespace-nowrap shadow-md bg-[var(--accent)]">
         {name}
       </div>
     </div>
