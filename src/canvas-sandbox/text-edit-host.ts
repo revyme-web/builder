@@ -683,11 +683,17 @@ export function runEditorCommand(command: TextEditCommand): void {
             .setTextSelection(from)
             .run();
         } else {
+          // textFillColor: null — a run that was previously made SOLID carries
+          // an opaque `-webkit-text-fill-color` mark (TextFillColorMark), and
+          // fill-color paints glyphs OVER the clipped gradient background: the
+          // gradient would apply but stay invisible ("switch back to gradient
+          // doesn't switch in the DOM", 2026-08-07). Applying a gradient claims
+          // the run's whole glyph-paint channel.
           editor
             .chain()
             .focus()
             .selectAll()
-            .setMark('textStyle', { backgroundGradient: value, color: 'transparent' })
+            .setMark('textStyle', { backgroundGradient: value, color: 'transparent', textFillColor: null })
             .setTextSelection(from)
             .run();
         }
@@ -698,7 +704,7 @@ export function runEditorCommand(command: TextEditCommand): void {
           editor
             .chain()
             .focus()
-            .setMark('textStyle', { backgroundGradient: value, color: 'transparent' })
+            .setMark('textStyle', { backgroundGradient: value, color: 'transparent', textFillColor: null })
             .run();
         }
       }

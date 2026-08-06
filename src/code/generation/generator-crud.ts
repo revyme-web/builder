@@ -1060,6 +1060,64 @@ function isInlineSpanElement(el: t.JSXElement): boolean {
   return false;
 }
 
+/** Remove one kebab-cased declaration from CSS style-attribute TEXT
+ *  (`"color: red; background: …"` — the form spans take inside a
+ *  useResponsiveText primary string). Declaration-name match is EXACT, so
+ *  `color` never eats `-webkit-text-fill-color`. Returns '' when nothing
+ *  survives (caller drops the attribute). */
+function removeCssPropFromStyleText(styleText: string, kebabProp: string): string {
+  const kept = styleText.split(';')
+    .map(d => d.trim())
+    .filter(Boolean)
+    .filter(d => {
+      const i = d.indexOf(':');
+      if (i === -1) return true; // malformed — keep as-is
+      return d.slice(0, i).trim().toLowerCase() !== kebabProp;
+    });
+  return kept.length ? kept.join('; ') + ';' : '';
+}
+
+/** Read one kebab-cased declaration's value from CSS style-attribute TEXT,
+ *  or null when absent — read twin of `removeCssPropFromStyleText`. */
+function readCssPropFromStyleText(styleText: string, kebabProp: string): string | null {
+  for (const d of styleText.split(';')) {
+    const i = d.indexOf(':');
+    if (i === -1) continue;
+    if (d.slice(0, i).trim().toLowerCase() === kebabProp) return d.slice(i + 1).trim();
+  }
+  return null;
+}
+
+/** Matches an inline span run in raw HTML-string content. */
+const HTML_SPAN_RE = /<(?:motion\.)?span\b/i;
+
+/**
+ * Strip one style property from every `<span style="…">` in an HTML STRING —
+ * the content form a useResponsiveText primary stores (kebab CSS in string
+ * attributes, NOT `style={{…}}` objects). Pure string surgery: an AST
+ * regenerate can introduce whitespace between children, and inside a string
+ * that whitespace RENDERS — a word split across runs ("pre|cisio|n") would
+ * gain spaces. Spans whose style empties lose the attribute; spans left with
+ * no attributes at all are unwrapped (innermost-first, so pairing is safe).
+ */
+export function stripSpanStylePropFromHtmlText(html: string, property: string): string {
+  if (!html || !HTML_SPAN_RE.test(html)) return html;
+  const target = toKebab(property);
+  let out = html.replace(
+    /(<(?:motion\.)?span\b[^>]*?)\s+style="([^"]*)"/gi,
+    (_m, pre: string, css: string) => {
+      const next = removeCssPropFromStyleText(css, target);
+      return next ? `${pre} style="${next}"` : pre;
+    },
+  );
+  // Unwrap attribute-less spans. The inner-content guard forbids nested span
+  // tags, so each pass only unwraps innermost bare spans; loop until stable.
+  const bare = /<(?:motion\.)?span\s*>((?:(?!<\/?(?:motion\.)?span\b)[\s\S])*?)<\/(?:motion\.)?span\s*>/gi;
+  let prev: string;
+  do { prev = out; out = out.replace(bare, '$1'); } while (out !== prev);
+  return out;
+}
+
 /** The kebab-cased key name of an inline-style ObjectProperty, or null. */
 function styleObjectPropKey(p: t.Node): string | null {
   if (p.type !== 'ObjectProperty' || (p as t.ObjectProperty).computed) return null;
@@ -1087,6 +1145,26 @@ function stripPropFromInlineChildren(
   const out: t.JSXElement['children'] = [];
 
   for (const child of children) {
+    // Rich content stored as an HTML STRING inside `useResponsiveText(primary,
+    // {…})` (the per-viewport text-override container): the flatten must reach
+    // the PRIMARY string's spans or it silently no-ops on any node carrying
+    // text overrides ("switch back to solid doesn't update", 2026-08-07).
+    // Override strings are independent per-viewport content — untouched.
+    if (child.type === 'JSXExpressionContainer') {
+      const expr = child.expression;
+      if (
+        expr.type === 'CallExpression'
+        && expr.callee.type === 'Identifier'
+        && expr.callee.name === 'useResponsiveText'
+        && expr.arguments[0]?.type === 'StringLiteral'
+      ) {
+        const next = stripSpanStylePropFromHtmlText(expr.arguments[0].value, property);
+        if (next !== expr.arguments[0].value) expr.arguments[0] = t.stringLiteral(next);
+      }
+      out.push(child);
+      continue;
+    }
+
     if (child.type !== 'JSXElement') {
       out.push(child);
       continue;
@@ -1113,6 +1191,12 @@ function stripPropFromInlineChildren(
       if (obj.properties.length === 0) {
         opening.attributes = opening.attributes.filter(a => a !== styleAttr);
       }
+    } else if (styleAttr && styleAttr.value?.type === 'StringLiteral') {
+      // HTML-string span form (`style="color: red;"`) appearing as a direct
+      // JSX child — same declaration-level strip as the string-content path.
+      const next = removeCssPropFromStyleText(styleAttr.value.value, target);
+      if (next) styleAttr.value = t.stringLiteral(next);
+      else opening.attributes = opening.attributes.filter(a => a !== styleAttr);
     }
 
     const inner = stripPropFromInlineChildren(child.children, property);
@@ -1199,6 +1283,11 @@ function readSpanStylePropValue(el: t.JSXElement, property: string): string | nu
   const styleAttr = el.openingElement.attributes.find(
     (a): a is t.JSXAttribute => a.type === 'JSXAttribute' && a.name?.name === 'style',
   );
+  // HTML-string span form (`style="color: red;"` — a useResponsiveText
+  // primary's runs) — read the declaration text directly.
+  if (styleAttr?.value?.type === 'StringLiteral') {
+    return readCssPropFromStyleText(styleAttr.value.value, target);
+  }
   if (
     !styleAttr
     || styleAttr.value?.type !== 'JSXExpressionContainer'

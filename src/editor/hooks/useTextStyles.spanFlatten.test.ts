@@ -95,6 +95,47 @@ describe('planSpanFlatten', () => {
   });
 });
 
+describe('useResponsiveText (HTML-string) runs — hasMixedContent is FALSE', () => {
+  // A node with per-viewport text overrides stores its primary content as an
+  // HTML STRING inside useResponsiveText(…) and parses with hasMixedContent
+  // FALSE — keying the flatten on the flag left those spans out-painting every
+  // node-level write ("switch back to solid doesn't update", 2026-08-07). The
+  // content probe alone decides; keys are KEBAB in this form.
+  const STRING_RUNS =
+    '<span style="color: transparent; -webkit-text-fill-color: rgb(233, 103, 103);">Building with pre</span>'
+    + '<span style="color: transparent; -webkit-text-fill-color: rgb(233, 103, 103);">cision</span>';
+
+  test('base write strips despite hasMixedContent false', () => {
+    const plan = planSpanFlatten({
+      property: 'color', hasMixedContent: false, textContent: STRING_RUNS, isScopedWrite: false,
+    });
+    expect(plan.strip).toBe(true);
+  });
+
+  test('kebab-only keys are probed (camel probe was blind to font-size:)', () => {
+    const plan = planSpanFlatten({
+      property: 'fontSize', hasMixedContent: false,
+      textContent: '<span style="font-size: 40px;">on and exp</span>', isScopedWrite: false,
+    });
+    expect(plan.strip).toBe(true);
+  });
+
+  test('scoped write hoists the single string-form span value', () => {
+    const plan = planSpanFlatten({
+      property: 'fontSize', hasMixedContent: false,
+      textContent: '<span style="font-size: 40px;">all the text</span>', isScopedWrite: true,
+    });
+    expect(plan.strip).toBe(true);
+    expect(plan.hoistValue).toBe('40px');
+  });
+
+  test('span-less plain content still never strips', () => {
+    expect(planSpanFlatten({
+      property: 'color', hasMixedContent: false, textContent: 'sdfqsdfqsdf', isScopedWrite: false,
+    })).toEqual({ strip: false });
+  });
+});
+
 describe('motion.span runs (design-component variantized text)', () => {
   // The variant pass motionizes inner spans (`<span>` → `<motion.span
   // layout={true}>`). The cheap `'<span'` probe was blind to them, so inside

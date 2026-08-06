@@ -25,6 +25,7 @@ import { selectedIdsAtom, getNodesSnapshot } from '@/code/stores/store';
 import { isComponentVariantViewportAtom, activeComponentVariantAtom } from '@/code/stores/viewport-store';
 import { queueMutation, setForceRender } from '@/code/mutation/mutation-queue';
 import { TEXT_MARK_SPAN_PROPS, getInlineSpanPropertyState } from '@/code/generation/generator-crud';
+import { toKebab } from '@/shared/css-utils';
 import { useControl } from '../controls/ControlProvider';
 import { trace } from '@/shared/debug-trace';
 
@@ -37,12 +38,15 @@ import { trace } from '@/shared/debug-trace';
 const INLINE_SPAN_RE = /<(?:motion\.)?span\b/;
 
 /** Cheap guard: does this node's rich content actually carry an inline `<span>`
- *  override for `property`? Inline-style keys in our JSX are camelCase
- *  identifiers (`color:` / `fontWeight:`), so a word-boundary key probe avoids
- *  queuing a no-op strip (and an unnecessary re-parse) when no span has it. */
+ *  override for `property`? Probes BOTH key forms: camelCase (`fontWeight:` —
+ *  JSX-children `style={{…}}` runs) and kebab (`font-size:` — the HTML-string
+ *  runs inside a useResponsiveText primary, which the camel probe was blind
+ *  to). Avoids queuing a no-op strip (and re-parse) when no span has it. */
 function spanContentCarriesProp(textContent: string, property: string): boolean {
   if (!INLINE_SPAN_RE.test(textContent)) return false;
-  return new RegExp(`\\b${property}\\s*:`).test(textContent);
+  const kebab = toKebab(property);
+  const kebabProbe = kebab.startsWith('-') ? kebab : `\\b${kebab}`;
+  return new RegExp(`(?:\\b${property}|${kebabProbe})\\s*:`).test(textContent);
 }
 
 interface TextStyleValue {
@@ -154,9 +158,13 @@ export function planSpanFlatten(args: {
   /** Write goes to a viewport `@media` rule / variant object, not the base. */
   isScopedWrite: boolean;
 }): { strip: boolean; hoistValue?: string } {
-  const { property, hasMixedContent, textContent, isScopedWrite } = args;
+  const { property, textContent, isScopedWrite } = args;
   if (!TEXT_MARK_SPAN_PROPS.has(property)) return { strip: false };
-  if (!hasMixedContent || !spanContentCarriesProp(textContent, property)) return { strip: false };
+  // NOTE: hasMixedContent is deliberately NOT required — a useResponsiveText
+  // node (per-viewport text overrides) parses with hasMixedContent FALSE while
+  // its primary string still carries `<span style="…">` runs. The content
+  // probe alone decides; span-less content never strips either way.
+  if (!spanContentCarriesProp(textContent, property)) return { strip: false };
   if (!isScopedWrite) return { strip: true };
   const spanState = getInlineSpanPropertyState(textContent, property, '');
   if (spanState.isMixed || !spanState.value) return { strip: false };
@@ -209,7 +217,9 @@ export function useTextStyles(): UseTextStylesReturn {
         // props aren't span-overridable). Plain (non-rich) nodes fall through.
         if (TEXT_MARK_SPAN_PROPS.has(property)) {
           const node = selectedIds.length > 0 ? getNodesSnapshot().get(selectedIds[0]) : undefined;
-          if (node?.hasMixedContent && INLINE_SPAN_RE.test(node.textContent)) {
+          // Content probe, NOT hasMixedContent: a useResponsiveText node parses
+          // with hasMixedContent false while its primary string carries spans.
+          if (node && INLINE_SPAN_RE.test(node.textContent)) {
             const state = getInlineSpanPropertyState(node.textContent, property, v);
             trace.fn('useTextStyles.get', {
               property, mode: 'node-rich', value: state.value, isMixed: state.isMixed,
@@ -303,6 +313,17 @@ export function useTextStyles(): UseTextStylesReturn {
               // leaving the fill-color would keep shadowing the node's new value.
               if (property === 'color') {
                 queueMutation({ type: 'stripInlineSpanStyle', nodeId: id, property: 'WebkitTextFillColor' });
+                // Span-level GRADIENT runs (`background: …gradient() text` on
+                // the span itself) out-paint any node-level solid AND keep the
+                // node classified as gradient text after the flatten — the
+                // popup would reopen on Gradient forever. They fall with the
+                // color. Base writes only: a scoped strip would delete paint
+                // the other viewports still rely on.
+                if (!isScopedWrite && /(?:linear|radial|conic)-gradient\(/.test(node?.textContent ?? '')) {
+                  for (const p of ['background', 'backgroundImage', 'WebkitBackgroundClip', 'backgroundClip']) {
+                    queueMutation({ type: 'stripInlineSpanStyle', nodeId: id, property: p });
+                  }
+                }
               }
               // The strip flips the node rich→plain (hasMixedContent true→false:
               // its content goes from inner <span> runs to bare text). The

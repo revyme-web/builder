@@ -3,6 +3,7 @@ import { transform } from '@babel/standalone';
 import {
   stripInlineSpanProperty,
   stripInlineSpanStyleInCode,
+  stripSpanStylePropFromHtmlText,
   getInlineSpanPropertyState,
   TEXT_MARK_SPAN_PROPS,
 } from './generator-crud';
@@ -131,6 +132,86 @@ export default function Page() {
   });
 });
 
+// The HTML-STRING content form a useResponsiveText primary stores — kebab CSS
+// in string attributes. Exactly the poisoned shape from the 2026-08-07 report:
+// every run carries a span gradient AND an opaque fill-color, and the word
+// "precision" is split across three adjacent runs (whitespace-sensitive).
+const G1 = 'linear-gradient(rgb(44, 17, 17) 0%, rgb(255, 255, 255) 100%)';
+const G2 = 'linear-gradient(rgb(112, 87, 87) 0%, rgb(255, 255, 255) 100%)';
+const RESPONSIVE_PRIMARY =
+  `<span style="color: transparent; background: ${G1} text; -webkit-text-fill-color: rgb(233, 103, 103);">Building your future with pre</span>` +
+  `<span style="color: transparent; background: ${G2} text; -webkit-text-fill-color: rgb(233, 103, 103);">cisio</span>` +
+  `<span style="color: transparent; background: ${G1} text; -webkit-text-fill-color: rgb(233, 103, 103);">n and expertise.</span>`;
+const PAINT_CHANNELS = ['color', 'WebkitTextFillColor', 'background', 'backgroundImage', 'WebkitBackgroundClip', 'backgroundClip'];
+
+describe('stripSpanStylePropFromHtmlText — HTML-string (useResponsiveText) span form', () => {
+  it('strips one declaration, exact-name only (color never eats -webkit-text-fill-color)', () => {
+    const out = stripSpanStylePropFromHtmlText(RESPONSIVE_PRIMARY, 'color');
+    expect(out).not.toMatch(/[^-]color: transparent/);
+    expect(out).toContain('-webkit-text-fill-color: rgb(233, 103, 103);'); // untouched
+    expect(out).toContain('background:'); // untouched
+  });
+
+  it('stripping background leaves background-clip alone (exact declaration name)', () => {
+    const frag = '<span style="background: red; background-clip: text;">x</span>';
+    const out = stripSpanStylePropFromHtmlText(frag, 'background');
+    expect(out).not.toContain('background: red');
+    expect(out).toContain('background-clip: text');
+  });
+
+  it('introduces NO whitespace — a word split across adjacent runs stays intact', () => {
+    let out = RESPONSIVE_PRIMARY;
+    for (const p of PAINT_CHANNELS) out = stripSpanStylePropFromHtmlText(out, p);
+    // Every style empties → attributes drop → bare spans unwrap → plain text,
+    // byte-exact. Any regenerate-introduced whitespace would render as a space
+    // inside "precision".
+    expect(out).toBe('Building your future with precision and expertise.');
+  });
+
+  it('drops the style attribute when it empties but keeps a span with other attributes', () => {
+    const frag = '<span data-x="1" style="color: red;">keep</span>';
+    const out = stripSpanStylePropFromHtmlText(frag, 'color');
+    expect(out).toContain('<span data-x="1">keep</span>');
+  });
+
+  it('no-ops on span-less or empty content', () => {
+    expect(stripSpanStylePropFromHtmlText('plain words', 'color')).toBe('plain words');
+    expect(stripSpanStylePropFromHtmlText('', 'color')).toBe('');
+  });
+});
+
+describe('stripInlineSpanStyleInCode — useResponsiveText (per-viewport text override) node', () => {
+  const RESP_PAGE = `import React from 'react';
+export default function Page() {
+  return <div data-id="root">
+    <p data-id="hero-text" style={{ fontSize: '60px', color: '#543030' }}>{useResponsiveText(${JSON.stringify(RESPONSIVE_PRIMARY)}, {
+      768: "<span style=\\"color: rgb(88, 113, 248); font-size: 40px;\\">on and exp</span>",
+      464: "sdfqsdfqsdf"
+    }, [464, 768, 1440])}</p>
+  </div>;
+}`;
+
+  it('reaches the PRIMARY string spans (the JSX-children-only walk silently no-opped)', () => {
+    const out = stripInlineSpanStyleInCode(RESP_PAGE, 'hero-text', 'color');
+    expect(out).not.toContain('color: transparent'); // primary span colors gone
+    expect(out).toContain("color: '#543030'"); // node's own style untouched
+    parsesOk(out);
+  });
+
+  it('leaves the per-viewport OVERRIDE strings untouched (independent content)', () => {
+    const out = stripInlineSpanStyleInCode(RESP_PAGE, 'hero-text', 'color');
+    expect(out).toContain('color: rgb(88, 113, 248)'); // 768 override keeps its run
+    expect(out).toContain('sdfqsdfqsdf');
+  });
+
+  it('stripping every paint channel flattens the primary to exact plain text', () => {
+    let out = RESP_PAGE;
+    for (const p of PAINT_CHANNELS) out = stripInlineSpanStyleInCode(out, 'hero-text', p);
+    expect(out).toContain('useResponsiveText("Building your future with precision and expertise."');
+    parsesOk(out);
+  });
+});
+
 describe('getInlineSpanPropertyState — MIXED read on a rich-text node', () => {
   const A = 'rgb(48, 57, 94)';
   const B = 'rgb(133, 143, 183)';
@@ -204,5 +285,21 @@ describe('getInlineSpanPropertyState — MIXED read on a rich-text node', () => 
     const state = getInlineSpanPropertyState('', 'color', '#123456');
     expect(state.isMixed).toBe(false);
     expect(state.value).toBe('#123456');
+  });
+
+  it('reads HTML-string (kebab) span styles — the useResponsiveText primary form', () => {
+    const frag =
+      '<span style="color: rgb(1, 2, 3);">a</span>'
+      + '<span style="color: rgb(9, 9, 9); font-size: 40px;">b</span>';
+    const state = getInlineSpanPropertyState(frag, 'color', '#2F4020');
+    expect(state.isMixed).toBe(true);
+    expect(state.mixedValues).toEqual(['rgb(1, 2, 3)', 'rgb(9, 9, 9)']);
+  });
+
+  it('reads a single HTML-string span value (kebab-prefixed property)', () => {
+    const frag = '<span style="-webkit-text-fill-color: rgb(233, 103, 103);">solid run</span>';
+    const state = getInlineSpanPropertyState(frag, 'WebkitTextFillColor', '');
+    expect(state.isMixed).toBe(false);
+    expect(state.value).toBe('rgb(233, 103, 103)');
   });
 });

@@ -14,7 +14,8 @@ import GradientEditor from '../../../ui/GradientEditor';
 import CreateColorPresetPanel from '../../../ui/CreateColorPresetPanel';
 import ColorPresetEditPanel from '../../../ui/ColorPresetEditPanel';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
-import { queueMutation } from '@/code/mutation/mutation-queue';
+import { queueMutation, setForceRender } from '@/code/mutation/mutation-queue';
+import { isComponentVariantViewportAtom } from '@/code/stores/viewport-store';
 import { injectCanvasCSS, removeCanvasCSS, getInteractingViewport, getViewportPrefix } from '@/canvas/node-ops';
 import { toHexDisplay } from '../../../ui/color-utils';
 import { useTextStyles, readFromSnapshot } from '../../../hooks/useTextStyles';
@@ -38,6 +39,102 @@ function detectTab(styles: Record<string, string>): ColorTab {
   return 'solid';
 }
 
+/** Gradient text can ALSO live as per-run SPAN MARKS (an edit-mode gradient
+ *  application stores `<span style={{background: 'linear-gradient(…)',
+ *  WebkitBackgroundClip: 'text', …}}>` in the node's rich content — the
+ *  node's OWN styles carry nothing). Node-styles-only detection was blind to
+ *  that: the row showed `#00000000` and the popup opened on the wrong tab
+ *  ("shows black instead of gradient", 2026-08-06). */
+function nodeCarriesSpanGradient(textContent: string | undefined | null): boolean {
+  if (!textContent) return false;
+  return /(?:linear|radial|conic)-gradient\(/.test(textContent)
+    && /[Bb]ackground[-]?[Cc]lip['"]?\s*:\s*['"]?text/.test(textContent);
+}
+
+/** First gradient function in the rich content — for the row swatch when the
+ *  gradient lives in span marks. Handles one nesting level (rgb()/var()). */
+function extractSpanGradientCSS(textContent: string | undefined | null): string {
+  if (!textContent) return '';
+  const m = /((?:linear|radial|conic)-gradient\((?:[^()]|\([^()]*\))*\))/.exec(textContent);
+  return m ? m[1] : '';
+}
+
+/** All color tokens in a CSS string (hex / rgb(a) / hsl(a)) — for building
+ *  the Mixed preview from the gradient's stops. */
+function extractColorTokens(css: string | undefined | null): string[] {
+  if (!css) return [];
+  return css.match(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/g) ?? [];
+}
+
+/** Distinct solid TEXT colors carried by span runs in the rich content —
+ *  matches plain `color:` in both the kebab HTML-string form (inside a
+ *  useResponsiveText primary) and the camelCase JSX form. The lookbehind
+ *  excludes `-webkit-text-fill-color` / `background-color`; camel variants
+ *  (`WebkitTextFillColor`, `backgroundColor`) miss on case. Fully-transparent
+ *  values are dropped. */
+function extractSpanTextColors(textContent: string | undefined | null): string[] {
+  if (!textContent || !/<(?:motion\.)?span\b/i.test(textContent)) return [];
+  const out = new Set<string>();
+  const re = /(?<![-\w])['"]?color['"]?\s*:\s*['"]?(#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)|[a-z]{3,20}\b)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(textContent))) {
+    const v = m[1];
+    if (!isFullyTransparentColor(v)) out.add(v);
+  }
+  return [...out];
+}
+
+/** Hard-stop swatch blending the gradient's stops with the solid run colors —
+ *  the "Mixed" row preview for text combining gradient + solid runs. */
+function buildMixedSwatchCSS(gradientCSS: string, spanColors: string[]): string {
+  const colors = [...extractColorTokens(gradientCSS).slice(0, 2), ...spanColors].slice(0, 4);
+  if (colors.length === 0) return '';
+  const n = colors.length;
+  const segs = colors
+    .map((c, i) => `${c} ${Math.round((i * 100) / n)}% ${Math.round(((i + 1) * 100) / n)}%`)
+    .join(', ');
+  return `linear-gradient(90deg, ${segs})`;
+}
+
+/** A color that paints NOTHING — the gradient dialect writes the node's
+ *  `color` as `rgba(0, 0, 0, 0)` (not the keyword `transparent`), and guards
+ *  comparing only against the keyword let zero-alpha rgba pass as a "real
+ *  solid" — the row showed `#00000000` and the popup opened on Solid over
+ *  gradient text (2026-08-07, the trace-confirmed hole). */
+function isFullyTransparentColor(v: string | undefined | null): boolean {
+  const s = (v || '').trim().toLowerCase();
+  if (!s || s === 'transparent') return true;
+  if (/^#(?:0{8}|0{4})$/.test(s)) return true; // #00000000 / #0000
+  // rgba(..., 0) / hsla(..., 0) — comma syntax with zero alpha.
+  if (/^(?:rgba|hsla)\([^)]*,\s*(?:0|0?\.0+|0%)\s*\)$/.test(s)) return true;
+  // Modern space syntax: rgb(0 0 0 / 0), color(... / 0%).
+  if (/^(?:rgb|rgba|hsl|hsla|color)\([^)]*\/\s*(?:0|0?\.0+|0%)\s*\)$/.test(s)) return true;
+  return false;
+}
+
+/** Inline span runs present in the node's rich content — either JSX-children
+ *  `style={{…}}` runs (hasMixedContent nodes) OR HTML-string runs inside a
+ *  useResponsiveText primary (which parse with hasMixedContent FALSE — keying
+ *  on the flag alone left those nodes' spans out-painting every node-level
+ *  write). */
+function contentHasSpanRuns(textContent: string | undefined | null): boolean {
+  return /<(?:motion\.)?span\b/i.test(textContent ?? '');
+}
+
+/** Span paint channels a NODE-level paint apply (solid or gradient, out of
+ *  edit mode) must flatten: any of these surviving on a run out-paints the
+ *  node's new value (fill-color over a node gradient, `color: transparent`
+ *  over a node solid, span gradients over both). Highlight (`backgroundColor`)
+ *  is orthogonal and deliberately not here. */
+const SPAN_PAINT_CHANNEL_PROPS = [
+  'color',
+  'WebkitTextFillColor',
+  'background',
+  'backgroundImage',
+  'WebkitBackgroundClip',
+  'backgroundClip',
+];
+
 /** CSS properties to clear when removing gradient text */
 const GRADIENT_CLEAR: Record<string, string> = {
   background: '',
@@ -48,7 +145,7 @@ const GRADIENT_CLEAR: Record<string, string> = {
 };
 
 /** Popup content: Solid/Gradient tabs + picker with color presets */
-function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit, onGradientChange, onGradientLiveChange, onClearGradient, currentValue, initialTab }: {
+function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit, onGradientChange, onGradientLiveChange, onClearGradient, currentValue, initialTab, gradientContext, gradientCSS: gradientCSSProp }: {
   styles: Record<string, string>;
   isEditing: boolean;
   /** Tab seeded from the live SELECTION state (edit mode: a gradient mark on
@@ -56,6 +153,13 @@ function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit
    *  node's styles — so selecting a solid run inside gradient text opens the
    *  picker on Solid with that run's color, matching the other controls. */
   initialTab?: ColorTab;
+  /** The node's gradient-text context (node styles OR span-mark gradients) —
+   *  the fallback when the selection carries no explicit marks. Node styles
+   *  alone are blind to span-carried gradients. */
+  gradientContext?: boolean;
+  /** Resolved gradient CSS for the editor (covers span-carried gradients —
+   *  node styles alone would seed the GradientEditor empty). */
+  gradientCSS?: string;
   onColorChange: (color: string) => void;
   /** Commit (code write) — fires on drag release + one-shot edits. */
   onColorCommit: (color: string) => void;
@@ -87,8 +191,9 @@ function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit
   };
   const selGradient = selMark('backgroundGradient');
   const selColor = selMark('color');
+  const fallbackTab: ColorTab = gradientContext ? 'gradient' : detectTab(styles);
   const liveTab: ColorTab | null = isEditing && editSnapshot
-    ? (selGradient ? 'gradient' : (selColor && selColor !== 'transparent' ? 'solid' : detectTab(styles)))
+    ? (selGradient ? 'gradient' : (selColor && !isFullyTransparentColor(selColor) ? 'solid' : fallbackTab))
     : null;
   useEffect(() => {
     if (liveTab) setTab(liveTab);
@@ -131,7 +236,8 @@ function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit
     ));
   }, [popupCtx, colorPresets]);
 
-  const gradientValue = styles.background || styles.backgroundImage || '';
+  // Live selection's gradient mark wins; node styles next; span-carried last.
+  const gradientValue = selGradient || styles.background || styles.backgroundImage || gradientCSSProp || '';
 
   // Detect active color preset from the live value. Matches both `var(--name)`
   // forms — bare custom-property usage AND values that came through after a
@@ -150,11 +256,11 @@ function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit
   // ColorPicker can't read `var()`; passing the raw string falls back to
   // black and confuses the user.
   // Prefer the LIVE selection's color mark (edit mode) over the frozen prop.
-  const rawSolid = (isEditing && selColor && selColor !== 'transparent' ? selColor : '') || currentValue || styles.color || '';
+  const rawSolid = (isEditing && selColor && !isFullyTransparentColor(selColor) ? selColor : '') || currentValue || styles.color || '';
   const resolvedSolid = rawSolid.startsWith('var(')
     ? (resolveTokenValue(rawSolid, allTokens) ?? rawSolid)
     : rawSolid;
-  const solidColor = (resolvedSolid === 'transparent' || !resolvedSolid) ? '#ffffff' : resolvedSolid;
+  const solidColor = isFullyTransparentColor(resolvedSolid) ? '#ffffff' : resolvedSolid;
 
   return (
     <div className="flex flex-col gap-2">
@@ -196,7 +302,11 @@ function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit
 
 export function TextColorControl() {
   const text = useTextStyles();
-  const { styles, updateStyle, updateStyleLive, updateMultipleStyles, node, getValueSource, removeVariable, cmsBinding } = useControl();
+  const { styles, updateStyle, updateStyleLive, updateMultipleStyles, node, getValueSource, removeVariable, cmsBinding, isReplica } = useControl();
+  const isComponentVariantVp = useAtomValue(isComponentVariantViewportAtom);
+  // A scoped write lands in a viewport `@media` rule / variant object — a span
+  // strip there would delete paint the OTHER viewports still rely on.
+  const isScopedWrite = isReplica || isComponentVariantVp;
   // Locale :lang() overrides on color → blue Locale pill (Phase 4).
   const colorLocaleOverrides = useLocaleStyleOverrides('color', node?.id ?? null);
   const popupCtx = useToolPopupOptional();
@@ -224,6 +334,22 @@ export function TextColorControl() {
   }, []);
   useEffect(() => clearLiveSpanRule, [clearLiveSpanRule]);
 
+  // NODE-mode paint flatten: a node-level GRADIENT apply (or gradient clear)
+  // writes the node's styles, but span runs carrying their own paint channels
+  // (solid fill-colors, span gradients, `color: transparent`) out-paint it
+  // per-run — the apply "does nothing" on rich text. Strip every span paint
+  // channel so the node's new paint wins. Solid commits get the same via
+  // `text.set('color')`'s flatten; this covers the gradient-side writes, which
+  // go through updateMultipleStyles and bypass that path. Base writes only.
+  const flattenSpanPaint = useCallback(() => {
+    if (!node?.id || isScopedWrite || !contentHasSpanRuns((node as any)?.textContent)) return;
+    trace.action('text-color:flatten-span-paint', { nodeId: node.id });
+    for (const p of SPAN_PAINT_CHANNEL_PROPS) {
+      queueMutation({ type: 'stripInlineSpanStyle', nodeId: node.id, property: p });
+    }
+    setForceRender();
+  }, [node, isScopedWrite]);
+
   // Detect gradient from TipTap mark (edit mode) or element styles (node mode).
   // In edit mode a SOLID color mark on the selection wins over the node's
   // gradient — the caret/selection sitting on a solid run must show that solid
@@ -231,15 +357,20 @@ export function TextColorControl() {
   // selection sync.
   const tiptapGradient = text.isEditing ? text.get('backgroundGradient').value : '';
   const selectionSolid = text.isEditing && !tiptapGradient
-    && !!colorResult.value && colorResult.value !== 'transparent' && !colorResult.isMixed;
-  const isGradient = tiptapGradient ? true : (selectionSolid ? false : detectTab(styles) === 'gradient');
-  const gradientCSS = tiptapGradient || styles.background || styles.backgroundImage || '';
-  // The NODE-level gradient context — what decides whether a solid pick needs
-  // the paired fill-color mark. Distinct from `isGradient` (the row display):
-  // re-coloring an EXISTING solid run has isGradient false, but the node's
-  // inherited `-webkit-text-fill-color: transparent` still demands the pair —
-  // keying on isGradient would leave the run's OLD fill-color painting.
-  const nodeHasGradientText = detectTab(styles) === 'gradient';
+    && !!colorResult.value && !isFullyTransparentColor(colorResult.value) && !colorResult.isMixed;
+  // The GRADIENT-TEXT CONTEXT — node styles OR span-mark gradients in the
+  // rich content (an edit-mode gradient application stores the gradient as
+  // whole-text span marks; the node's own styles then carry nothing). This is
+  // what decides whether a solid pick needs the paired fill-color mark, and
+  // the display fallback when the selection's marks are empty/mixed. Distinct
+  // from `isGradient` (the row display): re-coloring an EXISTING solid run
+  // has isGradient false, but the surrounding gradient context still demands
+  // the fill-color pair.
+  const spanGradientCSS = extractSpanGradientCSS((node as any)?.textContent);
+  const nodeHasGradientText = detectTab(styles) === 'gradient'
+    || nodeCarriesSpanGradient((node as any)?.textContent);
+  const isGradient = tiptapGradient ? true : (selectionSolid ? false : nodeHasGradientText);
+  const gradientCSS = tiptapGradient || styles.background || styles.backgroundImage || spanGradientCSS || '';
 
   /** Solid color — LIVE (every drag frame). Node mode: cheap DOM-only patch,
    *  no code write. Edit mode: TipTap mark (its own live editor transaction). */
@@ -256,13 +387,16 @@ export function TextColorControl() {
       if (nodeHasGradientText) text.set('textFillColor', c);
     } else {
       updateStyleLive('color', c);
-      // Rich node: also override the per-portion span colors live so the WHOLE
+      // Rich node: also override the per-portion span paint live so the WHOLE
       // node previews `c` while dragging (the bare `<p>` patch above is hidden
-      // behind the spans' inline color).
-      if ((node as any)?.hasMixedContent && node?.id) {
+      // behind the spans' inline color). Content probe, not hasMixedContent —
+      // useResponsiveText nodes parse with the flag false. Fill-color rides
+      // along: a run carrying an opaque `-webkit-text-fill-color` out-paints
+      // the span `color` override alone.
+      if (node?.id && contentHasSpanRuns((node as any)?.textContent)) {
         const sel = `[data-node-id="${getViewportPrefix(getInteractingViewport().vpId)}${node.id}"] span`;
         liveSpanSelRef.current = sel;
-        injectCanvasCSS(sel, `color: ${c} !important;`);
+        injectCanvasCSS(sel, `color: ${c} !important; -webkit-text-fill-color: ${c} !important;`);
       }
     }
   }, [text, updateStyleLive, node, nodeHasGradientText, setLivePreviewColor]);
@@ -299,8 +433,13 @@ export function TextColorControl() {
         backgroundClip: 'text',
         color: 'transparent',
       });
+      // Rich node: span runs carrying their own paint (solid fill-colors, span
+      // gradients) out-paint the node-level gradient per-run — flatten them so
+      // the gradient actually shows.
+      flattenSpanPaint();
+      clearLiveSpanRule();
     }
-  }, [text, updateMultipleStyles]);
+  }, [text, updateMultipleStyles, flattenSpanPaint, clearLiveSpanRule]);
 
   /** Gradient change — LIVE (every drag frame). Node mode: DOM-only patches,
    *  NO code write (the commit lands once on release via handleGradientChange) —
@@ -327,8 +466,16 @@ export function TextColorControl() {
       updateStyleLive('WebkitTextFillColor', 'transparent');
       updateStyleLive('color', 'transparent');
       updateStyleLive('backgroundImage', css);
+      // Rich node: neutralize the span runs' own paint for the preview — an
+      // opaque span fill-color / span gradient out-paints the node gradient
+      // being dragged (the commit strips them for real via flattenSpanPaint).
+      if (node?.id && contentHasSpanRuns((node as any)?.textContent)) {
+        const sel = `[data-node-id="${getViewportPrefix(getInteractingViewport().vpId)}${node.id}"] span`;
+        liveSpanSelRef.current = sel;
+        injectCanvasCSS(sel, 'color: transparent !important; -webkit-text-fill-color: transparent !important; background: none !important;');
+      }
     }
-  }, [text, updateStyleLive]);
+  }, [text, updateStyleLive, node]);
 
   /** Clear gradient, restore solid color */
   const handleClearGradient = useCallback(() => {
@@ -346,8 +493,11 @@ export function TextColorControl() {
         ...GRADIENT_CLEAR,
         color: '#ffffff',
       });
+      // Rich node: the runs' own paint would out-paint the restored solid.
+      flattenSpanPaint();
+      clearLiveSpanRule();
     }
-  }, [text, updateMultipleStyles, nodeHasGradientText]);
+  }, [text, updateMultipleStyles, nodeHasGradientText, flattenSpanPaint, clearLiveSpanRule]);
 
   const handleClick = () => {
     if (popupCtx) {
@@ -355,14 +505,17 @@ export function TextColorControl() {
       // styles: a selected solid run inside gradient text opens on Solid with
       // the run's color; an unmarked selection inside gradient text opens on
       // Gradient — same sync contract as the other text controls.
+      const nodeFallbackTab: ColorTab = nodeHasGradientText ? 'gradient' : 'solid';
       const selectionTab: ColorTab = text.isEditing
-        ? (tiptapGradient ? 'gradient' : (selectionSolid ? 'solid' : detectTab(styles)))
-        : detectTab(styles);
+        ? (tiptapGradient ? 'gradient' : (selectionSolid ? 'solid' : nodeFallbackTab))
+        : nodeFallbackTab;
       popupCtx.pushPanel('Color', (
         <TextColorPopupContent
           styles={styles}
           isEditing={text.isEditing}
           initialTab={selectionTab}
+          gradientContext={nodeHasGradientText}
+          gradientCSS={gradientCSS}
           onColorChange={handleColorChange}
           onColorCommit={handleColorCommit}
           onGradientChange={handleGradientChange}
@@ -375,6 +528,15 @@ export function TextColorControl() {
       setIsOpen(true);
     }
   };
+
+  // NODE-selected (not editing) with gradient + solid runs mixed in one text:
+  // the row reads "Mixed" with a blended preview instead of "Gradient". The
+  // generic mixed read (colorResult.isMixed) misses this shape — the runs
+  // live inside the useResponsiveText primary string, not as direct JSX
+  // children — so detect the span colors in the rich content directly.
+  const spanTextColors = extractSpanTextColors((node as any)?.textContent);
+  const nodeMixed = !text.isEditing && nodeHasGradientText && spanTextColors.length > 0;
+  const mixedSwatchCSS = nodeMixed ? buildMixedSwatchCSS(gradientCSS, spanTextColors) : '';
 
   // Display: show gradient preview swatch or normal color
   const displayColor = isGradient ? undefined : colorResult.value;
@@ -393,11 +555,11 @@ export function TextColorControl() {
   // During a solid-color drag, the live raw color overrides the committed
   // value/preset so the row swatch + hex track the picker in real time.
   const solidSwatch = (!isGradient && livePreviewColor != null) ? livePreviewColor : (resolvedColor || '#000000');
-  const swatchBg = isGradient ? gradientCSS : solidSwatch;
+  const swatchBg = nodeMixed ? mixedSwatchCSS : (isGradient ? gradientCSS : solidSwatch);
   // Label always shows the HEX equivalent — rgb / rgba / hsl / oklch / named
   // are all converted (var()/gradient pass through untouched), matching the
   // Fill control and every other color swatch in the editor.
-  const label = colorResult.isMixed && livePreviewColor == null
+  const label = nodeMixed || (colorResult.isMixed && livePreviewColor == null)
     ? 'Mixed'
     : isGradient
       ? 'Gradient'
@@ -491,7 +653,7 @@ export function TextColorControl() {
         ) : (
           <ControlActionRow onClick={handleClick}>
             <ColorSwatch style={{ background: swatchBg }} />
-            <span className={`text-xs truncate flex-1 text-left ${colorResult.isMixed || isGradient ? 'text-[var(--text-secondary)]' : ''}`}>{label}</span>
+            <span className={`text-xs truncate flex-1 text-left ${nodeMixed || colorResult.isMixed || isGradient ? 'text-[var(--text-secondary)]' : ''}`}>{label}</span>
           </ControlActionRow>
         )}
       </div>
