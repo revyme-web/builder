@@ -140,3 +140,29 @@ describe('rewriteAnimationBreakpoints — wider-than-primary (min-width) gates',
     expect(out).toContain("useMediaQuery(");        // never throws / blanks
   });
 });
+
+// ─── rewriteAnimationBreakpoints: drift heal + spec-attr queries ────────────
+import { rewriteAnimationBreakpoints as rab } from './animation-scope';
+
+describe('rewriteAnimationBreakpoints — orphan heal + JSON query strings', () => {
+  it('claims an ORPHAN stale query for the resized viewport (drift heal)', () => {
+    // Query says 375 but the mobile viewport is 392 (drifted) — resize 392→1329.
+    const code = `const __mq1 = useMediaQuery('(max-width: 375px)');`;
+    const out = rab(code, 392, 1329, [1440, 1329, 768]);
+    expect(out).toContain("useMediaQuery('(max-width: 1329px) and (min-width: 769px)')");
+  });
+
+  it('rewrites "query" strings inside JSON spec attrs (data-scroll-variant scopes)', () => {
+    const code = `<A data-scroll-variant='{"responsive":[{"scope":{"query":"(max-width: 375px)"},"from":"variant-4"}]}' />`;
+    const out = rab(code, 375, 1329, [1440, 1329, 768]);
+    expect(out).toContain('"query":"(max-width: 1329px) and (min-width: 769px)"');
+  });
+
+  it('a tablet-ONLY banded gate survives as the new narrowest band', () => {
+    // Tablet-only under the old set = banded; after mobile grows past it,
+    // tablet becomes the narrowest → bare max-width form.
+    const code = `const __mq0 = useMediaQuery('(max-width: 768px) and (min-width: 376px)');`;
+    const out = rab(code, 375, 1329, [1440, 1329, 768]);
+    expect(out).toContain("useMediaQuery('(max-width: 768px)')");
+  });
+});

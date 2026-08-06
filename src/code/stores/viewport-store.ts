@@ -58,9 +58,26 @@ export const viewportsConfigAtom = atom(
     const next = typeof update === 'function' ? update(current) : update;
     config.viewports = next;
     trace.action('viewport-store:writeConfigs', { count: next.length });
-    set(activeCodeAtom, updateCanvasConfigInCode(code, config));
+    const newCode = updateCanvasConfigInCode(code, config);
+    set(activeCodeAtom, newCode);
+    adoptCanvasConfigWriteIntoGestureStash(newCode);
   },
 );
+
+/** GESTURE WRITE COHERENCE for @canvas config writes. These setters write
+ *  straight through activeCodeAtom → ProjectFS; during a gesture (viewport
+ *  RESIZE commit runs inside one) the deferred-drag-flush stash still holds
+ *  the PRE-write code, and its gesture-end apply clobbered this write ~50ms
+ *  later — the resized tile flashed the other breakpoint's styles on mouseup
+ *  and the @canvas width silently REVERTED to its old value (trace: write
+ *  45400 → stale re-write 45388, "oldWidth: 375" again on the next resize,
+ *  2026-08-06). Adopt the write into the stash; no-op outside gestures.
+ *  Dynamic import: mutation-queue transitively imports this store. */
+function adoptCanvasConfigWriteIntoGestureStash(newCode: string): void {
+  void import('../mutation/mutation-queue')
+    .then(m => m.refreshDeferredFlushWithExternalWrite(newCode))
+    .catch(() => { /* queue not initialized (tests) — nothing to adopt */ });
+}
 
 /** Viewport positions — read from @canvas block. */
 export const viewportPositionsAtom = atom(
@@ -86,7 +103,11 @@ export const viewportPositionsAtom = atom(
     const next = typeof update === 'function' ? update(current) : update;
     config.positions = next;
     trace.action('viewport-store:writePositions', { keys: Object.keys(next) });
-    set(activeCodeAtom, updateCanvasConfigInCode(code, config));
+    const newCode = updateCanvasConfigInCode(code, config);
+    set(activeCodeAtom, newCode);
+    // Same gesture coherence as the configs setter above (tile reposition
+    // commits also run inside a gesture window).
+    adoptCanvasConfigWriteIntoGestureStash(newCode);
   },
 );
 

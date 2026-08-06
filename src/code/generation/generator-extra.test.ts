@@ -7,6 +7,8 @@ import {
   updateVariantStyleInCode,
   rewriteContainerBreakpoints,
   rewriteResponsiveBreakpoints,
+  rewriteResponsiveTextBreakpoints,
+  resolveResizedKeys,
   addResponsiveBreakpoint,
   removeResponsiveBreakpoint,
 } from './generator-styles';
@@ -1356,5 +1358,123 @@ function Foo({ style, initialVariant = 'default' }) {
     const out = removeNodeInCode(wrapped, 'gone');
     expect(out).not.toContain('const goneVariants');
     expect(out).toContain('const keepVariants');
+  });
+});
+
+// ─── Viewport-resize width sync: drift heal + crossing + text overrides ──────
+// A viewport whose bands/keys DRIFTED from its width (an earlier resize whose
+// sync didn't run) must still carry its styles along on the NEXT resize —
+// otherwise the tile silently loses every override ("mobile at 392, bands
+// keyed 375, resize to 1329 → styles gone", 2026-08-06).
+
+describe('viewport-resize width sync (drift heal)', () => {
+  test('orphan @media band claimed by the resized viewport', () => {
+    // Mobile viewport is 392, but its band drifted to 375 (orphan).
+    syncViewportWidths({ desktop: 1440, tablet: 768, mobile: 1329 }); // AFTER resize 392→1329
+    const code = `<div data-id="root">
+  <style>{\`
+    @media (max-width: 768px) and (min-width: 375.02px) {
+      [data-id="a"] { font-size: 20px !important; }
+    }
+    @media (max-width: 375px) {
+      [data-id="a"] { font-size: 30px !important; }
+    }
+  \`}</style>
+</div>`;
+    const out = rewriteContainerBreakpoints(code, 392, 1329);
+    expect(out).toContain('max-width: 1329px');
+    expect(out).toContain('font-size: 30px');
+    expect(out).not.toContain('max-width: 375px'); // orphan claimed, not stranded
+  });
+
+  test('crossing resize keeps both bands correct (mobile grows past tablet)', () => {
+    syncViewportWidths({ desktop: 1440, tablet: 768, mobile: 1329 });
+    const code = `<div data-id="root">
+  <style>{\`
+    @media (max-width: 768px) and (min-width: 375.02px) {
+      [data-id="a"] { font-size: 20px !important; }
+    }
+    @media (max-width: 375px) {
+      [data-id="a"] { font-size: 30px !important; }
+    }
+  \`}</style>
+</div>`;
+    const out = rewriteContainerBreakpoints(code, 375, 1329);
+    // Mobile band becomes the widest non-primary; tablet floor recomputed.
+    expect(out).toMatch(/max-width: 1329px\) and \(min-width: 768.02px/);
+    expect(out).toMatch(/@media \(max-width: 768px\)\s*\{/);
+  });
+
+  test('orphan data-responsive key claimed by the resized viewport', () => {
+    const code = `<A data-id="a" data-responsive='{"375":{"initialVariant":"v-mobile"},"768":{"initialVariant":"v-tablet"},"_bp":[1440,768,375]}' />`;
+    const out = rewriteResponsiveBreakpoints(code, 392, 1329, [1440, 1329, 768]);
+    expect(out).toContain('"1329":{"initialVariant":"v-mobile"}');
+    expect(out).not.toContain('"375":{');
+    expect(out).toContain('"_bp":[1440,1329,768]');
+  });
+
+  test('useResponsiveText overrides re-key + vpWidths refresh (incl. orphan)', () => {
+    const code = `<p data-id="t">{useResponsiveText("Base text", {
+      768: "Tablet text",
+      375: "Mobile <span style=\\"font-size: 14px\\">rich</span>"
+    }, [1440, 768, 375])}</p>`;
+    const out = rewriteResponsiveTextBreakpoints(code, 392, 1329, [1440, 1329, 768]);
+    expect(out).toContain('1329: "Mobile');           // orphan 375 claimed
+    expect(out).toContain('768: "Tablet text"');      // untouched neighbor
+    expect(out).toContain('[1440, 1329, 768]');       // widths list refreshed
+    expect(out).toContain('rich</span>');             // rich value intact
+  });
+
+  test('useResponsiveText no-op without the hook or when width unchanged', () => {
+    const plain = `<p data-id="t">hello</p>`;
+    expect(rewriteResponsiveTextBreakpoints(plain, 375, 900, [1440, 900])).toBe(plain);
+    const withHook = `<p>{useResponsiveText("a", { 375: "b" }, [1440, 375])}</p>`;
+    expect(rewriteResponsiveTextBreakpoints(withHook, 375, 375, [1440, 375])).toBe(withHook);
+  });
+});
+
+// ─── resolveResizedKeys: ordinal drift resolution (the REAL drifted file) ────
+
+describe('resolveResizedKeys (ordinal ownership)', () => {
+  test('exact match wins', () => {
+    expect(resolveResizedKeys([768, 375], 375, [1440, 768, 375])).toEqual([375]);
+  });
+
+  test('REAL trace case: config mobile=375, band keyed 756 (proximity would give it to tablet)', () => {
+    // present [768, 756]; old vps [1440, 768, 375]; tablet owns 768 exactly →
+    // the single orphan 756 maps to the single band-less vp (mobile 375).
+    expect(resolveResizedKeys([768, 756], 375, [1440, 375, 768])).toEqual([756]);
+  });
+
+  test('doubly-drifted: both bands orphaned, ordinal pairs them', () => {
+    // present [900, 300]; vps [1440, 768, 375] → ownerless [768, 375];
+    // orphans desc [900, 300] → tablet↔900, mobile↔300.
+    expect(resolveResizedKeys([900, 300], 768, [1440, 768, 375])).toEqual([900]);
+    expect(resolveResizedKeys([900, 300], 375, [1440, 768, 375])).toEqual([300]);
+  });
+
+  test('no orphans → nothing claimed; primary resize claims nothing', () => {
+    expect(resolveResizedKeys([768], 375, [1440, 768, 375])).toEqual([]);
+    expect(resolveResizedKeys([768, 756], 1440, [1440, 768, 375])).toEqual([]);
+  });
+
+  test('end-to-end: the drifted 756 mobile band moves on resize 375 → 1400', () => {
+    syncViewportWidths({ desktop: 1440, tablet: 768, mobile: 1400 }); // AFTER resize
+    const code = `<div data-id="root">
+  <style>{\`
+    @media (max-width: 768px) and (min-width: 392.02px) {
+      [data-id="a"] { font-size: 20px !important; }
+    }
+    @media (max-width: 756px) {
+      [data-id="a"] { font-size: 30px !important; }
+    }
+  \`}</style>
+</div>`;
+    const out = rewriteContainerBreakpoints(code, 375, 1400);
+    expect(out).toContain('max-width: 1400px');
+    expect(out).toContain('font-size: 30px');
+    expect(out).not.toContain('max-width: 756px');
+    // Tablet stale min-floor (392.02) recomputed from the CURRENT set too.
+    expect(out).not.toContain('392.02px');
   });
 });

@@ -14,7 +14,7 @@ import { rewriteAnimationBreakpoints } from '@/code/animations/animation-scope';
 import { activeFilePathAtom, isVectorSetComponentFile } from '@/code/project/active-file-store';
 import { modifyProjectFile } from '@/code/project/modify-file';
 import { setForceRender, queueMutation } from '@/code/mutation/mutation-queue';
-import { rewriteContainerBreakpoints, rewriteResponsiveBreakpoints } from '@/code/generation/generator-styles';
+import { rewriteContainerBreakpoints, rewriteResponsiveBreakpoints, rewriteResponsiveTextBreakpoints } from '@/code/generation/generator-styles';
 import { FIT_SIZE, isFitSize } from '@/shared/constants';
 import { ToolSection, ToolInput, ToolSelect } from '../controls';
 import { isPrimaryViewport } from '@/canvas/node-ops';
@@ -359,12 +359,14 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     if (activeFilePath) {
       setForceRender();
       modifyProjectFile(activeFilePath, code =>
-        // Re-stamp @media style overrides, animation media-query gates AND component-instance
-        // `data-responsive` (per-viewport variant choice + `_bp`) so all three keep matching the
-        // resized viewport.
-        rewriteResponsiveBreakpoints(
-          rewriteAnimationBreakpoints(
-            rewriteContainerBreakpoints(code, prevWidth, rounded),
+        // Re-stamp @media style overrides, animation media-query gates, component-instance
+        // `data-responsive` (per-viewport variant choice + `_bp`) AND width-keyed
+        // `useResponsiveText` overrides so all four keep matching the resized viewport.
+        rewriteResponsiveTextBreakpoints(
+          rewriteResponsiveBreakpoints(
+            rewriteAnimationBreakpoints(
+              rewriteContainerBreakpoints(code, prevWidth, rounded),
+              prevWidth, rounded, getSortedBreakpointWidths()),
             prevWidth, rounded, getSortedBreakpointWidths()),
           prevWidth, rounded, getSortedBreakpointWidths()));
     }

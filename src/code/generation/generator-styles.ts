@@ -11,6 +11,42 @@ import { toKebab } from '@/shared/css-utils';
 import { escapeRegExp } from '@/shared/regex-utils';
 import { CSS_LAYOUT_DEFAULTS } from '@/shared/constants';
 import { cssTransformToMotionProps, MOTION_TRANSFORM_PROPS } from '@/shared/motion-transform';
+import { parseJSX } from '@/code/parsing/ast-utils';
+import * as t from '@babel/types';
+import _traverse from '@babel/traverse';
+
+const traverseAst = (typeof _traverse === 'function' ? _traverse : (_traverse as any).default) as typeof _traverse;
+
+/** Which present width-keys belong to the RESIZED viewport — DRIFT-PROOF.
+ *  Exact match first. Otherwise ORDINAL: in this dialect each non-primary
+ *  viewport owns at most one band/key, so orphan keys (matching no current
+ *  viewport width) map to band-less viewports by descending order. Width
+ *  proximity is NOT reliable — real drifted files carry arbitrary stale keys
+ *  (live find 2026-08-06: config mobile=375, mobile band keyed 756, tablet
+ *  min-floor remembering 392 — proximity assigned 756 to tablet and stranded
+ *  it; ordinal maps [768,756] ↔ [tablet 768, mobile 375] correctly, and a
+ *  doubly-drifted [900,300] ↔ [tablet, mobile] correctly too). Exported for
+ *  tests + reuse by every width-keyed rewriter. */
+export function resolveResizedKeys(
+  presentKeys: number[],
+  oldWidth: number,
+  oldVpWidths: number[],
+): number[] {
+  if (presentKeys.includes(oldWidth)) return [oldWidth];
+  const vpSet = new Set(oldVpWidths);
+  const orphans = presentKeys.filter(k => !vpSet.has(k)).sort((a, b) => b - a);
+  if (orphans.length === 0) return [];
+  // Primary (widest) never owns a band; band-less = non-primary vps without an
+  // exact-keyed entry, descending — same order the orphans are matched in.
+  const primary = Math.max(...oldVpWidths);
+  const present = new Set(presentKeys);
+  const ownerless = oldVpWidths
+    .filter(w => w !== primary && !present.has(w))
+    .sort((a, b) => b - a);
+  const idx = ownerless.indexOf(oldWidth);
+  if (idx < 0 || idx >= orphans.length) return [];
+  return [orphans[idx]];
+}
 
 /** min-width boundary for a breakpoint's @media band: the next-smaller
  *  band starts at the NEXT width in `vpWidths` (descending, from
@@ -414,17 +450,27 @@ export function rewriteContainerBreakpoints(
     vpWidths: getSortedBreakpointWidths(),
   });
 
-  // Move rules from oldWidth to newWidth (if any exist at the old breakpoint)
-  if (rules.has(oldWidth) && oldWidth !== newWidth) {
-    const oldRules = rules.get(oldWidth)!;
-    rules.delete(oldWidth);
-
-    if (!rules.has(newWidth)) rules.set(newWidth, new Map());
-    const newRules = rules.get(newWidth)!;
-    for (const [nodeId, props] of oldRules) {
-      if (!newRules.has(nodeId)) newRules.set(nodeId, new Map());
-      const existing = newRules.get(nodeId)!;
-      for (const [k, v] of props) existing.set(k, v);
+  // Move rules from oldWidth to newWidth — PLUS any ORPHAN band that resolves
+  // to the resized viewport. A band keyed to a width that matches NO current
+  // viewport (drift from an earlier resize whose sync didn't run) would
+  // otherwise never move again: `rules.has(oldWidth)` misses it, every later
+  // resize strands it further, and the tile silently loses all its overrides
+  // ("mobile at 375 with its band keyed 756; resize → styles gone",
+  // 2026-08-06). Ownership is resolved ORDINALLY — see resolveResizedKeys.
+  if (oldWidth !== newWidth) {
+    const oldVpWidths = getSortedBreakpointWidths().map(w => (w === newWidth ? oldWidth : w));
+    const keysToMove = resolveResizedKeys([...rules.keys()], oldWidth, oldVpWidths);
+    for (const key of keysToMove) {
+      const oldRules = rules.get(key)!;
+      rules.delete(key);
+      if (!rules.has(newWidth)) rules.set(newWidth, new Map());
+      const newRules = rules.get(newWidth)!;
+      for (const [nodeId, props] of oldRules) {
+        if (!newRules.has(nodeId)) newRules.set(nodeId, new Map());
+        const existing = newRules.get(nodeId)!;
+        for (const [k, v] of props) existing.set(k, v);
+      }
+      if (key !== oldWidth) trace.action('rewriteBreakpoints:orphan-band-claimed', { orphanKey: key, oldWidth, newWidth });
     }
   }
 
@@ -483,17 +529,87 @@ export function rewriteResponsiveBreakpoints(
   // transformAllResponsiveAttrs handles BOTH the static string form and the
   // computed `={JSON.stringify({…})}` form (CMS field-refs), so an `item.field`
   // rebound on the resized viewport is re-keyed instead of being silently dropped.
+  // Old width set = the new set with the resized entry swapped back — used to
+  // claim ORPHAN keys (ordinal drift heal, mirrors rewriteContainerBreakpoints).
+  const oldVpWidths = newWidths.map(w => (w === newWidth ? oldWidth : w));
   const out = transformAllResponsiveAttrs(code, (model) => {
-    const oldKey = String(oldWidth), newKey = String(newWidth);
-    if (oldWidth !== newWidth && Object.prototype.hasOwnProperty.call(model.overrides, oldKey)) {
-      const entry = model.overrides[oldKey];
-      delete model.overrides[oldKey];
-      model.overrides[newKey] = { ...(model.overrides[newKey] || {}), ...entry }; // merge if newKey exists
+    const newKey = String(newWidth);
+    if (oldWidth !== newWidth) {
+      const numericKeys = Object.keys(model.overrides).map(Number).filter(Number.isFinite);
+      const keysToMove = resolveResizedKeys(numericKeys, oldWidth, oldVpWidths);
+      for (const num of keysToMove) {
+        const k = String(num);
+        const entry = model.overrides[k];
+        if (!entry) continue;
+        delete model.overrides[k];
+        model.overrides[newKey] = { ...(model.overrides[newKey] || {}), ...entry }; // merge if newKey exists
+      }
     }
     if (model.bp.length) model.bp = sortedBp;
   });
   // Re-key responsive Collection List configs (useResponsiveListConfig calls) too.
   return rewriteListConfigBreakpoints(out, oldWidth, newWidth);
+}
+
+/**
+ * Rewrite `useResponsiveText(primary, { <width>: <value> }, [<widths>])` calls when a viewport
+ * width changes. Text overrides are width-keyed exactly like `data-responsive` — but they had NO
+ * rewriter at all, so a resized viewport silently lost its per-viewport text (and the stale
+ * vpWidths array corrupted the runtime bucketing for every other override too, 2026-08-06).
+ * AST-located, minimal string splices (no whole-file regenerate): re-keys the resized width's
+ * entry (plus ORPHAN keys that bucket to the resized viewport — same drift heal as the @media
+ * rewriter) and replaces the vpWidths array literal with the current widths.
+ */
+export function rewriteResponsiveTextBreakpoints(
+  code: string,
+  oldWidth: number,
+  newWidth: number,
+  newWidths: number[],
+): string {
+  if (!code.includes('useResponsiveText(') || oldWidth === newWidth) return code;
+  const ast = parseJSX(code);
+  if (!ast) return code;
+  const oldVpWidths = newWidths.map(w => (w === newWidth ? oldWidth : w));
+  const sortedDesc = [...newWidths].sort((a, b) => b - a);
+  const edits: Array<{ start: number; end: number; text: string }> = [];
+  const keyOf = (keyNode: t.ObjectProperty['key']): number => (
+    t.isNumericLiteral(keyNode) ? keyNode.value
+      : t.isStringLiteral(keyNode) ? Number(keyNode.value)
+      : t.isIdentifier(keyNode) ? Number(keyNode.name) : NaN
+  );
+  traverseAst(ast, {
+    CallExpression(path) {
+      const callee = path.node.callee;
+      if (!t.isIdentifier(callee, { name: 'useResponsiveText' })) return;
+      const [, overridesArg, widthsArg] = path.node.arguments;
+      // Overrides object: rename numeric keys (resized + orphans resolved to
+      // the resized viewport — ordinal drift heal, see resolveResizedKeys).
+      if (overridesArg && t.isObjectExpression(overridesArg)) {
+        const props = overridesArg.properties.filter((p): p is t.ObjectProperty => t.isObjectProperty(p));
+        const numericKeys = props.map(p => keyOf(p.key)).filter(Number.isFinite);
+        const claimed = new Set(resolveResizedKeys(numericKeys, oldWidth, oldVpWidths));
+        for (const prop of props) {
+          const keyNode = prop.key;
+          const num = keyOf(keyNode);
+          if (!Number.isFinite(num) || !claimed.has(num)) continue;
+          if (keyNode.start != null && keyNode.end != null) {
+            edits.push({ start: keyNode.start, end: keyNode.end, text: String(newWidth) });
+          }
+        }
+      }
+      // vpWidths array: replace wholesale with the current widths.
+      if (widthsArg && t.isArrayExpression(widthsArg) && widthsArg.start != null && widthsArg.end != null) {
+        edits.push({ start: widthsArg.start, end: widthsArg.end, text: `[${sortedDesc.join(', ')}]` });
+      }
+    },
+  });
+  if (edits.length === 0) return code;
+  trace.fn('generator.rewriteResponsiveTextBreakpoints', { oldWidth, newWidth, editCount: edits.length });
+  let out = code;
+  for (const e of edits.sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, e.start) + e.text + out.slice(e.end);
+  }
+  return out;
 }
 
 /**

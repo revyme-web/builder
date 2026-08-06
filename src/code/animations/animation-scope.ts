@@ -133,15 +133,42 @@ export function rewriteAnimationBreakpoints(
   if (oldWidth === newWidth) return code;
   // Widths as they were BEFORE the resize (the resized vp was `oldWidth`).
   const oldWidths = newWidths.map(w => (w === newWidth ? oldWidth : w));
-  return code.replace(/useMediaQuery\(\s*'([^']*)'\s*\)/g, (full, query: string) => {
-    if (!query) return full;
-    const covered = queryToViewportSet(query, oldWidths);
-    if (covered.length === 0) return full;
+  const mapQuery = (query: string): string | null => {
+    if (!query) return null;
+    let covered = queryToViewportSet(query, oldWidths);
+    // ORPHAN heal (drift): a query whose widths match NO current viewport
+    // (stale from an earlier unsynced resize) covers nothing — claim it for
+    // the resized viewport when its max bound buckets there (smallest old
+    // width ≥ the query's max is the resized one). Mirrors the @media
+    // orphan-band claim in rewriteContainerBreakpoints.
+    if (covered.length === 0) {
+      const maxM = query.match(/max-width:\s*(\d+)px/);
+      if (maxM) {
+        const m = parseInt(maxM[1], 10);
+        const owner = oldWidths.filter(w => w >= m).sort((a, b) => a - b)[0];
+        if (owner === oldWidth) covered = [oldWidth];
+      }
+      if (covered.length === 0) return null;
+    }
     const newCovered = covered.map(w => (w === oldWidth ? newWidth : w));
     const newQuery = viewportSetToQuery(newCovered, newWidths);
-    if (!newQuery || newQuery === 'none') return full;   // empty/degenerate → leave as-is
-    return `useMediaQuery('${newQuery}')`;
+    if (!newQuery || newQuery === 'none') return null;   // empty/degenerate → leave as-is
+    return newQuery;
+  };
+  // 1. `useMediaQuery('…')` hook consts (responsive hover/tap gates, scroll-variant gates).
+  let out = code.replace(/useMediaQuery\(\s*'([^']*)'\s*\)/g, (full, query: string) => {
+    const nq = mapQuery(query);
+    return nq ? `useMediaQuery('${nq}')` : full;
   });
+  // 2. `"query":"…"` strings inside JSON spec attrs (data-scroll-variant
+  //    responsive scopes, instance-fx, glide). These are the SOURCE the
+  //    generators rebuild the gates from — leaving them stale meant the next
+  //    re-save of the effect regenerated the OLD (pre-resize) queries.
+  out = out.replace(/"query":"((?:[^"\\]|\\.)*)"/g, (full, query: string) => {
+    const nq = mapQuery(query);
+    return nq ? `"query":"${nq}"` : full;
+  });
+  return out;
 }
 
 // ─── motion prop wrapping ─────────────────────────────────────────────────────

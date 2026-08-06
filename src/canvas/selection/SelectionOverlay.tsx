@@ -13,7 +13,7 @@ import { SELECTION_COLOR, COMPONENT_COLOR, MAP_TEMPLATE_COLOR, isTextTag, isFitS
 import { interactingViewportIdAtom, viewportWidthsAtom, syncViewportWidths, viewportsConfigAtom, getSortedBreakpointWidths } from '@/code/stores/viewport-store';
 import { isDefaultLocaleAtom } from '@/code/stores/locale-store';
 import { rewriteAnimationBreakpoints } from '@/code/animations/animation-scope';
-import { rewriteContainerBreakpoints, rewriteResponsiveBreakpoints } from '@/code/generation/generator-styles';
+import { rewriteContainerBreakpoints, rewriteResponsiveBreakpoints, rewriteResponsiveTextBreakpoints } from '@/code/generation/generator-styles';
 import { modifyProjectFile } from '@/code/project/modify-file';
 import { findNodeRect, findGhostsForTemplate, getContentRoot, updateNodeStyles, findNodeComputedStyles, patchNodeStyles, getViewportPrefix, forceCanvasRender } from '@/canvas/node-ops';
 import { mirrorPrimaryViewportHeightToRoot } from '@/canvas/viewport-size-ops';
@@ -478,10 +478,13 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
           //    to the resized viewport.
           if (prevWidth !== newWidth) {
             modifyProjectFile(activeFilePath, code =>
-              // …plus component-instance `data-responsive` (per-viewport variant + `_bp`).
-              rewriteResponsiveBreakpoints(
-                rewriteAnimationBreakpoints(
-                  rewriteContainerBreakpoints(code, prevWidth, newWidth),
+              // …plus component-instance `data-responsive` (per-viewport variant + `_bp`)
+              // and width-keyed `useResponsiveText` overrides.
+              rewriteResponsiveTextBreakpoints(
+                rewriteResponsiveBreakpoints(
+                  rewriteAnimationBreakpoints(
+                    rewriteContainerBreakpoints(code, prevWidth, newWidth),
+                    prevWidth, newWidth, getSortedBreakpointWidths()),
                   prevWidth, newWidth, getSortedBreakpointWidths()),
                 prevWidth, newWidth, getSortedBreakpointWidths()));
           }
