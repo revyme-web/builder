@@ -299,8 +299,12 @@ function nudgeOrder(
   }
 
   const flexDir = getFlexDirectionById(parentId, vpId);
+  // TEMPLATE CHROME excluded: on a templated page the flat merge makes
+  // `layout::` nodes siblings of the sections — including them here made an
+  // arrow reorder renumber the template footer/nav in SECTION space (the
+  // band-corruption commitOrderAssignments now also guards against).
   const visualOrderIds = findChildRects(parentId, vpId)
-    .slice()
+    .filter(c => !c.id.startsWith('layout::') && c.id !== 'children-slot')
     .sort((a, b) => (flexDir === 'row' ? a.rect.left - b.rect.left : a.rect.top - b.rect.top))
     .map(c => c.id);
 

@@ -231,3 +231,52 @@ describe('order routing invariant', () => {
     expect(files, `raw \`order\` style writes — route these through commitOrderAssignments:\n${[...new Set(offenders)].join('\n')}`).toEqual([]);
   });
 });
+
+// ─── Template-chrome guard: reorders never renumber layout:: nodes ───────────
+// The canvas's flat template merge makes chrome SIBLINGS of the page sections;
+// a root reorder enumerated them and wrote section-space orders into the page
+// replica band ([data-id="layout::TaWeNu-…"] { order: 2 !important }) — the
+// template FOOTER rendered between page sections on that tile only
+// (2026-08-06). Live can't express that (chrome lives outside the page root).
+
+describe('commitOrderAssignments — template chrome excluded + healed', () => {
+  beforeEach(() => {
+    patchNodeStyles.mockClear();
+    mockActiveFilePath = 'pages/home.tsx';
+  });
+
+  it('primary: chrome assignments are stripped (no patch, no update)', () => {
+    const updates = commitOrderAssignments(
+      [
+        { nodeId: 'hero', order: 0 },
+        { nodeId: 'layout::Footer', order: 1 },
+        { nodeId: 'services', order: 2 },
+        { nodeId: 'children-slot', order: 3 },
+      ],
+      document.createElement('div'), 'desktop',
+    );
+    expect(updates.map(u => u.nodeId)).toEqual(['hero', 'services']);
+    const patchedIds = patchNodeStyles.mock.calls.map(c => c[1]);
+    expect(patchedIds).not.toContain('layout::Footer');
+    expect(patchedIds).not.toContain('children-slot');
+  });
+
+  it('page replica: chrome stripped AND healed with an order-removal band write', () => {
+    const updates = commitOrderAssignments(
+      [
+        { nodeId: 'hero', order: 0 },
+        { nodeId: 'layout::Footer', order: 2 },
+      ],
+      document.createElement('div'), 'tablet',
+    );
+    // Section gets the renumber…
+    expect(updates).toContainEqual({
+      nodeId: 'hero', type: 'updateContainerStyle', maxWidth: 768, styles: { order: '0' },
+    });
+    // …chrome gets a removal ('' deletes the key from the band) — never a value.
+    expect(updates).toContainEqual({
+      nodeId: 'layout::Footer', type: 'updateContainerStyle', maxWidth: 768, styles: { order: '' },
+    });
+    expect(updates.filter(u => u.nodeId === 'layout::Footer')).toHaveLength(1);
+  });
+});

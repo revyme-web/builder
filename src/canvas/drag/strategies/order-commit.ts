@@ -25,6 +25,18 @@ import { trace } from '@/shared/debug-trace';
 // (store → order-commit → node-ops → store). Re-exported for existing callers.
 export { computeLayoutBrackets } from '@/shared/flex-helpers';
 
+/** TEMPLATE CHROME is never a reorder target from a PAGE. The canvas's flat
+ *  template merge makes `layout::` nodes SIBLINGS of the page sections, so a
+ *  root reorder enumerated them and wrote section-space `order` values into
+ *  the page's replica band (`[data-id="layout::TaWeNu-…"] { order: 2 }`) —
+ *  slotting the template FOOTER between page sections on that tile only. The
+ *  live site can't even express that (chrome lives OUTSIDE the page root in
+ *  the layout file), so such writes are pure corruption (user report
+ *  2026-08-06, mobile-only footer-above-sections). */
+function isTemplateChrome(id: string): boolean {
+  return id.startsWith('layout::') || id === 'children-slot';
+}
+
 export function commitOrderAssignments(
   orderAssignments: { nodeId: string; order: number }[],
   contentEl: HTMLElement,
@@ -36,6 +48,13 @@ export function commitOrderAssignments(
    *  both see 0 and would collapse the primary tile. */
   defaultOrders?: Map<string, number>,
 ): PendingUpdate[] {
+  // Strip chrome from the assignment set; remember the ids so the page-replica
+  // branch can HEAL previously-corrupted bands (order: '' deletes the key).
+  const chromeIds = orderAssignments.filter(a => isTemplateChrome(a.nodeId)).map(a => a.nodeId);
+  if (chromeIds.length > 0) {
+    orderAssignments = orderAssignments.filter(a => !isTemplateChrome(a.nodeId));
+    trace.action('order-commit:template-chrome-excluded', { vpId, chromeIds });
+  }
   const vpPrefix = getViewportPrefix(vpId);
   const isPrimary = isPrimaryViewport(vpId);
   const updates: PendingUpdate[] = [];
@@ -91,6 +110,17 @@ export function commitOrderAssignments(
           type: 'updateContainerStyle',
           maxWidth: vpWidth,
           styles: { order: String(order) },
+        });
+      }
+      // HEAL: delete any chrome `order` a pre-guard reorder wrote into this
+      // band ('' = remove-key; no-op when absent). The template merge's own
+      // bracket orders then place the chrome correctly again.
+      for (const nodeId of chromeIds) {
+        updates.push({
+          nodeId,
+          type: 'updateContainerStyle',
+          maxWidth: vpWidth,
+          styles: { order: '' },
         });
       }
     }
