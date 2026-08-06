@@ -17,7 +17,8 @@ import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { queueMutation } from '@/code/mutation/mutation-queue';
 import { injectCanvasCSS, removeCanvasCSS, getInteractingViewport, getViewportPrefix } from '@/canvas/node-ops';
 import { toHexDisplay } from '../../../ui/color-utils';
-import { useTextStyles } from '../../../hooks/useTextStyles';
+import { useTextStyles, readFromSnapshot } from '../../../hooks/useTextStyles';
+import { textEditSnapshotAtom } from '@/code/stores/editor-store';
 import { useControl } from '../../../controls/ControlProvider';
 import { LegacyVariableBoundPill } from '../../../controls/VariableBoundPill';
 import { CmsBoundPill } from '../../../controls/CmsBoundPill';
@@ -47,9 +48,14 @@ const GRADIENT_CLEAR: Record<string, string> = {
 };
 
 /** Popup content: Solid/Gradient tabs + picker with color presets */
-function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit, onGradientChange, onGradientLiveChange, onClearGradient, currentValue }: {
+function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit, onGradientChange, onGradientLiveChange, onClearGradient, currentValue, initialTab }: {
   styles: Record<string, string>;
   isEditing: boolean;
+  /** Tab seeded from the live SELECTION state (edit mode: a gradient mark on
+   *  the selected run → gradient, a color mark → solid) instead of only the
+   *  node's styles — so selecting a solid run inside gradient text opens the
+   *  picker on Solid with that run's color, matching the other controls. */
+  initialTab?: ColorTab;
   onColorChange: (color: string) => void;
   /** Commit (code write) — fires on drag release + one-shot edits. */
   onColorCommit: (color: string) => void;
@@ -62,10 +68,31 @@ function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit
    *  highlights and the SV/hue picker lands on the resolved hex. */
   currentValue: string;
 }) {
-  const [tab, setTab] = useState<ColorTab>(() => detectTab(styles));
+  const [tab, setTab] = useState<ColorTab>(() => initialTab ?? detectTab(styles));
   const allTokens = useAtomValue(presetTokensAtom);
   const colorPresets = allTokens.filter(t => t.category === 'color');
   const popupCtx = useToolPopup();
+
+  // LIVE selection sync (edit mode): pushed panels get FROZEN props, so the
+  // popup subscribes to the edit-session snapshot itself and follows the
+  // selection — caret/range on a solid run → Solid tab with that run's color,
+  // unmarked text inside gradient → Gradient. Only re-syncs when the DERIVED
+  // tab actually changes, so a manual tab click (e.g. Solid → Gradient to
+  // apply a gradient) isn't fought.
+  const editSnapshot = useAtomValue(textEditSnapshotAtom);
+  const selMark = (property: string): string => {
+    if (!isEditing || !editSnapshot) return '';
+    const r = readFromSnapshot(editSnapshot, property);
+    return r.isMixed ? '' : (r.value || '');
+  };
+  const selGradient = selMark('backgroundGradient');
+  const selColor = selMark('color');
+  const liveTab: ColorTab | null = isEditing && editSnapshot
+    ? (selGradient ? 'gradient' : (selColor && selColor !== 'transparent' ? 'solid' : detectTab(styles)))
+    : null;
+  useEffect(() => {
+    if (liveTab) setTab(liveTab);
+  }, [liveTab]);
 
   const handleTabChange = (v: string) => {
     const t = v as ColorTab;
@@ -122,7 +149,8 @@ function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit
   // and hue slider start on the actual rendered color. parseColor inside
   // ColorPicker can't read `var()`; passing the raw string falls back to
   // black and confuses the user.
-  const rawSolid = currentValue || styles.color || '';
+  // Prefer the LIVE selection's color mark (edit mode) over the frozen prop.
+  const rawSolid = (isEditing && selColor && selColor !== 'transparent' ? selColor : '') || currentValue || styles.color || '';
   const resolvedSolid = rawSolid.startsWith('var(')
     ? (resolveTokenValue(rawSolid, allTokens) ?? rawSolid)
     : rawSolid;
@@ -196,10 +224,22 @@ export function TextColorControl() {
   }, []);
   useEffect(() => clearLiveSpanRule, [clearLiveSpanRule]);
 
-  // Detect gradient from TipTap mark (edit mode) or element styles (node mode)
+  // Detect gradient from TipTap mark (edit mode) or element styles (node mode).
+  // In edit mode a SOLID color mark on the selection wins over the node's
+  // gradient — the caret/selection sitting on a solid run must show that solid
+  // in the row (and open the popup on Solid), matching the other controls'
+  // selection sync.
   const tiptapGradient = text.isEditing ? text.get('backgroundGradient').value : '';
-  const isGradient = tiptapGradient ? true : detectTab(styles) === 'gradient';
+  const selectionSolid = text.isEditing && !tiptapGradient
+    && !!colorResult.value && colorResult.value !== 'transparent' && !colorResult.isMixed;
+  const isGradient = tiptapGradient ? true : (selectionSolid ? false : detectTab(styles) === 'gradient');
   const gradientCSS = tiptapGradient || styles.background || styles.backgroundImage || '';
+  // The NODE-level gradient context — what decides whether a solid pick needs
+  // the paired fill-color mark. Distinct from `isGradient` (the row display):
+  // re-coloring an EXISTING solid run has isGradient false, but the node's
+  // inherited `-webkit-text-fill-color: transparent` still demands the pair —
+  // keying on isGradient would leave the run's OLD fill-color painting.
+  const nodeHasGradientText = detectTab(styles) === 'gradient';
 
   /** Solid color — LIVE (every drag frame). Node mode: cheap DOM-only patch,
    *  no code write. Edit mode: TipTap mark (its own live editor transaction). */
@@ -208,6 +248,12 @@ export function TextColorControl() {
     setLivePreviewColor(c); // drive the row swatch live
     if (text.isEditing) {
       text.set('color', c);
+      // SOLID RUN INSIDE GRADIENT TEXT: the node-level gradient's inherited
+      // `-webkit-text-fill-color: transparent` out-paints the span's `color`
+      // (fill-color paints glyphs), so the mark alone was invisible. Carry the
+      // fill-color on the run so it renders solid; scoped to gradient context
+      // so plain solid text never accumulates fill-color spans.
+      if (nodeHasGradientText) text.set('textFillColor', c);
     } else {
       updateStyleLive('color', c);
       // Rich node: also override the per-portion span colors live so the WHOLE
@@ -219,7 +265,7 @@ export function TextColorControl() {
         injectCanvasCSS(sel, `color: ${c} !important;`);
       }
     }
-  }, [text, updateStyleLive, node]);
+  }, [text, updateStyleLive, node, nodeHasGradientText, setLivePreviewColor]);
 
   /** Solid color — COMMIT (drag release + one-shot edits: hex, preset, clear).
    *  Writes to code. Routes through `text.set` so a rich node's per-portion span
@@ -227,10 +273,17 @@ export function TextColorControl() {
    *  alone only set the `<p>`, which the spans overrode. `text.set` handles both
    *  modes: node → updateStyle + stripInlineSpanStyle; edit → TipTap mark. */
   const handleColorCommit = useCallback((c: string) => {
-    trace.action('text-color:solid-commit', { color: c });
+    trace.action('text-color:solid-commit', { color: c, gradientContext: nodeHasGradientText });
     text.set('color', c);
+    if (text.isEditing && nodeHasGradientText) {
+      // Selection inside gradient text: drop any gradient MARK on the run
+      // (mixed selections) and pin the fill-color so the run paints solid.
+      // The NODE-level gradient is untouched — the rest of the text keeps it.
+      text.set('backgroundGradient', '');
+      text.set('textFillColor', c);
+    }
     clearLiveSpanRule();
-  }, [text, clearLiveSpanRule]);
+  }, [text, clearLiveSpanRule, nodeHasGradientText]);
 
   /** Gradient change — COMMIT (drag release + one-shot). TipTap mark in edit
    *  mode, element-level otherwise. */
@@ -281,22 +334,35 @@ export function TextColorControl() {
   const handleClearGradient = useCallback(() => {
     trace.action('text-color:gradient-clear', { isEditing: text.isEditing });
     if (text.isEditing) {
+      // Selection-scoped: clears gradient MARKS on the run only — the node's
+      // own gradient (the rest of the text) stays. Seed the run's fill-color
+      // too: with the node gradient's inherited transparent fill, a bare
+      // color would stay invisible until the user picks (see TextFillColorMark).
       text.set('backgroundGradient', '');
       text.set('color', '#ffffff');
+      if (nodeHasGradientText) text.set('textFillColor', '#ffffff');
     } else {
       updateMultipleStyles({
         ...GRADIENT_CLEAR,
         color: '#ffffff',
       });
     }
-  }, [text, updateMultipleStyles]);
+  }, [text, updateMultipleStyles, nodeHasGradientText]);
 
   const handleClick = () => {
     if (popupCtx) {
+      // Seed the tab from the live SELECTION (edit mode), not just the node
+      // styles: a selected solid run inside gradient text opens on Solid with
+      // the run's color; an unmarked selection inside gradient text opens on
+      // Gradient — same sync contract as the other text controls.
+      const selectionTab: ColorTab = text.isEditing
+        ? (tiptapGradient ? 'gradient' : (selectionSolid ? 'solid' : detectTab(styles)))
+        : detectTab(styles);
       popupCtx.pushPanel('Color', (
         <TextColorPopupContent
           styles={styles}
           isEditing={text.isEditing}
+          initialTab={selectionTab}
           onColorChange={handleColorChange}
           onColorCommit={handleColorCommit}
           onGradientChange={handleGradientChange}

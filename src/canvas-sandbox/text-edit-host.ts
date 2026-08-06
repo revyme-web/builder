@@ -31,6 +31,7 @@ import {
   EnterHardBreak,
   TextDecorationMark,
   GradientTextMark,
+  TextFillColorMark,
   TextStrokeMark,
 } from '@/canvas/tiptap-extensions';
 
@@ -442,6 +443,7 @@ export function startTextEdit(
       TextTransform,
       TextDecorationMark,
       GradientTextMark,
+      TextFillColorMark,
       TextStrokeMark,
       Highlight.configure({ multicolor: true }),
       EnterHardBreak,

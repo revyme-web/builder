@@ -239,6 +239,36 @@ export const GradientTextMark = Extension.create({
   },
 });
 
+// ─── Per-portion text-fill-color mark (textStyle) ────────────────────────────
+// A SOLID run inside GRADIENT text. Node-level gradient text sets
+// `-webkit-text-fill-color: transparent`, which INHERITS into every span —
+// and fill-color (not `color`) is what paints glyphs, so a plain color mark
+// applied to a selection inside gradient text was invisible ("select a
+// portion of the gradient text and apply solid — it doesn't let me",
+// 2026-08-06). This mark carries the fill-color on the span so the run
+// out-paints the inherited transparent. Only ever set ALONGSIDE a color mark
+// in a gradient context (TextColorControl) — plain solid text never gets it,
+// so the whole-node flatten stays simple.
+export const TextFillColorMark = Extension.create({
+  name: 'textFillColorMark',
+
+  addGlobalAttributes() {
+    return [{
+      types: ['textStyle'],
+      attributes: {
+        textFillColor: {
+          default: null,
+          parseHTML: (el: HTMLElement) => (el.style as any).webkitTextFillColor || null,
+          renderHTML: (attrs: Record<string, any>) => {
+            if (!attrs.textFillColor) return {};
+            return { style: `-webkit-text-fill-color: ${attrs.textFillColor}` };
+          },
+        },
+      },
+    }];
+  },
+});
+
 // ─── Per-portion text stroke mark (textStyle) ───────────────────────────────
 
 export const TextStrokeMark = Extension.create({

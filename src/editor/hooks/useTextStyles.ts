@@ -89,8 +89,12 @@ function fromSnapshotValue(v: TextEditValue | undefined): TextStyleValue {
 }
 
 /** Read the most relevant value from a snapshot for a given property,
- *  falling back to cursor-mode attrs when no range value is present. */
-function readFromSnapshot(
+ *  falling back to cursor-mode attrs when no range value is present.
+ *  Exported (pure) so popup panels can live-derive the SELECTION's mark state
+ *  by subscribing to textEditSnapshotAtom directly — a pushed popup's props
+ *  are frozen at push time, so it can't rely on the parent re-rendering
+ *  (TextColorControl's Solid/Gradient tab sync). */
+export function readFromSnapshot(
   snap: TextEditSnapshot,
   property: string,
 ): TextStyleValue {
@@ -293,6 +297,13 @@ export function useTextStyles(): UseTextStylesReturn {
               }
               trace.fn('useTextStyles.set', { property, nodeId: id, routing: 'flatten-spans' });
               queueMutation({ type: 'stripInlineSpanStyle', nodeId: id, property });
+              // A solid run inside gradient text carries `-webkit-text-fill-color`
+              // alongside `color` (TextFillColorMark — fill-color is what paints
+              // glyphs there). The two travel together: flattening color while
+              // leaving the fill-color would keep shadowing the node's new value.
+              if (property === 'color') {
+                queueMutation({ type: 'stripInlineSpanStyle', nodeId: id, property: 'WebkitTextFillColor' });
+              }
               // The strip flips the node rich→plain (hasMixedContent true→false:
               // its content goes from inner <span> runs to bare text). The
               // Renderer's diff-patch keeps the stale span DOM on that transition,
