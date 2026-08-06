@@ -229,8 +229,18 @@ export const GradientTextMark = Extension.create({
           },
           renderHTML: (attrs: Record<string, any>) => {
             if (!attrs.backgroundGradient) return {};
+            // NO `-webkit-text-fill-color: transparent` here — the fill channel
+            // is owned by TextFillColorMark alone. Baking it into this style
+            // string round-tripped: the next edit session's TextFillColorMark
+            // parseHTML read it back as a `textFillColor: 'transparent'` mark
+            // that OUTLIVED the gradient — clear the gradient, pick any solid,
+            // and the zombie transparent fill kept out-painting it ("switched
+            // to solid and all text became transparent", 2026-08-07). Glyph
+            // transparency for a gradient run is carried by the
+            // `color: 'transparent'` attr applied alongside the gradient
+            // (initial -webkit-text-fill-color = currentColor).
             return {
-              style: `background: ${attrs.backgroundGradient}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text`,
+              style: `background: ${attrs.backgroundGradient}; -webkit-background-clip: text; background-clip: text`,
             };
           },
         },
@@ -258,7 +268,19 @@ export const TextFillColorMark = Extension.create({
       attributes: {
         textFillColor: {
           default: null,
-          parseHTML: (el: HTMLElement) => (el.style as any).webkitTextFillColor || null,
+          // A TRANSPARENT fill is never a user solid-run value — it's the
+          // gradient dialect's artifact (node-level gradient text, or legacy
+          // spans where GradientTextMark used to bake the declaration into its
+          // rendered style). Parsing it as a real attr created a zombie mark
+          // that survived gradient removal and out-painted every solid pick;
+          // parse it to null so existing content self-heals on the next edit.
+          parseHTML: (el: HTMLElement) => {
+            const v = (el.style as any).webkitTextFillColor || '';
+            if (!v) return null;
+            const s = v.trim().toLowerCase();
+            if (s === 'transparent' || /^(?:rgba|hsla)\([^)]*,\s*0(?:\.0+)?\s*\)$/.test(s)) return null;
+            return v;
+          },
           renderHTML: (attrs: Record<string, any>) => {
             if (!attrs.textFillColor) return {};
             return { style: `-webkit-text-fill-color: ${attrs.textFillColor}` };
