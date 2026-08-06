@@ -6,7 +6,7 @@
 //   B. Layout child   → move the node's CSS `order` one slot along the
 //      container's main axis (replica-aware via commitOrderAssignments).
 
-import { computeReorderAssignments } from './drag/reparent-utils';
+import { computeReorderAssignments, computeReplicaOrderMirrorUpdates } from './drag/reparent-utils';
 import { trace } from '@/shared/debug-trace';
 import type { CanvasNode } from '@/code/parsing/parser';
 import type { PendingUpdate } from '@/shared/types';
@@ -19,6 +19,9 @@ import { getReplicaContext } from './drag/replica-context';
 import { commitOrderAssignments } from './drag/strategies/order-commit';
 import { queueMutation, flushNow, type Mutation } from '@/code/mutation/mutation-queue';
 import { getViewportWidths } from '@/code/stores/viewport-store';
+import { getDefaultStore } from 'jotai';
+import { containerOverridesAtom, resolveEffectiveStylesForViewport } from '@/code/stores/container-query-store';
+import { isComponentFilePath } from '@/code/project/active-file-store';
 
 export type NudgeDirection = 'up' | 'down' | 'left' | 'right';
 
@@ -102,6 +105,47 @@ function nudgeValue(raw: string, deltaPx: number, parentPx: number): string | nu
   const isPxOrUnitless = trimmed.endsWith('px') || /^-?\d*\.?\d+$/.test(trimmed);
   if (!isPxOrUnitless) return null;
   return `${Math.round(num + deltaPx)}px`;
+}
+
+// ─── Effective styles for the interacting tile ──────────────────────────────
+
+/** Variant-tile effective styles on a COMPONENT MASTER: base + the always-on
+ *  'default' entry + the tile's own variant entry + per-variant
+ *  conditionalStyles — the same precedence the Renderer paints with. Pure;
+ *  exported for tests. */
+export function mergeVariantEffectiveStyles(node: CanvasNode, variant: string): Record<string, string> {
+  const mv = node.motionVariants as Record<string, Record<string, string>> | null | undefined;
+  const merged: Record<string, string> = {
+    ...(node.styles ?? {}),
+    ...(mv?.['default'] ?? {}),
+    ...((variant !== 'default' ? mv?.[variant] : undefined) ?? {}),
+  };
+  if (node.conditionalStyles) {
+    for (const [prop, map] of Object.entries(node.conditionalStyles as Record<string, Record<string, string>>)) {
+      const v = map[variant] ?? map['default'];
+      if (v != null) merged[prop] = v;
+    }
+  }
+  return merged;
+}
+
+/** The node's EFFECTIVE styles for the interacting tile. `node.styles` alone
+ *  is the PRIMARY's truth — a replica's left/top live in its @media band and a
+ *  variant tile's in the variant object. Reading base meant every nudge
+ *  computed `base ± step`: the first press JUMPED to a wrong value and every
+ *  repeat recomputed the SAME number → "arrows do nothing on replicas"
+ *  (user trace 2026-08-06: identical `top: 478px` patch on consecutive
+ *  presses). Same class as [[feedback_replica_effective_style_resolution]]. */
+function effectiveStylesFor(node: CanvasNode, vpId: string): Record<string, string> {
+  if (isComponentFilePath(getActiveFilePath())) {
+    const variant = isPrimaryViewport(vpId) ? 'default' : vpId;
+    return mergeVariantEffectiveStyles(node, variant);
+  }
+  if (isPrimaryViewport(vpId)) return node.styles ?? {};
+  const vpWidth = getViewportWidths()[vpId];
+  return resolveEffectiveStylesForViewport(
+    node.styles, node.id, vpWidth, getDefaultStore().get(containerOverridesAtom),
+  );
 }
 
 // ─── Pure: layout-child order nudge ─────────────────────────────────────────
@@ -188,7 +232,7 @@ export function nudgeSelection(direction: NudgeDirection, step: number, ctx: Nud
     const node = nodes.get(id);
     if (!node) continue;
     const parentInner = findNodeParentInnerSize(id, vpId);
-    const patch = computeAbsoluteNudge(node.styles ?? {}, direction, step, parentInner);
+    const patch = computeAbsoluteNudge(effectiveStylesFor(node, vpId), direction, step, parentInner);
     if (Object.keys(patch).length === 0) continue;
     patchNodeStyles(contentEl, id, getViewportPrefix(vpId), patch, !isPrimaryViewport(vpId));
     updates.push(...rctx.styleUpdate(id, patch));
@@ -267,6 +311,20 @@ function nudgeOrder(
   }
 
   const updates = commitOrderAssignments(assignments, contentEl, vpId);
+  // Viewports with an INDEPENDENT @media order map need their own band write
+  // for the moved node — exactly like a drag drop (see
+  // computeReplicaOrderMirrorUpdates, the "tablet jumped way above" class).
+  // Component masters route per-variant via setConditionalOrder instead.
+  if (!isComponentFilePath(getActiveFilePath())) {
+    updates.push(...computeReplicaOrderMirrorUpdates({
+      draggedIds: [id],
+      desiredVisualOrder: assignments.map(a => a.nodeId),
+      getNodeStyles: (nid) => ctx.nodes.get(nid)?.styles,
+      overrides: getDefaultStore().get(containerOverridesAtom),
+      vpWidths: getViewportWidths(),
+      dropVpId: vpId,
+    }));
+  }
   trace.action('arrow-nudge:order', {
     id, direction, assignments, updateCount: updates.length,
   });

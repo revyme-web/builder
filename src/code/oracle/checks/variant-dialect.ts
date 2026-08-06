@@ -186,7 +186,7 @@ function checkVariantDialect(code: string, ast: t.File, v: OracleViolation[]): v
           if (fn.params.length > 0 || body.includes('stopPropagation')) {
             v.push({
               code: 'CONNECTION_HANDLER_SHAPE', tier: 2, line, elementId: dataId,
-              message: `The variant trigger on <${dataId ?? 'element'}> (line ${line}) must be the bare gated form: onTap={() => setVariant(variant === 'a' ? 'b' : variant === 'b' ? 'a' : variant)} — no event parameter, no stopPropagation. The connections editor regenerates handlers in exactly this shape.`,
+              message: `The variant trigger on <${dataId ?? 'element'}> (line ${line}) must be the gated parameterless form: onTap={() => { const _n = variant === 'a' ? 'b' : null; if (_n) setVariant(_n); }} — no event parameter, no stopPropagation. The no-match branch must NOT call setVariant (taps bubble; an ancestor's no-op set reverts a child's transition in the same React batch). The connections editor regenerates handlers in exactly this shape.`,
             });
           }
           // The gated chain must END with the `variant` fallthrough — an
@@ -201,11 +201,11 @@ function checkVariantDialect(code: string, ast: t.File, v: OracleViolation[]): v
           if (setVariantArg && !endsWithVariantFallthrough(setVariantArg)) {
             const mine = connections.filter((c) => c.sourceNode === dataId || (!c.sourceNode && isRootEl));
             const exact = mine.length
-              ? `onTap={() => setVariant(${mine.map((c) => `variant === '${c.from}' ? '${c.to}'`).join(' : ')} : variant)}`
-              : `onTap={() => setVariant(variant === '<from>' ? '<to>' : variant)}`;
+              ? `onTap={() => { const _n = ${mine.map((c) => `variant === '${c.from}' ? '${c.to}'`).join(' : ')} : null; if (_n) setVariant(_n); }}`
+              : `onTap={() => { const _n = variant === '<from>' ? '<to>' : null; if (_n) setVariant(_n); }}`;
             v.push({
               code: 'CONNECTION_HANDLER_FALLTHROUGH', tier: 2, line, elementId: dataId,
-              message: `The setVariant chain on <${dataId ?? 'element'}> (line ${line}) must end with the \`: variant\` fallthrough (stay put when no declared transition matches). Replace the handler with EXACTLY this, derived from its declared connections: ${exact}`,
+              message: `The setVariant chain on <${dataId ?? 'element'}> (line ${line}) must not transition for undeclared states — use the guarded form whose no-match branch is null and skips setVariant entirely (an unconditional else grants transitions no connection declares, and a bare setVariant(variant) no-op reverts bubbled child transitions). Replace the handler with EXACTLY this, derived from its declared connections: ${exact}`,
             });
           }
           const declared = connections.some((c) => c.sourceNode === dataId)

@@ -749,14 +749,21 @@ function buildTriggerHandler(trigger: ConnectionTrigger, conns: Connection[]): s
   // ("when in `from`, this trigger → `to`"). A single connection was
   // previously UNGATED (`() => setVariant(to)`), so a source element shown
   // across variants fired the same transition in EVERY variant, not just the
-  // one it was configured on. The chained ternary (with a `: variant`
-  // fall-through that keeps the current variant) gates single AND multi
-  // identically.
+  // one it was configured on.
+  //
+  // NO-MATCH must NOT set state. The old `: variant` fall-through called
+  // setVariant(variant) — a no-op for the element itself, but taps BUBBLE:
+  // a child's open→closed transition was followed by its ANCESTORS' no-op
+  // sets in the same React batch, the ROOT fires last, last write wins, and
+  // the child's transition was silently reverted ("connection from the X
+  // button does nothing; closed→open worked because there the ROOT owned
+  // the transition", 2026-08-06). The `_n = … : null; if (_n)` guard keeps
+  // every handler inert for states it declares no transition for.
   const cases = conns.map(c => `variant === '${c.from}' ? '${c.to}'`).join(' : ');
   const delayed = conns.filter(c => (c.delay ?? 0) > 0);
-  if (delayed.length === 0) return `() => setVariant(${cases} : variant)`;
+  if (delayed.length === 0) return `() => { const _n = ${cases} : null; if (_n) setVariant(_n); }`;
   const delayCases = conns.map(c => `variant === '${c.from}' ? ${Math.round((c.delay ?? 0) * 1000)}`).join(' : ');
-  return `() => { const _d = ${delayCases} : 0; setTimeout(() => setVariant(${cases} : variant), _d); }`;
+  return `() => { const _n = ${cases} : null; if (_n) { const _d = ${delayCases} : 0; setTimeout(() => setVariant(_n), _d); } }`;
 }
 
 /** Strip every framer-motion event handler from every `<motion.*>` tag

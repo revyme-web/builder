@@ -654,7 +654,7 @@ export default withResponsiveProps(Round);
     // animate (merges default under the live variant — sparse inheritance)
     expect(afterFirst.match(/animate=\{\['default', variant\]\}/g)?.length).toBe(2);
     // Single-direction handler — gated by the `from` variant (per-variant).
-    expect(afterFirst).toContain("onTap={() => setVariant(variant === 'default' ? 'variant-1' : variant)}");
+    expect(afterFirst).toContain("onTap={() => { const _n = variant === 'default' ? 'variant-1' : null; if (_n) setVariant(_n); }}");
 
     // Second connection: variant-1 -> default on click (the round-trip).
     // This is the call that produced the broken JSX in the user's report.
@@ -666,7 +666,7 @@ export default withResponsiveProps(Round);
     expect(afterSecond).not.toContain("=>  setVariant"); // double-space artifact
     // The new ternary handler is the ONLY onTap on the file
     expect(afterSecond.match(/onTap=/g)?.length).toBe(1);
-    expect(afterSecond).toContain("onTap={() => setVariant(variant === 'default' ? 'variant-1' : variant === 'variant-1' ? 'default' : variant)}");
+    expect(afterSecond).toContain("onTap={() => { const _n = variant === 'default' ? 'variant-1' : variant === 'variant-1' ? 'default' : null; if (_n) setVariant(_n); }}");
     // Both motion elements still have the list-form animate (no duplicates)
     expect(afterSecond.match(/animate=\{\['default', variant\]\}/g)?.length).toBe(2);
     // The variants object is still intact on the inner element
@@ -961,7 +961,7 @@ export default withResponsiveProps(Card);
     const childTag = updated.slice(tagStart, tagEnd + 1);
     expect(childTag).toContain('onTap=');
     // Gated by `from` (per-variant): only fires when in 'default'.
-    expect(childTag).toContain("setVariant(variant === 'default' ? 'variant-1' : variant)");
+    expect(childTag).toContain("const _n = variant === 'default' ? 'variant-1' : null; if (_n) setVariant(_n);");
 
     // Root tag should NOT carry onTap.
     const rootIdx = updated.indexOf('data-id="root"');
@@ -1112,7 +1112,7 @@ export default withResponsiveProps(Parent);
     const tagStart = updated.lastIndexOf('<JiPoZa', instIdx);
     const tagEnd = updated.indexOf('/>', instIdx);
     const instTag = updated.slice(tagStart, tagEnd + 2);
-    expect(instTag).toContain("onTap={() => setVariant(variant === 'default' ? 'variant-1' : variant)}");
+    expect(instTag).toContain("onTap={() => { const _n = variant === 'default' ? 'variant-1' : null; if (_n) setVariant(_n); }}");
 
     const rootIdx = updated.indexOf('data-id="root"');
     const rootTag = updated.slice(updated.lastIndexOf('<motion.', rootIdx), updated.indexOf('>', rootIdx) + 1);
@@ -1275,7 +1275,7 @@ export default withResponsiveProps(Menu);
   it('a click connection with NO delay keeps the bare handler (unchanged)', () => {
     const out = generateConnectionCode(SRC(`{ from: 'default', to: 'open', trigger: 'click', sourceNode: 'burger' },`),
       [{ from: 'default', to: 'open', trigger: 'click', sourceNode: 'burger' }]);
-    expect(out).toContain("onTap={() => setVariant(variant === 'default' ? 'open' : variant)}");
+    expect(out).toContain("onTap={() => { const _n = variant === 'default' ? 'open' : null; if (_n) setVariant(_n); }}");
     expect(out).not.toContain('setTimeout');
   });
 
@@ -1284,8 +1284,10 @@ export default withResponsiveProps(Menu);
       [{ from: 'open', to: 'default', trigger: 'click', delay: 0.55, sourceNode: 'burger' }]);
     expect(out).toContain('setTimeout');
     expect(out).toContain('_d = variant === \'open\' ? 550');
-    // the setVariant argument stays the exact ternary the checker validates
-    expect(out).toContain("setVariant(variant === 'open' ? 'default' : variant)");
+    // matched-only set: the no-match branch is null and setVariant is guarded
+    expect(out).toContain("const _n = variant === 'open' ? 'default' : null");
+    expect(out).toContain('if (_n) { const _d =');
+    expect(out).toContain('setTimeout(() => setVariant(_n), _d)');
   });
 
   it('afterDelay emits an auto-advance chain and NO event handler', () => {

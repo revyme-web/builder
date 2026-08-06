@@ -231,3 +231,60 @@ describe('queuePendingUpdates', () => {
     expect(traceErrorMock).not.toHaveBeenCalled();
   });
 });
+
+// ─── mergeVariantEffectiveStyles — nudge must read the TILE's truth ─────────
+// Reading node.styles (the primary's values) meant every nudge computed
+// `base ± step`: the first press jumped to a wrong value and repeats emitted
+// the IDENTICAL patch → "arrows do nothing on replicas/variants"
+// (user trace 2026-08-06: `top: 478px` on consecutive presses).
+
+import { mergeVariantEffectiveStyles } from './arrow-nudge';
+import type { CanvasNode } from '@/code/parsing/parser';
+
+function nodeWith(partial: Partial<CanvasNode>): CanvasNode {
+  return {
+    id: 'n', type: 'div', name: 'n', parentId: null, children: [],
+    styles: {}, attrs: {}, textContent: '', hasMixedContent: false,
+    ...partial,
+  } as unknown as CanvasNode;
+}
+
+describe('mergeVariantEffectiveStyles', () => {
+  it('variant entry wins over default entry wins over base', () => {
+    const node = nodeWith({
+      styles: { left: '1px', top: '388px', position: 'absolute' },
+      motionVariants: {
+        default: { top: '400px' },
+        'variant-5': { top: '573px', left: '-9px' },
+      } as any,
+    });
+    const eff = mergeVariantEffectiveStyles(node, 'variant-5');
+    expect(eff.top).toBe('573px');
+    expect(eff.left).toBe('-9px');
+    // Nudge from the tile's truth: up 10 → 563, not base 388−10.
+    const patch = computeAbsoluteNudge(eff, 'up', 10, { width: 768, height: 900 });
+    expect(patch.top).toBe('563px');
+  });
+
+  it("default tile = base + always-on 'default' entry", () => {
+    const node = nodeWith({
+      styles: { top: '388px' },
+      motionVariants: { default: { top: '400px' } } as any,
+    });
+    expect(mergeVariantEffectiveStyles(node, 'default').top).toBe('400px');
+  });
+
+  it('conditionalStyles resolve per variant on top of the merge', () => {
+    const node = nodeWith({
+      styles: { left: '10px' },
+      conditionalStyles: { left: { 'variant-2': '50px', default: '10px' } } as any,
+    });
+    expect(mergeVariantEffectiveStyles(node, 'variant-2').left).toBe('50px');
+    expect(mergeVariantEffectiveStyles(node, 'variant-1').left).toBe('10px');
+  });
+
+  it('no variant data → plain base styles', () => {
+    const node = nodeWith({ styles: { top: '5px' } });
+    expect(mergeVariantEffectiveStyles(node, 'variant-1')).toEqual({ top: '5px' });
+  });
+});

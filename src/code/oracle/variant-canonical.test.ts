@@ -471,7 +471,7 @@ describe('variant dialect — third attempt sins bounce', () => {
     // the message carries the copy-paste-exact handler from the declared connections
     const hit = vs.find((x) => x.code === 'CONNECTION_HANDLER_FALLTHROUGH')!;
     expect(hit.message).toContain(
-      "onTap={() => setVariant(variant === 'default' ? 'variant-1' : variant === 'variant-1' ? 'default' : variant)}",
+      "onTap={() => { const _n = variant === 'default' ? 'variant-1' : variant === 'variant-1' ? 'default' : null; if (_n) setVariant(_n); }}",
     );
   });
 
