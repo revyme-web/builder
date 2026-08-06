@@ -10,6 +10,7 @@ import { projectFS } from '@/code/project/project-fs';
 import { syncQueueCode, queueMutation, flushNow } from '@/code/mutation/mutation-queue';
 import { dragStateOps } from '@/canvas/drag/drag-state-store';
 import { getActiveFilePath, findNodeRect, findNodeComputedStyles, patchNodeStyles, getViewportPrefix, updateNodeStyles, findSvgShapeChild, getSvgGroupAncestorChain, isPrimaryViewport, forceCanvasRender } from '@/canvas/node-ops';
+import { viewportBandPinOps } from './viewport-band-pin-store';
 import { normalizeGroupOnResize, refitGroupChain } from '@/code/svg/refit-group';
 import {
   getHandlesFromDirection,
@@ -43,7 +44,8 @@ import type { SnapGuide, Transform } from '@/shared/types';
 import { SNAP_THRESHOLD } from '@/shared/constants';
 import { getActiveRulerGuideSnapLines } from '@/code/stores/ruler-guides-store';
 import { nodesAtom } from '@/code/stores/store';
-import { viewportsConfigAtom } from '@/code/stores/viewport-store';
+import { viewportsConfigAtom, viewportWidthsAtom } from '@/code/stores/viewport-store';
+import { getAllCachedNodes } from '@/code/stores/store';
 import { containerOverridesAtom } from '@/code/stores/container-query-store';
 import { getDefaultStore } from 'jotai';
 import { collectTopLevelSnapTargets } from '@/canvas/snap-targets';
@@ -1886,6 +1888,96 @@ export function startResize(
   // width:'100%' as 100 and shrank the breakpoint 1440→100 on a bare click.
   let didMove = false;
 
+  // ─── LIVE band-crossing re-render (viewport width drag) ──────────────────
+  // Band CSS (@container) responds to the live width continuously for free,
+  // but per-viewport VARIANT resolution (responsiveVariantMap — e.g. the
+  // template nav's desktop/tablet/mobile variants) and per-viewport PROP
+  // styles are resolved at RENDER time into inline styles — so the nav only
+  // flipped variants on mouseup. Collect every breakpoint boundary those maps
+  // care about; when the dragged width CROSSES one, write the live width into
+  // the (in-memory, file-scoped) widths atom and force a mid-gesture render —
+  // the tile re-resolves at the crossing width and the nav flips DURING the
+  // drag. Crossings are rare (a couple per drag), and gesture-window forced
+  // renders ship the imperative node cache, so there's no parse cost.
+  const bandCrossingBoundaries: number[] = [];
+  if (isVpNode && !isComponentFilePath(getActiveFilePath())) {
+    const bounds = new Set<number>();
+    for (const n of getAllCachedNodes()) {
+      if (n.responsiveVariantMap) {
+        for (const k of Object.keys(n.responsiveVariantMap)) {
+          const kn = Number(k);
+          if (Number.isFinite(kn)) bounds.add(kn);
+        }
+      }
+      if (n.responsivePropStyles) {
+        for (const k of Object.keys(n.responsivePropStyles)) {
+          const kn = Number(k);
+          if (Number.isFinite(kn)) bounds.add(kn);
+        }
+      }
+    }
+    bandCrossingBoundaries.push(...[...bounds].sort((a, b) => a - b));
+  }
+  // Same interval rule as resolve-core.responsiveVariantForWidth: the band a
+  // width falls in = smallest boundary ≥ width; above every boundary = null.
+  const bandForWidth = (w: number): number | null =>
+    bandCrossingBoundaries.find((b) => b >= w) ?? null;
+  let lastRenderedBand: number | null = bandForWidth(startWidth);
+  let lastBandRenderAt = 0;
+
+  // ─── PIN the dragged tile's RESOLUTION WIDTH for the whole gesture ───────
+  // The page content of the dragged tile must keep its own responsive state
+  // during the drag ("during resize it inherits all the viewport styles",
+  // 2026-08-06). Two things were flipping it to desktop mid-drag: the
+  // band-crossing re-renders above stamp band state INLINE at the live width,
+  // and the raw @container CSS drops bands in/out as the width sweeps
+  // intervals. Two-part pin:
+  //   1. viewportBandPinOps — every width-keyed resolver (inline band merge,
+  //      responsiveVariantMap, responsivePropStyles, conditional text) asks
+  //      pinnedResolveWidth() and resolves PAGE nodes at the START width;
+  //      template chrome (layout::) deliberately resolves LIVE so nav/footer
+  //      keep adapting at crossings ("only the template adjusts").
+  //   2. container-type: normal on the dragged tile — silences its raw
+  //      @container evaluation so a foreign band (tablet's interval, swept
+  //      mid-drag) can't flash over the pinned inline values. The inline
+  //      parity merge carries the same values the tile's own band CSS paints,
+  //      so nothing shifts visually at suppression time.
+  // (An earlier attempt pinned band VALUES as injected !important CSS —
+  // defeated by the inline stamps, and it re-applied stale layout:: order
+  // rules the Renderer strips: the "footer jumps on mousedown" report.)
+  let bandPinActive = false;
+  let bandPinVpId = '';
+  if (isVpNode && !isComponentFilePath(getActiveFilePath())) {
+    const pinVpId = nodeAttrs['data-viewport'] || vpId;
+    if (pinVpId) {
+      viewportBandPinOps.set(pinVpId, startWidth);
+      bandPinVpId = pinVpId;
+      // ONE PINNED RENDER at mousedown — not a bare containerType patch. The
+      // standing DOM's inline styles can't be assumed to carry every band
+      // value (subtree-skips, pre-band builds), so silencing the tile's
+      // container queries alone EXPOSED the primary look the instant the
+      // drag started ("on mouse down it goes to start like primary",
+      // 2026-08-06). A render with the pin active stamps the pinned band
+      // state INLINE on every node AND sets containerType: normal on the
+      // pinned tile root (Renderer consult) in the same paint — band CSS
+      // hands over to identical inline values atomically.
+      forceCanvasRender();
+      bandPinActive = true;
+      trace.action('resize:viewport-band-pin', { vpId: pinVpId, atWidth: startWidth });
+    }
+  }
+  const removeBandPin = (opts?: { skipDomRestore?: boolean }) => {
+    if (!bandPinActive) return;
+    bandPinActive = false;
+    viewportBandPinOps.clear();
+    // The commit path skips the restore — its render (posted right after the
+    // pin clear) ships bandPin:null and re-stamps containerType itself, so a
+    // manual restore would only re-enable stale bands for a frame.
+    if (!opts?.skipDomRestore) {
+      patchNodeStyles(contentEl, nodeId, getViewportPrefix(bandPinVpId), { containerType: 'inline-size' });
+    }
+  };
+
   const onMove = (e: PointerEvent) => {
     // Mouse delta in screen pixels. The FROZEN lift basis converts
     // it directly into local CSS units (the basis already includes
@@ -2107,6 +2199,33 @@ export function startResize(
       // width/viewBox mismatch = shear). liveStyles still feeds the commit.
       if (!isBakedGroup) patchNodeStyles(contentEl, nodeId, vpPrefix, { width: w });
       liveStyles.width = w;
+
+      // LIVE band crossing (see setup above): the width just moved across a
+      // responsiveVariantMap / responsivePropStyles boundary — re-render at
+      // the live width so per-viewport variants (template nav) flip DURING
+      // the drag, matching what @container band CSS already does live. The
+      // widths-atom write is IN-MEMORY only (file+version-scoped override) —
+      // the durable config write still happens at commit, and the commit's
+      // rewriters key off the CONFIG width, never this transient value.
+      // 120ms cooldown so jittering across a boundary can't thrash renders;
+      // the next tick past the cooldown catches up, and mouseup re-renders
+      // regardless.
+      if (isVpNode && bandCrossingBoundaries.length > 0) {
+        const band = bandForWidth(newWidth);
+        if (band !== lastRenderedBand && performance.now() - lastBandRenderAt > 120) {
+          lastRenderedBand = band;
+          lastBandRenderAt = performance.now();
+          const resizedVpId = nodeAttrs['data-viewport'] || vpId;
+          const liveW = Math.round(newWidth);
+          // Record the width this render runs at so pinnedResolveWidth can
+          // tell the dragged tile apart — page nodes resolve at the pin
+          // width, chrome at this live width.
+          viewportBandPinOps.updateLiveWidth(liveW);
+          getDefaultStore().set(viewportWidthsAtom, (prev) => ({ ...prev, [resizedVpId]: liveW }));
+          forceCanvasRender();
+          trace.action('resize:viewport-band-crossing-rerender', { vpId: resizedVpId, width: liveW, band });
+        }
+      }
     }
     if ((handleAffectsY || isVectorSet) && !inset.verticalInset) {
       const h = formatResizeDimension(newHeight, origHeightUnit, heightPxPerUnit, parentCssHeight, posPx);
@@ -2350,16 +2469,27 @@ export function startResize(
       unit === '%' && parentCss > 0 ? Math.round((newPx / parentCss) * 100)
       : unit !== 'px' && pxPerUnit > 0 ? Math.round(newPx / pxPerUnit)
       : Math.round(newPx);
-    const tooltipW = tooltipDim(newWidth, origWidthUnit, widthPxPerUnit, parentCssWidth);
-    const tooltipH = tooltipDim(newHeight, origHeightUnit, heightPxPerUnit, parentCssHeight);
+    // VIEWPORT-ROOT resize: the page root's source width is '100%', so the
+    // unit-preserving math showed a meaningless percent ("87% × 2564px").
+    // What the user is dragging IS the breakpoint — show the pixel width the
+    // commit will write into @canvas.
+    const isViewportTooltip = isVpNode && !isComponentFilePath(getActiveFilePath());
+    const tooltipW = isViewportTooltip
+      ? Math.round(newWidth)
+      : tooltipDim(newWidth, origWidthUnit, widthPxPerUnit, parentCssWidth);
+    const tooltipH = isViewportTooltip
+      ? Math.round(newHeight)
+      : tooltipDim(newHeight, origHeightUnit, heightPxPerUnit, parentCssHeight);
     styleHelperOps.show({
       type: 'dimensions',
       position: { x: e.clientX, y: e.clientY },
-      dimensions: {
-        width: tooltipW, height: tooltipH,
-        unit: origWidthUnit === '%' || origHeightUnit === '%' ? '%' : 'px',
-        widthUnit: origWidthUnit, heightUnit: origHeightUnit,
-      },
+      dimensions: isViewportTooltip
+        ? { width: tooltipW, height: tooltipH, unit: 'px', widthUnit: 'px', heightUnit: 'px' }
+        : {
+            width: tooltipW, height: tooltipH,
+            unit: origWidthUnit === '%' || origHeightUnit === '%' ? '%' : 'px',
+            widthUnit: origWidthUnit, heightUnit: origHeightUnit,
+          },
     });
 
     // Broadcast the EXACT formatted strings being committed so the Dimensions
@@ -2391,6 +2521,7 @@ export function startResize(
     // cleared here, not off the commit, so plain cleanup is safe.
     if (!didMove) {
       trace.action('resize:end:no-move', { nodeId, vpId });
+      removeBandPin(); // no band change happened — safe to drop immediately
       styleHelperOps.hide();
       onInteracting(false);
       dragStateOps.set(false);
@@ -2472,6 +2603,11 @@ export function startResize(
       // user's auto/px choice.
       const newHeight = handleAffectsY ? (parseInt(finalStyles.height) || curHeight) : 0;
       if (resizedVpId && newWidth > 0) {
+        // Clear the pin BEFORE the commit: the commit's forceCanvasRender then
+        // ships bandPin:null — the sandbox store clears, resolvers resolve at
+        // the FINAL width, and the root's containerType is re-stamped to
+        // inline-size by the render itself (no manual restore needed).
+        removeBandPin({ skipDomRestore: true });
         callbacks.onViewportResize(resizedVpId, newWidth, newHeight);
         styleHelperOps.hide();
         onInteracting(false);
@@ -2479,6 +2615,7 @@ export function startResize(
         return; // Don't commit any styles for viewport root resize
       }
     }
+    removeBandPin(); // fall-through safety — vp branch above didn't fire
 
     // Capture variant position BEFORE committing (liveStyles has the updated left/top from resize)
     let pendingVariantPos: { variantName: string; x: number; y: number } | null = null;
@@ -2592,6 +2729,7 @@ export function startResize(
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
     endOverlayFollow();
+    removeBandPin(); // cancel path — never leave gesture-scoped CSS behind
     onInteracting(false);
     dragStateOps.set(false);
     // Drop the bake snapshot on cancel too — a stale one would corrupt the

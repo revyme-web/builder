@@ -6,10 +6,12 @@
 import { atom } from 'jotai';
 import type { ViewportConfig } from '@/shared/types';
 import { activeFilePathAtom, activeCodeAtom, isComponentFilePath, isIconSetFilePath } from '../project/active-file-store';
+import { projectVersionAtom, projectFS } from '../project/project-fs';
 import { parseCanvasConfig, updateCanvasConfigInCode } from '../project/canvas-config';
 import { parseVariantConfig } from '../variants/variant-config';
 import { VIEWPORT_GAP, DEFAULT_VIEWPORT_WIDTH } from '@/shared/constants';
 import { trace } from '@/shared/debug-trace';
+import { notifyExternalActiveFileWrite } from '../mutation/external-write-registry';
 
 // Compute default positions: side-by-side with gap
 function computeDefaultPositions(configs: Omit<ViewportConfig, 'x' | 'y'>[]): ViewportConfig[] {
@@ -42,14 +44,23 @@ export const viewportsConfigAtom = atom(
     const config = parseCanvasConfig(code);
     if (config?.viewports?.length) {
       // Recompute x/y positions from the stored config (computeDefaultPositions adds x/y)
-      trace.fn('viewport-store:readConfigs', { count: config.viewports.length, source: '@canvas' });
+      trace.fn('viewport-store:readConfigs', { count: config.viewports.length, source: '@canvas', widths: config.viewports.map(v => v.width) });
       return computeDefaultPositions(config.viewports);
     }
-    trace.fn('viewport-store:readConfigs', { count: DEFAULT_VIEWPORTS.length, source: 'defaults' });
+    trace.fn('viewport-store:readConfigs', { count: DEFAULT_VIEWPORTS.length, source: 'defaults', widths: DEFAULT_VIEWPORTS.map(v => v.width) });
     return DEFAULT_VIEWPORTS;
   },
   (get, set, update: ViewportConfig[] | ((prev: ViewportConfig[]) => ViewportConfig[])) => {
-    const code = get(activeCodeAtom);
+    // Compose on FRESH ProjectFS content, not the activeCodeAtom cache. During
+    // a gesture, `modifyProjectFile` transactions DEFER the version bump
+    // (Round-2 perf rule), so activeCodeAtom's cached value predates them —
+    // the resize commit's config write was composing on pre-band-rewrite code
+    // and silently REVERTING the just-renamed @media bands (trace 2026-08-06:
+    // band write 43207 → config write 43200 = pre-rewrite size + 1; the
+    // resized viewport "lost all its responsive overrides"). This staleness
+    // existed all along — the old microtask-adopt bug just made the BAND
+    // write win the race instead, which is how stray bands accumulated.
+    const code = projectFS.readFile(get(activeFilePathAtom)) ?? get(activeCodeAtom);
     const config = parseCanvasConfig(code) || {
       viewports: [...DEFAULT_VIEWPORTS],
       positions: { ...DEFAULT_POSITIONS },
@@ -71,12 +82,17 @@ export const viewportsConfigAtom = atom(
  *  later — the resized tile flashed the other breakpoint's styles on mouseup
  *  and the @canvas width silently REVERTED to its old value (trace: write
  *  45400 → stale re-write 45388, "oldWidth: 375" again on the next resize,
- *  2026-08-06). Adopt the write into the stash; no-op outside gestures.
- *  Dynamic import: mutation-queue transitively imports this store. */
+ *  2026-08-06). Adopt the write into the stash — SYNCHRONOUSLY, in the same
+ *  task as the write. The first version used a dynamic import (mutation-queue
+ *  transitively imports this store) whose .then microtask ran AFTER the whole
+ *  mouseup handler — gesture-end cleanup had already cleared the drag flag,
+ *  the adopt no-opped, and the drag-end fan-out re-flushed the pre-config
+ *  stash over the width write: mobile reverted 636→375 on the next file
+ *  switch while the band RULES kept 636 (the "resize lost after entering the
+ *  template and back" report, 2026-08-06). The registry is dependency-free,
+ *  so this import can be static. */
 function adoptCanvasConfigWriteIntoGestureStash(newCode: string): void {
-  void import('../mutation/mutation-queue')
-    .then(m => m.refreshDeferredFlushWithExternalWrite(newCode))
-    .catch(() => { /* queue not initialized (tests) — nothing to adopt */ });
+  notifyExternalActiveFileWrite(newCode);
 }
 
 /** Viewport positions — read from @canvas block. */
@@ -92,7 +108,8 @@ export const viewportPositionsAtom = atom(
     return DEFAULT_POSITIONS;
   },
   (get, set, update: Record<string, { x: number; y: number }> | ((prev: Record<string, { x: number; y: number }>) => Record<string, { x: number; y: number }>)) => {
-    const code = get(activeCodeAtom);
+    // FRESH ProjectFS read — same gesture-staleness fix as the configs setter.
+    const code = projectFS.readFile(get(activeFilePathAtom)) ?? get(activeCodeAtom);
     const config = parseCanvasConfig(code) || {
       viewports: [...DEFAULT_VIEWPORTS],
       positions: { ...DEFAULT_POSITIONS },
@@ -116,9 +133,48 @@ export const viewportPositionsAtom = atom(
 export const interactingViewportIdAtom = atom<string>('desktop');
 
 // Viewport widths — writable so viewport root resize can update breakpoints.
-// Starts from DEFAULT_VIEWPORTS. When changed, the generator reads these for @container breakpoint ranges.
-export const viewportWidthsAtom = atom<Record<string, number>>(
-  Object.fromEntries(DEFAULT_VIEWPORTS.map(v => [v.id, v.width]))
+// When changed, the generator reads these for @container breakpoint ranges.
+//
+// FILE-SCOPED (root-cause fix 2026-08-06): this was a GLOBAL primitive atom
+// keyed by vpId ('mobile'…) — the SAME ids every file uses — and
+// visibleViewportsAtom overlays it onto the ACTIVE file's config. Resizing the
+// page's mobile to 898 then entering the Body template showed the TEMPLATE's
+// mobile tile at 898 (the page's width leaked in), and returning showed the
+// PAGE at the template's stale defaults (375) even though the page FILE held
+// 898 the whole time — "my resize reverts when I visit the template". A React
+// effect in Canvas.tsx reconciled widths←configs after the fact, racing every
+// file switch (and the template-enter path bypasses switchActiveFile
+// entirely). Scoping the override to the file it was WRITTEN FOR makes the
+// leak structurally impossible — there is no switch-time re-seed to forget:
+// reading from a different file falls straight through to that file's
+// @canvas config (or defaults).
+// The override is ALSO keyed to the project version at write time: every
+// width write is immediately followed by a durable @canvas config write in
+// the same handler (resize commit step 4, SizeTool commit), which bumps the
+// version — from then on the CONFIG is the truth and the override is spent.
+// This kills the undo case too: undo restores the file (bump) and a dangling
+// pre-undo override must not paint the undone width back over it.
+const viewportWidthsOverrideAtom = atom<{ file: string; version: number; widths: Record<string, number> } | null>(null);
+
+export const viewportWidthsAtom = atom(
+  (get) => {
+    const file = get(activeFilePathAtom);
+    const override = get(viewportWidthsOverrideAtom);
+    if (override && override.file === file && override.version === get(projectVersionAtom)) {
+      return override.widths;
+    }
+    const configs = get(viewportsConfigAtom);
+    return Object.fromEntries(configs.map(v => [v.id, v.width]));
+  },
+  (get, set, update: Record<string, number> | ((prev: Record<string, number>) => Record<string, number>)) => {
+    const prev = get(viewportWidthsAtom);
+    const widths = typeof update === 'function' ? update(prev) : update;
+    set(viewportWidthsOverrideAtom, {
+      file: get(activeFilePathAtom),
+      version: get(projectVersionAtom),
+      widths,
+    });
+  },
 );
 
 /** Get the current viewport widths (reads from atom store imperatively). */

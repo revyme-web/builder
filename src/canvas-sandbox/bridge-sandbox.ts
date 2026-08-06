@@ -21,6 +21,7 @@ import { setPushedLayoutCss } from '@/canvas/renderer/responsive';
 import { replayOverlayPlacements } from '@/canvas/renderer/overlay-portals';
 import { setSandboxCmsCollections } from './stubs/cms-ops';
 import { renderNodes, setRendererDragLockedNodeIds } from '@/canvas/Renderer';
+import { viewportBandPinOps } from '@/canvas/resize/viewport-band-pin-store';
 import { clearMeasureReplayCache } from './sandbox/measure';
 import {
   mountCodeComponent as mountCodeComponentImpl,
@@ -216,7 +217,25 @@ const api: SandboxApi = {
       // Remember the render epoch — echoed on allRects so the host can drop
       // measures that belong to an OLDER render (see protocol.ts).
       setCurrentRenderSeq(input.renderSeq);
+      // Viewport-drag band pin: the Renderer's width-keyed resolvers run in
+      // THIS bundle with their own pin-store instance — adopt the parent's
+      // state before rendering (null clears when the gesture is over).
+      viewportBandPinOps.adopt(input.bandPin);
       getCulling()?.pruneStale();
+      // ENFORCE the pinned tile's container-query silence directly on the
+      // live DOM (before AND independent of the render's own root stamp):
+      // band CSS re-evaluating against the live drag width is exactly the
+      // "flips to primary during resize" class, and the stamp inside the
+      // root loop proved missable. Traced so a miss is visible in dumps.
+      if (input.bandPin) {
+        const pinnedRoot = contentRoot.querySelector(`[data-viewport="${input.bandPin.vpId}"]`) as HTMLElement | null;
+        if (pinnedRoot) {
+          pinnedRoot.style.containerType = 'normal';
+          trace.action('sandbox:band-pin-container-off', { vpId: input.bandPin.vpId, found: true });
+        } else {
+          trace.action('sandbox:band-pin-container-off', { vpId: input.bandPin.vpId, found: false });
+        }
+      }
       renderNodes(
         contentRoot,
         nodes,

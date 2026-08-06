@@ -16,6 +16,7 @@
 // and flushes to codeAtom when idle.
 
 import { getAllCachedNodes, getNodeFromCache, canvasInteractingAtom, setPreferCacheSnapshot } from '@/code/stores/store';
+import { registerExternalWriteRefresh } from './external-write-registry';
 import { sanitizeDataName } from '@/shared/id-utils';
 import { canvasRootFlowReset } from '@/shared/flex-helpers';
 // Layering note: the queue reaching into canvas/ is unusual, but the drag
@@ -60,6 +61,7 @@ import {
   updateBorderOverlayStyle,
   removeBorderOverlayStyle,
   healSparseVariantDefaults,
+  normalizeResponsiveBandKeys,
 } from '../generation/generator-styles';
 import { setVariantVisibilityInCode } from '../generation/variant-visibility-gen';
 import {
@@ -975,11 +977,21 @@ export function flushNowDeferredDuringDrag(): void {
  *  the gesture-end apply then carries exactly this state. No-op outside a
  *  gesture (the normal flush pipeline is already coherent there). */
 export function refreshDeferredFlushWithExternalWrite(code: string): void {
-  if (!dragStateOps.get()) return;
+  // Adopt during a gesture AND during the post-gesture deferred fan-out
+  // window (~32ms): the fan-out fires with `currentCode`, so an external
+  // write landing between gesture end and the fan-out timer would be
+  // clobbered by the same mechanism (the viewport-resize @canvas config
+  // revert, 2026-08-06).
+  if (!dragStateOps.get() && _deferRaf === null) return;
   currentCode = code;
   trace.action('mutation-queue:external-write-refresh-stash', { codeLength: code.length });
   onFlush?.(code);
 }
+// SYNC registration for writers that can't import this module (circular dep):
+// viewport-store's @canvas config writes reach the stash through the registry
+// in the SAME task as their ProjectFS write — a microtask later is too late
+// (see external-write-registry.ts).
+registerExternalWriteRefresh(refreshDeferredFlushWithExternalWrite);
 
 export function flushNow(): void {
   // Cancel any pending timers
@@ -1093,6 +1105,11 @@ export function flushNow(): void {
     // every variant object. Cheap scan-only no-op when nothing is missing;
     // validate-or-revert inside (can never make the file worse).
     code = healSparseVariantDefaults(code);
+    // Converge drift-era stray @media bands onto the page's own @canvas
+    // viewport keys (config-revert-era pages carry bands keyed at widths no
+    // viewport has — panel override lookups miss, resizes strand them).
+    // Cheap keys-vs-config gate inside; no-op on healthy pages.
+    code = normalizeResponsiveBandKeys(code);
 
     // SYNTAX GATE for the synchronous path. `processQueue` has always validated
     // + rolled back, but `flushNow` — which EVERY creator and the overlay tool
@@ -1971,6 +1988,9 @@ function processQueue(): void {
     // components repair on ANY edit — the user can't know WHICH node carries
     // `default: {}`. Scan-only no-op when healthy; validate-or-revert inside.
     code = healSparseVariantDefaults(code);
+    // Converge drift-era stray @media bands onto the page's @canvas viewport
+    // keys (mirrors the flushNow hook; cheap gate inside).
+    code = normalizeResponsiveBandKeys(code);
   }
   const validationError = codeChanged ? validateGeneratedCode(code) : null;
   if (validationError) {

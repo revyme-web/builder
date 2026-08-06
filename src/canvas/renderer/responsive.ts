@@ -4,6 +4,8 @@
 // renderNodes pass through the setters at the bottom; readers use the live
 // ESM bindings (assigning to an imported binding is illegal).
 
+import { pinnedResolveWidth } from '../resize/viewport-band-pin-store';
+
 // ─── Responsive Override Cache ────────────────────────────────────────────
 // Parsed once per renderNodes call. Used by patchElement to merge @media overrides
 // into inline styles, preventing the flicker caused by CSS !important fighting
@@ -110,6 +112,10 @@ export function stripResponsiveBlocks(css: string): string {
 /** Resolve @media overrides for a node at a given viewport width */
 export function getResponsiveOverridesForNode(nodeId: string, vpWidth: number | undefined): Record<string, string> {
   if (!vpWidth || _responsiveBreakpoints.length === 0) return {};
+  // During a viewport-width drag, page nodes on the dragged tile resolve at
+  // the gesture's START width (template chrome stays live) — see
+  // viewport-band-pin-store. No-op outside the gesture.
+  vpWidth = pinnedResolveWidth(nodeId, vpWidth);
   // Component master → always the highest breakpoint (base/desktop). See `_isComponentMaster`.
   if (_isComponentMaster) return {};
   const overrides: Record<string, string> = {};

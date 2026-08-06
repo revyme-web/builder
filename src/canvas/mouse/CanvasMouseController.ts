@@ -34,6 +34,8 @@ import { projectFS } from '@/code/project/project-fs';
 import { parseVariantConfig } from '@/code/variants/variant-config';
 import {
   interactingViewportIdAtom,
+  viewportsConfigAtom,
+  DEFAULT_VIEWPORTS,
 } from '@/code/stores/viewport-store';
 import {
   toolModeAtom,
@@ -551,9 +553,34 @@ export class CanvasMouseController {
           // near no-op (no visible scale jump). Save the camera for "back". ──
           cameraStash.save(activeFile, transformManager.getTransform());
           const tplCfg = parseCanvasConfig(projectFS.readFile(tpl.clientPath) ?? '');
-          const tplVp = tplCfg?.viewports.find(v => v.id === layoutVpId);
+          // WHICH template viewport actually renders on the clicked page tile?
+          // Chrome resolves its band by WIDTH (max-width semantics), not by
+          // viewport NAME — a "mobile" page tile resized to 609 paints the
+          // template's TABLET band (609 ≤ 768), so entering must land on the
+          // template's tablet artboard, not its 375 mobile ("it zooms on
+          // mobile although the tablet template body is what's used",
+          // 2026-08-06). Bucket the page tile's width against the template's
+          // own viewport set: smallest template width ≥ the page width; wider
+          // than all → the template's primary. Same-name fallback when the
+          // page width is unknown.
+          const pageVpWidth = this.store.get(viewportsConfigAtom).find(v => v.id === layoutVpId)?.width ?? 0;
+          const tplViewportSet = tplCfg?.viewports?.length ? tplCfg.viewports : DEFAULT_VIEWPORTS;
+          let tplVpId = layoutVpId;
+          if (pageVpWidth > 0 && tplViewportSet.length > 0) {
+            let bucket: { id: string; width: number } | null = null;
+            for (const v of tplViewportSet) {
+              if (v.width >= pageVpWidth && (bucket === null || v.width < bucket.width)) bucket = v;
+            }
+            const tplPrimary = tplViewportSet.find(v => v.isPrimary)
+              ?? tplViewportSet.reduce((a, b) => (b.width > a.width ? b : a));
+            tplVpId = (bucket ?? tplPrimary).id;
+            if (tplVpId !== layoutVpId) {
+              trace.action('canvas:enter-template-band-redirect', { pageVpId: layoutVpId, pageVpWidth, tplVpId });
+            }
+          }
+          const tplVp = tplCfg?.viewports.find(v => v.id === tplVpId);
           if (tplCfg && tplVp && (tplVp.width || 0) > 0) {
-            const tplPos = tplCfg.positions[layoutVpId] ?? { x: 0, y: 0 };
+            const tplPos = tplCfg.positions[tplVpId] ?? { x: 0, y: 0 };
             // Height: use the LIVE rendered height of this viewport's template
             // root (the page's merged `root`; screen px → canvas via /scale) so
             // the pre-zoom box matches the post-render fit; fall back to a
@@ -593,10 +620,9 @@ export class CanvasMouseController {
           // with the template root already selected in the tree.
           this.store.set(leftPanelAtom, 'layers');
           this.opts.setUpdatingFromCanvas(false);
-          // Enter on the viewport the user double-clicked (tablet template →
-          // tablet replica). `layoutVpId` falls back to the current interacting
-          // viewport when the hit didn't carry an explicit vp.
-          this.opts.setInteractingViewport(layoutVpId);
+          // Enter on the TEMPLATE viewport whose band the clicked tile paints
+          // (width-bucketed above) — not the same-NAMED viewport.
+          this.opts.setInteractingViewport(tplVpId);
 
           // Reveal the iframe + overlay only ONCE, after the camera lands.
           const prevOnRenderComplete = this.opts.bridge.onRenderComplete;
@@ -639,13 +665,13 @@ export class CanvasMouseController {
                 // screen-tall band; user report 2026-07-27). getRectAsync asks
                 // the iframe directly; the seed makes the overlay + fit see
                 // the fresh rect immediately.
-                const prefix = getViewportPrefix(layoutVpId);
+                const prefix = getViewportPrefix(tplVpId);
                 let liveRoot: DOMRect | null = null;
                 try {
                   liveRoot = (await this.opts.bridge.getRectAsync?.('root', prefix)) ?? null;
                 } catch { /* bridge torn down mid-switch — fall through */ }
                 trace.action('canvas:template-entry-fit', {
-                  vpId: layoutVpId, prefix,
+                  vpId: tplVpId, prefix,
                   liveRoot: liveRoot ? { w: Math.round(liveRoot.width), h: Math.round(liveRoot.height) } : null,
                   branch: liveRoot && liveRoot.width > 0 && liveRoot.height > 0 ? 'fit-selection' : 'fit-all',
                 });
@@ -660,7 +686,7 @@ export class CanvasMouseController {
             });
           };
           trace.action('canvas:dblclick-enter-template', {
-            from: activeFile, template: tplName, vpId: layoutVpId,
+            from: activeFile, template: tplName, vpId: tplVpId, pageVpId: layoutVpId,
           });
           return;
         }

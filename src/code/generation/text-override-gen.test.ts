@@ -227,3 +227,59 @@ export default function Page() {
     expect(out).toMatch(/function\s+useMediaQuery\b/);        // hook re-injected (self-heal)
   });
 });
+
+// ─── Whole-text typography-mark routing (the shadowed font-size bug) ────────
+import { splitTypographyMarkFromOverride } from './text-override-gen';
+
+describe('whole-text typography mark routing', () => {
+  const PAGE_WITH_STYLE = `'use client';
+import React from 'react';
+export default function Page() {
+  return <div data-id="root">
+    <style>{\`
+    @media (max-width: 375px) {
+      [data-id="t1"] { width: 270px !important; }
+    }
+  \`}</style>
+    <p data-id="t1" style={{ fontSize: '68px' }}>Hello</p>
+  </div>;
+}`;
+
+  test('a whole-text font-size span routes to the band and stores plain text (the aBode hero shadow)', () => {
+    const out = setTextOverrideInCode(PAGE_WITH_STYLE, 't1', MOBILE, PRIMARY,
+      '<span style="font-size: 40px;">Hello mobile</span>', ALL_VPS);
+    // Stored override is PLAIN text — the mark never enters the content channel,
+    // so it can't shadow later panel font-size writes for that viewport.
+    expect(out).toMatch(/375:\s*['"]Hello mobile['"]/);
+    expect(out).not.toMatch(/375:\s*['"]<span/);
+    // The font-size landed in the mobile band instead — the panel's own write.
+    expect(out).toMatch(/\[data-id="t1"\][^}]*font-size: 40px !important/);
+  });
+
+  test('per-run marks (partial or nested spans) pass through untouched', () => {
+    const partial = 'Hello <span style="color: red;">world</span>';
+    const out = setTextOverrideInCode(PAGE_WITH_STYLE, 't1', MOBILE, PRIMARY, partial, ALL_VPS);
+    expect(out).toContain('color: red');
+    expect(out).not.toMatch(/\[data-id="t1"\][^}]*color: red !important/);
+
+    const nested = '<span style="font-size: 40px;">Hello <span style="color: red;">w</span></span>';
+    expect(splitTypographyMarkFromOverride(nested).styles).toEqual({});
+  });
+
+  test('non-typography props stay on the span; typography routes off it', () => {
+    const split = splitTypographyMarkFromOverride('<span style="font-size: 40px; background-color: yellow;">Hi</span>');
+    expect(split.styles).toEqual({ fontSize: '40px' });
+    expect(split.text).toBe('<span style="background-color: yellow;">Hi</span>');
+    // Fully-typographic span unwraps entirely.
+    const clean = splitTypographyMarkFromOverride('<span style="font-size: 40px; color: #fff;">Hi</span>');
+    expect(clean.styles).toEqual({ fontSize: '40px', color: '#fff' });
+    expect(clean.text).toBe('Hi');
+  });
+
+  test('primary edits are never routed (base flatten owns that path)', () => {
+    const out = setTextOverrideInCode(PAGE_WITH_STYLE, 't1', PRIMARY, PRIMARY,
+      '<span style="font-size: 40px;">Hello</span>', ALL_VPS);
+    // Whatever the primary path does with the HTML, no band write happens.
+    expect(out).not.toMatch(/font-size: 40px !important/);
+  });
+});

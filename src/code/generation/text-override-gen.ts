@@ -18,9 +18,69 @@ import { ensureMediaQueryHook } from './scoped-expr';
 import { parseJSX, findFirstElementByDataId, traverse } from '../parsing/ast-utils';
 import { trace } from '@/shared/debug-trace';
 import { generate, ensureNamedImport } from './generator-utils';
+import { updateContainerQueryStyle } from './generator-styles';
 
 /** The function name the inline hook is registered under. */
 export const HOOK_NAME = 'useResponsiveText';
+
+// ─── Whole-text typography-mark routing ────────────────────────────────────
+// A rich-text commit on a REPLICA tile can arrive as
+// `<span style="font-size: 40px;">whole text</span>` — a TipTap mark wrapping
+// ALL the text. Stored as-is in the override, the span's OWN value beats the
+// band CSS forever (CSS resolves per element, never across ancestors): the
+// panel wrote `font-size: 32px !important` on the <p>, the panel SHOWED 32,
+// and the glyphs rendered the span's 40 — with the p's line-height computed
+// from 32 the lines overlapped ("it increased line height instead of font
+// size", live find 2026-08-06, aBode hero). Typography is STYLE, not content:
+// a whole-text mark's inherited props are routed to the viewport's band (the
+// exact write the panel would author) and stripped from the stored text.
+// Per-RUN marks (nested spans inside the text) are intentional formatting and
+// pass through untouched — same rule as planSpanFlatten's mixed-content bail.
+
+/** Inherited typography props where a p-level band value is visually
+ *  identical to a whole-text span value. Non-inherited props (background
+ *  highlights etc.) stay on the span — moving them to the <p> would paint
+ *  the paragraph box, not the text run. */
+const ROUTED_TYPOGRAPHY_PROPS: Record<string, string> = {
+  'font-size': 'fontSize',
+  'color': 'color',
+  'font-weight': 'fontWeight',
+  'font-family': 'fontFamily',
+  'font-style': 'fontStyle',
+  'letter-spacing': 'letterSpacing',
+  'line-height': 'lineHeight',
+  'text-transform': 'textTransform',
+  'text-decoration': 'textDecoration',
+};
+
+/** Split a whole-text typography span off an override HTML payload. Returns
+ *  the text to STORE (span stripped/unwrapped) and the styles to route to the
+ *  viewport's band. `{ styles: {} }` means nothing to route — store as-is. */
+export function splitTypographyMarkFromOverride(html: string): { text: string; styles: Record<string, string> } {
+  const m = /^\s*<span\s+style=(?:"([^"]*)"|'([^']*)')\s*>([\s\S]*)<\/span>\s*$/i.exec(html);
+  if (!m) return { text: html, styles: {} };
+  const inner = m[3];
+  // Nested spans = genuinely mixed per-run formatting — leave intact.
+  if (/<span\b/i.test(inner)) return { text: html, styles: {} };
+  const styleStr = m[1] ?? m[2] ?? '';
+  const kept: string[] = [];
+  const routed: Record<string, string> = {};
+  for (const decl of styleStr.split(';')) {
+    const idx = decl.indexOf(':');
+    if (idx === -1) continue;
+    const prop = decl.slice(0, idx).trim().toLowerCase();
+    const val = decl.slice(idx + 1).trim();
+    if (!prop || !val) continue;
+    const camel = ROUTED_TYPOGRAPHY_PROPS[prop];
+    if (camel) routed[camel] = val;
+    else kept.push(`${prop}: ${val}`);
+  }
+  if (Object.keys(routed).length === 0) return { text: html, styles: {} };
+  const text = kept.length > 0
+    ? `<span style="${kept.join('; ')};">${inner}</span>`
+    : inner;
+  return { text, styles: routed };
+}
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
@@ -55,10 +115,24 @@ export function setTextOverrideInCode(
   allViewportWidths: number[] = [],
 ): string {
   trace.fn('text-override-gen.set', { nodeId, vpWidth, primaryWidth, len: text.length, vpCount: allViewportWidths.length });
-  const ast = parseJSX(code);
-  if (!ast) return code;
 
   const isPrimary = vpWidth === primaryWidth;
+
+  // Route a whole-text typography mark to the viewport's band BEFORE storing
+  // (see splitTypographyMarkFromOverride) — a span baked into the override
+  // shadows every later panel font-size/color write for that viewport.
+  let routedStyles: Record<string, string> | null = null;
+  if (!isPrimary && text !== '') {
+    const split = splitTypographyMarkFromOverride(text);
+    if (Object.keys(split.styles).length > 0) {
+      text = split.text;
+      routedStyles = split.styles;
+      trace.action('text-override-gen:typography-mark-routed', { nodeId, vpWidth, props: Object.keys(split.styles) });
+    }
+  }
+
+  const ast = parseJSX(code);
+  if (!ast) return code;
 
   let mutated = false;
   findFirstElementByDataId(ast, nodeId, (path) => {
@@ -121,6 +195,12 @@ export function setTextOverrideInCode(
   // Make sure the inline hook function definition lives in the file. If we
   // just unwrapped the last reference, prune it.
   out = ensureHookFunction(out);
+  // Apply the routed typography as the viewport's band override — the same
+  // write the properties panel authors, so the tile paints identically and
+  // future panel writes actually take effect.
+  if (routedStyles) {
+    out = updateContainerQueryStyle(out, nodeId, vpWidth, routedStyles);
+  }
   return out;
 }
 

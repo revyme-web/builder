@@ -140,6 +140,7 @@ const SVG_PRESENTATION_DEFAULTS: Record<string, string> = {
   strokeOpacity: '1', fillOpacity: '1', opacity: '1', strokeMiterlimit: '4',
 };
 import { parseContainerRules } from '../stores/container-query-store';
+import { parseCanvasConfig } from '../project/canvas-config';
 import { getSortedBreakpointWidths } from '../stores/viewport-store';
 import { transformAllResponsiveAttrs } from '../components/instance-prop-overrides';
 import { rewriteListConfigBreakpoints, addListConfigBreakpoint, removeListConfigBreakpoint } from './cms-responsive-gen';
@@ -470,6 +471,12 @@ export function rewriteContainerBreakpoints(
 ): string {
   trace.fn('generator.rewriteContainerBreakpoints', { oldWidth, newWidth });
 
+  // Normalize FIRST: converge any drift-era stray band onto the config's own
+  // viewport keys (see normalizeResponsiveBandKeys) so the exact-key rename
+  // below just hits. The ordinal orphan claim further down stays as the
+  // fallback for pages whose @canvas block is itself missing.
+  code = normalizeResponsiveBandKeys(code);
+
   const styleBlockRegex = /(<style>\s*\{[`'])([\s\S]*?)([`']\}\s*<\/style>)/s;
   const blockMatch = styleBlockRegex.exec(code);
   if (!blockMatch) { trace.action('rewriteBreakpoints:no-style-block'); return code; }
@@ -523,6 +530,145 @@ export function rewriteContainerBreakpoints(
     const langRules = lang.banded.get(width) ?? [];
     if (selectors.size === 0 && langRules.length === 0) continue;
     const minW = getMinWidth(vpWidths, width);
+    const query = minW
+      ? `@media (max-width: ${width}px) and (min-width: ${minW + 0.02}px)`
+      : `@media (max-width: ${width}px)`;
+    newCss += `    ${query} {\n`;
+    for (const [id, props] of selectors) {
+      if (props.size === 0) continue;
+      const decls = [...props.entries()].map(([k, v]) => `${k}: ${v} !important;`).join(' ');
+      newCss += `      [data-id="${id}"] { ${decls} }\n`;
+    }
+    for (const rule of langRules) newCss += `      ${rule}\n`;
+    newCss += `    }\n`;
+  }
+  newCss += '  ';
+
+  const [fullMatch, prefix, , suffix] = blockMatch;
+  return code.slice(0, blockMatch.index!) + prefix + newCss + suffix + code.slice(blockMatch.index! + fullMatch.length);
+}
+
+/**
+ * NORMALIZE band keys to the page's OWN `@canvas` viewport widths — the invariant every
+ * exact-key consumer (the properties panel's override lookup, the resize rename, the
+ * per-band renderer) silently assumes.
+ *
+ * Pages that lived through the config-revert era accumulated STRAY bands: config
+ * `[1440, 564, 429]` next to rules keyed `[768, 656, 500, 463, 351]` (real find
+ * 2026-08-06). The DOM still painted overrides — max-width bands whose floors were lost
+ * OVERLAP, so a 564 tile catches the old 768 band by cascade accident — but the panel's
+ * exact-key lookup found nothing ("override in the DOM, panel shows desktop"), and a
+ * resize past every stray key lost all styles at once ("mobile resized big looks like
+ * desktop"). The band model is EXCLUSIVE intervals (see getMinWidth); overlap is itself
+ * corruption.
+ *
+ * Normal form: ONE band per non-primary viewport, keyed at that viewport's width. Each
+ * viewport's band is the FLATTENED state its tile currently paints: all bands whose
+ * interval covers the viewport width, merged in cascade order (serializers emit widest
+ * first, so the NARROWEST matching band wins per prop). Banded :lang rules follow their
+ * band. Strays covering NO viewport are dropped (no tile paints them — keeping them is
+ * exactly the live-vs-canvas divergence this heals) and traced. Idempotent: keys already
+ * ⊆ config widths → byte-identical no-op. Deterministic from the code string alone (the
+ * config is read from the file, not from editor state).
+ */
+export function normalizeResponsiveBandKeys(code: string): string {
+  const config = parseCanvasConfig(code);
+  if (!config?.viewports?.length) return code;
+  const primaryW = (config.viewports.find(v => v.isPrimary) ?? config.viewports.reduce((a, b) => (b.width > a.width ? b : a))).width;
+  const nonPrimary = config.viewports.map(v => v.width).filter(w => w !== primaryW);
+  if (nonPrimary.length === 0) return code;
+  const vpSet = new Set(nonPrimary);
+
+  const styleBlockRegex = /(<style>\s*\{[`'])([\s\S]*?)([`']\}\s*<\/style>)/s;
+  const blockMatch = styleBlockRegex.exec(code);
+  if (!blockMatch) return code;
+
+  // CHEAP GATE (this runs in the mutation-flush pipeline): band keys + floors
+  // straight off the headers; all keys already viewport-keyed → no-op.
+  const bandHeaderRe = /@media\s*\(max-width:\s*([\d.]+)px\)(?:\s*and\s*\(min-width:\s*([\d.]+)px\))?/g;
+  const floors = new Map<number, number>();
+  let hm: RegExpExecArray | null;
+  while ((hm = bandHeaderRe.exec(blockMatch[2]))) {
+    floors.set(Number(hm[1]), hm[2] ? Number(hm[2]) : 0);
+  }
+  if (floors.size === 0) return code;
+  if ([...floors.keys()].every(k => vpSet.has(k))) return code;
+
+  const lang = extractLangRules(blockMatch[2]);
+  const rules = parseContainerRules(lang.css);
+  if (rules.size === 0) return code;
+
+  // Flatten: per viewport, merge every band whose interval covers a REFERENCE
+  // width, widest first, so the narrowest (= latest in serialized source,
+  // cascade winner) band's value wins per prop.
+  const bandKeysDesc = [...rules.keys()].sort((a, b) => b - a);
+  const covers = (bandMax: number, w: number) => w <= bandMax && w >= (floors.get(bandMax) ?? 0);
+  const claimed = new Set<number>();
+  const flattenAt = (refW: number): { target: Map<string, Map<string, string>>; targetLang: string[] } => {
+    const target = new Map<string, Map<string, string>>();
+    const targetLang: string[] = [];
+    for (const bandMax of bandKeysDesc) {
+      if (!covers(bandMax, refW)) continue;
+      claimed.add(bandMax);
+      for (const [nodeId, props] of rules.get(bandMax)!) {
+        if (!target.has(nodeId)) target.set(nodeId, new Map());
+        const existing = target.get(nodeId)!;
+        for (const [k, v] of props) existing.set(k, v);
+      }
+      for (const rule of lang.banded.get(bandMax) ?? []) targetLang.push(rule);
+    }
+    return { target, targetLang };
+  };
+
+  // Phase 1 — each viewport flattens what its tile paints TODAY.
+  const merged = new Map<number, Map<string, Map<string, string>>>();
+  const mergedLang = new Map<number, string[]>();
+  const bandless: number[] = [];
+  for (const vpW of nonPrimary) {
+    if (!bandKeysDesc.some(b => covers(b, vpW))) { bandless.push(vpW); continue; }
+    const { target, targetLang } = flattenAt(vpW);
+    if (target.size > 0) merged.set(vpW, target);
+    if (targetLang.length > 0) mergedLang.set(vpW, targetLang);
+  }
+  // Phase 2 — a viewport NO band covers was resized past its (drifted, never
+  // renamed) band: the overrides still BELONG to that viewport (the user's
+  // model: "the responsive overrides stay applied no matter how I resize").
+  // Pair band-less viewports with leftover strays ORDINALLY (desc↔desc, the
+  // resolveResizedKeys heuristic) and flatten at the STRAY's key — the full
+  // cascade a tile at that width painted, i.e. the viewport's old look. Real
+  // case 2026-08-06: config mobile already committed at 1310 while its
+  // overrides sat in a stranded (max-width: 500px) band; interval-claiming
+  // alone DROPPED them — exactly the loss being healed.
+  if (bandless.length > 0) {
+    const strays = bandKeysDesc.filter(b => !claimed.has(b));
+    const bandlessDesc = [...bandless].sort((a, b) => b - a);
+    for (let i = 0; i < bandlessDesc.length && i < strays.length; i++) {
+      const vpW = bandlessDesc[i];
+      const refW = strays[i];
+      const { target, targetLang } = flattenAt(refW);
+      if (target.size > 0) merged.set(vpW, target);
+      if (targetLang.length > 0) mergedLang.set(vpW, targetLang);
+      trace.action('generator:normalize-band-keys:stray-claim', { vpWidth: vpW, strayKey: refW });
+    }
+  }
+  const dropped = bandKeysDesc.filter(k => !claimed.has(k));
+
+  trace.action('generator:normalize-band-keys', {
+    from: bandKeysDesc,
+    to: [...merged.keys()],
+    dropped,
+  });
+
+  // Serialize — identical shape to rewriteContainerBreakpoints, floors from
+  // the config's own width set.
+  const vpAll = config.viewports.map(v => v.width).sort((a, b) => b - a);
+  let newCss = '\n';
+  for (const rule of lang.topLevel) newCss += `    ${rule}\n`;
+  for (const width of [...merged.keys()].sort((a, b) => b - a)) {
+    const selectors = merged.get(width)!;
+    const langRules = mergedLang.get(width) ?? [];
+    if (selectors.size === 0 && langRules.length === 0) continue;
+    const minW = getMinWidth(vpAll, width);
     const query = minW
       ? `@media (max-width: ${width}px) and (min-width: ${minW + 0.02}px)`
       : `@media (max-width: ${width}px)`;

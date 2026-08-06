@@ -21,6 +21,7 @@ import { isSandboxEvent, serializeNodeMap } from './protocol';
 import type { ViewportConfig } from '@/shared/types';
 import type { CanvasNode } from '@/code/parsing/parser';
 import { trace } from '@/shared/debug-trace';
+import { viewportBandPinOps } from '@/canvas/resize/viewport-band-pin-store';
 
 export class PostMessageBridge implements CanvasBridge {
   private iframe: HTMLIFrameElement | null = null;
@@ -173,6 +174,9 @@ export class PostMessageBridge implements CanvasBridge {
       localeOverrides: localeOverridesObj,
       distrustPatchKeys,
       preserveCulling,
+      // Viewport-drag band pin — the sandbox Renderer has its own module
+      // instances, so the parent's pin state must ride every render.
+      bandPin: viewportBandPinOps.get(),
       // Epoch for stale-emission rejection (see the allRects handler).
       renderSeq: ++this.renderSeq,
     };

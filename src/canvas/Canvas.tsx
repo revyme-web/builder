@@ -155,19 +155,16 @@ export default function Canvas() {
   const [vpPositions, setVpPositions] = useAtom(viewportPositionsAtom);
   const [vpWidths, setViewportWidths] = useAtom(viewportWidthsAtom);
   const [vpConfigs, setVpConfigs] = useAtom(viewportsConfigAtom);
-  // Keep the width store in sync with the page's @canvas config. Without this,
-  // `viewportWidthsAtom` / `_viewportWidths` (what getActiveAnimationScope and
-  // getSortedBreakpointWidths read) stay at DEFAULT_VIEWPORTS until the first
-  // resize — so a page that LOADS with non-default widths would bake animation
-  // media-query gates (and @container bands) for the WRONG width. Sync on every
-  // config change (load, file switch, add/remove viewport, resize commit).
+  // Mirror the (file-scoped, config-derived) widths atom into the imperative
+  // `_viewportWidths` store that getActiveAnimationScope /
+  // getSortedBreakpointWidths read. The atom itself now derives from the
+  // active file's @canvas config with a same-file override
+  // (viewport-store.ts), so the old two-way reconcile-configs-into-widths
+  // set is gone — it was the racing half of the "resize reverts after
+  // visiting the template" bug.
   useEffect(() => {
-    const widths: Record<string, number> = Object.fromEntries(vpConfigs.map(v => [v.id, v.width]));
-    syncViewportWidths(widths);
-    const same = Object.keys(widths).length === Object.keys(vpWidths).length
-      && Object.entries(widths).every(([k, v]) => vpWidths[k] === v);
-    if (!same) setViewportWidths(widths);
-  }, [vpConfigs, vpWidths, setViewportWidths]);
+    syncViewportWidths(vpWidths);
+  }, [vpWidths]);
   // PERF — neutralise `backdrop-filter: blur()` on the canvas DURING any drag/resize/interaction.
   // backdrop-filter is THE dominant cause of canvas drag-jank: the compositor re-blurs everything behind
   // each such element on EVERY repaint, and a real page has many (e.g. a glass Header rendered once per

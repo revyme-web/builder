@@ -1,14 +1,70 @@
 import { describe, it, expect } from 'vitest';
-import { resolveActiveVariant, bandForTile } from './resolve-core';
+import { resolveActiveVariant, bandForTile, responsiveVariantForWidth } from './resolve-core';
+
+describe('resolve-core: responsiveVariantForWidth (media-query interval lookup)', () => {
+  // The template-chrome shape: map keyed by TEMPLATE breakpoints, tile at a PAGE width.
+  const map = { 768: 'variant-2', 375: 'variant-4' };
+  it('exact key hit stays an exact hit', () => {
+    expect(responsiveVariantForWidth(map, 768)).toBe('variant-2');
+    expect(responsiveVariantForWidth(map, 375)).toBe('variant-4');
+  });
+  it('a width BETWEEN keys picks the band live gates would: smallest key ≥ width (585 → tablet burger, the chrome-on-resized-page report)', () => {
+    expect(responsiveVariantForWidth(map, 585)).toBe('variant-2');
+    expect(responsiveVariantForWidth(map, 400)).toBe('variant-2');
+  });
+  it('below the lowest key → the lowest band, matching (max-width: 375px)', () => {
+    expect(responsiveVariantForWidth(map, 300)).toBe('variant-4');
+  });
+  it('above every key → undefined (the primary band shows)', () => {
+    expect(responsiveVariantForWidth(map, 900)).toBeUndefined();
+    expect(responsiveVariantForWidth(map, 1440)).toBeUndefined();
+  });
+  it('no map → undefined', () => {
+    expect(responsiveVariantForWidth(undefined, 585)).toBeUndefined();
+  });
+
+  describe('with the instance _bp list (live parity — no cascade)', () => {
+    // The inverted-widths report (2026-08-06): replica WIDER than primary.
+    // Config desktop=1277 (primary), tablet=796, mobile=1409; overrides only
+    // on tablet + mobile. The PRIMARY tile must show the BASE variant — the
+    // map-key walk was cascading 1277 → 1409 and painting mobile's variant.
+    const invMap = { 796: 'variant-1', 1409: 'variant-2' };
+    const invBp = [1409, 1277, 796];
+    it("the primary's own bucket has no override → base shows (no cascade)", () => {
+      expect(responsiveVariantForWidth(invMap, 1277, invBp)).toBeUndefined();
+      // Anything bucketing to the primary behaves the same.
+      expect(responsiveVariantForWidth(invMap, 1000, invBp)).toBeUndefined();
+    });
+    it('replica buckets still resolve their own overrides', () => {
+      expect(responsiveVariantForWidth(invMap, 796, invBp)).toBe('variant-1');
+      expect(responsiveVariantForWidth(invMap, 600, invBp)).toBe('variant-1');
+      expect(responsiveVariantForWidth(invMap, 1409, invBp)).toBe('variant-2');
+      expect(responsiveVariantForWidth(invMap, 1300, invBp)).toBe('variant-2');
+    });
+    it('wider than every breakpoint → base', () => {
+      expect(responsiveVariantForWidth(invMap, 1500, invBp)).toBeUndefined();
+    });
+    it('template-chrome case keeps the same answer under bp bucketing', () => {
+      // Chrome map keyed by template breakpoints; page tile at 585 → tablet.
+      expect(responsiveVariantForWidth({ 768: 'variant-2', 375: 'variant-4' }, 585, [1440, 768, 375])).toBe('variant-2');
+      expect(responsiveVariantForWidth({ 768: 'variant-2', 375: 'variant-4' }, 300, [1440, 768, 375])).toBe('variant-4');
+      expect(responsiveVariantForWidth({ 768: 'variant-2', 375: 'variant-4' }, 1440, [1440, 768, 375])).toBeUndefined();
+    });
+  });
+});
 
 describe('resolve-core: resolveActiveVariant', () => {
   it('per-tile responsiveVariantMap override WINS over the base variant', () => {
     const node: any = { responsiveVariantMap: { 768: 'v2' }, componentVariant: 'cv' };
     expect(resolveActiveVariant(node, { vpWidth: 768, variant: 'base' })).toBe('v2');
   });
-  it('map MISS → base variant', () => {
+  it('map MISS (wider than every key) → base variant', () => {
     const node: any = { responsiveVariantMap: { 768: 'v2' }, componentVariant: 'cv' };
     expect(resolveActiveVariant(node, { vpWidth: 1024, variant: 'base' })).toBe('base');
+  });
+  it('a width INSIDE a band resolves that band (interval semantics, not exact keys)', () => {
+    const node: any = { responsiveVariantMap: { 768: 'v2' }, componentVariant: 'cv' };
+    expect(resolveActiveVariant(node, { vpWidth: 585, variant: 'base' })).toBe('v2');
   });
   it('no base variant → componentVariant → fallback', () => {
     const node: any = { responsiveVariantMap: { 768: 'v2' }, componentVariant: 'cv' };

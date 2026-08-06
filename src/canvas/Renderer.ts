@@ -7,7 +7,8 @@
 // DOM Diffing: patches only what changed instead of replaceChildren.
 
 import type { CanvasNode } from '../code/parsing/parser';
-import { resolveActiveVariant, bandForTile } from './resolve-core';
+import { resolveActiveVariant, bandForTile, responsiveVariantForWidth } from './resolve-core';
+import { pinnedResolveWidth, viewportBandPinOps } from './resize/viewport-band-pin-store';
 import { extractStyleCSS } from '../code/parsing/parser';
 import type { ViewportConfig, CollectionItem, NodeOverride, FilterGroup, FilterConfig, SortConfig, OverlayConfig } from '@/shared/types';
 import { resolveOverlayConfig } from '@/code/parsing/overlay-parser';
@@ -231,6 +232,7 @@ let _lastCssResult = '';
 function getResponsiveStyleVarValuesForNode(node: CanvasNode, vpWidth: number | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   if (!vpWidth || _isComponentMaster || !node.responsiveStyleValues) return out;
+  vpWidth = pinnedResolveWidth(node.id, vpWidth); // viewport-drag pin (page nodes freeze, chrome live)
   for (const [prop, byW] of Object.entries(node.responsiveStyleValues)) {
     // BAND, not cascade: each override applies only inside its viewport's exclusive range [min, b].
     // A Tablet override does NOT paint Mobile. Shared with the text resolver + the drag preview (Bug 1).
@@ -248,8 +250,28 @@ function getResponsiveStyleVarValuesForNode(node: CanvasNode, vpWidth: number | 
  */
 function getResponsiveTextValueForNode(node: CanvasNode, vpWidth: number | undefined): string | undefined {
   if (!vpWidth || _isComponentMaster || !node.responsiveTextValues) return undefined;
+  vpWidth = pinnedResolveWidth(node.id, vpWidth); // viewport-drag pin
   const b = bandForTile(node.responsiveTextValues, node.responsiveTextBands, vpWidth);
   return b !== null ? node.responsiveTextValues[b] : undefined;
+}
+
+/** Per-viewport text from the useResponsiveText channel (`node.textOverrides`,
+ *  keyed by viewport width). ONE definition for BOTH render paths —
+ *  patchElement had this bucket walk inline while buildNodeElement never
+ *  consulted the channel at all, so the FIRST paint of a replica tile showed
+ *  the PRIMARY text until any later patch pass ("on load the override text is
+ *  wrong, fixes after I do something", 2026-08-06). Bucket = smallest
+ *  configured viewport width ≥ the (pin-adjusted) tile width. */
+function getTextOverrideBucketValue(node: CanvasNode, vpWidth: number | undefined): string | undefined {
+  if (!node.textOverrides || vpWidth === undefined || _allViewportWidthsAsc.length === 0) return undefined;
+  const w = pinnedResolveWidth(node.id, vpWidth); // viewport-drag pin
+  let bucket: number | null = null;
+  for (const vw of _allViewportWidthsAsc) {
+    if (w <= vw) { bucket = vw; break; }
+  }
+  if (bucket === null) return undefined;
+  const o = node.textOverrides[String(bucket)];
+  return typeof o === 'string' ? o : undefined;
 }
 
 /** SVG presentation attributes that must be set via setAttribute (not style) */
@@ -337,6 +359,9 @@ function resolveVariantStylesUncached(
 ): Record<string, string> {
   // For component master viewports: use variantName directly
   // For page viewport replicas: resolve from responsiveVariantMap using viewport width
+  // Viewport-drag pin: page nodes on the dragged tile resolve at the gesture's
+  // start width; template chrome (layout::) resolves live (see pin store).
+  if (vpWidth) vpWidth = pinnedResolveWidth(node.id, vpWidth);
   let resolvedVariant = variantName;
   // A SPECIFIC per-tile variant in `responsiveVariantMap[vpWidth]` WINS over the passed `variantName`
   // (the instance's BASE variant) on a page replica — it's the per-viewport override (a per-viewport
@@ -346,9 +371,16 @@ function resolveVariantStylesUncached(
   // below never runs and the tablet stays 'default'. (The Header "worked" only because its base
   // `initialVariant={…Sv}` resolved to null, letting that block fire.) `responsiveVariantMap` is set
   // ONLY on page instances — never on a component-master viewport — so this can't hijack a master pick.
-  if (vpWidth && node.responsiveVariantMap && node.responsiveVariantMap[vpWidth] !== undefined
+  // Lookups go through `responsiveVariantForWidth` — media-query INTERVAL
+  // semantics, not exact keys. Template chrome's map is keyed by the
+  // TEMPLATE's breakpoints (768/375) while the page tile renders at the
+  // PAGE's width (e.g. mobile resized to 585): the exact lookup missed and
+  // the tile painted the DESKTOP nav while live showed the tablet burger
+  // (user report 2026-08-06). Page instances hit their exact key as before.
+  const mappedVariant = vpWidth ? responsiveVariantForWidth(node.responsiveVariantMap, vpWidth, node.responsiveVariantBp) : undefined;
+  if (vpWidth && mappedVariant !== undefined
       && (node.motionVariants || node.conditionalStyles || node.hiddenOnVariants)) {
-    resolvedVariant = node.responsiveVariantMap[vpWidth];
+    resolvedVariant = mappedVariant;
   } else
   // `hiddenOnVariants` included so a conditionally-rendered (AnimatePresence) node
   // with NO variant styles still resolves its per-viewport variant — otherwise its
@@ -367,7 +399,7 @@ function resolveVariantStylesUncached(
     // Same fallback chain the CMS-binding + size paths already use (search
     // `?? node.componentVariant`). `componentVariant` is null when the instance
     // has no explicit variant → 'default', so untouched instances are unchanged.
-    resolvedVariant = node.responsiveVariantMap[vpWidth] ?? node.componentVariant ?? 'default';
+    resolvedVariant = mappedVariant ?? node.componentVariant ?? 'default';
   }
 
   // NESTED-instance fallback: a component instance nested INSIDE another component (on a plain page) is NOT a
@@ -444,12 +476,14 @@ function resolveVariantStylesUncached(
   }
   // Per-viewport component-instance PROP overrides. `expandComponent` lowered each
   // `data-responsive` prop to the style it drives (e.g. direction → flexDirection) and
-  // keyed it by viewport width. Canvas replica tiles render at exact viewport widths
-  // (which ARE the breakpoints), so a direct lookup matches — making the tablet/mobile
-  // tile show e.g. flexDirection:'column' from `direction` set on that replica, exactly
-  // like withResponsiveProps merges it on the live site. Applied LAST so it wins.
-  if (vpWidth && node.responsivePropStyles && node.responsivePropStyles[vpWidth]) {
-    folded = { ...folded, ...node.responsivePropStyles[vpWidth] };
+  // keyed it by viewport width. Page instances hit their exact key (tiles render at
+  // exactly their own breakpoint widths); INTERVAL lookup covers template chrome, whose
+  // map is keyed by the TEMPLATE's breakpoints while the tile renders at the PAGE's
+  // width — live's withResponsiveProps matches by width range, so the canvas must too
+  // (same class as the resolvedVariant interval fix above). Applied LAST so it wins.
+  if (vpWidth && node.responsivePropStyles) {
+    const propStyles = responsiveVariantForWidth(node.responsivePropStyles, vpWidth, node.responsiveVariantBp);
+    if (propStyles) folded = { ...folded, ...propStyles };
   }
   // AnimatePresence + conditional render visibility (the pattern from
   // setVariantVisibilityInCode). When the active variant is in the node's
@@ -503,15 +537,18 @@ function resolveConditionalText(
   vpWidth?: number,
 ): string | null {
   if (!node.conditionalText) return null;
-  // A SPECIFIC per-viewport variant (page replica) WINS over the base variantName — see resolveVariantStyles.
+  if (vpWidth !== undefined) vpWidth = pinnedResolveWidth(node.id, vpWidth); // viewport-drag pin
+  // A SPECIFIC per-viewport variant (page replica) WINS over the base variantName — see
+  // resolveVariantStyles. Interval lookup (responsiveVariantForWidth), same as there.
+  const mappedTextVariant = vpWidth !== undefined
+    ? responsiveVariantForWidth(node.responsiveVariantMap, vpWidth, node.responsiveVariantBp) : undefined;
   let variant: string | null | undefined =
-    (vpWidth !== undefined && node.responsiveVariantMap?.[vpWidth] !== undefined)
-      ? node.responsiveVariantMap[vpWidth] : variantName;
+    mappedTextVariant !== undefined ? mappedTextVariant : variantName;
   if (!variant && vpWidth !== undefined && node.responsiveVariantMap) {
     // Same primary-variant fallback as resolveVariantStyles: an unlisted tile
     // width (the page primary, esp. when the map is template-breakpoint-keyed)
     // resolves the instance's `componentVariant`, not a blind null.
-    variant = node.responsiveVariantMap[vpWidth] ?? node.componentVariant ?? null;
+    variant = node.componentVariant ?? null;
   }
   // NESTED-instance fallback — the text twin of resolveVariantStyles' block:
   // an instance nested inside another component (or on a plain page render,
@@ -1034,8 +1071,15 @@ export function renderNodes(
     // patchElement's text-override bucket lookup. Same source canvas-dnd's
     // breakpoint helpers use; viewports can be added/removed/resized
     // dynamically by the user, so we re-read each pass.
+    // Viewport-drag pin: the DRAGGED viewport's entry must stay at the PIN
+    // width in this list. During a crossing re-render the input carries the
+    // LIVE width (e.g. 315), so a text-override bucket walk found "smallest
+    // vp ≥ pinned 314" = 315 and missed the override keyed "314" — primary
+    // text flashed mid-drag even though the QUERY width was pinned. Pinning
+    // the list fixes every list consumer at once.
+    const bandPinForWidths = viewportBandPinOps.get();
     setAllViewportWidthsAsc((viewports ?? [])
-      .map((v) => v.width)
+      .map((v) => (bandPinForWidths && v.id === bandPinForWidths.vpId ? bandPinForWidths.pinWidth : v.width))
       .filter((w) => Number.isFinite(w) && w > 0)
       .sort((a, b) => a - b));
 
@@ -1262,7 +1306,16 @@ export function renderNodes(
         const rwv = resolveVariantStyles(rootNode, variantName, vp.width).width ?? rootNode.styles?.width;
         masterFitWidth = isFitSize(rwv);
       }
-      rootEl.style.containerType = masterFitWidth ? 'normal' : 'inline-size';
+      // Viewport-drag pin: while THIS tile's width is being dragged, its
+      // container queries are silenced (containerType normal) so foreign
+      // bands can't flash over the pinned inline values as the width sweeps
+      // their intervals; every render during the gesture (the band-crossing
+      // re-renders) re-stamps this line, so the consult must live HERE — an
+      // injected stylesheet or one-shot patch is overwritten by the next
+      // render (the "no difference, still flips to desktop mid-drag" report).
+      const bandPinnedTile = viewportBandPinOps.get()?.vpId === vp.id;
+      rootEl.style.containerType = (masterFitWidth || bandPinnedTile) ? 'normal' : 'inline-size';
+      if (bandPinnedTile) trace.action('renderer:band-pin-container-off', { vpId: vp.id });
       rootEl.style.position = 'absolute';
       rootEl.style.left = `${vp.x}px`;
       rootEl.style.top = `${vp.y}px`;
@@ -1961,7 +2014,17 @@ function patchElement(
     // variants and resize/drag appeared to REVERT on mouseup (the re-render
     // snapped the container back to default). Normal/`isComponentInstance` nodes
     // already resolved correctly because they reach the shared path below.
-    const resolvedContainerStyles = resolveVariantStyles(node, variantName, vpWidth);
+    // Band overrides MUST merge here too — this early-return branch was the
+    // ONE patch path without the @media→inline parity merge. At rest the band
+    // CSS masked it (the counters' mobile `width: 88px !important` painted
+    // over the base 131px), but the viewport-drag pin turns the tile's
+    // container queries OFF — the containers snapped to their base width and
+    // the centered column around them read as "lost align/justify center
+    // during resize" (2026-08-06, the last surviving drag flip).
+    const resolvedContainerStyles = {
+      ...resolveVariantStyles(node, variantName, vpWidth),
+      ...getResponsiveOverridesForNode(node.id, vpWidth),
+    };
     // The CONTAINER carries the rotation on the canvas (resolveVariantStyles folds
     // conditionalStyles.rotate into a CSS `transform`). That's what the rotate
     // handle, the selection overlay, and RotateManager all operate on — same as
@@ -2316,16 +2379,8 @@ function patchElement(
   // The previous "any bp >= vpWidth wins" version made the tablet override
   // bleed into mobile because 375 ≤ 768.
   let resolvedTextContent = node.textContent;
-  if (node.textOverrides && vpWidth !== undefined && _allViewportWidthsAsc.length > 0) {
-    let bucket: number | null = null;
-    for (const vw of _allViewportWidthsAsc) {
-      if (vpWidth <= vw) { bucket = vw; break; }
-    }
-    if (bucket !== null) {
-      const o = node.textOverrides[String(bucket)];
-      if (typeof o === 'string') resolvedTextContent = o;
-    }
-  }
+  const patchTextOverride = getTextOverrideBucketValue(node, vpWidth);
+  if (patchTextOverride !== undefined) resolvedTextContent = patchTextOverride;
 
   // Per-variant text: a `{variant === 'x' ? 'a' : 'b'}` child is captured by
   // the parser into `node.conditionalText`; pick the active variant's text.
@@ -3148,14 +3203,23 @@ function buildNodeElement(
     el.setAttribute('data-code-component', 'true');
     el.setAttribute('data-code-component-component', node.type);
     el.setAttribute('data-code-component-file', node.componentFile || '');
-    // Apply base styles so the element is positioned/sized
-    for (const [key, value] of Object.entries(node.styles)) {
+    // Base + variant + band overrides — the same resolution the patch branch
+    // applies. This early-return path previously used RAW node.styles: the
+    // first paint missed per-viewport band values entirely (masked by band
+    // CSS at rest, exposed when the viewport-drag pin turns the tile's
+    // container queries off — the counters' 88px mobile width snapped back
+    // to base mid-drag).
+    const containerStyles = {
+      ...resolveVariantStyles(node, variantName, vpWidth),
+      ...getResponsiveOverridesForNode(node.id, vpWidth),
+    };
+    for (const [key, value] of Object.entries(containerStyles)) {
       const v = (key === 'position' && value === 'fixed') ? 'absolute' : value;
       setElStyle(el, key, v); // setElStyle handles `--custom-props` (bracket assign no-ops them)
     }
     // Apply a minimum size so the element is visible/selectable
-    if (!node.styles.width) el.style.minWidth = '100px';
-    if (!node.styles.height) el.style.minHeight = '40px';
+    if (!containerStyles.width) el.style.minWidth = '100px';
+    if (!containerStyles.height) el.style.minHeight = '40px';
     el.style.display = el.style.display || 'block';
     // Mousedown for selection
     el.addEventListener('mousedown', (e) => {
@@ -3353,8 +3417,13 @@ function buildNodeElement(
     // of a variant tile already shows that variant's text. Per-VIEWPORT override wins on a replica tile.
     // Rich-text locale runs win over raw source (same rule as patchElement) —
     // the raw inner JSX would paint literal `{t('…')}` calls.
+    // `textOverrides` (useResponsiveText) sits just above node.textContent in
+    // precedence — same order patchElement applies. It was MISSING from this
+    // build chain entirely: the first paint showed primary text on replica
+    // tiles until any later patch pass re-resolved it.
     const buildText = localeOverrides?.get(node.id)?.innerJsx
-      ?? getResponsiveTextValueForNode(node, vpWidth) ?? resolveConditionalText(node, variantName, vpWidth) ?? node.textContent;
+      ?? getResponsiveTextValueForNode(node, vpWidth) ?? resolveConditionalText(node, variantName, vpWidth)
+      ?? getTextOverrideBucketValue(node, vpWidth) ?? node.textContent;
     const buildUseInnerHTML = shouldUseInnerHTML(node.type, buildText, node.hasMixedContent, node.children.length, node.isChildrenSlot, node.textIsLiteral);
     if (buildUseInnerHTML) {
       try {

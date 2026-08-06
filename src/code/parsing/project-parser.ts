@@ -484,6 +484,15 @@ function expandComponent(
   // nested expansion's children. Without this propagation the nested
   // descendants render at default on tablet/mobile even when the user
   // chose a non-default variant for that breakpoint.
+  // The instance's OWN breakpoint list (`_bp` from data-responsive) — the
+  // live runtime buckets a width against THIS list before looking up an
+  // override, so the canvas must too (see responsiveVariantForWidth). Without
+  // it, a map-keys-only interval walk cascades PAST the primary's bucket when
+  // a replica is WIDER than the primary (map {796: v1, 1409: v2}, primary
+  // 1277 → cascaded to 1409's variant; live correctly showed primary).
+  let responsiveVariantBp: number[] | null = instanceNode.responsiveVariantBp
+    ? [...instanceNode.responsiveVariantBp]
+    : null;
   let responsiveVariantMap: Record<number, string> | null = instanceNode.responsiveVariantMap
     ? { ...instanceNode.responsiveVariantMap }
     : null;
@@ -502,6 +511,9 @@ function expandComponent(
   if (respAttr) {
     try {
       const parsed = JSON.parse(respAttr);
+      const bpRaw: unknown[] = Array.isArray((parsed as any)?._bp) ? (parsed as any)._bp : [];
+      const bpNums = bpRaw.map((w) => (typeof w === 'number' ? w : parseInt(String(w), 10))).filter((n) => Number.isFinite(n) && n > 0);
+      if (bpNums.length > 0) responsiveVariantBp = bpNums;
       for (const [key, val] of Object.entries(parsed)) {
         if (key === '_bp') continue;
         const vpWidth = parseInt(key, 10);
@@ -1082,6 +1094,7 @@ function expandComponent(
       componentInstanceId: instanceNode.id,
       isComponentRoot: isRoot,
       responsiveVariantMap: shouldCarryResponsive ? responsiveVariantMap : null,
+      responsiveVariantBp: shouldCarryResponsive ? responsiveVariantBp : null,
       // The instance's active variant — so the Renderer resolves per-variant CMS
       // bindings (variantBindings) on this page instance even though there's no
       // variant artboard (variantName is null on a page). Mirrors how the active

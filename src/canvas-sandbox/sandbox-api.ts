@@ -58,6 +58,11 @@ export interface RenderInput {
   /** Host-stamped render epoch — echoed back on allRects for stale-emission
    *  rejection across file switches (see protocol.ts allRects.renderSeq). */
   renderSeq?: number;
+  /** Viewport-drag band pin (parent's viewport-band-pin-store state). The
+   *  Renderer runs INSIDE the iframe bundle with its own module instances, so
+   *  the pin must ride every render — bridge-sandbox adopts it before
+   *  renderNodes. Null/undefined clears the sandbox-side pin. */
+  bandPin?: { vpId: string; pinWidth: number; liveWidth: number } | null;
   /**
    * The active page's TEMPLATE responsive CSS (LayoutClient <style> content,
    * selectors already rewritten `[data-id="X"]` → `[data-id="layout::X"]`),

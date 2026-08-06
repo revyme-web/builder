@@ -213,6 +213,13 @@ export interface CanvasNode {
   motionVariantVariables?: Record<string, Record<string, string>> | null;
   // Responsive variant map: viewport width → initialVariant name (from data-responsive on instances)
   responsiveVariantMap: Record<number, string> | null;
+  /** The instance's `_bp` breakpoint list from data-responsive — the width
+   *  set its overrides were authored against. Resolution buckets a tile
+   *  width against THIS list (live withResponsiveProps parity) instead of
+   *  cascading across map keys, which mis-resolved when a replica is WIDER
+   *  than the primary. Null when the attr carries no `_bp` (legacy files —
+   *  the resolver falls back to map-key interval matching). */
+  responsiveVariantBp?: number[] | null;
   /**
    * Per-viewport CMS field REBINDINGS of instance props, parsed from a COMPUTED
    * `data-responsive={JSON.stringify({768:{projectTitle:item.shortTitle}})}` —

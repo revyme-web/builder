@@ -469,7 +469,13 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
 
         // 2. Update viewport width atom + imperative sync for the generator
         setViewportWidths(prev => {
-          const prevWidth = prev[resizedVpId] ?? oldWidth;
+          // Band rules in the FILE are keyed by the CONFIG width — always
+          // rewrite from that. The widths ATOM is dirtied mid-drag by the
+          // band-crossing live re-render (ResizeManager writes the crossing
+          // width into it so the tile renders at the live width), so
+          // `prev[resizedVpId]` here can be a transient drag value that no
+          // band rule was ever keyed by.
+          const prevWidth = oldWidth;
           const updated = { ...prev, [resizedVpId]: newWidth };
           syncViewportWidths(updated);
 
