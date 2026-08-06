@@ -470,7 +470,9 @@ export default function ContextMenu() {
   // Make Component — PRIMARY artboards ONLY. Hidden entirely (not greyed) on a replica viewport / non-default
   // variant artboard: a brand-new component can't be hosted there (writes route to per-viewport/per-variant
   // overrides). Baked in here so `hasTopSection` (the separator guard) drops with it — no orphaned separator.
-  const showComponentOrMap = !isInstance && !isSvg && !isNonPrimaryArtboard; // (Make into Map retired)
+  // SINGLE selection only: Make Component wraps ONE node — offering it on a
+  // multi-selection made no sense (the reference hides it too; user report 2026-08-06).
+  const showComponentOrMap = !isInstance && !isSvg && !isNonPrimaryArtboard && selectedIds.length <= 1; // (Make into Map retired)
   // Detach Instance is the only instance-gated top item, and it's now design-only
   // (`isDesignInstance`). Using the broader `isInstance` here left the leading
   // separator orphaned at the top for CODE-component instances (Detach hidden,

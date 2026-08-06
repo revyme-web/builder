@@ -394,17 +394,6 @@ function resolveVariantStylesUncached(
     }
   }
 
-  // AnimatePresence + conditional render visibility (the new pattern from
-  // setVariantVisibilityInCode). When the active variant is in the node's
-  // `hiddenOnVariants` set, apply `display: 'none'` on the canvas so the
-  // tile reflects what live preview would render (unmounted via the
-  // conditional render). Note: this is a CANVAS-only style merge — the
-  // source code carries the AnimatePresence wrapper, which the runtime
-  // (live preview) handles via real React unmount.
-  if (resolvedVariant && node.hiddenOnVariants?.has(resolvedVariant)) {
-    baseStyles = { ...baseStyles, display: 'none' };
-  }
-
   let result: Record<string, string>;
   if (!node.motionVariants) {
     result = baseStyles;
@@ -461,6 +450,19 @@ function resolveVariantStylesUncached(
   // like withResponsiveProps merges it on the live site. Applied LAST so it wins.
   if (vpWidth && node.responsivePropStyles && node.responsivePropStyles[vpWidth]) {
     folded = { ...folded, ...node.responsivePropStyles[vpWidth] };
+  }
+  // AnimatePresence + conditional render visibility (the pattern from
+  // setVariantVisibilityInCode). When the active variant is in the node's
+  // `hiddenOnVariants` set, apply `display: 'none'` on the canvas so the
+  // tile reflects what live preview renders (unmounted via the conditional).
+  // Applied LAST, after the motionVariants merge and every other layer: the
+  // node's DEFAULT variant entry often carries its own `display: 'flex'`
+  // (Layout writes park display there), and merging the hide into baseStyles
+  // let that entry override it — "Hide Yes hid on live but the canvas tile
+  // still showed it" (user report 2026-08-06). Live UNMOUNTS the node
+  // regardless of any style, so nothing may out-rank the hide here.
+  if (resolvedVariant && node.hiddenOnVariants?.has(resolvedVariant)) {
+    folded = { ...folded, display: 'none' };
   }
   return folded;
 }
