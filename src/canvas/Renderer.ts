@@ -1004,13 +1004,29 @@ export function renderNodes(
       }
     }
 
+    // PAGE bands must never ORDER template chrome. The flat template merge
+    // makes `layout::` nodes siblings of the page sections (bracketed at
+    // ±100000 so sections slot between); a pre-guard reorder wrote
+    // section-space `order` for chrome into a replica band and the template
+    // FOOTER rendered between sections on that tile (2026-08-06). The
+    // selectors are DEAD on the live site (the `layout::` prefix is a
+    // canvas-merge artifact — no such data-id exists in real DOM), so
+    // stripping the `order` declarations here makes the canvas match live
+    // even for already-corrupted pages. Chrome keeps every other banded
+    // style; only `order` is template-owned placement.
+    const pageCSSClean = pageCSS
+      ? pageCSS.replace(/(\[data-id="layout::[^"]*"\]\s*\{)([^}]*)(\})/g,
+          (_m, open: string, body: string, close: string) =>
+            open + body.replace(/(?:^|;)\s*order\s*:\s*[^;}]+;?/g, ';').replace(/^;/, '') + close)
+      : pageCSS;
+
     // Parse responsive overrides for patchElement to merge into inline styles — from BOTH the page CSS
     // AND the carried component CSS, so a typography preset's @media rules on a COMPONENT INSTANCE
     // resolve to the instance's per-viewport tier (keyed by the prefixed `instanceId:masterId`). Without
     // the carried CSS here, instances only ever painted the base/desktop tier on every tile. Merging into
     // inline styles (rather than relying on raw @container CSS) prevents !important-vs-inline flicker.
-    setResponsiveBreakpoints(parseResponsiveBreakpoints((pageCSS ?? '') + componentAfterCSSRaw));
-    _responsiveCssFp = simpleHash((pageCSS ?? '') + componentAfterCSSRaw);
+    setResponsiveBreakpoints(parseResponsiveBreakpoints((pageCSSClean ?? '') + componentAfterCSSRaw));
+    _responsiveCssFp = simpleHash((pageCSSClean ?? '') + componentAfterCSSRaw);
     // A component master (file with `variantConfig`) resolves typography/responsive overrides to the
     // highest breakpoint (base/desktop) — see `_isComponentMaster`. Real pages keep per-viewport.
     setIsComponentMaster(code?.includes('variantConfig') ?? false);
@@ -1028,7 +1044,7 @@ export function renderNodes(
     // hover effects only show during the CSS Hover editor preview, not on normal canvas hover (which is
     // used for selection). Both transforms apply to the carried component CSS too — its @media rules must
     // become @container, otherwise an instance's responsive resolves against the whole canvas window.
-    let canvasCSS = pageCSS ? pageCSS.replace(/@media\s*\(/g, '@container (') : '';
+    let canvasCSS = pageCSSClean ? pageCSSClean.replace(/@media\s*\(/g, '@container (') : '';
     canvasCSS = canvasCSS.replace(/:hover\s*\{/g, '[data-hover-preview]{');
     let componentAfterCSS = componentAfterCSSRaw
       .replace(/@media\s*\(/g, '@container (')
