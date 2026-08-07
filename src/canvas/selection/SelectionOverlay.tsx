@@ -10,7 +10,7 @@ import { marqueeSelectionSig } from './SelectionBox';
 import { activeEditorAtom, suppressSelectionOverlayAtom, colorPickerOpenAtom } from '@/code/stores/editor-store';
 import { activeFilePathAtom } from '@/code/project/active-file-store';
 import { SELECTION_COLOR, COMPONENT_COLOR, MAP_TEMPLATE_COLOR, isTextTag, isFitSize } from '@/shared/constants';
-import { interactingViewportIdAtom, viewportWidthsAtom, syncViewportWidths, viewportsConfigAtom, getSortedBreakpointWidths } from '@/code/stores/viewport-store';
+import { interactingViewportIdAtom, viewportWidthsAtom, syncViewportWidths, viewportsConfigAtom, viewportPositionsAtom, getSortedBreakpointWidths } from '@/code/stores/viewport-store';
 import { isDefaultLocaleAtom } from '@/code/stores/locale-store';
 import { rewriteAnimationBreakpoints } from '@/code/animations/animation-scope';
 import { rewriteContainerBreakpoints, rewriteResponsiveBreakpoints, rewriteResponsiveTextBreakpoints } from '@/code/generation/generator-styles';
@@ -163,6 +163,7 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
   const mapItemIndex = useAtomValue(mapItemIndexAtom);
   const setViewportWidths = useSetAtom(viewportWidthsAtom);
   const setViewportsConfig = useSetAtom(viewportsConfigAtom);
+  const setVpPositions = useSetAtom(viewportPositionsAtom);
   // Read viewport configs reactively so the resize-disabled flags update
   // immediately when the user toggles auto ↔ px height in the SizeTool.
   // Reading via `getDefaultStore()` from inside the layout-effect (as the
@@ -461,7 +462,19 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
       nodeId: selectedId,
       contentEl,
       onInteracting: setInteracting,
-      onViewportResize: (resizedVpId, newWidth, newHeight = 0) => {
+      onViewportResize: (resizedVpId, newWidth, newHeight = 0, newX) => {
+        // 0. FRAME-PARITY x: a west-edge (or zero-crossing-flipped) resize
+        // moved the tile's left live — persist the final x into the @canvas
+        // positions or the commit re-render snaps the tile back to its old
+        // spot ("resize left edge grows the right edge", 2026-08-07). East
+        // drags pass the unchanged x (no-op).
+        if (typeof newX === 'number' && Number.isFinite(newX)) {
+          setVpPositions(prev => {
+            const cur = prev[resizedVpId] ?? { x: 0, y: 0 };
+            if (cur.x === newX) return prev;
+            return { ...prev, [resizedVpId]: { ...cur, x: newX } };
+          });
+        }
         // 1. Get old width before updating — from the live viewport config
         // (respects custom breakpoints, unlike the old hardcoded VIEWPORTS).
         const oldVp = allViewportConfigs.find(v => v.id === resizedVpId);
@@ -604,6 +617,16 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
 
   // Pan mode (space held or hand tool) — hide all overlays, no hover, no selection handles
   if (isPanMode) return null;
+
+  // VIEWPORT-frame interaction (resize / tile drag) — hide the selection
+  // chrome for the gesture and refit once on mouseup. The overlay refits
+  // from the rect cache, which lags one frame behind the live `left`
+  // patches a west-edge viewport resize makes (frame-parity x), so the
+  // outline+handles jittered rightward against the stable tile ("header
+  // and selection overlay glitch out to the right", 2026-08-07). The
+  // gesture's own handlers live on window, so unmounting mid-drag is safe
+  // (same pattern the rotate suppression uses).
+  if (isInteracting && (selectedId === 'root' || selectedId === 'layout::root')) return null;
 
   // Font-family hover preview is open: the picker rapidly mutates the
   // selected text's font on every row hover, but the overlay's RAF

@@ -367,7 +367,7 @@ interface ResizeCallbacks {
    *  `newHeight` is the final px height; the consumer should treat it as
    *  "set fixed-px viewport height" only when the user explicitly opted into
    *  px-mode. Pass `0` to leave viewport height untouched (auto). */
-  onViewportResize?: (vpId: string, newWidth: number, newHeight?: number) => void;
+  onViewportResize?: (vpId: string, newWidth: number, newHeight?: number, newX?: number) => void;
   /** Called when a variant root is resized — updates variantConfig position (x, y). */
   onVariantPositionUpdate?: (variantName: string, x: number, y: number) => void;
   /** Live snap-guide overlay updates during resize. Empty array on miss. */
@@ -1924,6 +1924,32 @@ export function startResize(
     bandCrossingBoundaries.find((b) => b >= w) ?? null;
   let lastRenderedBand: number | null = bandForWidth(startWidth);
   let lastBandRenderAt = 0;
+  // Viewport-tile chrome (the header pills) hidden for the resize gesture:
+  // headers refit from the rect cache, which lags one frame behind the live
+  // `left` patches of a west-edge resize — the pill jittered against the
+  // stable tile ("viewport header glitches out", 2026-08-07). Hidden lazily
+  // on the first vp move tick, restored on every gesture exit. A STYLESHEET
+  // rule, not per-element styles: a band-crossing re-render mid-drag re-runs
+  // renderViewportHeaders, which REMOVES and RECREATES the pill elements —
+  // inline visibility was wiped and the pill popped back mid-gesture
+  // ("header only is still glitching", follow-up same day).
+  let vpHeadersHidden = false;
+  const VP_HEADER_HIDE_ID = 'vp-resize-header-hide';
+  const setVpHeadersHidden = (hidden: boolean) => {
+    if (hidden === vpHeadersHidden) return;
+    vpHeadersHidden = hidden;
+    const existing = document.getElementById(VP_HEADER_HIDE_ID);
+    if (hidden) {
+      if (!existing) {
+        const styleEl = document.createElement('style');
+        styleEl.id = VP_HEADER_HIDE_ID;
+        styleEl.textContent = '[data-viewport-header] { visibility: hidden !important; }';
+        document.head.appendChild(styleEl);
+      }
+    } else {
+      existing?.remove();
+    }
+  };
 
   // ─── PIN the dragged tile's RESOLUTION WIDTH for the whole gesture ───────
   // The page content of the dragged tile must keep its own responsive state
@@ -2226,6 +2252,22 @@ export function startResize(
           trace.action('resize:viewport-band-crossing-rerender', { vpId: resizedVpId, width: liveW, band });
         }
       }
+
+      // FRAME-PARITY x for viewport tiles: the generic math above already
+      // computed the compensated `newLeft` (a west handle anchors the RIGHT
+      // edge; zero-crossing flips the anchor) — but a tile's x is its own
+      // absolute `left` in canvas space and only `width` was patched, so a
+      // west-edge drag grew the tile RIGHTWARD and a flip grew the wrong
+      // way ("resize left edge increases the right edge", 2026-08-07).
+      // Patch the tile's left live (no-op for east drags — newLeft stays
+      // startLeft); the commit persists the final x into @canvas positions
+      // via onViewportResize.
+      if (isVpNode) {
+        setVpHeadersHidden(true);
+        const leftVal = `${Math.round(newLeft)}px`;
+        patchNodeStyles(contentEl, nodeId, vpPrefix, { left: leftVal });
+        liveStyles.left = leftVal;
+      }
     }
     if ((handleAffectsY || isVectorSet) && !inset.verticalInset) {
       const h = formatResizeDimension(newHeight, origHeightUnit, heightPxPerUnit, parentCssHeight, posPx);
@@ -2247,6 +2289,7 @@ export function startResize(
       // surrounding `!isVpNode` branch already handles that for every
       // other style; this is the one targeted exception, for height only.
       if (isVpNode) {
+        setVpHeadersHidden(true);
         const allVps = getDefaultStore().get(viewportsConfigAtom);
         const primary = allVps.find(v => v.isPrimary) ?? allVps[0];
         const resizedVpId = nodeAttrs['data-viewport'] || vpId;
@@ -2522,6 +2565,7 @@ export function startResize(
     if (!didMove) {
       trace.action('resize:end:no-move', { nodeId, vpId });
       removeBandPin(); // no band change happened — safe to drop immediately
+      setVpHeadersHidden(false);
       styleHelperOps.hide();
       onInteracting(false);
       dragStateOps.set(false);
@@ -2602,13 +2646,20 @@ export function startResize(
       // sending the live curHeight on a width-only drag would clobber the
       // user's auto/px choice.
       const newHeight = handleAffectsY ? (parseInt(finalStyles.height) || curHeight) : 0;
+      // Final tile x — a west-edge (or zero-crossing-flipped) drag moved the
+      // tile's `left` live; persist it into @canvas positions or the commit
+      // re-render snaps the tile back to its old x. East drags pass the
+      // unchanged startLeft (idempotent).
+      const newX = handleAffectsX && liveStyles.left?.endsWith('px')
+        ? Math.round(parseFloat(liveStyles.left)) : undefined;
       if (resizedVpId && newWidth > 0) {
         // Clear the pin BEFORE the commit: the commit's forceCanvasRender then
         // ships bandPin:null — the sandbox store clears, resolvers resolve at
         // the FINAL width, and the root's containerType is re-stamped to
         // inline-size by the render itself (no manual restore needed).
         removeBandPin({ skipDomRestore: true });
-        callbacks.onViewportResize(resizedVpId, newWidth, newHeight);
+        setVpHeadersHidden(false);
+        callbacks.onViewportResize(resizedVpId, newWidth, newHeight, newX);
         styleHelperOps.hide();
         onInteracting(false);
         dragStateOps.set(false);
@@ -2616,6 +2667,7 @@ export function startResize(
       }
     }
     removeBandPin(); // fall-through safety — vp branch above didn't fire
+    setVpHeadersHidden(false);
 
     // Capture variant position BEFORE committing (liveStyles has the updated left/top from resize)
     let pendingVariantPos: { variantName: string; x: number; y: number } | null = null;
@@ -2730,6 +2782,7 @@ export function startResize(
     window.removeEventListener('pointerup', onUp);
     endOverlayFollow();
     removeBandPin(); // cancel path — never leave gesture-scoped CSS behind
+    setVpHeadersHidden(false);
     onInteracting(false);
     dragStateOps.set(false);
     // Drop the bake snapshot on cancel too — a stale one would corrupt the

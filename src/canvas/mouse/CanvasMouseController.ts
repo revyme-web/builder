@@ -1332,10 +1332,22 @@ export class CanvasMouseController {
         }
       }
 
-      // Text edit: allow for nodes with text, mixed content, or text-type elements
+      // Text edit: allow for nodes with text, mixed content, or text-type elements.
+      //
+      // LEAF NODES ONLY (`children.length === 0`): a frame with real element
+      // children (data-id'd nodes / component instances) must NEVER enter
+      // text edit — TipTap mounts over the frame's RENDERED DOM, captures a
+      // component instance's internals as plain text, and the exit commit
+      // (updateNodeChildrenFromHTML) rewrites the children with it: the
+      // instance is destroyed and its variant labels come back as text rows
+      // ("double-clicked the white frame and the button disappeared",
+      // 2026-08-07 — the gate passed on the frame's WHITESPACE-only JSX text,
+      // hence also the trim). Rich-text runs carry no data-id, so genuine
+      // text nodes always have zero children and keep working.
       const TEXT_TYPES = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'label', 'button']);
       const node = this.store.get(nodesAtom).get(nodeId);
-      if (node && (node.textContent || node.hasMixedContent || TEXT_TYPES.has(node.type))) {
+      if (node && node.children.length === 0
+          && (node.textContent?.trim() || node.hasMixedContent || TEXT_TYPES.has(node.type))) {
         // For .map() ghosts, mount TipTap on the GHOST'S data-node-id (with __N suffix).
         const editTargetId = nodeId + ghostSuffix;
         trace.action('canvas:text-edit-from-dblclick-iframe', { nodeId: editTargetId, vpId });
