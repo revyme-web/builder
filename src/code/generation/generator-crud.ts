@@ -1815,6 +1815,77 @@ export function resolveMediaGateTernariesInCode(code: string, nodeId: string): s
 }
 
 /**
+ * SELF-HEAL: a data-id'd JSX element sitting as a BARE module-level
+ * ExpressionStatement — outside Page() and outside `canvasNodes` — is invalid
+ * dialect: it never renders, but the parser's data-id scan still picks it up,
+ * so the node map holds a DUPLICATE id and hit-testing/selection glitch
+ * ("wtf is happening with this frame", 2026-08-07: a `<p>` copy dangling
+ * after the canvasNodes fragment). Worse, one legacy move fallback pushes
+ * nodes into "the last bare JSX statement", compounding the corruption.
+ * Heal on flush: DROP the statement when its root data-id exists elsewhere
+ * (it's a corpse copy); otherwise FOLD it into the canvasNodes fragment so
+ * the content stays reachable. No-op for clean files (cheap precheck).
+ */
+export function healDanglingModuleJsxInCode(code: string): string {
+  // Top-level statements start at column 0 — normal JSX children never do.
+  if (!/\n<[A-Za-z]/.test(code)) return code;
+  const ast = parseJSX(code);
+  if (!ast) return code;
+  const program: t.Program = (ast as any).program ?? ast;
+  const dangling: t.JSXElement[] = [];
+  program.body = program.body.filter((stmt) => {
+    if (stmt.type !== 'ExpressionStatement') return true;
+    let expr: t.Node = stmt.expression;
+    if (expr.type === 'ParenthesizedExpression') expr = (expr as any).expression;
+    if (expr.type !== 'JSXElement') return true;
+    const hasDataId = (expr as t.JSXElement).openingElement.attributes.some(
+      (a) => t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && a.name.name === 'data-id',
+    );
+    if (!hasDataId) return true;
+    dangling.push(expr as t.JSXElement);
+    return false;
+  });
+  if (dangling.length === 0) return code;
+
+  let base: string;
+  try {
+    base = generate(ast, { retainLines: false, concise: false }, code).code;
+  } catch {
+    return code;
+  }
+
+  for (const el of dangling) {
+    const idAttr = el.openingElement.attributes.find(
+      (a): a is t.JSXAttribute => t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && a.name.name === 'data-id',
+    );
+    const id = idAttr?.value?.type === 'StringLiteral' ? idAttr.value.value : '';
+    if (id && base.includes(`data-id="${id}"`)) {
+      // The id still lives in the real tree — this was a corpse copy. Drop it.
+      trace.action('generator:heal-dangling-jsx-dropped-duplicate', { nodeId: id });
+      continue;
+    }
+    // Unique content — fold into canvasNodes so it stays reachable/editable.
+    if (!el.openingElement.attributes.some(
+      (a) => t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && a.name.name === 'data-canvas-node',
+    )) {
+      el.openingElement.attributes.push(
+        t.jsxAttribute(t.jsxIdentifier('data-canvas-node'), t.stringLiteral('true')),
+      );
+    }
+    const elJsx = generate(el, { retainLines: false, concise: false }).code.replace(/;\s*$/, '');
+    const fragClose = base.lastIndexOf('</>');
+    const declIdx = base.indexOf('const canvasNodes');
+    if (declIdx !== -1 && fragClose > declIdx) {
+      base = base.slice(0, fragClose) + `  ${elJsx}\n` + base.slice(fragClose);
+    } else {
+      base += `\n\nconst canvasNodes = (<>\n  ${elJsx}\n</>);\n`;
+    }
+    trace.action('generator:heal-dangling-jsx-folded-into-canvas', { nodeId: id });
+  }
+  return base;
+}
+
+/**
  * When a moved element is the TEMPLATE BODY of a `.map()` collection list —
  * `coll.map((item, idx) => <el/>)` — it isn't a JSX child of any parent
  * element, so the parent-splice removal can't reach it. Leaving it produces a

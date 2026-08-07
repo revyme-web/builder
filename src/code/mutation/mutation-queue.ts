@@ -47,6 +47,7 @@ import {
   htmlToPlainTextLines,
   replaceNodeTextContent,
   stripInlineSpanStyleInCode,
+  healDanglingModuleJsxInCode,
   addNodeInCode,
   addCanvasNodeInCode,
   removeNodeInCode,
@@ -1110,6 +1111,7 @@ export function flushNow(): void {
     // viewport has — panel override lookups miss, resizes strand them).
     // Cheap keys-vs-config gate inside; no-op on healthy pages.
     code = normalizeResponsiveBandKeys(code);
+    code = healDanglingModuleJsxInCode(code);
 
     // SYNTAX GATE for the synchronous path. `processQueue` has always validated
     // + rolled back, but `flushNow` — which EVERY creator and the overlay tool
@@ -1991,6 +1993,7 @@ function processQueue(): void {
     // Converge drift-era stray @media bands onto the page's @canvas viewport
     // keys (mirrors the flushNow hook; cheap gate inside).
     code = normalizeResponsiveBandKeys(code);
+    code = healDanglingModuleJsxInCode(code);
   }
   const validationError = codeChanged ? validateGeneratedCode(code) : null;
   if (validationError) {
