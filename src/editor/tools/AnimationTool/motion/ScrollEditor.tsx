@@ -11,6 +11,7 @@ import { type ScrollAnimConfig, type ScrollTrigger, detectTriggerFromOffset, det
 import { parseRange } from '@/code/parsing/scroll-parser';
 import { activeFilePathAtom } from '@/code/project/active-file-store';
 import { getAnchorsForPage } from '../../LinkTool/LinkUrlControl';
+import { findEnclosingAnchorId } from '../enclosing-section';
 import { trace } from '@/shared/debug-trace';
 import TransitionPanel from '../TransitionPanel';
 import { TransitionCurveIcon, summarizeTransition } from '../CurvePreview';
@@ -340,7 +341,7 @@ const detectScrollPreset = (toProps: Record<string, string>): string => {
   return 'custom';
 };
 
-export function ScrollTransformEditor({ nodeId, scrollData, onSwitchToAppear, mode = 'transform', scopedTransformWrite, scopedDirectionWrite }: { nodeId: string; scrollData?: any; onSwitchToAppear?: (currentTrigger: ScrollTrigger) => void; mode?: 'animation' | 'transform'; scopedTransformWrite?: (which: 'from' | 'to', props: Record<string, string>) => boolean; scopedDirectionWrite?: (patch: { direction?: 'down' | 'up'; replay?: boolean; toProps?: Record<string, string> }) => boolean }) {
+export function ScrollTransformEditor({ nodeId, scrollData, onSwitchToAppear, mode = 'transform', scopedTransformWrite, scopedDirectionWrite, onSwitchToSectionInView }: { nodeId: string; scrollData?: any; onSwitchToAppear?: (currentTrigger: ScrollTrigger) => void; mode?: 'animation' | 'transform'; scopedTransformWrite?: (which: 'from' | 'to', props: Record<string, string>) => boolean; scopedDirectionWrite?: (patch: { direction?: 'down' | 'up'; replay?: boolean; toProps?: Record<string, string> }) => boolean; /** Animation-mode only: a scrubbed Section-in-View write re-classifies the effect as the Scroll Transform ENTRY — the host moves the open popup there (after this editor's write flushed). */ onSwitchToSectionInView?: () => void }) {
   // 'animation' = the discrete Scroll Animation editor: Section in View is a
   // SINGLE section (no Add Section / multi-section). 'transform' = the scrubbed
   // Scroll Transform editor: Section in View supports Add Section multi-step.
@@ -568,7 +569,26 @@ export function ScrollTransformEditor({ nodeId, scrollData, onSwitchToAppear, mo
               if (newTrigger === 'layerInView') queueMutation({ type: 'removeScrollAnim', nodeId });
               else if (newTrigger === 'sectionInView') queueMutation({ type: 'removeScrollDirection', nodeId });
             }
-            writeToCode(stopsToUse, v, transition);
+            // Fresh switch to Section in View: default the target to the
+            // node's ENCLOSING anchored section — that's what the trigger
+            // means. An empty sectionId degrades to a self-targeted scrub
+            // (valid code), so this only upgrades the default.
+            let seedSecId: string | undefined;
+            if (newTrigger === 'sectionInView' && !sectionIdRef.current) {
+              const enclosing = findEnclosingAnchorId(nodeId);
+              if (enclosing) {
+                seedSecId = enclosing;
+                setSectionId(enclosing);
+                sectionIdRef.current = enclosing;
+                trace.action('scroll-editor:seed-enclosing-section', { nodeId, sectionId: enclosing });
+              }
+            }
+            writeToCode(stopsToUse, v, transition, seedSecId);
+            // Animation-mode Section in View is SCRUBBED — after this write
+            // the effect parses back as the separate Scroll Transform entry,
+            // so the open popup must follow it there (the host flushes then
+            // re-targets; without it this popup re-renders as empty Appear).
+            if (newTrigger === 'sectionInView' && mode === 'animation') onSwitchToSectionInView?.();
           }} options={[
             ...(onSwitchToAppear ? [{ value: '__appear', label: 'On Appear' }] : []),
             // Scroll Animation "On Scroll" = element-scrubbed direction-trigger

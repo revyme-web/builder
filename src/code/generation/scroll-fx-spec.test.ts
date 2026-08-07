@@ -372,3 +372,66 @@ export default withResponsiveProps(MoMoFe);`;
     expect(back.hover!.props).toMatchObject({ scale: '1.05' });
   });
 });
+
+// CANVAS-NODE dormant writes: module-scope `canvasNodes` can't hold hooks —
+// adding a Scroll Transform there used to bind function-scope motion values
+// into module-scope style ("References undefined identifiers …Opacity/…Scale"
+// on a canvas-pasted figma import, 2026-08-07). The write stores the spec in
+// data-scroll-fx only; drag-into-page rehydrates it into real hooks.
+import { writeCanvasNodeScrollFx } from './generator-motion';
+
+describe('canvas-node scroll fx (dormant spec writes)', () => {
+  const CANVAS_PAGE = `'use client';
+import React from 'react';
+import { motion } from 'framer-motion';
+export default function Page() {
+  return (<div data-id="root"></div>);
+}
+
+const canvasNodes = <>
+  <p data-id="p-msiri9ov-q" data-name="Heading 1" style={{ fontSize: '82px', width: '586px' }}>Boost your rankings</p>
+</>;`;
+
+  it('adding a Scroll Transform stores the spec DORMANT — no hooks, oracle validation passes', () => {
+    const out = writeCanvasNodeScrollFx(CANVAS_PAGE, 'p-msiri9ov-q', { transform: {
+      trigger: 'onScroll', from: { opacity: '0.5', scale: '0.5' }, to: { opacity: '1', scale: '1' },
+      transition: { type: 'spring', duration: '0.5' },
+    } });
+    expect(out).toContain('data-scroll-fx=');
+    expect(out).not.toContain('useScroll');
+    expect(out).not.toContain('pMsiri9ovQOpacity');
+    expect(validateGeneratedCode(syncImports(out))).toBeNull(); // the exact check that blocked
+    expect(getScrollFx(out, 'p-msiri9ov-q')?.transform?.to).toEqual({ opacity: '1', scale: '1' });
+  });
+
+  it('merges into an existing dormant spec; undefined removes a key; empty spec drops the attr', () => {
+    let out = writeCanvasNodeScrollFx(CANVAS_PAGE, 'p-msiri9ov-q', { speed: 120 });
+    out = writeCanvasNodeScrollFx(out, 'p-msiri9ov-q', { transform: { trigger: 'onScroll', from: { scale: '0.5' }, to: { scale: '1' } } });
+    expect(Object.keys(getScrollFx(out, 'p-msiri9ov-q')!).sort()).toEqual(['speed', 'transform']);
+    out = writeCanvasNodeScrollFx(out, 'p-msiri9ov-q', { transform: undefined });
+    expect(Object.keys(getScrollFx(out, 'p-msiri9ov-q') ?? {})).toEqual(['speed']);
+    out = writeCanvasNodeScrollFx(out, 'p-msiri9ov-q', { speed: undefined });
+    expect(out).not.toContain('data-scroll-fx');
+  });
+
+  it('drag-into-page REHYDRATES the dormant spec into real hooks', () => {
+    const dormant = writeCanvasNodeScrollFx(CANVAS_PAGE, 'p-msiri9ov-q', { transform: {
+      trigger: 'onScroll', from: { opacity: '0.5' }, to: { opacity: '1' },
+    } });
+    // Simulate the move: relocate the (attr-carrying) tag into the Page body.
+    // The injected data-scroll-fx sits BEFORE data-id, so anchor on data-id
+    // and walk back to the tag opener.
+    const idIdx = dormant.indexOf('data-id="p-msiri9ov-q"');
+    const tag = dormant.slice(dormant.lastIndexOf('<', idIdx), dormant.indexOf('</p>', idIdx) + '</p>'.length);
+    const paged = `'use client';
+import React from 'react';
+import { motion } from 'framer-motion';
+export default function Page() {
+  return (<div data-id="root">${tag}</div>);
+}`;
+    const re = rehydrateScrollFx(paged, 'p-msiri9ov-q');
+    expect(re).toContain('useScroll');
+    expect(re).toContain('useTransform');
+    expect(validateGeneratedCode(syncImports(re))).toBeNull();
+  });
+});

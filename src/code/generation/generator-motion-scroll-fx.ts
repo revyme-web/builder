@@ -309,7 +309,9 @@ export function decomposeScrollAppearInCode(code: string, nodeId: string): strin
   let result = code;
   const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
-  const onceM = result.match(new RegExp(`useInView\\(${cn}Ref,\\s*\\{ once:\\s*(true|false) \\}\\)`));
+  // Whitespace-tolerant: an AST-path mutation reformats these hooks
+  // multi-line (`{\n once: true\n }`) — exact-spacing patterns miss them.
+  const onceM = result.match(new RegExp(`useInView\\(${cn}Ref,\\s*\\{\\s*once:\\s*(true|false)\\s*\\}`));
   const once = onceM ? onceM[1] : 'true';
   const transM = result.match(new RegExp(`animate\\(${cn}Appear,\\s*1,\\s*(\\{[^}]*\\})\\)`));
   const transition = transM ? transM[1].trim() : null;
@@ -345,7 +347,13 @@ export function decomposeScrollAppearInCode(code: string, nodeId: string): strin
     .replace(new RegExp(`\\s*const ${cn}Ref = useRef\\(null\\);`), '')
     .replace(new RegExp(`\\s*const ${cn}InView = useInView\\([^;]*\\);`), '')
     .replace(new RegExp(`\\s*const ${cn}Appear = useMotionValue\\(0\\);`), '')
-    .replace(new RegExp(`\\s*useEffect\\(\\(\\) => \\{ if \\(${cn}InView\\)[\\s\\S]*?\\}, \\[${cn}InView\\]\\);`), '')
+    // Whitespace-tolerant effect match — the single-line-only form
+    // (`{ if (` / `}, [` with exact spaces) missed the MULTI-LINE effect an
+    // AST-path mutation reformats to, so decompose removed the InView/Appear
+    // DECLS but left the effect referencing them: deleting the section then
+    // failed validation with "References undefined identifiers …InView,
+    // …Appear" ("can't delete the whole page", 2026-08-07).
+    .replace(new RegExp(`\\s*useEffect\\(\\(\\)\\s*=>\\s*\\{\\s*if\\s*\\(${cn}InView\\)[\\s\\S]*?\\},\\s*\\[${cn}InView\\]\\);`), '')
     .replace(new RegExp(`\\s*ref=\\{${cn}Ref\\}`), '');
 
   // A loop decomposes first and restores the shared `transition` (with its repeat
@@ -445,6 +453,11 @@ export function clearNodeScrollFx(code: string, nodeId: string): string {
   //     neighbouring unrelated effect.
   result = result.replace(new RegExp(`\\s*useMotionValueEvent\\(${e}(?!${TEXT_ANIM_TAIL})[A-Z]\\w*[\\s\\S]*?\\}\\);`, 'g'), '');
   result = result.replace(new RegExp(`\\s*useEffect\\(\\(\\)\\s*=>\\s*\\{\\s*${e}(?!${TEXT_ANIM_TAIL})[A-Z]\\w*Ref\\.current[^;]*;\\s*\\}\\s*,\\s*\\[[^\\]]*\\]\\);`, 'g'), '');
+  //     The appear-reveal effect (`useEffect(() => { if (<cn>InView) { animate(<cn>Appear…`)
+  //     when decompose's own removal missed it (e.g. a partially-stripped legacy block whose
+  //     Appear decl is already gone, so decompose's gate never ran). Both anchors carry the
+  //     node's own name, so the lazy middle can't swallow a neighbouring effect.
+  result = result.replace(new RegExp(`\\s*useEffect\\(\\(\\)\\s*=>\\s*\\{\\s*if\\s*\\(${e}(?!${TEXT_ANIM_TAIL})[A-Z]\\w*\\)[\\s\\S]*?\\},\\s*\\[${e}(?!${TEXT_ANIM_TAIL})[A-Z]\\w*\\]\\);`, 'g'), '');
   result = result.split('\n').filter((line) => {
     const t = line.trim();
     // A line that OPENS a multi-line block (ends with `{`) is NOT a single-line
@@ -776,6 +789,26 @@ export function dormantizeScrollFx(code: string, nodeId: string): string {
 export function rehydrateScrollFx(code: string, nodeId: string): string {
   const spec = getScrollFx(code, nodeId);
   return spec && Object.keys(spec).length ? setScrollFxInCode(code, nodeId, spec) : code;
+}
+
+/** CANVAS-NODE write path: module-scope `canvasNodes` can't hold hooks, so a
+ *  scroll effect added/edited/removed on a node ALREADY there is stored
+ *  DORMANT — `patch` merged into the `data-scroll-fx` spec, hooks/bindings
+ *  stripped. The hook-emitting writers used to run unchanged and bound
+ *  function-scope motion values into module-scope style ("References
+ *  undefined identifiers …Opacity/…Scale" adding a Scroll Transform on a
+ *  canvas-pasted figma import, 2026-08-07). Drag-into-page rehydrates via
+ *  rehydrateScrollFx; the AnimationTool already renders spec-driven entries.
+ *  An `undefined` value in `patch` DELETES that effect key (the remove form). */
+export function writeCanvasNodeScrollFx(code: string, nodeId: string, patch: Partial<ScrollFxSpec>): string {
+  const spec: ScrollFxSpec = { ...(getScrollFx(code, nodeId) ?? {}) };
+  for (const k of Object.keys(patch) as (keyof ScrollFxSpec)[]) {
+    if (patch[k] === undefined) delete spec[k];
+    else (spec as any)[k] = patch[k];
+  }
+  const cleared = robustClearScrollFx(code, nodeId);
+  trace.action('generator:canvas-node-scroll-fx', { nodeId, keys: Object.keys(spec) });
+  return Object.keys(spec).length ? injectScrollFxAttr(cleared, nodeId, spec) : cleared;
 }
 
 /** Resting/neutral value for a prop (matches updateScrollAnimInCode's default). */

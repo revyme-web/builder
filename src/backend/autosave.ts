@@ -12,6 +12,12 @@ import { projectFS } from '../code/project/project-fs';
 import { trace } from '@/shared/debug-trace';
 
 const DEBOUNCE_MS = 2000;
+/** Bounded auto-retry after a failed save. Without it, `pendingSave` stayed
+ *  true but nothing ever re-armed the timer — with no further edits the
+ *  project silently never persisted (and there is no visible save status). */
+const RETRY_MS = 5000;
+const MAX_RETRIES = 3;
+let saveFailures = 0;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingSave = false;
 let isSaving = false;
@@ -45,11 +51,21 @@ async function performSave(): Promise<void> {
     await backend.saveProject(id, data);
     store.set(saveStatusAtom, 'saved');
     pendingSave = false;
+    saveFailures = 0;
     trace.action('autosave:success', { id });
   } catch (err) {
     store.set(saveStatusAtom, 'error');
     debounceTimer = null;
     trace.error('autosave:error', err);
+    saveFailures++;
+    if (saveFailures <= MAX_RETRIES && !_disposed && !isHeld) {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        startSave();
+      }, RETRY_MS);
+      trace.action('autosave:retry-scheduled', { attempt: saveFailures, inMs: RETRY_MS });
+    }
   } finally {
     isSaving = false;
   }
@@ -169,6 +185,7 @@ export function triggerAutosave(opts?: { force?: boolean }): void {
   }
 
   pendingSave = true;
+  saveFailures = 0; // fresh user intent — a new edit re-earns the retry budget
   getStore().set(saveStatusAtom, 'unsaved');
 
   if (debounceTimer !== null) clearTimeout(debounceTimer);
@@ -205,18 +222,19 @@ export function cancelPendingAutosave(): void {
 // project state (the clobber-on-exit reverts, 2026-07-22). The window slot
 // guarantees exactly one live listener; dispose also detaches ours.
 const UNLOAD_HOOK_KEY = '__revymeAutosaveUnloadHook';
-function onBeforeUnloadSave(): void {
+function onBeforeUnloadSave(e: BeforeUnloadEvent): void {
     if (_disposed) return;
-    if (!pendingSave) return;
+    // isSaving counts as unsaved: the in-flight fetch DIES with the page
+    // (no keepalive), so "a save is already running" is precisely when the
+    // unload path must still act. The old skip here + fetch cancellation
+    // lost every import whose PUT was mid-flight when the user clicked
+    // Dashboard ("went back and the design was gone", 2026-08-07).
+    if (!pendingSave && !isSaving) return;
     if (isHeld) {
       // Held = the fresh-site prompt is still deciding. The only deferred
       // content is the boot scaffold (a reload reseeds it identically) —
       // beaconing it would fill the row the remix-into endpoint needs empty.
       trace.action('autosave:beacon-skipped', { reason: 'held for template prompt' });
-      return;
-    }
-    if (isSaving) {
-      trace.action('autosave:beacon-skipped', { reason: 'save already in progress' });
       return;
     }
 
@@ -246,8 +264,21 @@ function onBeforeUnloadSave(): void {
     // shape which got silently dropped, losing pending changes on tab close.
     const payload = JSON.stringify({ json: JSON.stringify(data) });
     const blob = new Blob([payload], { type: 'application/json' });
-    navigator.sendBeacon(`/api/websites/${id}`, blob);
-    trace.action('autosave:beacon', { id });
+    const sent = navigator.sendBeacon(`/api/websites/${id}`, blob);
+    trace.action('autosave:beacon', { id, sent, bytes: blob.size });
+    if (!sent) {
+      // sendBeacon has a ~64KB quota and returns false WITHOUT sending when
+      // the payload exceeds it — which any real project does. There is no
+      // unload-safe transport for a multi-MB body (fetch keepalive shares
+      // the same quota), so the only remaining protection is the browser's
+      // native leave-confirmation. It appears ONLY in the would-lose-work
+      // case; choosing to stay kicks an immediate real save.
+      e.preventDefault();
+      e.returnValue = '';
+      setTimeout(() => {
+        if (!_disposed && pendingSave && !isSaving && !isHeld) void startSave();
+      }, 0);
+    }
 }
 if (typeof window !== 'undefined') {
   const prev = (window as any)[UNLOAD_HOOK_KEY] as (() => void) | undefined;

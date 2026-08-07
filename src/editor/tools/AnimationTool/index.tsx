@@ -994,7 +994,8 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
             enterProps={d.initialProps || mp?.initial || {}}
             transition={d.transition || mp?.transition || {}}
             scrollPayload={scrollPayload} scopedDirectionWrite={commitScopedDirection}
-            isVariantMode={!!d.isVariantMode} initialName={d.initialName} /> };
+            isVariantMode={!!d.isVariantMode} initialName={d.initialName}
+            onPickSectionInView={() => setActivePopup('scrollTransform')} /> };
       }
       case 'loop': {
         if (ifx) return { title: 'Loop Effect', content: <InstanceFxPopup key={nodeId} nodeId={nodeId} fxKind="loop" spec={ifx} write={writeInstanceFx} /> };

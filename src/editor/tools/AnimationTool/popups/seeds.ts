@@ -3,6 +3,7 @@
 
 import { queueMutation } from '@/code/mutation/mutation-queue';
 import { getActiveAnimationScope } from '../animation-scope-source';
+import { findEnclosingAnchorId } from '../enclosing-section';
 import type { SerScope } from '@/code/generation/generator-motion';
 
 // Default Motion scroll seed (the reference On Scroll: resting → To, default Fade Out).
@@ -35,7 +36,12 @@ export const seedScroll = (nodeId: string, trigger: import('@/code/generation/ge
   queueMutation({ type: 'removeMotionProp', nodeId, propName: 'initial' });
   queueMutation({ type: 'removeMotionProp', nodeId, propName: 'viewport' });
   if (trigger === 'sectionInView') {
-    queueMutation({ type: 'updateScrollAnim', config: SCROLL_SEED(nodeId, 'sectionInView') });
+    // Default the target to the node's ENCLOSING anchored section — that's
+    // what "Section in View" means. '' stays valid (self-targeted scrub)
+    // when no ancestor carries an anchor id.
+    const cfg = SCROLL_SEED(nodeId, 'sectionInView');
+    cfg.sectionId = findEnclosingAnchorId(nodeId);
+    queueMutation({ type: 'updateScrollAnim', config: cfg });
   } else {
     // "On Scroll" = direction-TRIGGERED (the reference): fades out when scrolling down,
     // returns on scroll up (replay). Fade Out default. Adding on a replica scopes it to

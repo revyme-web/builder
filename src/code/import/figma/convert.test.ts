@@ -52,26 +52,23 @@ describe('convertFigmaPayload — layout frames (auto-layout)', () => {
     expect(byId(convertFigmaPayload(p), 'a').styles.flex).toBe('1 0 0px');
   });
 
-  it('short-lined multi-line text (headings) splits into one <p> per authored line', () => {
+  it('short-lined multi-line text (headings) becomes ONE <p> with real <br/> breaks \u2014 typography stays on the text node', () => {
     const p = payload([
-      { id: 't', name: 'T', kind: 'text', styles: { width: '461px' }, text: 'Virtual          Reality\n   Augmented\nEducation.' },
+      { id: 't', name: 'T', kind: 'text', styles: { width: '461px', fontSize: '82px' }, text: 'Virtual          Reality\n   Augmented\nEducation.' },
     ]);
     const data = convertFigmaPayload(p);
-    const wrap = byId(data, 't');
-    expect(wrap.type).toBe('div');
-    expect(wrap.styles.display).toBe('flex');
-    expect(wrap.styles.flexDirection).toBe('column');
-    expect(wrap.children.length).toBe(3);
-    const l0 = byId(data, wrap.children[0]);
-    const l1 = byId(data, wrap.children[1]);
-    // space RUNS become NBSP (JSX collapses plain whitespace at render)
-    expect(l0.textContent).toBe('Virtual' + '\u00A0'.repeat(10) + 'Reality');
-    expect(l1.textContent).toBe('\u00A0'.repeat(3) + 'Augmented');
-    expect(l0.styles.whiteSpace).toBe('nowrap'); // a fallback font must never re-wrap a line
-    expect(l0.styles.order).toBe('0');
-    expect(l0.styles.position).toBe('relative');
-    expect(l0.styles.flex).toBe('0 0 auto');
-    expect(byId(data, wrap.children[2]).textContent).toBe('Education.');
+    const t = byId(data, 't');
+    // NOT the old flex-column wrapper + <p>-per-line shape: that carried
+    // every text style on a div the builder's text tools can't edit.
+    expect(t.type).toBe('p');
+    expect(t.children.length).toBe(0);
+    expect(t.styles.fontSize).toBe('82px'); // ON the text node, not a wrapper
+    expect(t.styles.whiteSpace).toBe('nowrap'); // a fallback font must never re-wrap a line
+    // space RUNS become NBSP (JSX collapses plain whitespace at render);
+    // authored newlines become structural <br/> elements.
+    expect(t.textContent).toBe(
+      'Virtual' + '\u00A0'.repeat(10) + 'Reality<br/>' + '\u00A0'.repeat(3) + 'Augmented<br/>Education.',
+    );
   });
 
   it('long-lined multi-line text (paragraphs) keeps pre-wrap so it can soft-wrap', () => {

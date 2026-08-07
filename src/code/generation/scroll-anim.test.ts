@@ -30,6 +30,80 @@ export default function Page() {
   );
 }`;
 
+// ─── Test: ref attach must be JSX-aware (the <style> block trap) ────────────
+// A page's @media <style> block carries the SAME data-id strings as the JSX
+// and sits BEFORE the nodes. A raw indexOf found the CSS occurrence first, so
+// `ref={…}` landed inside the stylesheet text while the real tag never got it
+// — the oracle then blocked the whole write with "useScroll target ref is not
+// attached" ("can't switch to Section in View", 2026-08-07).
+
+const STYLED_PAGE = `import { motion, useScroll, useTransform, useRef } from 'framer-motion';
+export default function Page() {
+  return (
+    <div data-id="root">
+      <style>{\`
+        @media (max-width: 768px) {
+          [data-id="hero-text"] { font-size: 40px !important; }
+          [data-id="hero-text"] span { color: red; }
+        }
+      \`}</style>
+      <section data-id="sec-1" id="features">
+        <p data-id="hero-text" style={{ fontSize: '60px' }}>Boost your rankings</p>
+      </section>
+    </div>
+  );
+}`;
+
+const styleBlockOf = (code: string): string =>
+  code.slice(code.indexOf('<style>'), code.indexOf('</style>'));
+
+describe('updateScrollAnimInCode — style-block data-id collision', () => {
+  it('attaches the ref to the JSX tag, never inside the <style> block (layerInView)', () => {
+    const result = updateScrollAnimInCode(STYLED_PAGE, {
+      nodeId: 'hero-text',
+      trigger: 'layerInView',
+      stops: [
+        { progress: 0, props: { opacity: '1' } },
+        { progress: 1, props: { opacity: '0' } },
+      ],
+    });
+    expect(styleBlockOf(result)).not.toContain('ref={');
+    expect(result).toMatch(/ref=\{heroTextRef\} [^>]*data-id="hero-text"|data-id="hero-text"[^>]*ref=\{heroTextRef\}/s);
+  });
+
+  it('sectionInView with an EMPTY sectionId still yields an ATTACHED (self-targeted) ref', () => {
+    // The trigger-switch UI can write before a section is picked — the
+    // degraded output must be valid framer-motion, not an unattached ref.
+    const result = updateScrollAnimInCode(STYLED_PAGE, {
+      nodeId: 'hero-text',
+      trigger: 'sectionInView',
+      sectionId: '',
+      stops: [
+        { progress: 0, props: { opacity: '1' } },
+        { progress: 1, props: { opacity: '0' } },
+      ],
+    });
+    expect(result).toContain('const heroTextRef = useRef(null);');
+    expect(result).toMatch(/ref=\{heroTextRef\} [^>]*data-id="hero-text"|data-id="hero-text"[^>]*ref=\{heroTextRef\}/s);
+    expect(result).not.toContain('getElementById');
+    expect(styleBlockOf(result)).not.toContain('ref={');
+  });
+
+  it('sectionInView WITH a section resolves via getElementById and attaches NO JSX ref', () => {
+    const result = updateScrollAnimInCode(STYLED_PAGE, {
+      nodeId: 'hero-text',
+      trigger: 'sectionInView',
+      sectionId: 'features',
+      stops: [
+        { progress: 0, props: { opacity: '1' } },
+        { progress: 1, props: { opacity: '0' } },
+      ],
+    });
+    expect(result).toContain(`document.getElementById('features')`);
+    expect(result).not.toContain('ref={heroTextRef}');
+  });
+});
+
 describe('updateScrollAnimInCode', () => {
   it('replaces AI-generated hooks with different naming convention', () => {
     const config: ScrollAnimConfig = {

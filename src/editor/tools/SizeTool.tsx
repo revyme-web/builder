@@ -396,7 +396,21 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     const rounded = Number.isFinite(num) && num > 0 ? Math.round(num) : 0;
 
     setViewportsConfig(prev => prev.map(v => {
-      if (v.id !== vpId) return v;
+      if (v.id !== vpId) {
+        // PRIMARY HEIGHT BROADCAST — same rule as SelectionOverlay's
+        // onViewportResize commit: every replica persists its OWN vp.height
+        // copy (seeded at creation), so a primary-only write leaves the
+        // replicas' stale copies to re-apply on the commit re-render —
+        // after the live scrub mirrored them, mouseup snapped them back
+        // ("replicas revert on mouseup", 2026-08-07). A px height set on
+        // the PRIMARY writes onto every replica too; editing a replica
+        // touches only that replica, and auto never broadcasts (overlay
+        // parity).
+        if (currentViewportConfig?.isPrimary && !isAuto && rounded > 0) {
+          return { ...v, height: rounded };
+        }
+        return v;
+      }
       if (isAuto) return { ...v, height: 'auto' as const };
       if (rounded === 0) {
         // Defensive — invalid input (NaN, 0). Drop the field rather
@@ -1243,6 +1257,14 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
               property="height"
               value={isPxMode ? `${vpHeight}px` : `${Math.round(computed.height) || 0}px`}
               onChange={handleViewportHeightChange}
+              // Live (per-frame) scrub = DOM-only patch of this viewport's root —
+              // the SAME imperative path the resize overlay uses. Without it every
+              // chevron-drag tick ran the FULL commit (viewport-config write +
+              // JSX mirror + forceCanvasRender → project write + re-parse of the
+              // whole file per tick; 16 writes/38 parses in one drag on a big
+              // canvasNodes page — "extremely slow and replicas glitching",
+              // 2026-08-07). The release commits ONCE via onCommit → onChange.
+              onChangeLive={!isPxMode ? undefined : (v) => updateStyleLive('height', v)}
               onUnitChange={handleViewportHeightUnitChange}
               computedSize={computed.height}
               parentSize={computed.parentHeight}

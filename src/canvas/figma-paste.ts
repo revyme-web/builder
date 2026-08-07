@@ -18,6 +18,8 @@
 import { getDefaultStore } from 'jotai';
 import { backend } from '@/backend';
 import { getProjectId } from '@/backend/project-id';
+import { flushSaveNow } from '@/backend/autosave';
+import { setTemplatePromptArmed } from '@/code/stores/fresh-site-store';
 import { flushNow } from '@/code/mutation/mutation-queue';
 import { executePaste as engineExecutePaste } from '@/code/features/paste-engine';
 import { convertFigmaPayload } from '@/code/import/figma/convert';
@@ -107,44 +109,100 @@ function dataUrlToFile(dataUrl: string, baseName: string): File | null {
  *  to the project's asset storage and swapped for the hosted URL. Inline
  *  data URLs must never reach the source code: they bloat the page file by
  *  megabytes and every parse/save pays for them. Dedupes identical URLs;
- *  upload failures keep the data URL so no content is ever lost. */
-async function uploadClipboardAssets(clipboard: { nodes: Array<{ id: string; styles: Record<string, string> }> }): Promise<void> {
+ *  upload failures keep the data URL so no content is ever lost.
+ *
+ *  `onProgress(done, total)` fires per settled upload (total = UNIQUE data
+ *  URLs — the real network work) so the import toast can show "n/N" instead
+ *  of going silent for the whole sweep. Uploads run through a small pool:
+ *  a big import's images upload ~4× faster than the old one-at-a-time loop.
+ *  Exported for unit tests. */
+export async function uploadClipboardAssets(
+  clipboard: { nodes: Array<{ id: string; styles: Record<string, string> }> },
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> {
   const projectId = getProjectId();
-  const uploaded = new Map<string, string>();
-  let ok = 0;
-  let failed = 0;
+  // Group by unique data URL first — N references share one upload.
+  const byUrl = new Map<string, { firstId: string; refs: Array<Record<string, string>> }>();
   for (const node of clipboard.nodes) {
     const bgi = node.styles?.backgroundImage;
     const m = bgi?.match(/^url\((data:.+)\)$/); // GREEDY — svg data URLs contain nested url(#grad) parens
     if (!m) continue;
-    const dataUrl = m[1];
-    let hosted = uploaded.get(dataUrl);
-    if (!hosted) {
-      const file = dataUrlToFile(dataUrl, `figma-${node.id}`);
-      if (!file) continue;
-      try {
-        hosted = await backend.uploadAsset(projectId, file);
-        uploaded.set(dataUrl, hosted);
-        ok++;
-      } catch (err) {
-        failed++;
-        trace.error('figma-paste:asset-upload-failed', { id: node.id, error: String(err) });
-        continue;
-      }
-    }
-    node.styles.backgroundImage = `url(${hosted})`;
+    const group = byUrl.get(m[1]);
+    if (group) group.refs.push(node.styles);
+    else byUrl.set(m[1], { firstId: node.id, refs: [node.styles] });
   }
+  const entries = [...byUrl.entries()];
+  const total = entries.length;
+  if (total === 0) return;
+  onProgress?.(0, total);
+
+  let done = 0;
+  let ok = 0;
+  let failed = 0;
+  let cursor = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = cursor++;
+      if (i >= entries.length) return;
+      const [dataUrl, group] = entries[i];
+      const file = dataUrlToFile(dataUrl, `figma-${group.firstId}`);
+      if (file) {
+        try {
+          const hosted = await backend.uploadAsset(projectId, file);
+          for (const styles of group.refs) styles.backgroundImage = `url(${hosted})`;
+          ok++;
+        } catch (err) {
+          failed++;
+          trace.error('figma-paste:asset-upload-failed', { id: group.firstId, error: String(err) });
+        }
+      }
+      done++;
+      onProgress?.(done, total);
+    }
+  };
+  const POOL = 4;
+  await Promise.all(Array.from({ length: Math.min(POOL, entries.length) }, worker));
+
   trace.action('figma-paste:assets-uploaded', { ok, failed });
   if (failed > 0) toast.error(`${failed} image${failed === 1 ? '' : 's'} couldn't upload — kept inline`);
 }
 
-/** Full receive flow: upload assets → convert → paste via the engine. */
+/** Task-boundary yield so the toast's React render can PAINT before the next
+ *  synchronous chunk of work (convert / paste+flush) blocks the main thread. */
+const nextTask = () => new Promise<void>((r) => setTimeout(r, 0));
+
+/** Full receive flow: upload assets → convert → paste via the engine.
+ *
+ *  ONE persistent loading toast, updated in place through every phase. The
+ *  old `toast.info` auto-dismissed after ~4s while a big import's image
+ *  uploads were still running — a dead-silent gap users read as "it broke"
+ *  (2026-08-07). The spinner lives until success/error replaces it, and the
+ *  image phase shows real n/N synced to the upload sweep. */
 export async function handleFigmaPaste(payload: FigmaPayload): Promise<boolean> {
   const store = getDefaultStore();
-  toast.info('Importing from Figma…');
+  const toastId = toast.loading('Importing from Figma…');
+  try {
+    return await runFigmaPaste(payload, store, toastId);
+  } catch (err) {
+    // Never strand the spinner — an unexpected throw resolves it to an error.
+    trace.error('figma-paste:failed', { error: String(err) });
+    toast.error('Figma import failed', { id: toastId });
+    return false;
+  }
+}
 
+async function runFigmaPaste(
+  payload: FigmaPayload,
+  store: ReturnType<typeof getDefaultStore>,
+  toastId: string | number,
+): Promise<boolean> {
+  await nextTask(); // let the toast paint before the synchronous convert
   const clipboard = convertFigmaPayload(payload);
-  await uploadClipboardAssets(clipboard);
+  await uploadClipboardAssets(clipboard, (done, total) => {
+    toast.loading(`Importing images… ${done}/${total}`, { id: toastId });
+  });
+  toast.loading('Placing layers…', { id: toastId });
+  await nextTask(); // paint the phase change before the synchronous paste+flush
 
   // Load every font family the design references RIGHT NOW — the project-
   // wide font sweep only runs on page switches, so without this a paste's
@@ -191,10 +249,20 @@ export async function handleFigmaPaste(payload: FigmaPayload): Promise<boolean> 
 
   if (result.success) {
     flushNow();
+    // Real content now exists — a still-armed fresh-site template prompt must
+    // not keep HOLDING autosave (held = every save deferred AND the unload
+    // beacon skipped: the import would live only in memory). No-op otherwise.
+    setTemplatePromptArmed(false);
+    // Persist NOW, not after the 2s debounce — the import is exactly when a
+    // user is likely to navigate straight back to the dashboard, and a
+    // multi-MB project existing only in memory is one hard nav from gone
+    // ("went to dashboard, came back, blank canvas", 2026-08-07).
+    // Fire-and-forget: the toast doesn't wait on the PUT.
+    void flushSaveNow();
     if (result.createdIds.length > 0) store.set(selectedIdsAtom, [result.createdIds[0]]);
-    toast.success(`Imported ${result.createdIds.length} layer${result.createdIds.length === 1 ? '' : 's'} from Figma`);
+    toast.success(`Imported ${result.createdIds.length} layer${result.createdIds.length === 1 ? '' : 's'} from Figma`, { id: toastId });
   } else {
-    toast.error(result.message || 'Figma import failed');
+    toast.error(result.message || 'Figma import failed', { id: toastId });
   }
   return result.success;
 }

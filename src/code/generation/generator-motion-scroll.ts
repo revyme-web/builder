@@ -713,8 +713,12 @@ export function updateScrollAnimInCode(code: string, config: ScrollAnimConfig): 
   // layerInView (hasRef) instead of onScroll.
   if (!useSectionRef && trigger !== 'onScroll') {
     const refTargetNodeId = (oldRefTargetNodeId && oldRefTargetNodeId !== nodeId) ? oldRefTargetNodeId : nodeId;
-    const refTargetPattern = `data-id="${refTargetNodeId}"`;
-    const refTargetIdx = result.indexOf(refTargetPattern);
+    // JSX-aware data-id search — a raw indexOf hits the page's <style> block
+    // first (@media selectors carry the same data-id and sit BEFORE the JSX),
+    // so the ref text landed inside CSS while the real tag never got it: the
+    // oracle then blocks the whole write with "useScroll target ref is not
+    // attached" ("can't switch to Section in View", 2026-08-07).
+    const refTargetIdx = findJSXDataIdIndex(result, refTargetNodeId);
     if (refTargetIdx !== -1) {
       const tagStart = result.lastIndexOf('<', refTargetIdx);
       const tagEnd = findTagClose(result, refTargetIdx);

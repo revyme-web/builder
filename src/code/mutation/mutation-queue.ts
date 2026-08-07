@@ -94,7 +94,7 @@ import {
 import { setScrollVariantInCode, dormantizeScrollVariant, rehydrateScrollVariant, removeScrollVariantFromVarRefs } from '../generation/scroll-variant-gen';
 import { removeTemplateVarFromCode } from '../generation/template-route-gen';
 import { setInstanceFxInCode, dormantizeInstanceFx, rehydrateInstanceFx, stripDeadFxStyleRefs } from '../generation/instance-fx-gen';
-import { setScrollFxInCode, removeScrollSpeedScopeBranch, dormantizeScrollFx, rehydrateScrollFx, updateVariantEntryTransition, setElementTransitionVar, setVariantTransitionPropVar, setMotionConfigBaseVar, readTransitionVarRef } from '../generation/generator-motion';
+import { setScrollFxInCode, removeScrollSpeedScopeBranch, dormantizeScrollFx, rehydrateScrollFx, writeCanvasNodeScrollFx, updateVariantEntryTransition, setElementTransitionVar, setVariantTransitionPropVar, setMotionConfigBaseVar, readTransitionVarRef } from '../generation/generator-motion';
 import { setGlideInCode, hasGlide, getGlide } from '../generation/glide-gen';
 import { wireFormSubmitInCode, ensureFormRouteFile } from '../generation/form-gen';
 import {
@@ -3110,22 +3110,52 @@ function applyMutationCore(code: string, mutation: Mutation): string {
         // collapse to the base (or remove the prop entirely if there was no base).
         return removeMotionPropScopeBranch(code, mutation.nodeId, mutation.propName, mutation.scope);
 
-      case 'updateScrollAnim':
-        return updateScrollAnimInCode(code, mutation.config);
+      // CANVAS-NODE routing (all six scroll cases): module-scope `canvasNodes`
+      // can't hold hooks — the hook-emitting writers bound function-scope
+      // motion values into module-scope style ("References undefined
+      // identifiers …Opacity/…Scale" adding a Scroll Transform on a canvas
+      // paste, 2026-08-07). Store the spec DORMANT in data-scroll-fx instead;
+      // the move pipeline's rehydrateScrollFx materializes it on page entry.
+      case 'updateScrollAnim': {
+        const cfg = mutation.config;
+        if (isCanvasNode(code, cfg.nodeId)) {
+          return writeCanvasNodeScrollFx(code, cfg.nodeId, { transform: {
+            trigger: cfg.trigger,
+            from: cfg.stops[0]?.props ?? {},
+            to: cfg.stops[cfg.stops.length - 1]?.props ?? {},
+            ...(cfg.transition ? { transition: cfg.transition } : {}),
+          } });
+        }
+        return updateScrollAnimInCode(code, cfg);
+      }
 
       case 'removeScrollAnim':
+        if (isCanvasNode(code, mutation.nodeId)) return writeCanvasNodeScrollFx(code, mutation.nodeId, { transform: undefined });
         return removeScrollAnimFromCode(code, mutation.nodeId);
 
-      case 'updateScrollDirection':
-        return updateScrollDirectionAnimInCode(code, mutation.config);
+      case 'updateScrollDirection': {
+        const cfg = mutation.config;
+        if (isCanvasNode(code, cfg.nodeId)) {
+          return writeCanvasNodeScrollFx(code, cfg.nodeId, { animation: {
+            direction: cfg.direction, replay: cfg.replay, toProps: cfg.toProps,
+            ...(cfg.transition ? { transition: cfg.transition } : {}),
+          } });
+        }
+        return updateScrollDirectionAnimInCode(code, cfg);
+      }
 
       case 'removeScrollDirection':
+        if (isCanvasNode(code, mutation.nodeId)) return writeCanvasNodeScrollFx(code, mutation.nodeId, { animation: undefined });
         return removeScrollDirectionFromCode(code, mutation.nodeId);
 
-      case 'updateScrollSpeed':
-        return updateScrollSpeedInCode(code, mutation.config);
+      case 'updateScrollSpeed': {
+        const cfg = mutation.config;
+        if (isCanvasNode(code, cfg.nodeId)) return writeCanvasNodeScrollFx(code, cfg.nodeId, { speed: cfg.speed });
+        return updateScrollSpeedInCode(code, cfg);
+      }
 
       case 'removeScrollSpeed':
+        if (isCanvasNode(code, mutation.nodeId)) return writeCanvasNodeScrollFx(code, mutation.nodeId, { speed: undefined, speedResponsive: undefined });
         return removeScrollSpeedFromCode(code, mutation.nodeId);
 
       case 'updateLoop':

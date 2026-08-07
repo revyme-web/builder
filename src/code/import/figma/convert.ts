@@ -540,46 +540,27 @@ export function convertFigmaPayload(payload: FigmaPayload, opts: ConvertOptions 
       // Figma positions words with SPACE RUNS (gaps for inline badges) and
       // authored newlines. JSX text semantics collapse both when the page
       // renders (the one-line hero title find) — so runs of spaces become
-      // NBSP (JSX can't touch those) and short-lined multi-line text splits
-      // into ONE <p> PER LINE, which no fallback font can ever re-wrap.
+      // NBSP (JSX can't touch those) and short-lined multi-line headings get
+      // REAL <br/> elements inside ONE text node with nowrap: the breaks are
+      // structural (no fallback font can re-wrap a line) and every text style
+      // stays ON the text. The old shape — a flex-column wrapper div carrying
+      // the typography + one bare <p> per line — put fontSize/gradient/etc.
+      // on a div the builder's text tools can't treat as text ("all the text
+      // stuff should be directly on the text", 2026-08-07).
       const nbspify = (t: string) => t
         .replace(/^ +/, (m) => '\u00A0'.repeat(m.length))
         .replace(/ {2,}/g, (m) => '\u00A0'.repeat(m.length));
       const lines = raw.split('\n');
-      const headingStyle = lines.length > 1 && lines.every((l) => l.trim().length <= 40);
-      if (headingStyle) {
-        node.type = 'div';
-        node.textContent = undefined;
-        styles.display = 'flex';
-        styles.flexDirection = 'column';
-        styles.alignItems = 'flex-start';
-        if (!styles.width) styles.width = 'max-content';
-        if (!styles.height) styles.height = 'auto';
-        lines.forEach((line, li) => {
-          const lid = uniqueId(`${src.id}-l${li}`);
-          const lineNode: ClipboardNode = {
-            id: lid,
-            type: 'p',
-            parentId: id,
-            children: [],
-            order: li,
-            styles: {
-              margin: '0px', width: '100%', height: 'auto', whiteSpace: 'nowrap',
-              position: 'relative', flex: '0 0 auto', order: String(li),
-            },
-            attrs: {},
-            name: `Line ${li + 1}`,
-            textContent: nbspify(line),
-          };
-          node.children.push(lineNode.id);
-          out.push(lineNode);
-        });
+      const multiLineHeading = lines.length > 1 && lines.every((l) => l.trim().length <= 40);
+      node.type = 'p';
+      styles.margin = styles.margin ?? '0px';
+      if (!styles.width) styles.width = 'max-content';
+      if (!styles.height) styles.height = 'auto';
+      if (multiLineHeading) {
+        node.textContent = lines.map(nbspify).join('<br/>');
+        if (!styles.whiteSpace) styles.whiteSpace = 'nowrap';
       } else {
-        node.type = 'p';
         node.textContent = nbspify(raw);
-        styles.margin = styles.margin ?? '0px';
-        if (!styles.width) styles.width = 'max-content';
-        if (!styles.height) styles.height = 'auto';
         if (raw.includes('\n') && !styles.whiteSpace) styles.whiteSpace = 'pre-wrap';
       }
     } else if (src.kind === 'img') {

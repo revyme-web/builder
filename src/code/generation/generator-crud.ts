@@ -3196,15 +3196,21 @@ function expandConditionalWrapperRange(code: string, start: number, end: number)
   return { start: newStart, end: newEnd };
 }
 
-/** Data-ids INSIDE `nodeId`'s subtree whose opening tag carries an animation
- *  marker (`data-scroll-fx` / `data-text-anim`) — the descendants whose BODY
- *  hooks must be stripped when the parent is deleted. The per-node strips in
+/** EVERY data-id INSIDE `nodeId`'s subtree — the descendants whose BODY hooks
+ *  must be stripped when the parent is deleted. The per-node strips in
  *  removeNodeInCode only cover the deleted id itself; deleting a section
  *  around an animated child orphaned the child's hooks (live find 2026-07-12:
  *  removing the approach section left the title's 40 Te useTransform decls
  *  dangling — the querySelector ref's `|| document.body` guard kept it from
  *  crashing, so it sat unnoticed until the next AI submit bounced on
- *  SCROLL_UNBOUND_VALUE). */
+ *  SCROLL_UNBOUND_VALUE).
+ *
+ *  Deliberately NOT filtered to tags carrying `data-scroll-fx`/`data-text-anim`:
+ *  SEPARATE-form scroll transforms / direction triggers (the normal case) carry
+ *  no marker at all — the marker filter left their whole hook chains orphaned
+ *  on a section delete (2026-08-07 replay: divMsg1yto4_15/19/13 families
+ *  survived a full-page delete). clearNodeScrollFx's `includes(cn)` bail makes
+ *  a plain descendant cost one substring check, so sweeping all ids is cheap. */
 function collectAnimatedDescendantIds(code: string, nodeId: string): string[] {
   const idIdx = findJSXDataIdIndex(code, nodeId);
   if (idIdx < 0) return [];
@@ -3230,11 +3236,8 @@ function collectAnimatedDescendantIds(code: string, nodeId: string): string[] {
     if (dTagStart < 0) continue;               // a CSS selector string, not a tag
     const dTagEnd = findTagClose(inner, dTagStart);
     if (dTagEnd < 0 || dTagEnd < m.index) continue;
-    const openTag = inner.slice(dTagStart, dTagEnd + 1);
-    if (/\sdata-(?:scroll-fx|text-anim)=/.test(openTag)) {
-      seen.add(id);
-      out.push(id);
-    }
+    seen.add(id);
+    out.push(id);
   }
   return out;
 }
