@@ -536,6 +536,39 @@ export function convertFigmaPayload(payload: FigmaPayload, opts: ConvertOptions 
 
     // ── kind-specific shaping ──
     if (src.kind === 'text') {
+      // GRADIENT TEXT → the builder's NATIVE dialect. Figma's getCSSAsync
+      // emits the gradient on the `backgroundImage` LONGHAND plus an OPAQUE
+      // fallback `color` (e.g. #B5B2B1). The Color tool keys gradient
+      // context on the node's paint channels, so that opaque color made a
+      // text selection read as a SOLID run — "can't select a portion and
+      // apply solid on imported gradient text" (2026-08-07). Native form:
+      // gradient on the `background` SHORTHAND, both clips `text`, fill +
+      // color fully transparent — byte-for-byte what the Color tool writes.
+      {
+        const gbg = styles.background || styles.backgroundImage || '';
+        const gclip = styles.backgroundClip || styles.WebkitBackgroundClip || '';
+        if (/gradient\(/.test(gbg) && gclip === 'text') {
+          // KEY ORDER IS LOAD-BEARING: React applies style-object keys in
+          // insertion order, and the `background` SHORTHAND resets
+          // background-clip to border-box. Figma's keys arrive clip-first,
+          // so assigning `background` in place appended it AFTER the clips
+          // and WIPED them — an unclipped gradient box with invisible text
+          // ("huge gradient background, all text hidden", 2026-08-07).
+          // Delete-then-set rebuilds the exact clip-last order the Color
+          // tool writes: background → clips → fill → color.
+          delete styles.backgroundImage;
+          delete styles.background;
+          delete styles.backgroundClip;
+          delete styles.WebkitBackgroundClip;
+          delete styles.WebkitTextFillColor;
+          delete styles.color;
+          styles.background = gbg;
+          styles.WebkitBackgroundClip = 'text';
+          styles.WebkitTextFillColor = 'rgba(0, 0, 0, 0)';
+          styles.backgroundClip = 'text';
+          styles.color = 'rgba(0, 0, 0, 0)';
+        }
+      }
       const raw = src.text ?? '';
       // Figma positions words with SPACE RUNS (gaps for inline badges) and
       // authored newlines. JSX text semantics collapse both when the page

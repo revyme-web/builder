@@ -540,3 +540,39 @@ describe('convertFigmaPayload — ghost frames', () => {
     expect(data.nodes.find((n) => n.id === 'lonely')).toBeTruthy();
   });
 });
+
+describe('convertFigmaPayload — gradient text → native builder dialect', () => {
+  it('normalizes the figma gradient-text shape (backgroundImage + opaque fallback color)', () => {
+    const p = payload([
+      { id: 't', name: 'Heading', kind: 'text', text: 'Old world meets new tech', styles: {
+        backgroundImage: 'linear-gradient(90deg, rgba(255, 255, 255, 0.40) 1.56%, #FFF 24.99%)',
+        backgroundClip: 'text', WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'rgba(0, 0, 0, 0)',
+        color: '#B5B2B1', // figma's flattened fallback — poisons solid-run detection
+        fontSize: '80px',
+      } },
+    ]);
+    const t = byId(convertFigmaPayload(p), 't');
+    // Native dialect: SHORTHAND background, no longhand, transparent paint.
+    expect(t.styles.background).toContain('linear-gradient(90deg');
+    expect(t.styles.backgroundImage).toBeUndefined();
+    expect(t.styles.backgroundClip).toBe('text');
+    expect(t.styles.WebkitBackgroundClip).toBe('text');
+    expect(t.styles.WebkitTextFillColor).toBe('rgba(0, 0, 0, 0)');
+    expect(t.styles.color).toBe('rgba(0, 0, 0, 0)');
+    // KEY ORDER: the `background` shorthand resets background-clip, so it
+    // must be INSERTED before the clip keys (React applies in object order).
+    const keys = Object.keys(t.styles);
+    expect(keys.indexOf('background')).toBeLessThan(keys.indexOf('backgroundClip'));
+    expect(keys.indexOf('background')).toBeLessThan(keys.indexOf('WebkitBackgroundClip'));
+  });
+
+  it('leaves plain (non-clipped) text colors alone', () => {
+    const p = payload([
+      { id: 't', name: 'T', kind: 'text', text: 'Plain', styles: { color: '#B5B2B1' } },
+    ]);
+    const t = byId(convertFigmaPayload(p), 't');
+    expect(t.styles.color).toBe('#B5B2B1');
+    expect(t.styles.background).toBeUndefined();
+  });
+});
