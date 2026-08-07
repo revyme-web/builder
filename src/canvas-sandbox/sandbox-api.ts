@@ -35,7 +35,16 @@ export interface ChildRect {
 }
 
 export interface RenderInput {
-  nodes: SerializedNodeMap;
+  /** Full node map. ABSENT when `nodesDelta` is set (delta render). */
+  nodes?: SerializedNodeMap;
+  /** DELTA render: only the nodes whose IDENTITY changed since the render
+   *  the host last saw acknowledged (`baseSeq`), plus removed ids. The
+   *  sandbox merges onto its retained map. Undo/redo on SVG-heavy pages
+   *  structured-cloned megabytes of unchanged path data per keystroke
+   *  (~300ms transfer, "undo lagging behind", 2026-08-07); the parser's
+   *  identity-preserve keeps unchanged nodes' identity, so a delta is
+   *  typically 1-2 nodes. */
+  nodesDelta?: { changed: SerializedNodeMap; removed: string[]; baseSeq: number };
   viewports: ViewportConfig[];
   code: string;
   css: string;

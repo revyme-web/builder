@@ -1074,7 +1074,55 @@ export default function Page() {
 }
 `);
 
+// ─────────────────────────────────────────────────────────────────────────
+// NEGATIVE_MARGIN_ROW — overlapping pills in a row, the middle two pulled
+// left by a negative margin LONGHAND (`marginLeft`, not the shorthand).
+//
+// The distinction is the whole point: the drag lift snapshots and restores
+// `margin`, and writing the shorthand back as '' also clears any longhand
+// — so a reorder silently flattened the overlap in the canvas while the
+// source (and the published site) kept it.
+// ─────────────────────────────────────────────────────────────────────────
+export const NEGATIVE_MARGIN_ROW = project(`
+/** @canvas { "viewports": [{"id":"desktop","label":"Desktop","width":1440,"isPrimary":true,"order":0}] } */
+'use client';
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Page" style={{
+      display: 'flex', flexDirection: 'column', width: '1440px',
+      minHeight: '700px', background: '#0d0d1a', padding: '40px',
+    }}>
+      <div data-id="strip" data-name="Strip" style={{
+        display: 'flex', flexDirection: 'row', alignItems: 'center',
+        width: '100%', height: '400px', position: 'relative',
+        background: '#a8d4ff', flex: '0 0 auto', order: '0',
+      }}>
+        <div data-id="pill-a" data-name="PillA" style={{
+          width: '200px', height: '400px', background: '#ffe0c2',
+          borderRadius: '218px', position: 'relative', flex: '0 0 auto', order: '0',
+        }}></div>
+        <div data-id="pill-b" data-name="PillB" style={{
+          width: '200px', height: '400px', background: '#8a5a1e',
+          borderRadius: '218px', position: 'relative', flex: '0 0 auto',
+          marginLeft: '-70px', order: '1',
+        }}></div>
+        <div data-id="pill-c" data-name="PillC" style={{
+          width: '200px', height: '400px', background: '#323543',
+          borderRadius: '218px', position: 'relative', flex: '0 0 auto',
+          marginLeft: '-70px', order: '2',
+        }}></div>
+        <div data-id="pill-d" data-name="PillD" style={{
+          width: '200px', height: '400px', background: '#ffb3bd',
+          borderRadius: '218px', position: 'relative', flex: '0 0 auto', order: '3',
+        }}></div>
+      </div>
+    </div>
+  );
+}
+`);
+
 export const SEEDS = {
+  NEGATIVE_MARGIN_ROW,
   HANDOFF_TWO_VP,
   COMPONENT_MASTER_2V,
   GHOST_SIBLING_COLUMN,

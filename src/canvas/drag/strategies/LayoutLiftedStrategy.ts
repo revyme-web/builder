@@ -172,6 +172,30 @@ export class LayoutLiftedStrategy implements DragStrategy {
       minHeight: orig.minHeight ?? '',
     };
   }
+
+  /**
+   * Margin restore — shorthand FIRST, then whichever longhands the node
+   * actually declared.
+   *
+   * Restoring only `margin` silently destroys longhands: assigning '' to a
+   * CSS shorthand clears all four sides in the declaration block, so a node
+   * styled with `marginLeft: '-70px'` (overlapping pills, stacked avatars)
+   * came back from a drag with NO margin on the canvas — while the source,
+   * and therefore the published site, still had it. Editor and reality
+   * disagreed until the next full re-render (2026-08-07).
+   *
+   * Longhands are only re-applied when they were present at lift: a node
+   * whose margin comes solely from the shorthand must not get four empty
+   * longhands written after it, which would clear what the shorthand just
+   * restored.
+   */
+  private marginRestore(orig: Record<string, string>): Record<string, string> {
+    const out: Record<string, string> = { margin: orig.margin ?? '' };
+    for (const side of ['marginTop', 'marginRight', 'marginBottom', 'marginLeft'] as const) {
+      if (orig[side]) out[side] = orig[side];
+    }
+    return out;
+  }
   /** Original child index of each dragged node within the parent (for preserving relative order on drop) */
   private originalChildIndices: Map<string, number> = new Map();
   /** Complete child ID order at drag start (for computing correct sequential reorder indices) */
@@ -711,6 +735,12 @@ export class LayoutLiftedStrategy implements DragStrategy {
         flexBasis: ns.flexBasis || '',
         alignSelf: ns.alignSelf || '',
         margin: ns.margin || '',
+        // Longhands too — a node can carry `marginLeft` alone, and the
+        // shorthand restore would wipe it (see marginRestore).
+        marginTop: ns.marginTop || '',
+        marginRight: ns.marginRight || '',
+        marginBottom: ns.marginBottom || '',
+        marginLeft: ns.marginLeft || '',
         // Grid placement — preserved so it can be restored on drop
         gridColumn: ns.gridColumn || '',
         gridRow: ns.gridRow || '',
@@ -905,6 +935,10 @@ export class LayoutLiftedStrategy implements DragStrategy {
         ...(ns.flexGrow ? { flexGrow: ns.flexGrow } : {}),
         ...(ns.flexBasis ? { flexBasis: ns.flexBasis } : {}),
         ...(ns.margin ? { margin: ns.margin } : {}),
+        ...(ns.marginTop ? { marginTop: ns.marginTop } : {}),
+        ...(ns.marginRight ? { marginRight: ns.marginRight } : {}),
+        ...(ns.marginBottom ? { marginBottom: ns.marginBottom } : {}),
+        ...(ns.marginLeft ? { marginLeft: ns.marginLeft } : {}),
         ...(ns.alignSelf ? { alignSelf: ns.alignSelf } : {}),
         // Preserve grid placement (spans, areas) so placeholder occupies correct grid cells
         ...(ns.gridColumn ? { gridColumn: ns.gridColumn } : {}),
@@ -962,6 +996,15 @@ export class LayoutLiftedStrategy implements DragStrategy {
         maxHeight: 'none',
         minWidth: '0px',
         minHeight: '0px',
+        // Neutralize margins for the same reason: `left`/`top` above are the
+        // node's PAINTED position, which already includes whatever the
+        // margin shifted it by. A margin still applies to an absolutely
+        // positioned box, so leaving it on double-counts it — an element with
+        // `marginLeft: -70px` jumped a margin's width the instant the drag
+        // began and trailed the cursor by that much for the whole gesture.
+        // The shorthand clears any longhands too; marginRestore() puts the
+        // original back on every drop/cancel path.
+        margin: '0px',
       };
 
       if ('liftNode' in bridge) {
@@ -1694,7 +1737,7 @@ export class LayoutLiftedStrategy implements DragStrategy {
             flexGrow: orig.flexGrow,
             flexBasis: orig.flexBasis,
             alignSelf: orig.alignSelf,
-            margin: orig.margin,
+            ...this.marginRestore(orig),
             ...this.boxConstraintRestore(orig),
             pointerEvents: '',
           });
@@ -1862,7 +1905,7 @@ export class LayoutLiftedStrategy implements DragStrategy {
             position: orig.position, left: orig.left, top: orig.top,
             width: orig.width, height: orig.height, zIndex: orig.zIndex,
             flex: orig.flex, flexShrink: orig.flexShrink, flexGrow: orig.flexGrow,
-            flexBasis: orig.flexBasis, alignSelf: orig.alignSelf, margin: orig.margin,
+            flexBasis: orig.flexBasis, alignSelf: orig.alignSelf, ...this.marginRestore(orig),
             gridColumn: orig.gridColumn, gridRow: orig.gridRow, gridArea: orig.gridArea,
             ...this.boxConstraintRestore(orig),
             pointerEvents: '', order: '',
@@ -1994,7 +2037,7 @@ export class LayoutLiftedStrategy implements DragStrategy {
             position: orig.position, left: orig.left, top: orig.top,
             width: orig.width, height: orig.height, zIndex: orig.zIndex,
             flex: orig.flex, flexShrink: orig.flexShrink, flexGrow: orig.flexGrow,
-            flexBasis: orig.flexBasis, alignSelf: orig.alignSelf, margin: orig.margin,
+            flexBasis: orig.flexBasis, alignSelf: orig.alignSelf, ...this.marginRestore(orig),
             gridColumn: orig.gridColumn, gridRow: orig.gridRow, gridArea: orig.gridArea,
             ...this.boxConstraintRestore(orig),
             pointerEvents: '', order: '',
@@ -2094,7 +2137,7 @@ export class LayoutLiftedStrategy implements DragStrategy {
           flexGrow: orig.flexGrow,
           flexBasis: orig.flexBasis,
           alignSelf: orig.alignSelf,
-          margin: orig.margin,
+          ...this.marginRestore(orig),
           gridColumn: orig.gridColumn,
           gridRow: orig.gridRow,
           gridArea: orig.gridArea,
@@ -2647,7 +2690,7 @@ export class LayoutLiftedStrategy implements DragStrategy {
           flexGrow: orig.flexGrow,
           flexBasis: orig.flexBasis,
           alignSelf: orig.alignSelf,
-          margin: orig.margin,
+          ...this.marginRestore(orig),
           ...this.boxConstraintRestore(orig),
           pointerEvents: '',
         });
@@ -3008,6 +3051,10 @@ export class LayoutLiftedStrategy implements DragStrategy {
         ...(ns.flexGrow ? { flexGrow: ns.flexGrow } : {}),
         ...(ns.flexBasis ? { flexBasis: ns.flexBasis } : {}),
         ...(ns.margin ? { margin: ns.margin } : {}),
+        ...(ns.marginTop ? { marginTop: ns.marginTop } : {}),
+        ...(ns.marginRight ? { marginRight: ns.marginRight } : {}),
+        ...(ns.marginBottom ? { marginBottom: ns.marginBottom } : {}),
+        ...(ns.marginLeft ? { marginLeft: ns.marginLeft } : {}),
         ...(ns.alignSelf ? { alignSelf: ns.alignSelf } : {}),
         ...(ns.gridColumn ? { gridColumn: ns.gridColumn } : {}),
         ...(ns.gridRow ? { gridRow: ns.gridRow } : {}),

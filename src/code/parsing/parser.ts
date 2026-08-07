@@ -1549,6 +1549,11 @@ function extractInstanceExpressionProps(opening: any, tagName: string, attrs: Re
  *   this, a template's per-route colors paint their `#…` DEFAULT on the canvas. Merged LAST into
  *   `propDefaults` so route values win for the base binding AND the per-viewport `mqvars` branches.
  */
+// Per-node svg/path attribute traces fired once per element — 482 events for a
+// single Figma-imported protractor, and each trace call snapshots + buffers.
+// Aggregate into one summary per parse instead (2026-08-07 undo-perf hunt).
+let _svgAttrCount = 0;
+
 export function parseJSXToNodes(code: string, propOverrides?: Record<string, string>): Map<string, CanvasNode> {
   trace.fn('parser.parseJSXToNodes', { codeLength: code.length });
   const nodes = new Map<string, CanvasNode>();
@@ -1950,7 +1955,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
         // Extract SVG attributes (cx, cy, d, points, fill, stroke, viewBox, etc.)
         if (isSvgTag(tagName)) {
           extractSvgAttrsInto(opening.attributes as any[], attrs, ctx, responsiveAttrsAccum);
-          trace.fn('parser:svg-attrs-extracted', { nodeId: id, type: tagName, attrCount: Object.keys(attrs).length });
+          _svgAttrCount++; // aggregated below — see parser:svg-attrs-summary
         }
 
         // Extract text content (direct text children)
@@ -2748,7 +2753,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
       // fragment) lose their fill/width/height/stroke attrs and render invisible.
       if (isSvgTag(tagName)) {
         extractSvgAttrsInto(opening.attributes as any[], attrs, ctx, responsiveAttrsAccum);
-        trace.fn('parser:canvasNodes-svg-attrs-extracted', { nodeId: id, type: tagName, attrCount: Object.keys(attrs).length });
+        _svgAttrCount++; // aggregated — see parser:svg-attrs-summary
       }
 
       // Extract text content — CANVAS-SPECIFIC (preserved walker difference):
@@ -3196,6 +3201,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
     }
   }
 
+  if (_svgAttrCount > 0) { trace.fn('parser:svg-attrs-summary', { count: _svgAttrCount }); _svgAttrCount = 0; }
   trace.fn('parser.parseJSXToNodes:done', { nodeCount: nodes.size, variantObjectCount: variantObjects.size });
   return nodes;
 }

@@ -273,16 +273,19 @@ class DebugTrace {
       data: data !== undefined ? this.snapshot(data) : undefined,
     };
 
-    // Always add to main buffer
+    // Always add to main buffer. AMORTISED trim: the old `slice(-maxSize)` ran
+    // on EVERY call once full, allocating a fresh 10k-entry array each time.
+    // Let it overrun by a slack window and trim once per window instead.
     this.buffer.push(entry);
-    if (this.buffer.length > this.maxSize) {
+    if (this.buffer.length > this.maxSize + 2000) {
       this.buffer = this.buffer.slice(-this.maxSize);
     }
 
-    // Always-on ring buffer — last 1000 entries, auto-attached to error logs
+    // Always-on ring buffer — last `ringSize` entries, auto-attached to error
+    // logs. `shift()` is O(n) per call once full; chunk-drop instead.
     this.ringBuffer.push(entry);
-    if (this.ringBuffer.length > this.ringSize) {
-      this.ringBuffer.shift();
+    if (this.ringBuffer.length > this.ringSize + 200) {
+      this.ringBuffer = this.ringBuffer.slice(-this.ringSize);
     }
 
     // If recording, also add to recording buffer
@@ -324,6 +327,25 @@ class DebugTrace {
 
     // Don't clone Sets — convert to array
     if (value instanceof Set) return [...value];
+
+    // FAST PATH: a flat object of primitives is the overwhelmingly common trace
+    // payload ({ nodeId, vpId, count, … }). A JSON round-trip for those cost a
+    // full serialize+parse PER TRACE CALL — with ~1,000 events per undo on a
+    // vector-heavy page (482 of them one-per-SVG-node) that was a dominant
+    // share of the keystroke ("undo super slow with all those svg",
+    // 2026-08-07). A shallow copy is equivalent for this shape and ~free.
+    if (Object.getPrototypeOf(value) === Object.prototype) {
+      const out: Record<string, any> = {};
+      let flat = true;
+      for (const k in value) {
+        const v = (value as Record<string, any>)[k];
+        const t = typeof v;
+        if (v === null || t === 'string' || t === 'number' || t === 'boolean' || t === 'undefined') {
+          out[k] = v;
+        } else { flat = false; break; }
+      }
+      if (flat) return out;
+    }
 
     try {
       return JSON.parse(JSON.stringify(value));

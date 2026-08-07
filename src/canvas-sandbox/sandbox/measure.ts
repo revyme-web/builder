@@ -37,9 +37,38 @@ interface MeasureEntry {
   corners: { nodeId: string; vpPrefix: string; corners: CornersLike; decoupled: boolean };
   computed: { nodeId: string; vpPrefix: string; styles: Record<string, string> };
   t: { x: number; y: number; scale: number };
+  /** `style` attribute at the time the computed values were read — half of the
+   *  reuse signal below (the other half is an unchanged rect). */
+  styleAttr: string;
 }
 
 const lastEmittedMeasure = new Map<string, MeasureEntry>();
+
+// COMPUTED-STYLE REUSE. The per-element `getComputedStyle` + CACHED_PROPS read
+// is the dominant cost of a measure pass — it forces style resolution and
+// allocates a live declaration per element, and it ran for EVERY element on
+// EVERY render. On a page carrying a Figma-imported vector swarm (a protractor
+// = ~400 individual <svg> nodes) that's ~1,861 style resolutions per undo,
+// which is why undo cost scaled with element count no matter how the page was
+// authored ("if someone makes it naturally it will still have huge perf
+// issues", 2026-08-07).
+//
+// An element's computed CACHED_PROPS can only differ from the last read if
+// (a) its own `style` attribute changed, (b) its box moved/resized — which
+// covers every layout cascade from an ancestor or sibling — or (c) the
+// stylesheet itself changed (class/media-query flip can repaint without
+// moving anything). (a) and (b) are checked per element for free (the rect is
+// read regardless); (c) is signalled by the render path via
+// `invalidateComputedCache()`. Anything unmatched falls back to a real read,
+// so the reuse can only ever skip provably-identical work.
+let _forceFullComputed = true;
+
+/** Force a full computed re-read on the next measure pass. Called when the
+ *  stylesheet changes (css / globalsCss / layoutCss) — a class or media-query
+ *  flip can change computed values without touching inline styles or geometry. */
+export function invalidateComputedCache(): void {
+  _forceFullComputed = true;
+}
 
 /**
  * Drop every remembered measure. MUST run on a FILE-SWITCH render: node ids
@@ -56,6 +85,7 @@ export function clearMeasureReplayCache(): void {
   if (lastEmittedMeasure.size === 0) return;
   trace.dom('measure.clearReplayCache', { dropped: lastEmittedMeasure.size });
   lastEmittedMeasure.clear();
+  _forceFullComputed = true;
 }
 
 /** Re-project a capture-time screen payload into the current camera. */
@@ -238,6 +268,7 @@ export function emitAllMeasures(opts?: EmitAllMeasuresOptions): void {
   let measured = 0;
   let replayedCulled = 0;
   let replayedOffscreen = 0;
+  let reusedComputed = 0;
 
   root.querySelectorAll('[data-node-id]').forEach(el => {
     if (ghostEls.has(el)) return;
@@ -274,7 +305,43 @@ export function emitAllMeasures(opts?: EmitAllMeasuresOptions): void {
       return;
     }
     const r = (el as HTMLElement).getBoundingClientRect();
-    allRects.push({ nodeId, vpPrefix, rect: { left: r.left, top: r.top, width: r.width, height: r.height } });
+    const rectPayload = { nodeId, vpPrefix, rect: { left: r.left, top: r.top, width: r.width, height: r.height } };
+    allRects.push(rectPayload);
+
+    // REUSE GATE (see `_forceFullComputed`): identical screen box + identical
+    // inline style + unchanged stylesheet ⇒ both the computed CACHED_PROPS and
+    // the screen CORNERS are identical, so skip BOTH derivations. The rect
+    // above still ships fresh every pass.
+    //
+    // Corners are the expensive half on vector-heavy pages: for every <svg>
+    // `cornersForElement` runs a `:scope > foreignObject` query, builds the CTM
+    // context, finds the shape child and does matrix/bbox math. A Figma-imported
+    // protractor is ~400 <svg> + ~400 <path> nodes, so that dominated the pass
+    // (65ms with computed-style reads already fully reused, 2026-08-07).
+    // Any transform change arrives via inline style (framer-motion, drag) or the
+    // stylesheet — both already force a real read — and any geometry change
+    // moves the rect, so a reused quad is provably the current one.
+    const styleAttr = el.getAttribute('style') ?? '';
+    const prev = lastEmittedMeasure.get(cacheKey);
+    if (!_forceFullComputed && prev && prev.styleAttr === styleAttr
+        && prev.rect.rect.left === rectPayload.rect.left
+        && prev.rect.rect.top === rectPayload.rect.top
+        && prev.rect.rect.width === rectPayload.rect.width
+        && prev.rect.rect.height === rectPayload.rect.height) {
+      cornersPayload.push(prev.corners);
+      computedPayload.push(prev.computed);
+      measured++;
+      reusedComputed++;
+      lastEmittedMeasure.set(cacheKey, {
+        rect: rectPayload,
+        corners: prev.corners,
+        computed: prev.computed,
+        t: { ...currentSandboxTransform },
+        styleAttr,
+      });
+      return;
+    }
+
     // Corners use painted bbox for SVG (see `cornersForElement`); rect stays on wrapper.
     cornersPayload.push({ nodeId, vpPrefix, corners: cornersForElement(el, rotMemo), decoupled: cornersAreDecoupled(el) });
     const cs = getComputedStyle(el as HTMLElement);
@@ -335,6 +402,7 @@ export function emitAllMeasures(opts?: EmitAllMeasuresOptions): void {
       corners: cornersPayload[cornersPayload.length - 1],
       computed: computedPayload[computedPayload.length - 1],
       t: { ...currentSandboxTransform },
+      styleAttr,
     });
   });
 
@@ -358,9 +426,12 @@ export function emitAllMeasures(opts?: EmitAllMeasuresOptions): void {
   if (computedPayload.length) emit({ type: 'computedUpdateBatch', entries: computedPayload });
 
   trace.action('sandbox:allRects-measure', {
-    measured, replayedCulled, replayedOffscreen, sectionsSkipped,
+    measured, replayedCulled, replayedOffscreen, sectionsSkipped, reusedComputed,
     fullPass: !skipOffscreen, ms: Math.round(performance.now() - t0),
   });
+  // A completed pass has refreshed every element that needed it — subsequent
+  // passes may reuse until something invalidates again.
+  _forceFullComputed = false;
 
   // Idle full pass — heals whatever the section skip allowed to go stale
   // (internal edits to offscreen sections, nodes added while offscreen).

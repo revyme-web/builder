@@ -15,6 +15,7 @@ import { CullingController } from './culling-controller';
 import * as Comlink from 'comlink';
 import type { SandboxApi, RenderInput } from './sandbox-api';
 import { deserializeNodeMap } from './protocol';
+import type { CanvasNode } from '@/code/parsing/parser';
 import { trace } from '@/shared/debug-trace';
 import { setSandboxGlobalsCSS } from './stubs/project-fs';
 import { setPushedLayoutCss } from '@/canvas/renderer/responsive';
@@ -48,7 +49,8 @@ import {
   emitSubtreeRefresh,
   scheduleRemeasureAllRects,
 } from './sandbox/rect-emit';
-import { emitAllMeasures } from './sandbox/measure';
+import { emitAllMeasures, invalidateComputedCache } from './sandbox/measure';
+import { noteSandboxRender } from './sandbox/rect-emit';
 import {
   setCollectionGhostsHidden, patchStyles, patchMultipleStyles, injectCSS, removeCSS,
   setCanvasTokenVar, loadFontInIframe, setCanvasTokensCSS, setInnerHTML, setAttribute,
@@ -166,11 +168,45 @@ function getCulling(): CullingController | null {
 // with culled-subtree AND offscreen-section replay) lives in
 // sandbox/measure.ts — see `emitAllMeasures`.
 
+// DELTA-render base: the node map the LAST applied render used, and its seq.
+// A delta input merges onto this; the host only sends deltas against an
+// acknowledged seq, so a mismatch means a dropped render — skip and let the
+// missing ack force the host back to a full send (self-recovering).
+let _lastCssFp = '\u0000';
+let lastNodesMap: Map<string, CanvasNode> | null = null;
+let lastAppliedSeq = 0;
+
 const api: SandboxApi = {
   render(input: RenderInput): void {
     if (!contentRoot) return;
     try {
-      const nodes = deserializeNodeMap(input.nodes);
+      let nodes: Map<string, CanvasNode>;
+      if (input.nodesDelta) {
+        if (!lastNodesMap || lastAppliedSeq !== input.nodesDelta.baseSeq) {
+          trace.error('sandbox:delta-base-mismatch', {
+            baseSeq: input.nodesDelta.baseSeq, lastAppliedSeq, hasBase: !!lastNodesMap,
+          });
+          return; // no ack → host's next send is full
+        }
+        nodes = new Map(lastNodesMap);
+        for (const [id, n] of input.nodesDelta.changed) nodes.set(id, n);
+        for (const id of input.nodesDelta.removed) nodes.delete(id);
+      } else {
+        nodes = deserializeNodeMap(input.nodes!);
+      }
+      lastNodesMap = nodes;
+      lastAppliedSeq = input.renderSeq ?? 0;
+      // Supersede any scheduled settle-sweep: this render measures everything.
+      noteSandboxRender();
+      // STYLESHEET CHANGE → the measure pass must re-read computed styles for
+      // real: a class / media-query flip changes computed values without
+      // touching inline styles or geometry, which is exactly what the reuse
+      // gate keys on. Cheap identity compare; unchanged CSS keeps the reuse.
+      const cssFp = `${input.css ?? ''}|${input.globalsCss ?? ''}|${input.layoutCss ?? ''}`;
+      if (cssFp !== _lastCssFp) {
+        _lastCssFp = cssFp;
+        invalidateComputedCache();
+      }
       // Make globals CSS available to Renderer via stubbed projectFS
       if (input.globalsCss) setSandboxGlobalsCSS(input.globalsCss);
       // Template responsive CSS (selector-prefixed parent-side). The fs-based

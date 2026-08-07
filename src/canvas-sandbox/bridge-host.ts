@@ -40,6 +40,13 @@ export class PostMessageBridge implements CanvasBridge {
    *  remeasure otherwise lands after the switch's cache wipe and wholesale
    *  repopulates the caches with the previous file's geometry). */
   private renderSeq = 0;
+  // DELTA-render bookkeeping: the node map as of the last SEND (identity
+  // snapshot), its seq, and the seq the sandbox has ACKNOWLEDGED applying
+  // (renderComplete). A delta is only safe when acked === sent — the sandbox
+  // then provably holds `lastSentNodes` as its retained base.
+  private lastSentNodes: Map<string, CanvasNode> | null = null;
+  private lastSentSeq = 0;
+  private lastAckedSeq = 0;
 
   // Generation counter — bumped on every allRects (full cache rebuild).
   // In-flight prefetch promises capture the generation at start time and
@@ -160,8 +167,28 @@ export class PostMessageBridge implements CanvasBridge {
     const localeOverridesObj = localeOverrides && localeOverrides.size > 0
       ? Object.fromEntries(localeOverrides)
       : undefined;
+    // DELTA when possible: identity-diff against the last acknowledged send.
+    // Guards: never on distrusted renders (undo residue / file switch), never
+    // before the sandbox acked the base, and only when the delta is small
+    // (an edit; a reparse without identity-preserve falls back to full).
+    const seqForSend = this.renderSeq + 1;
+    let nodesDelta: RenderInput['nodesDelta'];
+    // NOTE: distrusted renders (undo restore / file switch) still delta —
+    // distrust changes the sandbox's PATCH WALK, not the payload; the merged
+    // map is identical to a full send. A file switch's map shares no
+    // identities, so the size guard forces it to full naturally.
+    if (this.lastSentNodes && this.lastAckedSeq === this.lastSentSeq) {
+      const changed: Array<[string, CanvasNode]> = [];
+      for (const [id, n] of nodes) if (this.lastSentNodes.get(id) !== n) changed.push([id, n]);
+      const removed: string[] = [];
+      for (const id of this.lastSentNodes.keys()) if (!nodes.has(id)) removed.push(id);
+      if (changed.length + removed.length <= Math.max(8, nodes.size / 4)) {
+        nodesDelta = { changed, removed, baseSeq: this.lastSentSeq };
+      }
+    }
     const input: RenderInput = {
-      nodes: serializeNodeMap(nodes),
+      nodes: nodesDelta ? undefined : serializeNodeMap(nodes),
+      nodesDelta,
       viewports,
       code,
       css,
@@ -178,9 +205,15 @@ export class PostMessageBridge implements CanvasBridge {
       // instances, so the parent's pin state must ride every render.
       bandPin: viewportBandPinOps.get(),
       // Epoch for stale-emission rejection (see the allRects handler).
-      renderSeq: ++this.renderSeq,
+      renderSeq: (this.renderSeq = seqForSend),
     };
-    trace.action('postmessage-bridge:send-render', { nodeCount: nodes.size, vpCount: viewports.length, overrideCount: localeOverrides?.size ?? 0 });
+    this.lastSentNodes = new Map(nodes);
+    this.lastSentSeq = input.renderSeq!;
+    trace.action('postmessage-bridge:send-render', {
+      nodeCount: nodes.size, vpCount: viewports.length, overrideCount: localeOverrides?.size ?? 0,
+      mode: nodesDelta ? 'delta' : 'full',
+      ...(nodesDelta ? { changed: nodesDelta.changed.length, removed: nodesDelta.removed.length } : {}),
+    });
     this.remote?.render(input);
   }
 
@@ -978,6 +1011,9 @@ export class PostMessageBridge implements CanvasBridge {
         break;
 
       case 'renderComplete':
+        // Sandbox applied the latest send (single-threaded, in-order) —
+        // deltas against it are now safe.
+        this.lastAckedSeq = this.lastSentSeq;
         // Backup: keep container rect fresh after each render in case allRects'
         // bundled containerRect somehow isn't available.
         if (!this.containerRectCache) {

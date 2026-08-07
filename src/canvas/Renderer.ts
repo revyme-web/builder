@@ -1982,8 +1982,24 @@ function patchElement(
   // This element IS being patched. If it lives inside a CULLED root, that
   // root's placeholder box + replayed rect caches are now stale — mark it so
   // the render cycle restores it (culling.restoreDirty) before measuring.
+  // DISTRUSTED renders (undo/redo, file switch) force EVERY element down this
+  // path — the patch-key skip above is disabled by design so undo residue gets
+  // reconciled. But marking dirty from a distrusted walk restored EVERY culled
+  // root on every keystroke (36 subtrees on a real page), and re-attaching a
+  // subtree makes the browser re-decode + re-raster its images: on
+  // image-heavy pages undo took ~½s, and deleting the images made it instant
+  // ("those images create the bottleneck", 2026-08-07). A distrusted render
+  // re-patches to the SAME values unless the node actually changed, so gate
+  // the dirty-mark on a real value change: compare the freshly computed patch
+  // key against the stored one (computed above even when the skip is
+  // disabled). No key (dynamic/binding nodes) stays conservative — always
+  // dirty.
   const culledRoot = el.closest('[data-culled]');
-  if (culledRoot) culledRoot.setAttribute('data-culled-dirty', 'true');
+  if (culledRoot) {
+    const stored = (el as HTMLElement & { __revymePatchKey?: string }).__revymePatchKey;
+    const unchanged = patchKey !== null && stored === patchKey;
+    if (!unchanged) culledRoot.setAttribute('data-culled-dirty', 'true');
+  }
 
   // Background-video sync — runs every cycle so add/change/remove stays live.
   syncBgVideoChild(el, node.bgVideo);

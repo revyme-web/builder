@@ -213,6 +213,7 @@ export function startSettleObserver(): void {
     // gesture-end reconcile runs a full sweep — skip (and DON'T re-arm off
     // our own culling writes: data-culled flips are measurement plumbing).
     if (isSandboxDndInteracting()) return;
+    if (_selfWriting) return; // our own measure-pass writes — never re-arm on them
     let relevant = false;
     for (const r of records) {
       const t = r.target as HTMLElement;
@@ -242,10 +243,47 @@ export function startSettleObserver(): void {
   trace.action('sandbox:settle-observer-started', {});
 }
 
+// SELF-WRITE SUPPRESSION. The settle observer watches subtree `style`
+// mutations, and the measure pass itself WRITES styles (it re-places portaled
+// overlays before measuring). Its own writes therefore re-armed the observer →
+// another measure → more writes: a self-sustaining ~130ms loop that ran for
+// ~1s after every undo (trace 2026-08-07: allRects-measure ×5+ per keystroke,
+// 1859 elements each). Each pass forces a full layout flush, so on pages with
+// large images + blur filters the relayout/repaint is what the user feels as
+// "undo is super slow when those images are there" — remove the images and the
+// same loop is cheap enough to be invisible.
+//
+// Mutation records are delivered on the MICROTASK queue, so clearing the flag
+// from a macrotask (setTimeout 0) guarantees the callback for our own writes
+// has already run and been dropped.
+let _selfWriting = false;
+function beginSelfWrite(): void {
+  _selfWriting = true;
+  setTimeout(() => { _selfWriting = false; }, 0);
+}
+
+// RENDER SUPERSESSION. A render runs its OWN full measure when it lands
+// (emitAllMeasures), and the parent stamps every measure batch with the render
+// seq — batches older than the current render are DROPPED as stale. So a
+// scheduled sweep that a render overtakes is pure waste: on an undo the
+// sandbox spent 130ms+ measuring 1861 elements, the parent discarded the
+// result (`drop-stale-allRects`), and the render itself queued 358ms behind
+// that blocked frame ("undo still slow with those images", 2026-08-07 — the
+// measure forces a full relayout, which large images + blur make expensive).
+// Scheduled (non-forced) sweeps therefore capture the render epoch and bail
+// when a render landed in the meantime; the render's own measure covers it.
+let _renderEpoch = 0;
+export function noteSandboxRender(): void { _renderEpoch++; }
+
 export function scheduleRemeasureAllRects(): void {
   if (_remeasureTimer) clearTimeout(_remeasureTimer);
+  const scheduledAtEpoch = _renderEpoch;
   _remeasureTimer = setTimeout(() => {
     _remeasureTimer = null;
+    if (_renderEpoch !== scheduledAtEpoch) {
+      trace.action('sandbox:remeasure-superseded-by-render', { scheduledAtEpoch, now: _renderEpoch });
+      return; // the render's own emitAllMeasures already shipped fresh geometry
+    }
     runRemeasureOnNextFrame();
   }, 150);
 }
@@ -267,6 +305,7 @@ function runRemeasureOnNextFrame(force = false): void {
       return;
     }
     _settlePendingSince = 0;
+    beginSelfWrite();
     void contentRoot.offsetHeight; // flush layout before reading rects
     trace.action('sandbox:remeasure-all-rects', { force });
     // RE-PLACE portaled overlays before measuring. A relative overlay's position
