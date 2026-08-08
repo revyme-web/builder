@@ -33,6 +33,7 @@ import { checkCanvasConfig } from './checks/canvas-config';
 import { checkOverlayDialect } from './checks/overlay-dialect';
 import { checkSvgShapeDialect } from './checks/svg-shape-dialect';
 import { checkMotionAppearHidden, checkMotionTransformDrift } from './checks/motion-appear';
+import { checkMotionPropsNeedMotionTag } from './checks/motion-tag';
 import { checkTranslationDialect } from './checks/translation-dialect';
 import { checkMediaBandDialect, checkDuplicateBreakpointStack } from './checks/media-band-dialect';
 import { checkComponentLinks, checkPageLinks } from './checks/link-rules';
@@ -989,6 +990,12 @@ export function checkFile(
   //    deviation renders but is invisible to the Animation panel. ─────────────
   if (kind === 'page' && /useScroll|useTransform|useSpring|useMotionTemplate/.test(code)) {
     checkScrollDialect(ast, v);
+  }
+
+  // ── MOTION PROPS ON A PLAIN TAG — silent everywhere the author can see.
+  //    Cheap source precheck so files with no motion props never traverse.
+  if (/\b(?:layout|variants|animate|initial|whileHover|whileTap|whileInView|onTap|onHoverStart|drag)\s*=/.test(code)) {
+    checkMotionPropsNeedMotionTag(ast, v);
   }
 
   // ── VARIANT DIALECT (design components) ────────────────────────────────────

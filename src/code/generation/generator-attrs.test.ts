@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { transform } from '@babel/standalone';
-import { ensureShapeChildIds, updateHtmlAttrsInCode, stripDataResponsiveInSubtree } from './generator-attrs';
+import { ensureShapeChildIds, updateHtmlAttrsInCode, stripDataResponsiveInSubtree, changeTagInCode } from './generator-attrs';
 
 const parses = (c: string) =>
   expect(() => transform(c, { presets: ['react', 'typescript'], filename: 'f.tsx' })).not.toThrow();
@@ -107,5 +107,50 @@ describe('stripDataResponsiveInSubtree', () => {
     expect(stripDataResponsiveInSubtree(dq, 'k-1')).not.toContain('data-responsive');
     const clean = `<div data-id="root"><KaPoJo data-id="k-1"></KaPoJo></div>`;
     expect(stripDataResponsiveInSubtree(clean, 'k-1')).toBe(clean);
+  });
+});
+
+// ─── changeTag keeps the motion wrapper ─────────────────────────────────────
+//
+// `motion.div` is ONE tag token, so renaming it replaced the whole thing and
+// the element silently stopped being a motion component while keeping every
+// motion prop. A component root retagged to `nav` for semantics stopped
+// FLIP-animating — no warning, and the canvas (static, no motion) looked
+// identical (user report 2026-08-08).
+
+describe('changeTagInCode — motion prefix', () => {
+  const root = (tag: string) =>
+    `const C = () => <${tag} layout={true} data-id="n1" variants={v} animate={['default', variant]}>x</${tag}>;`;
+
+  it('keeps the wrapper when giving a motion element a semantic tag', () => {
+    const out = changeTagInCode(root('motion.div'), 'n1', 'nav');
+    expect(out).toContain('<motion.nav');
+    expect(out).toContain('</motion.nav>');
+    expect(out).not.toMatch(/<nav\b/);
+  });
+
+  it('retags a plain element without adding a wrapper it never had', () => {
+    const out = changeTagInCode(`const C = () => <div data-id="n1">x</div>;`, 'n1', 'section');
+    expect(out).toContain('<section');
+    expect(out).toContain('</section>');
+    expect(out).not.toContain('motion.');
+  });
+
+  it('never produces motion.<Uppercase> — the proxy knows HTML tags only', () => {
+    const out = changeTagInCode(root('motion.div'), 'n1', 'Link');
+    expect(out).toContain('<Link');
+    expect(out).not.toContain('motion.Link');
+  });
+
+  it('does not double a prefix the caller already supplied', () => {
+    // LinkTool's revert passes `motion.div` outright for a MotionLink.
+    const out = changeTagInCode(`const C = () => <MotionLink data-id="n1">x</MotionLink>;`, 'n1', 'motion.div');
+    expect(out).toContain('<motion.div');
+    expect(out).not.toContain('motion.motion.');
+  });
+
+  it('is a no-op when the semantic tag would resolve to what it already is', () => {
+    const code = root('motion.div');
+    expect(changeTagInCode(code, 'n1', 'div')).toBe(code);
   });
 });

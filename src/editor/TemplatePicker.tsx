@@ -26,7 +26,9 @@ import {
   getPageTemplate,
   assignTemplate,
   createTemplate,
+  validateTemplateName,
 } from '@/code/project/template-ops';
+import { toast } from 'sonner';
 import { parseComponentInfoFromSource, STRUCTURAL_PROPS, type ComponentProp } from '@/code/components/component-registry';
 import { getPropOptions } from '@/code/components/prop-meta';
 import { parseJSXToNodes } from '@/code/parsing/parser';
@@ -431,7 +433,10 @@ export default function TemplatePicker() {
     // belongs in NameInputModal — separate UX work.)
     const clientPath = createTemplate(name);
     if (!clientPath) {
+      // `validate` refuses every known-bad name inline; reaching here means it
+      // became unavailable between keystroke and submit. Tell the user.
       trace.error('template-picker:create-failed', { name });
+      toast.error(validateTemplateName(name) ?? `Couldn't create the template "${name}"`);
       return;
     }
     setVersion(v => v + 1);
@@ -802,6 +807,7 @@ export default function TemplatePicker() {
         // Templates wear the component-system accent everywhere — Library
         // panel, File Explorer, and here.
         accent="secondary"
+        validate={validateTemplateName}
       />
     </>
   );

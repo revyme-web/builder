@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, it, expect, beforeEach } from 'vitest';
 import {
   listTemplates,
   getPageTemplate,
@@ -9,6 +9,7 @@ import {
   createTemplate,
   renameTemplate,
   deleteTemplate,
+  validateTemplateName,
 } from './template-ops';
 import { projectFS, resetProjectFS } from './project-fs';
 
@@ -318,5 +319,48 @@ describe('createTemplate — the returned path is the ONLY truth about the name'
     expect(name).toBe('Body');
     expect(templateExists(name!)).toBe(true);
     expect(templateExists('body')).toBe(false);   // case-sensitive FS
+  });
+});
+
+// ─── Name validation — the silent-failure fix ───────────────────────────────
+//
+// `createTemplate` returned null for a duplicate/invalid name and reported it
+// ONLY to the console (`template-ops:create-exists`), while every caller closed
+// its dialog regardless — so the button "did nothing" (user report 2026-08-08,
+// after a first attempt had already created that name). Dialogs now validate
+// through the same function `createTemplate` itself uses, so they cannot
+// disagree about what will be accepted.
+
+describe('validateTemplateName', () => {
+  beforeEach(() => { resetProjectFS(); });
+
+  it('accepts a fresh, well-formed name', () => {
+    expect(validateTemplateName('marketing')).toBeNull();
+    expect(validateTemplateName('blog-2024')).toBeNull();
+    expect(validateTemplateName('my_group')).toBeNull();
+  });
+
+  it('rejects an empty name', () => {
+    expect(validateTemplateName('')).toMatch(/required/i);
+    expect(validateTemplateName('   ')).toMatch(/required/i);
+  });
+
+  it('rejects characters the route-group folder cannot carry', () => {
+    expect(validateTemplateName('my template')).toMatch(/letters, numbers/i);
+    expect(validateTemplateName('a/b')).toMatch(/letters, numbers/i);
+  });
+
+  it('rejects a name already in use, and names it', () => {
+    expect(createTemplate('sdfsdf')).toBe('app/(sdfsdf)/LayoutClient.tsx');
+    expect(validateTemplateName('sdfsdf')).toContain('sdfsdf');
+    expect(validateTemplateName('sdfsdf')).toMatch(/already exists/i);
+  });
+
+  it('agrees with createTemplate — a name it accepts always creates', () => {
+    expect(validateTemplateName('fresh')).toBeNull();
+    expect(createTemplate('fresh')).not.toBeNull();
+    // …and one it refuses never does.
+    expect(validateTemplateName('fresh')).not.toBeNull();
+    expect(createTemplate('fresh')).toBeNull();
   });
 });

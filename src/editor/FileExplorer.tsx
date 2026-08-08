@@ -10,7 +10,7 @@ import {
   switchActiveFile, createNotFoundPageFile, NOT_FOUND_PATH, notFoundExists,
   componentBreadcrumbAtom, filePathToAbPagePath,
 } from '../code/project/active-file-store';
-import { createTemplate } from '../code/project/template-ops';
+import { createTemplate, validateTemplateName } from '../code/project/template-ops';
 import { createCmsIndexPageFile, createCmsDetailPageFile, findCmsPageFile } from '../code/project/cms-page-ops';
 import { collectionSchemasAtom } from '../code/stores/cms-store';
 import { projectFS, projectVersionAtom, stableProjectVersionAtom } from '../code/project/project-fs';
@@ -1740,6 +1740,10 @@ export default function Page() {
         title="New Template"
         placeholder='Template name (e.g. "marketing")'
         submitLabel="Create Template"
+        // Validate the SLUGIFIED name — this call site lower-cases and
+        // hyphenates before creating, so validating the raw input would refuse
+        // "My Template" that `performAddTemplate` would happily accept.
+        validate={(n) => validateTemplateName(n.replace(/[()]/g, '').trim().toLowerCase().replace(/\s+/g, '-'))}
         // Templates share the component-system accent — purple fill, white
         // label — everywhere else in the app; the modal has to match.
         accent="secondary"

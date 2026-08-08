@@ -143,15 +143,12 @@ export function assignTemplate(pageFilePath: string, templateName: string | null
  * Returns the template's clientPath (the file the user edits).
  */
 export function createTemplate(name: string): string | null {
+  const problem = validateTemplateName(name);
+  if (problem) {
+    trace.error('template-ops:create-rejected', { name, problem });
+    return null;
+  }
   const clean = sanitizeTemplateName(name);
-  if (!clean) {
-    trace.error('template-ops:create-invalid-name', { name });
-    return null;
-  }
-  if (templateExists(clean)) {
-    trace.error('template-ops:create-exists', { name: clean });
-    return null;
-  }
   createRouteGroupRaw(clean, true);
   trace.action('template-ops:create', { name: clean });
   return `app/(${clean})/LayoutClient.tsx`;
@@ -261,6 +258,26 @@ export function deleteTemplate(name: string): void {
  * folder name. Letters, digits, dash, underscore — plain enough that the
  * resulting `(name)` reads cleanly in a file tree.
  */
+/**
+ * Why `createTemplate(name)` would refuse this name, or null when it's fine.
+ *
+ * THE reason a template creation can fail, in one place — `createTemplate`
+ * itself calls it, so a UI that validates through this can't disagree with what
+ * the write will actually do. Wire it into a dialog's `validate` prop: refusing
+ * inline keeps the dialog open with the typed name intact, instead of the old
+ * behaviour where a duplicate name closed the dialog, created nothing, and
+ * reported it only to the console (`template-ops:create-exists` — user report
+ * 2026-08-08: "sometimes works, sometimes not", because the first attempt HAD
+ * succeeded and the retry collided with it).
+ */
+export function validateTemplateName(name: string): string | null {
+  const trimmed = name.trim();
+  if (!trimmed) return 'Name is required';
+  if (!sanitizeTemplateName(trimmed)) return 'Use letters, numbers, hyphens or underscores only';
+  if (templateExists(trimmed)) return `A template named "${trimmed}" already exists`;
+  return null;
+}
+
 function sanitizeTemplateName(name: string): string {
   const trimmed = name.trim();
   if (!/^[A-Za-z0-9_-]+$/.test(trimmed)) return '';

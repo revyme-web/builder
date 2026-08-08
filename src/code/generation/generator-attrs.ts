@@ -137,15 +137,40 @@ export function changeTagInCode(
   const tagNameMatch = code.slice(tagStart + 1, tagStart + 60).match(/^(\w[\w.-]*)/);
   if (!tagNameMatch) return code;
   const oldTag = tagNameMatch[1];
-  if (oldTag === newTag) return code;
+
+  // PRESERVE THE MOTION WRAPPER.
+  //
+  // `motion.div` is ONE tag token — the `.` is inside the name — so renaming
+  // the token replaced the whole thing and the element silently stopped being a
+  // motion component while keeping every motion prop it had. `layout`,
+  // `variants`, `animate` and `onTap` then ride a plain DOM element as unknown
+  // attributes: no warning, no parse error, and the CANVAS looks identical
+  // (it's static). Only live/preview loses the animation. A component root
+  // retagged to `nav` stopped FLIP-animating its height on open, which read as
+  // "it jumps to the final state" (user report 2026-08-08).
+  //
+  // Two guards on re-wrapping:
+  //  · framer-motion's proxy knows HTML TAG NAMES only, so `motion.Link` is a
+  //    broken custom element — the mutation queue even self-heals
+  //    `motion.<Upper>` back to `<Upper>`. Lowercase tags only.
+  //  · never double a prefix a caller already supplied (LinkTool's revert
+  //    passes `motion.div` outright).
+  const isMotionTag = oldTag.startsWith('motion.');
+  const effectiveNewTag = isMotionTag && !newTag.includes('.') && /^[a-z]/.test(newTag)
+    ? `motion.${newTag}`
+    : newTag;
+  if (isMotionTag && effectiveNewTag !== newTag) {
+    trace.action('generator:change-tag-keeps-motion', { nodeId, from: oldTag, to: effectiveNewTag });
+  }
+  if (oldTag === effectiveNewTag) return code;
 
   const tagEnd = findTagClose(code, tagStart);
   if (tagEnd === -1) return code;
 
   // Replace opening tag name
-  let result = code.slice(0, tagStart + 1) + newTag + code.slice(tagStart + 1 + oldTag.length);
+  let result = code.slice(0, tagStart + 1) + effectiveNewTag + code.slice(tagStart + 1 + oldTag.length);
 
-  const adjustedTagEnd = tagEnd + (newTag.length - oldTag.length);
+  const adjustedTagEnd = tagEnd + (effectiveNewTag.length - oldTag.length);
 
   // Self-closing — no closing tag to fix
   if (result.slice(adjustedTagEnd - 1, adjustedTagEnd + 1) === '/>') return result;
@@ -155,7 +180,7 @@ export function changeTagInCode(
   const closeTagToken = `</${oldTag}>`;
   const closeIdx = findMatchingCloseTagIndex(result, oldTag, adjustedTagEnd + 1);
   if (closeIdx !== -1) {
-    result = result.slice(0, closeIdx) + `</${newTag}>` + result.slice(closeIdx + closeTagToken.length);
+    result = result.slice(0, closeIdx) + `</${effectiveNewTag}>` + result.slice(closeIdx + closeTagToken.length);
   }
 
   return result;

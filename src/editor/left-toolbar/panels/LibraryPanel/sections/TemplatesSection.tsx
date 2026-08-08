@@ -15,7 +15,8 @@ import {
 } from '@/design-system/FolderTree';
 import SidebarRow from '@/design-system/SidebarRow';
 import { projectVersionAtom } from '@/code/project/project-fs';
-import { listTemplates, createTemplate, renameTemplate, deleteTemplate } from '@/code/project/template-ops';
+import { listTemplates, createTemplate, renameTemplate, deleteTemplate, validateTemplateName } from '@/code/project/template-ops';
+import { toast } from 'sonner';
 import { sealPendingHistory, pushHistoryFileOp } from '@/code/mutation/history';
 import {
   listTemplateFolders,
@@ -103,6 +104,14 @@ export function TemplatesSection({
     // Returns the new template's `LayoutClient.tsx` path (or null on a bad /
     // duplicate name).
     const clientPath = createTemplate(name);
+    if (!clientPath) {
+      // `validate` above refuses every known-bad name inline, so reaching here
+      // means the name became unavailable between the keystroke and the submit.
+      // Say so — the previous silent return read as "the button does nothing".
+      toast.error(validateTemplateName(name) ?? `Couldn't create the template "${name}"`);
+      setNameModalOpen(false);
+      return;
+    }
     // Bump the atom so this section + everything else that reads
     // `projectVersionAtom` (right-panel Template picker, page tree)
     // sees the new template without needing a panel switch.
@@ -363,6 +372,7 @@ export function TemplatesSection({
         defaultValue=""
         submitLabel="Create Template"
         accent="secondary"
+        validate={validateTemplateName}
       />
       <NameInputModal
         isOpen={renameTarget !== null}
