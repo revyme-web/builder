@@ -27,6 +27,25 @@ interface StyleIndicatorProps {
   size?: 'sm' | 'md';
 }
 
+/**
+ * The MEASUREMENT badge palette — the pill that reports a live width/height
+ * while resizing, drawing a frame, or holding ⌥⌘.
+ *
+ * Fixed blue with white text, deliberately NOT the theme accent: a measurement
+ * should read the same on every theme, and on the gold brand accent the badge
+ * needs a near-black label, which looks like a different component. Inside a
+ * component master it switches to the component-system violet, like the rest of
+ * that chrome.
+ *
+ * Shared so the resize/draw helper and the ⌥⌘ dimensions badge can't drift —
+ * they were two different colours for the same idea (user call 2026-08-08).
+ */
+export function measurementColors(isComponentFile: boolean): { color: string; fg: string } {
+  return isComponentFile
+    ? { color: 'var(--accent-secondary)', fg: 'var(--accent-secondary-fg)' }
+    : { color: 'var(--selection)', fg: '#ffffff' };
+}
+
 const sizes = {
   sm: { borderRadius: 5, padding: '2px 6px', fontWeight: 500, fontSize: 10 },
   md: { borderRadius: 8, padding: '4px 12px', fontWeight: 600, fontSize: 13 },

@@ -426,6 +426,18 @@ export class LayoutLiftedStrategy implements DragStrategy {
         const op = getViewportPrefix(ovp);
         for (const dn of draggedNodes) parts.push(`[data-node-id="${op}${dn.id}"]`);
       }
+      // CMS COLLECTION GHOSTS. The loop above only knows about copies on OTHER
+      // VIEWPORTS. A collection list's ghost rows are copies in the SAME
+      // viewport — DOM clones of the template row whose descendants keep the
+      // template's `data-id` and differ only by a `__N` suffix on
+      // `data-node-id`. So dragging a child of the template row left every
+      // clone's copy of that child visible and lifted: four drag overlays for
+      // one gesture (user report 2026-08-08). Hide them for the duration and
+      // let the drop's ghost rebuild bring them back in their new order.
+      for (const dn of draggedNodes) {
+        parts.push(`[data-collection-ghost] [data-id="${dn.id}"]`);
+        parts.push(`[data-collection-ghost][data-id="${dn.id}"]`);
+      }
       if (parts.length > 0) {
         this.hiddenReplicaSelector = parts.join(', ');
         injectCanvasCSS(this.hiddenReplicaSelector, 'display: none !important;');

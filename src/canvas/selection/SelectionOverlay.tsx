@@ -21,7 +21,6 @@ import { makeGhostId } from '@/shared/ghost-id';
 import { updateVariantPosition } from '@/code/variants/variant-ops';
 import { projectFS } from '@/code/project/project-fs';
 import { syncQueueCode } from '@/code/mutation/mutation-queue';
-import { computeArrowPathFromCorners, computeArrowPathFromRects } from '@/canvas/ui/arrow-path';
 import { getScreenCornersById, getElementRotationById, cornersEqual, getHandlesFromDirection, cornersFromRect, getOppositeCorner, processZeroCrossing, updateDirectionAfterCrossing, nodeOrAncestorHasRotationOrSkewById, type ScreenCorners, type Direction } from '@/canvas/resize/geometry-utils';
 import { getTransformedPoint } from '@/canvas/canvas-math';
 import { startResize, applyAspectRatioLock } from '@/canvas/resize/ResizeManager';
@@ -980,7 +979,6 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
 function MapGhostOverlay({ nodeId, vpId, color }: { nodeId: string; vpId: string; color: string }) {
   const vpConfigs = useAtomValue(viewportsConfigAtom);
   const [ghostCorners, setGhostCorners] = useState<ScreenCorners[]>([]);
-  const [arrowPaths, setArrowPaths] = useState<string[]>([]);
 
   // Find the template root: walk up to find the node whose parent has
   // ANY collectionList. The same overlay serves both inline `.map()`
@@ -1013,22 +1011,7 @@ function MapGhostOverlay({ nodeId, vpId, color }: { nodeId: string; vpId: string
       // findGhostsForTemplate in node-ops.ts. Works in both DirectBridge
       // (in-process DOM) and PostMessageBridge (iframe) modes.
       const ghosts = findGhostsForTemplate(templateRootId, vpId);
-      const templateRect = ghosts.length > 0 ? findNodeRect(templateRootId, vpId) : null;
-      const corners: ScreenCorners[] = [];
-      const paths: string[] = [];
-
-      for (const g of ghosts) {
-        const gCorners = g.corners ?? cornersFromRect(g.rect);
-        corners.push(gCorners);
-        if (templateRect) {
-          // Prefer corners-based path when both sides have proper corners
-          // (handles rotation correctly); fall back to rects otherwise.
-          const d = g.corners
-            ? computeArrowPathFromCorners(cornersFromRect(templateRect), gCorners)
-            : computeArrowPathFromRects(templateRect, g.rect);
-          if (d) paths.push(d);
-        }
-      }
+      const corners = ghosts.map((g) => g.corners ?? cornersFromRect(g.rect));
 
       // BAIL WHEN NOTHING MOVED. This poll runs at 60fps for as long as a
       // collection row (or anything inside one) stays selected, and it used to
@@ -1041,11 +1024,10 @@ function MapGhostOverlay({ nodeId, vpId, color }: { nodeId: string; vpId: string
       // one 465ms window, every one of them returning the same thing).
       const sig = corners
         .map((c) => `${r(c.TL.x)},${r(c.TL.y)},${r(c.TR.x)},${r(c.TR.y)},${r(c.BR.x)},${r(c.BR.y)},${r(c.BL.x)},${r(c.BL.y)}`)
-        .join(';') + '|' + paths.join(';');
+        .join(';');
       if (sig !== lastGhostSigRef.current) {
         lastGhostSigRef.current = sig;
         setGhostCorners(corners);
-        setArrowPaths(paths);
       }
       rafId = requestAnimationFrame(poll);
     };
@@ -1063,23 +1045,19 @@ function MapGhostOverlay({ nodeId, vpId, color }: { nodeId: string; vpId: string
         pointerEvents: 'none', overflow: 'visible', zIndex: 1,
       }}
     >
-      {/* Ghost outlines (dashed orange) */}
+      {/* Ghost outlines — thin (1px) dashed. They mark "this row is a clone of the
+          template"; a heavy dashed stroke plus a connector arrow per clone read
+          as an error state on a long list and buried the content (user call
+          2026-08-08). The connectors are gone entirely: with one outline style
+          for every clone the relationship is already legible, and drawing them
+          cost a curve solve per clone per frame in the poll above. */}
       {ghostCorners.map((c, i) => (
         <path
           key={`ghost-${i}`}
           d={`M ${c.TL.x} ${c.TL.y} L ${c.TR.x} ${c.TR.y} L ${c.BR.x} ${c.BR.y} L ${c.BL.x} ${c.BL.y} Z`}
-          fill="none" stroke={color} strokeWidth={1.5}
-          strokeDasharray="6 4"
+          fill="none" stroke={color} strokeWidth={1}
+          strokeDasharray="4 3"
           vectorEffect="non-scaling-stroke"
-        />
-      ))}
-      {/* Arrow connectors (curved, same style as component variants) */}
-      {arrowPaths.map((d, i) => (
-        <path
-          key={`arrow-${i}`}
-          d={d}
-          fill="none" stroke={color} strokeWidth={2}
-          strokeLinecap="round" strokeLinejoin="round"
         />
       ))}
     </svg>

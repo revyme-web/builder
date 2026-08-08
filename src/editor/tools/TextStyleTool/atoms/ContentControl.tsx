@@ -14,6 +14,7 @@ import { useTextStyles } from '../../../hooks/useTextStyles';
 import { useAtomValue, useAtom } from 'jotai';
 import { mapItemIndexAtom, mapContextAtom } from '@/code/stores/store';
 import { useNodesComputed } from '@/code/stores/node-family';
+import { resolveCmsRowValues } from '@/code/generation/cms-row-resolve';
 import { interactingViewportIdAtom, viewportsConfigAtom } from '@/code/stores/viewport-store';
 import { activeLocaleAtom, isDefaultLocaleAtom, localeOverridesAtom } from '@/code/stores/locale-store';
 import { activeFilePathAtom, isComponentFilePath } from '@/code/project/active-file-store';
@@ -130,6 +131,14 @@ export function ContentControl() {
     : undefined;
   const variantCmsLiteral = variantCmsEntry && 'value' in variantCmsEntry ? variantCmsEntry.value : undefined;
 
+  // The row value behind a CMS text binding — see the branch that uses it.
+  // Computed through the node map so it re-resolves when the collection data or
+  // the previewed row changes.
+  const cmsRowText = useNodesComputed<string>((nodes) => {
+    if (textNode?.binding?.property !== 'text') return '';
+    return resolveCmsRowValues(textNode, nodes).__text ?? '';
+  }, [textNode]);
+
   let displayValue: string;
   let isOverride = false;
   if (isMapText) {
@@ -153,6 +162,17 @@ export function ContentControl() {
     // leaving an editable literal. Show it as direct text + the override accent.
     displayValue = variantCmsLiteral.replace(/<[^>]*>/g, '');
     isOverride = true;
+  } else if (textNode?.binding?.property === 'text') {
+    // CMS-BOUND TEXT. The JSX carries `{item.field}`, so `textContent` is EMPTY
+    // — the value the user sees is produced at render time from the collection
+    // row. Falling through to the branch below therefore resolved to '', and
+    // since this value is what the pill hands `unbindField` as its static
+    // fallback, pressing × wrote an EMPTY string: the paragraph vanished
+    // instead of keeping the words that were on screen (user report
+    // 2026-08-08). `resolveCmsRowValues` is the same resolver the copy/detach
+    // paths use to bake a row's values onto a clone, so unbind now leaves
+    // exactly what the row was displaying.
+    displayValue = (cmsRowText || '').replace(/<[^>]*>/g, '');
   } else {
     const rawText = textNode?.textContent || '';
     const resolved = resolveForViewport(rawText);

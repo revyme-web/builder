@@ -10,17 +10,23 @@ import { transformManager } from '@/canvas/transform';
 import StyleIndicator from '@/design-system/StyleIndicator';
 import { useModifierKeys } from '@/canvas/hooks/useModifierKeys';
 
-const LINE_COLOR = 'rgba(255, 124, 221, 0.8)';
-// Distinct jade — deliberately NOT an accent token. Distance labels must stay
-// readable next to a selection box without being confused for one.
+// The measuring system is PINK, fixed (user call 2026-08-08): same hue in every
+// theme and in both light and dark mode, deliberately NOT an accent token. The
+// label is the line's own colour at full opacity so the two can never drift,
+// with white text on it.
 //
-// Was pink rgb(255,124,221) at hue 316, which collided with the component
-// magenta at 311 — five degrees apart, indistinguishable, and both can be on
-// canvas at once (ALT-drag measuring against a selected instance). Jade at 165
-// sits in the only window left after error/map-template/gold/success/selection
-// /component take their slots, with 50 degrees of clearance from all of them.
-const LABEL_BG = '#16c79a';
-const LABEL_FG = '#06231b';
+// Being theme-independent is the point: a measurement reads the same wherever
+// you are, and it can't be mistaken for the selection box, which DOES track the
+// accent (gold on pages, violet in component mode).
+//
+// It was jade #16c79a for a while — chosen at hue 165 for clearance from the
+// component magenta after an earlier pink sat 5° away from it. That collision
+// is why the selection box and the labels must not both follow the accent; a
+// fixed pink sidesteps it from the other direction.
+const MEASURE_PINK = 'rgb(255, 124, 221)';
+const LINE_COLOR = 'rgba(255, 124, 221, 0.8)';
+const LABEL_BG = MEASURE_PINK;
+const LABEL_FG = '#ffffff';
 
 interface Distances {
   top: number; right: number; bottom: number; left: number;

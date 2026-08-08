@@ -184,6 +184,8 @@ vi.mock('./node-ops', async (importOriginal) => {
     updateNodeStyles: vi.fn(),
     isPrimaryViewport: vi.fn((vpId: string) => vpId === 'desktop' || vpId === 'default'),
     getInteractingViewport: vi.fn(() => ({ vpId: 'desktop', vpWidth: 1440 })),
+    // Border widths for the absolute-child origin. Unbordered by default.
+    findNodeComputedStyles: vi.fn(() => ({})),
   };
 });
 
@@ -869,5 +871,157 @@ describe('wrapInFrame — keepFlowChildren opt-out', () => {
     expect(f.order).toBe('2');
     const ms = calls().find(m => m.type === 'move' && m.nodeId === 't')?.styles as Record<string, string>;
     expect(ms.position).toBeUndefined();
+  });
+});
+
+// ─── Multi-node absolute wrap: inline geometry is not enough ────────────────
+//
+// User report 2026-08-08: selecting a childless frame AND a frame that has
+// children, Create Layout / Create Frame did nothing. Alone, the childless one
+// worked. The pair didn't, because the bbox came from `parseFloat(styles.*)`
+// and a container with children hugs at `height: auto` → NaN → the whole
+// command bailed with `missing-box`. A single absolute child never hit it (it
+// takes the inherit-position path, which skips the bbox entirely), which is
+// exactly why it looked like "only childless frames work".
+describe('wrapInFrame / wrapInLayout — bbox falls back to live rects', () => {
+  const dummyEl = {} as unknown as HTMLElement;
+  let q: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    const mutQueue = await import('@/code/mutation/mutation-queue');
+    q = mutQueue.queueMutation as ReturnType<typeof vi.fn>;
+    q.mockClear();
+    mockCanvasRects.clear();
+  });
+
+  const calls = () => q.mock.calls.map(c => c[0]);
+  const framed = () => calls().find(m => m.type === 'addNode' || m.type === 'addCanvasNode')?.node?.styles as Record<string, string> | undefined;
+  const moveStyles = (id: string) => calls().find(m => m.type === 'move' && m.nodeId === id)?.styles as Record<string, string> | undefined;
+
+  /** The reported selection: `plain` is a fully-specified childless frame,
+   *  `hasKids` is a frame whose height is decided by its children. The section
+   *  sits at canvas (40, 60), so parent-local == canvas minus that. */
+  const pair = () => {
+    mockCanvasRects.set('sec', { left: 40, top: 60, width: 600, height: 400 });
+    mockCanvasRects.set('plain', { left: 60, top: 100, width: 100, height: 40 });
+    mockCanvasRects.set('hasKids', { left: 60, top: 180, width: 300, height: 120 });
+    return buildMap([
+      makeNode('sec', null, ['plain', 'hasKids'], { position: 'relative' }),
+      makeNode('plain', 'sec', [], { position: 'absolute', left: '20px', top: '40px', width: '100px', height: '40px' }),
+      makeNode('hasKids', 'sec', ['kid'], { position: 'absolute', left: '20px', top: '120px', width: '300px', height: 'auto' }),
+      makeNode('kid', 'hasKids', []),
+    ]);
+  };
+
+  it('wraps a childless frame TOGETHER with a frame that has children', () => {
+    const id = wrapInFrame(['plain', 'hasKids'], pair(), dummyEl);
+    expect(id).not.toBeNull();
+    const f = framed()!;
+    // Union in parent-local space: x 20..320, y 40..240.
+    expect(f.left).toBe('20px');
+    expect(f.top).toBe('40px');
+    expect(f.width).toBe('300px');
+    expect(f.height).toBe('200px');
+  });
+
+  it('both children move into the frame, positioned against its origin', () => {
+    wrapInFrame(['plain', 'hasKids'], pair(), dummyEl);
+    expect(moveStyles('plain')).toMatchObject({ position: 'absolute', left: '0px', top: '0px' });
+    expect(moveStyles('hasKids')).toMatchObject({ position: 'absolute', left: '0px', top: '80px' });
+  });
+
+  it('the hugging child keeps `height: auto` — it hugs the same inside the frame', () => {
+    wrapInFrame(['plain', 'hasKids'], pair(), dummyEl);
+    expect(moveStyles('hasKids')!.height).toBeUndefined();
+  });
+
+  it('Create Layout on the same pair also lands at the union origin', () => {
+    const id = wrapInLayout(['plain', 'hasKids'], pair(), dummyEl);
+    expect(id).not.toBeNull();
+    expect(framed()).toMatchObject({ left: '20px', top: '40px', display: 'flex' });
+  });
+
+  it('a bordered parent shifts the origin by its border (padding box, not border box)', async () => {
+    const nodeOps = await import('./node-ops');
+    (nodeOps.findNodeComputedStyles as ReturnType<typeof vi.fn>)
+      .mockReturnValueOnce({ borderLeftWidth: '10px', borderTopWidth: '5px' });
+    wrapInFrame(['plain', 'hasKids'], pair(), dummyEl);
+    // Canvas union starts at (60, 100); parent padding box starts at (50, 65).
+    expect(framed()).toMatchObject({ left: '10px', top: '35px' });
+  });
+
+  it('still bails when the bridge cannot measure — never a half-applied wrap', () => {
+    mockCanvasRects.clear();     // bridge cold / nodes culled
+    const map = pair();
+    mockCanvasRects.clear();
+    expect(wrapInFrame(['plain', 'hasKids'], map, dummyEl)).toBeNull();
+    expect(calls()).toHaveLength(0);
+  });
+
+  it('all-inline-readable selections never touch the bridge', () => {
+    // No rects registered at all: if the inline path were skipped this bails.
+    const map = buildMap([
+      makeNode('sec', null, ['a', 'b'], { position: 'relative' }),
+      makeNode('a', 'sec', [], { position: 'absolute', left: '0px', top: '0px', width: '50px', height: '50px' }),
+      makeNode('b', 'sec', [], { position: 'absolute', left: '100px', top: '100px', width: '50px', height: '50px' }),
+    ]);
+    wrapInFrame(['a', 'b'], map, dummyEl);
+    expect(framed()).toMatchObject({ left: '0px', top: '0px', width: '150px', height: '150px' });
+  });
+
+  it('a `%` left is measured, not parsed as px', () => {
+    // parseFloat('50%') === 50 — finite, so the old reader accepted it and put
+    // the frame at 50px. The element actually renders at 50% of a 600px parent.
+    mockCanvasRects.set('sec', { left: 0, top: 0, width: 600, height: 400 });
+    mockCanvasRects.set('p1', { left: 300, top: 0, width: 100, height: 40 });
+    mockCanvasRects.set('p2', { left: 300, top: 100, width: 100, height: 40 });
+    const map = buildMap([
+      makeNode('sec', null, ['p1', 'p2'], { position: 'relative' }),
+      makeNode('p1', 'sec', [], { position: 'absolute', left: '50%', top: '0px', width: '100px', height: '40px' }),
+      makeNode('p2', 'sec', [], { position: 'absolute', left: '50%', top: '100px', width: '100px', height: '40px' }),
+    ]);
+    wrapInFrame(['p1', 'p2'], map, dummyEl);
+    expect(framed()).toMatchObject({ left: '300px', top: '0px' });
+  });
+
+  it('a `%` SIZE is baked to px — it resolved against the old parent', () => {
+    mockCanvasRects.set('sec', { left: 0, top: 0, width: 600, height: 400 });
+    mockCanvasRects.set('w1', { left: 0, top: 0, width: 300, height: 40 });
+    mockCanvasRects.set('w2', { left: 0, top: 100, width: 100, height: 40 });
+    const map = buildMap([
+      makeNode('sec', null, ['w1', 'w2'], { position: 'relative' }),
+      makeNode('w1', 'sec', [], { position: 'absolute', left: '0px', top: '0px', width: '50%', height: '40px' }),
+      makeNode('w2', 'sec', [], { position: 'absolute', left: '0px', top: '100px', width: '100px', height: '40px' }),
+    ]);
+    wrapInFrame(['w1', 'w2'], map, dummyEl);
+    // The wrapper is 300 wide, so a surviving `50%` would render at 150.
+    expect(moveStyles('w1')!.width).toBe('300px');
+    expect(moveStyles('w2')!.width).toBeUndefined();
+  });
+
+  it('a transformed child is measured — left/top no longer describe its box', () => {
+    mockCanvasRects.set('sec', { left: 0, top: 0, width: 600, height: 400 });
+    mockCanvasRects.set('c1', { left: 250, top: 180, width: 100, height: 40 });
+    mockCanvasRects.set('c2', { left: 0, top: 300, width: 100, height: 40 });
+    const map = buildMap([
+      makeNode('sec', null, ['c1', 'c2'], { position: 'relative' }),
+      makeNode('c1', 'sec', [], { position: 'absolute', left: '300px', top: '200px', width: '100px', height: '40px', transform: 'translate(-50%, -50%)' }),
+      makeNode('c2', 'sec', [], { position: 'absolute', left: '0px', top: '300px', width: '100px', height: '40px' }),
+    ]);
+    wrapInFrame(['c1', 'c2'], map, dummyEl);
+    expect(framed()).toMatchObject({ left: '0px', top: '180px', width: '350px', height: '160px' });
+  });
+
+  it('canvas-level frames with a hugging one still wrap (origin is canvas itself)', () => {
+    mockCanvasRects.set('f1', { left: 100, top: 100, width: 200, height: 80 });
+    mockCanvasRects.set('f2', { left: 400, top: 300, width: 200, height: 150 });
+    const map = buildMap([
+      { ...makeNode('f1', null, [], { position: 'absolute', left: '100px', top: '100px', width: '200px', height: '80px' }), isCanvasNode: true } as unknown as CanvasNode,
+      { ...makeNode('f2', null, ['k'], { position: 'absolute', left: '400px', top: '300px', width: '200px', height: 'auto' }), isCanvasNode: true } as unknown as CanvasNode,
+      makeNode('k', 'f2', []),
+    ]);
+    const id = wrapInFrame(['f1', 'f2'], map, dummyEl);
+    expect(id).not.toBeNull();
+    expect(framed()).toMatchObject({ left: '100px', top: '100px', width: '500px', height: '350px' });
   });
 });

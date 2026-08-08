@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { styleHelperAtom, registerStyleHelperSetter } from './style-helper-store';
 import type { StyleHelperState } from './style-helper-store';
-import StyleIndicator from '@/design-system/StyleIndicator';
+import StyleIndicator, { measurementColors } from '@/design-system/StyleIndicator';
 import { isComponentFileAtom } from '@/code/stores/store';
 import { trace } from '@/shared/debug-trace';
 
@@ -38,12 +38,14 @@ export default function StyleUpdateHelper() {
   // Gap keeps its dedicated pink (`#f472b6`) — it's a layout-relationship
   // affordance, not a per-element value, and the pink reads as the
   // shared "spacing" color across the editor's gap UI.
-  const color = state.type === 'gap'
-    ? '#f472b6'
-    : (isComponentFile ? 'var(--accent-secondary)' : undefined);
+  const measure = measurementColors(isComponentFile);
+  const color = state.type === 'gap' ? '#f472b6' : measure.color;
+  // Gap's pink is a fixed brand colour; white reads on it. Everything else
+  // takes the measurement pair so fill and label can never mismatch.
+  const fg = state.type === 'gap' ? '#ffffff' : measure.fg;
 
   return (
-    <StyleIndicator x={x} y={y} color={color}>
+    <StyleIndicator x={x} y={y} color={color} fg={fg}>
       {text}
     </StyleIndicator>
   );

@@ -7,17 +7,15 @@ import { selectedNodeAtom, canvasInteractingAtom } from '@/code/stores/store';
 import { interactingViewportIdAtom } from '@/code/stores/viewport-store';
 import { findNodeRect, findNodeComputedStyles } from '@/canvas/node-ops';
 import { activeFilePathAtom, isComponentFilePath } from '@/code/project/active-file-store';
-import StyleIndicator from '@/design-system/StyleIndicator';
+import StyleIndicator, { measurementColors } from '@/design-system/StyleIndicator';
 import { useModifierKeys } from '@/canvas/hooks/useModifierKeys';
 
 // Tokens, not literals — these were left on the pre-rebrand blue/purple.
 // The pill sits over the user's artwork, so it uses the SELECTION colour on a
 // page (same family as the selection box it accompanies) and the component
 // colour on a master, each with its matching label.
-const BG_PAGE = 'var(--selection)';
-const BG_COMP = 'var(--accent-secondary)';
-const FG_PAGE = '#ffffff';
-const FG_COMP = 'var(--accent-secondary-fg)';
+// Palette moved to StyleIndicator.measurementColors — the resize/draw helper
+// shows the same kind of value and must look identical.
 
 export default function DimensionsIndicators() {
   const selectedId = useAtomValue(selectedNodeAtom);
@@ -51,7 +49,7 @@ export default function DimensionsIndicators() {
   if (!dims || !alt || !ctrl || isInteracting) return null;
 
   return (
-    <StyleIndicator x={dims.cx} y={dims.by} color={isComp ? BG_COMP : BG_PAGE} fg={isComp ? FG_COMP : FG_PAGE}>
+    <StyleIndicator x={dims.cx} y={dims.by} {...measurementColors(isComp)}>
       {dims.w}px × {dims.h}px
     </StyleIndicator>
   );

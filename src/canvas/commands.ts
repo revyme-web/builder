@@ -5,7 +5,7 @@
 import type { CanvasNode } from '@/code/parsing/parser';
 import { TRANSPARENT_FILL } from '@/shared/css-utils';
 import { getDefaultStore } from 'jotai';
-import { removeNode, updateNodeStyles, isPrimaryViewport, getInteractingViewport, getActiveFilePath, patchNodeStyles, getViewportPrefix, vpIdFromPrefix, parseRectCacheKey, findNodeRect } from './node-ops';
+import { removeNode, updateNodeStyles, isPrimaryViewport, getInteractingViewport, getActiveFilePath, patchNodeStyles, getViewportPrefix, vpIdFromPrefix, parseRectCacheKey, findNodeRect, findNodeComputedStyles } from './node-ops';
 import { isIconSetFilePath, isComponentFilePath } from '@/code/project/active-file-store';
 import { removeVariant } from '@/code/variants/variant-ops';
 import { nodesAtom, hoveredIdAtom, hoveredNodeIdAtom } from '@/code/stores/store';
@@ -485,12 +485,34 @@ export function wrapInLayout(
 
 interface BoundingBox { left: number; top: number; width: number; height: number; }
 
+/** Strict px reader: a bare number or `Npx`, nothing else. `parseFloat` happily
+ *  turns `50%` into `50` and `calc(100% - 20px)` into `NaN`-or-worse — and the
+ *  caller writes the result back as `px`, so a silently-unit-dropped `%` places
+ *  the box hundreds of pixels away. Anything not literally px is "unreadable",
+ *  which routes the caller to the live measurement instead. */
+function readPx(v: string | undefined): number {
+  if (!v) return NaN;
+  const t = v.trim();
+  return /^-?(?:\d*\.)?\d+(?:px)?$/.test(t) ? parseFloat(t) : NaN;
+}
+
+/**
+ * Bounding box from a node's INLINE geometry, or `null` when the source doesn't
+ * spell it out in px. Unreadable is the common case, not the exception: a
+ * container that hugs its children has `height: auto`, a stretched one has
+ * `width: 100%`, a centered one has `transform: translate(-50%,-50%)`. None of
+ * those can be turned into a number without asking the layout engine.
+ */
 function readNodeBox(node: CanvasNode): BoundingBox | null {
   const s = node.styles ?? {};
-  const left = parseFloat(s.left ?? '');
-  const top = parseFloat(s.top ?? '');
-  const width = parseFloat(s.width ?? '');
-  const height = parseFloat(s.height ?? '');
+  // A transform (translate centering, scale) moves the painted box away from
+  // where left/top say it is — the numbers are readable but no longer describe
+  // the rect we need to union. Measure instead.
+  if (s.transform && s.transform !== 'none') return null;
+  const left = readPx(s.left);
+  const top = readPx(s.top);
+  const width = readPx(s.width);
+  const height = readPx(s.height);
   if (![left, top, width, height].every((n) => Number.isFinite(n))) return null;
   if (width <= 0 || height <= 0) return null;
   return { left, top, width, height };
@@ -515,6 +537,50 @@ function measureCanvasBoxes(nodeIds: string[]): Map<string, BoundingBox> | null 
     const r = getAbsoluteCanvasRectById(id, vpId, transform);
     if (!r || r.width <= 0 || r.height <= 0) return null;
     out.set(id, { left: r.left, top: r.top, width: r.width, height: r.height });
+  }
+  return out;
+}
+
+/**
+ * Canvas-space origin of the box an absolute child's `left`/`top` resolve
+ * against: the parent's PADDING box. The bridge hands back a border box, so the
+ * parent's own border widths come off it. `null` for a canvas-level selection —
+ * a canvas node's left/top ARE canvas coordinates.
+ */
+function absoluteChildOrigin(parentId: string | null): { x: number; y: number } | null {
+  if (!parentId) return { x: 0, y: 0 };
+  const { vpId } = getInteractingViewport();
+  const r = getAbsoluteCanvasRectById(parentId, vpId, transformManager.getTransform());
+  if (!r) return null;
+  const cs = findNodeComputedStyles(parentId, vpId, ['borderLeftWidth', 'borderTopWidth']);
+  return {
+    x: r.left + (parseFloat(cs.borderLeftWidth) || 0),
+    y: r.top + (parseFloat(cs.borderTopWidth) || 0),
+  };
+}
+
+/**
+ * Boxes for an absolute (or canvas-level) selection, in the same coordinate
+ * space `readNodeBox` produces — i.e. what you can write straight back into
+ * `left` / `top`. Live rects converted once against the shared parent origin.
+ *
+ * Used when ANY node in the selection has unreadable inline geometry. It's
+ * all-or-nothing per selection, never per node: mixing one measured box with
+ * one inline box means unioning two different coordinate spaces, which is the
+ * bug [[feedback_frame_encapsulate_auto_size]] cost a round of "it's not
+ * working" to find.
+ */
+function measureAbsoluteBoxes(
+  nodeIds: string[],
+  parentId: string | null,
+): Map<string, BoundingBox> | null {
+  const canvasBoxes = measureCanvasBoxes(nodeIds);
+  if (!canvasBoxes) return null;
+  const origin = absoluteChildOrigin(parentId);
+  if (!origin) return null;
+  const out = new Map<string, BoundingBox>();
+  for (const [id, b] of canvasBoxes) {
+    out.set(id, { left: b.left - origin.x, top: b.top - origin.y, width: b.width, height: b.height });
   }
   return out;
 }
@@ -623,15 +689,34 @@ function wrapInternal(
     trace.action('commands:wrap-in-frame:flow-unmeasurable', { ids: nodeIds });
   }
 
+  // MULTI-NODE ABSOLUTE BBOX. Inline geometry first — it's exact, needs no
+  // bridge, and is what a hand-placed absolute element carries. But it only
+  // reads for elements whose four numbers are all literal px, and a CONTAINER
+  // rarely qualifies: one with children hugs at `height: auto`, a stretched one
+  // is `width: 100%`. That made the command refuse the most ordinary selection
+  // there is — "a box and the box next to it that has stuff in it" (report
+  // 2026-08-08: works on the childless frame, dead on the pair). Falling back to
+  // the live rects is not a heal; it's the same source of truth Create Frame on
+  // flow children already uses. All-or-nothing so the union stays in one space.
   let bbox: BoundingBox | null = null;
+  let measuredBoxes: Map<string, BoundingBox> | null = null;
   if ((allCanvas || allSameParentAbsolute) && !singleAbsChild) {
-    const boxes = nodes.map(readNodeBox).filter((b): b is BoundingBox => !!b);
-    if (boxes.length !== nodes.length) {
+    const inline = nodes.map(readNodeBox);
+    if (inline.every((b): b is BoundingBox => !!b)) {
+      bbox = unionBoxes(inline as BoundingBox[]);
+    } else {
+      measuredBoxes = measureAbsoluteBoxes(nodeIds, allCanvas ? null : sharedParentId!);
+      bbox = measuredBoxes ? unionBoxes([...measuredBoxes.values()]) : null;
+      trace.action('commands:wrap-in-frame:bbox-measured', {
+        ids: nodeIds,
+        unreadable: nodes.filter((n, i) => !inline[i]).map((n) => n.id),
+        ok: !!bbox,
+      });
+    }
+    if (!bbox) {
       trace.action('commands:wrap-in-frame:missing-box', { ids: nodeIds });
       return null;
     }
-    bbox = unionBoxes(boxes);
-    if (!bbox) return null;
   }
 
   const frameId = generateNodeId();
@@ -902,8 +987,16 @@ function wrapInternal(
         bottom: '',
       };
     } else {
-      const box = readNodeBox(node);
-      if (!box) continue;
+      // Same box the bbox was built from — never a fresh readNodeBox, or a
+      // measured union would be offset against inline coordinates.
+      const box = measuredBoxes?.get(node.id) ?? readNodeBox(node);
+      // Unreachable now that the bbox is all-or-nothing, but a `continue` here
+      // used to leave the child behind in the OLD parent while the frame was
+      // created around it — a half-applied wrap. Bail the whole thing instead.
+      if (!box) {
+        trace.action('commands:wrap-in-frame:child-box-missing', { id: node.id });
+        return null;
+      }
       const newLeft = Math.round(box.left - bbox!.left);
       const newTop = Math.round(box.top - bbox!.top);
       styles = {
@@ -911,9 +1004,17 @@ function wrapInternal(
         left: `${newLeft}px`,
         top: `${newTop}px`,
       };
+      // A `%` size resolved against the OLD parent; the wrapper is a different
+      // box, so freeze it at what it actually measured. `auto` and shrink-wrap
+      // are left symbolic — an out-of-flow box shrink-wraps identically in
+      // either container, and baking px over it would turn a hugging frame into
+      // a fixed one.
+      const own = node.styles ?? {};
+      if (own.width?.includes('%')) styles.width = `${Math.round(box.width)}px`;
+      if (own.height?.includes('%')) styles.height = `${Math.round(box.height)}px`;
       // Clear far-edge insets — they were anchored to the old parent.
-      if (node.styles?.right) styles.right = '';
-      if (node.styles?.bottom) styles.bottom = '';
+      if (own.right) styles.right = '';
+      if (own.bottom) styles.bottom = '';
     }
     queueMutation({
       type: 'move',
