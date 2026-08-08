@@ -27,6 +27,39 @@ export function StableAtomSyncHost(): null {
   return null;
 }
 
+// ─── Expedite ───────────────────────────────────────────────────────────────
+//
+// The 450ms deadline below buys the CANVAS time to paint before the parser
+// cascade runs. That trade is right for a drag or an undo — a burst of writes
+// whose visible result is on the canvas. It is exactly wrong for a PANEL edit:
+// the user clicked a control and is looking at that control, so the 450ms is
+// the whole perceived latency. Binding a CMS field landed in the source in 1ms
+// and parsed in 5ms, but the properties panel reads the MIRROR, so the pill
+// took ~half a second to appear (user report + trace 2026-08-08).
+//
+// A panel-originated write calls `expediteStableAtomSync()` to say "nothing on
+// the canvas needs protecting from this one" — the next scheduled mirror runs
+// on the next tick instead. One-shot: consumed by the scheduling that follows,
+// so it can never leave the mirror permanently eager.
+let _expedite = false;
+
+/** Make the NEXT stable-atom mirror fire immediately instead of after the
+ *  canvas-protection delay. Call from panel actions whose result the user is
+ *  waiting to see in a panel (CMS bind/unbind, variable bind, prop writes). */
+export function expediteStableAtomSync(): void {
+  _expedite = true;
+}
+
+/** Read-and-clear the expedite flag. One-shot by construction: a single panel
+ *  click can never leave the mirror permanently eager, which would cost undo
+ *  and drags the paint-first budget the delay exists to buy. Exported so the
+ *  contract is testable without mounting the hook. */
+export function consumeExpedite(): boolean {
+  const v = _expedite;
+  _expedite = false;
+  return v;
+}
+
 export function useStableAtomSync() {
   const code = useAtomValue(codeAtom);
   const nodes = useAtomValue(nodesAtom);
@@ -79,6 +112,9 @@ export function useStableAtomSync() {
     // is live when the timer fires, we skip and the drag-end effect run
     // reschedules.
     if (pendingRef.current !== null) return;
+    // Panel-originated edit → no canvas paint to protect, so don't make the
+    // user wait out the canvas budget to see their own click land.
+    const delay = consumeExpedite() ? 0 : 450;
     pendingRef.current = setTimeout(() => {
       pendingRef.current = null;
       const L = liveRef.current;
@@ -87,7 +123,7 @@ export function useStableAtomSync() {
       if (L.stableCode !== L.code) setStableCode(L.code);
       if (L.stableProjectVersion !== L.projectVersion) setStableProjectVersion(L.projectVersion);
       if (L.stableNodes !== L.nodes) setStableNodes(L.nodes);
-    }, 450);
+    }, delay);
   }, [
     canvasInteracting, code, projectVersion, nodes,
     stableCode, stableProjectVersion, stableNodes,

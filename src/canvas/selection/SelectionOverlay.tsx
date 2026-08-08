@@ -999,9 +999,14 @@ function MapGhostOverlay({ nodeId, vpId, color }: { nodeId: string; vpId: string
     return null;
   }, [nodeId]);
 
+  // Signature of the last corners/paths pushed to state — see the bail in the
+  // poll below. Rounded to 0.01px so float noise can't defeat the compare.
+  const lastGhostSigRef = useRef('');
+
   useEffect(() => {
     if (!templateRootId) return;
     let rafId: number;
+    const r = (n: number) => Math.round(n * 100) / 100;
     const poll = () => {
       // Bridge-cache lookup. ghosts are stored in rectCache + cornersCache
       // under composite keys ${vpPrefix}:${templateId}__N — see
@@ -1025,8 +1030,23 @@ function MapGhostOverlay({ nodeId, vpId, color }: { nodeId: string; vpId: string
         }
       }
 
-      setGhostCorners(corners);
-      setArrowPaths(paths);
+      // BAIL WHEN NOTHING MOVED. This poll runs at 60fps for as long as a
+      // collection row (or anything inside one) stays selected, and it used to
+      // call both setters unconditionally — new array identities every frame,
+      // so React re-rendered the whole overlay 60 times a second forever,
+      // producing identical output. That busy loop is what made unrelated UI
+      // feel slow: a CMS bind reached the DOM in 17ms and the properties panel
+      // took ~half a second to show the pill, because the main thread was
+      // saturated (trace 2026-08-08 — 56 polls and 179 geometry reads inside
+      // one 465ms window, every one of them returning the same thing).
+      const sig = corners
+        .map((c) => `${r(c.TL.x)},${r(c.TL.y)},${r(c.TR.x)},${r(c.TR.y)},${r(c.BR.x)},${r(c.BR.y)},${r(c.BL.x)},${r(c.BL.y)}`)
+        .join(';') + '|' + paths.join(';');
+      if (sig !== lastGhostSigRef.current) {
+        lastGhostSigRef.current = sig;
+        setGhostCorners(corners);
+        setArrowPaths(paths);
+      }
       rafId = requestAnimationFrame(poll);
     };
     rafId = requestAnimationFrame(poll);

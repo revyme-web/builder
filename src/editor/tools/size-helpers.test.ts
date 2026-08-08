@@ -1,7 +1,7 @@
 // size-helpers.test.ts — Coverage for SizeTool's px → unit conversion math.
 
 import { describe, it, expect } from 'vitest';
-import { convertPxToDimUnit, estimatedVpHeight, isRelativeUnit, dimUnitOf, pickLiveDim, fitSizeRedirectTarget, exitFillFlexPatch } from './size-helpers';
+import { convertPxToDimUnit, estimatedVpHeight, isRelativeUnit, dimUnitOf, pickLiveDim, fitSizeRedirectTarget, exitFillFlexPatch, isAutoDim } from './size-helpers';
 
 describe('estimatedVpHeight', () => {
   it('uses 16:10 ratio for desktop (>= 1024)', () => {
@@ -228,5 +228,38 @@ describe('exitFillFlexPatch', () => {
   it('missing flex needs no patch', () => {
     expect(exitFillFlexPatch(true, '')).toBeNull();
     expect(exitFillFlexPatch(true, undefined)).toBeNull();
+  });
+});
+
+// ─── An AUTO axis must stay AUTO through a resize ───────────────────────────
+//
+// User report 2026-08-08: a component instance with width px + height auto.
+// Dragging the RIGHT handle (width only) flipped the Height row's unit to `px`
+// for the whole gesture, snapping back to `auto` on mouseup. The live poll
+// backfills any axis the ResizeManager didn't broadcast from the COMPUTED
+// cache — and computed height is always a px number, so an axis that was never
+// being resized adopted one.
+
+describe('isAutoDim', () => {
+  it('treats absent / auto / Fit as content-decided', () => {
+    expect(isAutoDim(undefined)).toBe(true);
+    expect(isAutoDim('')).toBe(true);
+    expect(isAutoDim('   ')).toBe(true);
+    expect(isAutoDim('auto')).toBe(true);
+    expect(isAutoDim('min-content')).toBe(true);
+  });
+
+  it('treats every authored length as NOT auto', () => {
+    for (const v of ['717px', '100%', '50vh', '12vw', '0px']) {
+      expect(isAutoDim(v)).toBe(false);
+    }
+  });
+
+  it('is what gates the computed backfill', () => {
+    // The guard the poll applies: backfill only when the axis carries a real
+    // authored length. An instance whose JSX has width but no height…
+    const styles = { width: '717px', height: undefined as string | undefined };
+    expect(isAutoDim(styles.width)).toBe(false); // width may backfill
+    expect(isAutoDim(styles.height)).toBe(true); // height must not
   });
 });

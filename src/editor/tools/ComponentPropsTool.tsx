@@ -87,6 +87,7 @@ import { getContentRoot, patchNodeStyles } from '@/canvas/node-ops';
 import { viewportsConfigAtom } from '@/code/stores/viewport-store';
 import { interactingViewportIdAtom } from '@/code/stores/viewport-store';
 import { trace } from '@/shared/debug-trace';
+import { expediteStableAtomSync } from '@/canvas/hooks/useStableAtomSync';
 
 // Lifted-out row components + helpers (Phase 7 god-file split, item 7.5) — see
 // ./ComponentPropsTool/. The public API below is re-exported so existing
@@ -1171,6 +1172,10 @@ export default function ComponentPropsTool() {
   const bindPropToCmsField = useCallback((propName: string, fieldId: string, currentValue: string, urlWrap = false) => {
     if (!selectedId || !cmsBinding || !componentInfo) return;
     trace.action('ComponentPropsTool:cms-bind-prop', { nodeId: selectedId, propName, fieldId, urlWrap, isReplica, vpWidth: isReplica ? vpWidth : undefined });
+    // Panel-originated: the pill has to appear the moment it's clicked, not
+    // after the mirror's canvas-paint budget (trace 2026-08-08 — the bind
+    // parsed in 5ms, the panel showed it 466ms later).
+    expediteStableAtomSync();
     if (isReplica) {
       // Per-viewport REBIND → a computed `data-responsive` override carrying the
       // live `item.field` ref; withResponsiveProps merges it for this breakpoint.
@@ -1192,6 +1197,7 @@ export default function ComponentPropsTool() {
   const unbindPropForViewport = useCallback((propName: string, defaultValue: string) => {
     if (!selectedId || !componentInfo) return;
     trace.action('ComponentPropsTool:cms-unbind-prop-viewport', { nodeId: selectedId, propName, vpWidth });
+    expediteStableAtomSync();
     modifyProjectFile(activeFile, (currentCode) =>
       setResponsiveBindingOverride(currentCode, selectedId, componentInfo.name, vpWidth, propName, { kind: 'literal', value: defaultValue }));
     const newCode = projectFS.readFile(activeFile);
@@ -2442,9 +2448,20 @@ export default function ComponentPropsTool() {
                             title={responsiveOverrides.has(prop.name)
                               ? `Bound to CMS field "${cmsBoundField}" for this viewport`
                               : `Inherits the CMS field "${cmsBoundField}" from the base viewport`}
-                            onUnbind={() => unbindPropForViewport(prop.name, prop.defaultValue ?? '')}
+                            onUnbind={() => {
+                              setPropOptimistic(prop.name, prop.defaultValue ?? '');
+                              unbindPropForViewport(prop.name, prop.defaultValue ?? '');
+                            }}
                           />
-                        : <CmsBoundPill property={prop.name} fallbackValue={prop.defaultValue ?? ''} />}
+                        : <CmsBoundPill
+                            property={prop.name}
+                            fallbackValue={prop.defaultValue ?? ''}
+                            // Swap to the static editor in the SAME frame as the
+                            // click; without it the row empties for a few frames
+                            // while the write round-trips and the input visibly
+                            // animates in (user report 2026-08-08).
+                            onUnbound={(fallback) => setPropOptimistic(prop.name, fallback)}
+                          />}
                     </div>
                   </HoistMenuItemProvider>
                 );

@@ -23,7 +23,7 @@ import ControlLabel from '../controls/ControlLabel';
 import { getInsetState, computeDimensionInsetStyles, parsePx } from '@/shared/pin-utils';
 import { findNodeSize, findNodeParentInnerSize, findNodeComputedStyles, forceCanvasRender, getInteractingViewport } from '@/canvas/node-ops';
 import { canUseFill, isMainAxis, isFillMode, getFillMultiplier, makeFillFlex, parseFlex, formatFlex, crossAxisFillPatch } from '@/shared/flex-helpers';
-import { convertPxToDimUnit, estimatedVpHeight, pickLiveDim, fitSizeRedirectTarget, exitFillFlexPatch } from './size-helpers';
+import { convertPxToDimUnit, estimatedVpHeight, pickLiveDim, fitSizeRedirectTarget, exitFillFlexPatch, isAutoDim } from './size-helpers';
 import { resizeLiveOps } from '@/canvas/resize/resize-live-store';
 import { trace } from '@/shared/debug-trace';
 
@@ -532,8 +532,17 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
       // broadcast the branch above picks up).
       if (!w || !h) {
         const cs = findNodeComputedStyles(nodeId, vpId, ['width', 'height']);
-        if (!w && cs.width) w = cs.width;
-        if (!h && cs.height) h = cs.height;
+        // The computed backfill exists for the baked SVG-group resize, which
+        // updates the iframe element without a ResizeManager broadcast. It must
+        // NOT fill an axis the user authored as AUTO: computed height is always
+        // a px number, so a width-only drag (`direction: 'right'`) made the
+        // Height row read `px` for the length of the gesture and snap back to
+        // `auto` on mouseup — the axis was never being resized at all (user
+        // report 2026-08-08, a component instance with width px + height auto).
+        // A genuine height resize still shows live px: that value arrives on
+        // the BROADCAST path above, which this guard doesn't touch.
+        if (!w && cs.width && !isAutoDim(styles.width)) w = cs.width;
+        if (!h && cs.height && !isAutoDim(styles.height)) h = cs.height;
       }
       if (anchorW === null) {
         anchorW = w;

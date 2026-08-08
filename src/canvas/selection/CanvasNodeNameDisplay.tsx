@@ -260,7 +260,12 @@ function NameDisplay({ nodeId, vpId }: LabelProps) {
   // list above uses.
   const isComponentInstance = !!node.isComponentInstance;
   const isVariantRoot = isComponentFile && !node.parentId && !node.isCanvasNode;
-  const isAccented = isComponentInstance || isVariantRoot;
+  // INSIDE A COMPONENT MASTER, EVERY name label is purple — not just the
+  // variant root. The whole of component-editing chrome (control labels,
+  // selection, the layers tree, the modals) uses `--accent-secondary` to say
+  // "you are in a component", so a blue floater on a child frame was the one
+  // thing breaking that signal (user report 2026-08-08).
+  const isAccented = isComponentInstance || isComponentFile;
   // Idle color: a fixed mid-dark gray that reads as quiet metadata in
   // BOTH themes. `--text-tertiary` (#999 light / #666 dark) was too
   // bright on dark mode and too washed-out on light mode. #555 lands

@@ -769,3 +769,61 @@ describe('background shorthand clear semantics (fill image-apply regression)', (
     expect(el.style.backgroundRepeat).toBe('no-repeat');
   });
 });
+
+// ─── Ghost rebuild on STATIC content, not just bindings ─────────────────────
+//
+// User report 2026-08-08: editing a component instance's `content` prop inside
+// a collection row updated the template row and left all three clones showing
+// the old text. The ghost patch fast-path pushes only inline styles and
+// CMS-bound values into a clone; everything else reaches it through the full
+// rebuild, and the rebuild is gated on this signature. A static prop is not a
+// binding and the DOM tree shape is unchanged, so nothing tripped it.
+
+describe('collectionBindingSignature — static painted content', () => {
+  const instance = (attrs: Record<string, string>) => ({
+    id: 'inst-1', type: 'JiHeJi', name: 'JiHeJi', parentId: 'row', children: [],
+    styles: {}, attrs, isComponentInstance: true,
+  } as unknown as CanvasNode);
+
+  it('changes when a component-instance PROP changes (the reported case)', () => {
+    const before = collectionBindingSignature(instance({ content: 'qsdgsdgqsdgqsdg' }), new Map());
+    const after = collectionBindingSignature(instance({ content: 'gergerg' }), new Map());
+    expect(after).not.toBe(before);
+  });
+
+  it('is stable when nothing changed — no needless rebuild', () => {
+    const a = collectionBindingSignature(instance({ content: 'x', color: '#fff' }), new Map());
+    const b = collectionBindingSignature(instance({ content: 'x', color: '#fff' }), new Map());
+    expect(a).toBe(b);
+  });
+
+  it('changes when a plain text node\'s literal text changes', () => {
+    const text = (t: string) => ({
+      id: 't-1', type: 'p', name: 't', parentId: 'row', children: [], styles: {}, attrs: {}, textContent: t,
+    } as unknown as CanvasNode);
+    expect(collectionBindingSignature(text('one'), new Map()))
+      .not.toBe(collectionBindingSignature(text('two'), new Map()));
+  });
+
+  it('picks up a prop change on a nested instance, not just the row root', () => {
+    const mk = (content: string) => {
+      const nodes = new Map<string, CanvasNode>();
+      nodes.set('inst-1', instance({ content }));
+      const row = { id: 'row', type: 'div', name: 'row', parentId: null, children: ['inst-1'], styles: {}, attrs: {} } as unknown as CanvasNode;
+      nodes.set('row', row);
+      return collectionBindingSignature(row, nodes);
+    };
+    expect(mk('a')).not.toBe(mk('b'));
+  });
+
+  it('leaves a BOUND node stable — the binding supplies the text, not the source', () => {
+    // A bound text node carries no literal textContent, so rows whose values
+    // differ per item do not each force a rebuild.
+    const bound = {
+      id: 'b-1', type: 'p', name: 'b', parentId: 'row', children: [], styles: {}, attrs: {},
+      textContent: '', binding: { property: 'text', field: 'title' },
+    } as unknown as CanvasNode;
+    expect(collectionBindingSignature(bound, new Map())).toBe(collectionBindingSignature(bound, new Map()));
+    expect(collectionBindingSignature(bound, new Map())).toContain('text=title');
+  });
+});

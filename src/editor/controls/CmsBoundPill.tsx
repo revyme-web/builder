@@ -21,6 +21,16 @@ interface CmsBoundPillProps {
   property: string;
   /** Static fallback to restore on unbind (current rendered value). */
   fallbackValue?: string;
+  /**
+   * Fired the instant × is pressed, with the value the row will fall back to.
+   *
+   * Unbinding swaps this pill out for the row's normal editor, but that swap
+   * waits on the write → parse → mirror round-trip. Even at a few frames the
+   * row visibly empties and the input animates in — the "glitch" a user sees
+   * on ×. A host that holds the fallback optimistically re-renders the editor
+   * in the SAME frame as the click, so there is no in-between state to see.
+   */
+  onUnbound?: (fallbackValue: string) => void;
 }
 
 /**
@@ -41,7 +51,7 @@ export function cmsFieldLabel(
   return fields?.find((f) => f.id === fieldId)?.name || fieldId;
 }
 
-export function CmsBoundPill({ property, fallbackValue }: CmsBoundPillProps) {
+export function CmsBoundPill({ property, fallbackValue, onUnbound }: CmsBoundPillProps) {
   const { cmsBinding } = useControl();
   const fieldId = cmsBinding?.getBindingForProperty(property);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -75,9 +85,12 @@ export function CmsBoundPill({ property, fallbackValue }: CmsBoundPillProps) {
   const handleUnbind = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (!cmsBinding) return;
+    // Tell the host FIRST — it swaps in the static editor this frame, so the
+    // pill→input transition has no empty intermediate to flash.
+    onUnbound?.(fallbackValue ?? '');
     cmsBinding.unbindField(property, fallbackValue ?? '');
     trace.action('cms-bound-pill:unbind', { property });
-  }, [cmsBinding, property, fallbackValue]);
+  }, [cmsBinding, property, fallbackValue, onUnbound]);
 
   if (!cmsBinding || !fieldId) return null;
 

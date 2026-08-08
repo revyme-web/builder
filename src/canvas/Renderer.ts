@@ -177,9 +177,25 @@ const _prevPatchedKeys = new WeakMap<HTMLElement, Set<string>>();
 // bound value — it can't clear one that's gone. See the use site.
 const GHOST_BINDING_SIG_ATTR = 'data-ghost-binding-sig';
 
-/** `id:__text=field|src=field|__style.prop=field` for every node in a
- *  collection template subtree, in tree order. Cycle-safe via `seen`.
- *  Exported for the regression test that pins WHEN ghosts must rebuild. */
+/**
+ * What a collection row PAINTS, for every node in the template subtree, in tree
+ * order. Cycle-safe via `seen`. Exported for the regression test that pins WHEN
+ * ghosts must rebuild.
+ *
+ * Ghosts are DOM clones, and the patch fast-path only ever pushes two things
+ * into them: inline styles (`syncInlineStyles`) and CMS-bound values
+ * (`applyBindingDataToTree`). Everything else a row paints — its text, its
+ * attributes, the props it hands a component instance — reaches a ghost ONLY
+ * through the full rebuild. So this signature is what decides whether that
+ * rebuild runs, and anything it omits is a value that silently goes stale on
+ * every row but the first.
+ *
+ * It used to fingerprint BINDINGS alone, which is why editing a component
+ * instance's `content` prop inside a row updated the template and left every
+ * clone showing the old text (user report 2026-08-08). A static prop is not a
+ * binding, the DOM tree shape is unchanged, so nothing tripped the rebuild.
+ * Static content is now part of the signature.
+ */
 export function collectionBindingSignature(
   templateNode: CanvasNode,
   allNodes: Map<string, CanvasNode>,
@@ -195,6 +211,18 @@ export function collectionBindingSignature(
   // Per-viewport / per-variant rebinds change the painted value too.
   if (templateNode.responsiveBindings) parts.push(`rb:${JSON.stringify(templateNode.responsiveBindings)}`);
   if (templateNode.variantBindings) parts.push(`vb:${JSON.stringify(templateNode.variantBindings)}`);
+  // STATIC painted content. A CMS-bound node carries no literal text (the
+  // binding supplies it at render), so this stays stable for bound rows and
+  // only moves when the author actually edits something.
+  if (templateNode.textContent) parts.push(`t:${templateNode.textContent}`);
+  // Component-instance PROPS — the reported case. `attrs` holds the string
+  // props (`content`, `initialVariant`, …) and `componentProps` the numeric /
+  // boolean ones; both change what the expanded instance paints.
+  if (templateNode.isComponentInstance || templateNode.isCodeComponent) {
+    if (templateNode.attrs) parts.push(`a:${JSON.stringify(templateNode.attrs)}`);
+    const cp = (templateNode as unknown as { componentProps?: Record<string, string> }).componentProps;
+    if (cp) parts.push(`cp:${JSON.stringify(cp)}`);
+  }
   const own = parts.length > 0 ? `${templateNode.id}[${parts.join('|')}]` : '';
   const kids = templateNode.children
     .map(cid => { const c = allNodes.get(cid); return c ? collectionBindingSignature(c, allNodes, seen) : ''; })
@@ -1856,18 +1884,66 @@ function applyChainConfig(
  * which sets the bound style props back to the resolved field value.
  * That means the order matters: sync styles first, bindings second.
  */
+/** Identity/structure attrs that belong to the GHOST and must survive the copy.
+ *  `data-node-id` carries the `__N` suffix that makes the clone addressable;
+ *  `style` is copied separately from `cssText`. */
+const GHOST_OWN_ATTRS = new Set(['data-node-id', 'data-collection-ghost', 'style']);
+
+/**
+ * Push the template row's painted state onto one ghost clone: inline styles,
+ * attributes, and the content of leaf elements.
+ *
+ * WHY CONTENT AND NOT JUST STYLES. A ghost is a DOM clone taken at rebuild
+ * time; nothing else in the patch path writes to it except
+ * `applyBindingDataToTree`, which only knows how to fill CMS-BOUND values. So
+ * anything static the author edits — a literal text, an attribute, the props
+ * handed to a component instance — used to reach the template row and stop
+ * there, leaving every clone painting whatever it was born with (user report
+ * 2026-08-08: editing an instance's `content` prop updated row 1 of 4).
+ *
+ * The earlier attempt widened the ghost SIGNATURE so a change would fall
+ * through to the full rebuild. That still depends on DETECTING the change, and
+ * a signature can only cover the fields someone remembered to put in it. This
+ * copies unconditionally on every patch, so a value that changes for a reason
+ * nobody anticipated still lands. The signature stays as the structural
+ * backstop (it catches binding changes, which need a genuine rebuild).
+ *
+ * Content is copied via `innerHTML` and ONLY for elements that contain no
+ * `data-id` descendant — i.e. leaves whose whole content is text (including
+ * rich-text `<span>` runs, which carry no data-id). Copying a container's
+ * innerHTML would destroy the ghost's own subtree, so those are skipped: their
+ * text lives in descendants this walk visits individually.
+ *
+ * Bound values are unaffected — `applyBindingDataToTree` runs immediately after
+ * this and rewrites them per row.
+ */
 function syncInlineStyles(templateEl: HTMLElement, ghostEl: HTMLElement): void {
-  const templateNodes = templateEl.querySelectorAll<HTMLElement>('[data-node-id]');
+  const copyPair = (tEl: HTMLElement, gEl: HTMLElement) => {
+    gEl.style.cssText = tEl.style.cssText;
+    for (const attr of Array.from(tEl.attributes)) {
+      if (GHOST_OWN_ATTRS.has(attr.name)) continue;
+      if (gEl.getAttribute(attr.name) !== attr.value) gEl.setAttribute(attr.name, attr.value);
+    }
+    // Drop attrs the template no longer has (an unset alt / href / data-*).
+    for (const attr of Array.from(gEl.attributes)) {
+      if (GHOST_OWN_ATTRS.has(attr.name)) continue;
+      if (!tEl.hasAttribute(attr.name)) gEl.removeAttribute(attr.name);
+    }
+    // Leaf content only — see the doc comment.
+    if (!tEl.querySelector('[data-id]') && gEl.innerHTML !== tEl.innerHTML) {
+      gEl.innerHTML = tEl.innerHTML;
+    }
+  };
+
   // Always copy the root pair too — query starts from descendants only.
-  ghostEl.style.cssText = templateEl.style.cssText;
-  for (const tEl of templateNodes) {
+  copyPair(templateEl, ghostEl);
+  for (const tEl of templateEl.querySelectorAll<HTMLElement>('[data-node-id]')) {
     const dataId = tEl.getAttribute('data-id');
     if (!dataId) continue;
     // Match by data-id (descendants share the same data-id between
     // template and ghost — only data-node-id differs by suffix).
-    const matching = ghostEl.querySelectorAll<HTMLElement>(`[data-id="${dataId}"]`);
-    for (const gEl of matching) {
-      gEl.style.cssText = tEl.style.cssText;
+    for (const gEl of ghostEl.querySelectorAll<HTMLElement>(`[data-id="${dataId}"]`)) {
+      copyPair(tEl, gEl);
     }
   }
 }

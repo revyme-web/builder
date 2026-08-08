@@ -1,3 +1,4 @@
+import { isFitSize } from '@/shared/constants';
 // size-helpers.ts — Pure helpers for SizeTool's width/height unit conversion.
 //
 // Extracted so we can unit-test the math independently of the React tool.
@@ -95,6 +96,15 @@ export function isRelativeUnit(v: string | undefined | null): boolean {
 export function dimUnitOf(v: string | undefined | null): string {
   const m = v?.trim().match(/(%|[a-z]+)\s*$/i);
   return m ? m[1].toLowerCase() : 'px';
+}
+
+/** Is this dimension "let the content decide" rather than an authored length?
+ *  Absent, `auto`, and Fit (min-content) all mean the row shows the `auto` unit
+ *  with the measured number as a greyed placeholder — a live px must never
+ *  replace that, or the unit dropdown flips mid-gesture. */
+export function isAutoDim(v: string | undefined | null): boolean {
+  const t = (v ?? '').trim();
+  return t === '' || t === 'auto' || isFitSize(t);
 }
 
 /** Pick the value the Dimensions field should display during a canvas resize.

@@ -576,9 +576,21 @@ export function findGhostsForTemplate(
     result.push({ ghostIndex, rect, corners });
   }
   result.sort((a, b) => a.ghostIndex - b.ghostIndex);
-  trace.fn('findGhostsForTemplate', { templateId, vpId, count: result.length });
+  // TRACE ON CHANGE ONLY. SelectionOverlay polls this at 60fps while a
+  // collection row is selected; a trace per call snapshots + buffers sixty
+  // times a second to say the same number (one 465ms window held 56 identical
+  // `count: 0` lines — 2026-08-08). Same lesson as the per-node svg attr traces
+  // in the parser: aggregate, don't spam.
+  const sigKey = `${cacheKeyPrefix}`;
+  if (_lastGhostCount.get(sigKey) !== result.length) {
+    _lastGhostCount.set(sigKey, result.length);
+    trace.fn('findGhostsForTemplate', { templateId, vpId, count: result.length });
+  }
   return result;
 }
+
+/** Last ghost count reported per template+viewport — see the trace gate above. */
+const _lastGhostCount = new Map<string, number>();
 
 /** Build child rects from NodeMap children + bridge rectCache. */
 export function findChildRects(parentId: string, vpId: string): Array<{ id: string; rect: DOMRect }> {

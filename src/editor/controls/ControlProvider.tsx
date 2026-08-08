@@ -48,6 +48,7 @@ import type { FieldDefinition } from '@/shared/types';
 import { collectionSchemasAtom, collectionDataAtom } from '@/code/stores/cms-store';
 import { cmsPageMetaAtom } from '@/code/stores/cms-page-store';
 import { trace } from '@/shared/debug-trace';
+import { expediteStableAtomSync } from '@/canvas/hooks/useStableAtomSync';
 
 // One shared reference for "this selection has no styles" — see `baseStyles`.
 const EMPTY_STYLES: Record<string, string> = {};
@@ -1410,6 +1411,9 @@ export function ControlProvider({ children }: { children: ReactNode }) {
         return null;
       },
       bindToField: (property: string, fieldId: string) => {
+        // The panel is what the user is looking at — don't make them wait out
+        // the mirror's canvas-paint budget to see their own click land.
+        expediteStableAtomSync();
         if (!selectedId) return;
         if (isInstanceNode) {
           // Component-instance prop → bind via the .map() prop path: propName={item.field}.
@@ -1455,6 +1459,9 @@ export function ControlProvider({ children }: { children: ReactNode }) {
         flushNow();
       },
       unbindField: (property: string, staticValue: string = '') => {
+        // The panel is what the user is looking at — don't make them wait out
+        // the mirror's canvas-paint budget to see their own click land.
+        expediteStableAtomSync();
         if (!selectedId) return;
         if (isInstanceNode) {
           // Component-instance prop → strip `propName={item.field}` off the instance
