@@ -320,6 +320,30 @@ export function startFrameCreation(
         }
       }
 
+      // THE DRAWN RECT IN CANVAS SPACE — always, independent of which space the
+      // style write above chose. `useLocalSpace` is true for EVERY draw inside a
+      // parent (the map is built unconditionally; for a plain parent it collapses
+      // to "axis-aligned at the PARENT's screen origin"), so `left`/`top` are
+      // PARENT-LOCAL, offset from canvas coords by the parent's own position.
+      // Every containment test compares against `getAbsoluteCanvasRectById`,
+      // which is canvas-space — so draw-over-to-capture was comparing two
+      // different origins and could essentially never match: five texts drawn
+      // fully over, none adopted (user report 2026-08-08). Derived from the same
+      // start/end screen points, so it needs no inverse map.
+      const canvasRect = (() => {
+        let l = Math.min(startCanvas.x, endCanvas.x);
+        let tp = Math.min(startCanvas.y, endCanvas.y);
+        let w = Math.abs(endCanvas.x - startCanvas.x);
+        let h = Math.abs(endCanvas.y - startCanvas.y);
+        if (shiftHeld) {
+          const size = Math.max(w, h);
+          if (endCanvas.x < startCanvas.x) l = startCanvas.x - size;
+          if (endCanvas.y < startCanvas.y) tp = startCanvas.y - size;
+          w = size; h = size;
+        }
+        return { left: l, top: tp, width: w, height: h };
+      })();
+
       // Validate minimum size (scale-adjusted so small frames work when zoomed in)
       const minSize = MIN_DRAW_SIZE / t.scale;
       if (width < minSize || height < minSize) {
@@ -452,7 +476,28 @@ export function startFrameCreation(
           styles.display = 'none';
         }
 
-        trace.action('frame-creator:commit-viewport', { nodeId, parentId, position: styles.position, isReplica, insertIndex });
+        // MEASURE BEFORE MUTATING. `createNode` below inserts the frame into the
+        // parent's flow SYNCHRONOUSLY (`parentEl.insertBefore`), which REFLOWS
+        // every sibling: in a flex column the drawn-over texts are pushed down
+        // by the new frame's height before containment is ever tested, so
+        // nothing was ever captured and the frame landed as a bare sibling
+        // (user report 2026-08-08 — five texts drawn fully over, none adopted).
+        // The absolute path is immune because out-of-flow siblings don't move,
+        // which is why only the layout case broke. Candidates are resolved here,
+        // against the layout the user actually drew on; the moves are queued
+        // after the node exists.
+        const flowCaptures = mode !== 'absolute'
+          ? collectFlowCaptures({
+              newFrameId: nodeId,
+              newFrameRect: canvasRect,
+              parentId, vpId, nodes, transform: t,
+            })
+          : [];
+
+        trace.action('frame-creator:commit-viewport', {
+          nodeId, parentId, position: styles.position, isReplica, insertIndex,
+          flowCaptures: flowCaptures.length,
+        });
 
         createNode({
           id: nodeId, type: 'div', name: 'Frame', styles,
@@ -486,7 +531,8 @@ export function startFrameCreation(
             newFrameRect: { left: newFrameLeft, top: newFrameTop, width, height },
             // ...and the CANVAS-space drawn rect for the auto-sized live-rect
             // fallback (auto text couldn't be captured off inline styles alone).
-            frameCanvasRect: { left, top, width, height },
+            // `canvasRect`, NOT the local-space draw — same origin mismatch.
+            frameCanvasRect: canvasRect,
             vpId,
             transform: t,
             candidates: collectAbsoluteSiblings(nodes, parentId, nodeId),
@@ -494,17 +540,9 @@ export function startFrameCreation(
           });
         } else {
           // LAYOUT parent: fully-covered FLOW siblings become children too —
-          // same draw-over-to-capture contract as the absolute path, but
-          // containment runs on live rects (flow children carry no inline
-          // left/top). The drawn rect is still canvas-space in this branch.
-          encapsulatedIds = encapsulateFlowSiblings({
-            newFrameId: nodeId,
-            newFrameRect: { left, top, width, height },
-            parentId,
-            vpId,
-            nodes,
-            transform: t,
-          });
+          // same draw-over-to-capture contract as the absolute path. Queued from
+          // the pre-insert measurement above.
+          encapsulatedIds = queueFlowCaptures(flowCaptures, nodeId, canvasRect, { width, height });
         }
       }
 
@@ -854,18 +892,27 @@ function encapsulateAbsoluteSiblings(opts: EncapsulateOptions): string[] {
  * minus frame origin; flow props cleared). Same UX contract as the absolute
  * path: "draw a frame OVER nodes that fit inside it → they become children".
  */
-function encapsulateFlowSiblings(opts: {
+/** A flow sibling the drawn frame fully covers, with the CANVAS-space rect it
+ *  had at draw time. Measured BEFORE the frame is inserted — see the call site
+ *  for why that ordering is load-bearing. */
+export interface FlowCapture { id: string; rect: FrameRect; }
+
+/**
+ * Which flow siblings does the drawn rect fully cover? Pure measurement — no
+ * mutation — so the caller can run it against the layout the user actually drew
+ * on, then insert the frame.
+ */
+export function collectFlowCaptures(opts: {
   newFrameId: string;
   newFrameRect: FrameRect;
   parentId: string;
   vpId: string;
   nodes: Map<string, CanvasNode>;
   transform: Transform;
-}): string[] {
+}): FlowCapture[] {
   const { newFrameId, newFrameRect, parentId, vpId, nodes, transform } = opts;
-  const encapsulatedIds: string[] = [];
-  const childRects = findChildRects(parentId, vpId);
-  for (const { id } of childRects) {
+  const captures: FlowCapture[] = [];
+  for (const { id } of findChildRects(parentId, vpId)) {
     if (id === newFrameId) continue;
     const node = nodes.get(id);
     if (!node) continue;
@@ -881,13 +928,48 @@ function encapsulateFlowSiblings(opts: {
       && rect.left + rect.width <= newFrameRect.left + newFrameRect.width + 0.5
       && rect.top + rect.height <= newFrameRect.top + newFrameRect.height + 0.5;
     if (!inside) continue;
+    captures.push({ id, rect });
+  }
+  return captures;
+}
 
-    // Captured FLOW children CENTER in the new frame (spec 2026-07-23):
-    // they had no own position (the old layout placed them), so "keep the
-    // old spot" is meaningless once reparented — centering reads as the
-    // intentional composition, and avoids any cross-space rect offset.
-    const newLeft = Math.round((newFrameRect.width - rect.width) / 2);
-    const newTop = Math.round((newFrameRect.height - rect.height) / 2);
+/**
+ * Reparent the captured siblings into the new frame as absolute children.
+ *
+ * Placement depends on how many were captured, because "where should this go?"
+ * has two different right answers:
+ *  · ONE child had no position of its own (the old layout placed it), so the
+ *    old spot is meaningless once reparented — CENTERING reads as the
+ *    intentional composition (spec 2026-07-23).
+ *  · SEVERAL children have a composition RELATIVE TO EACH OTHER, and centering
+ *    every one of them stacks them all on the same point — five drawn-over
+ *    texts would collapse into one pile. Keep each at its drawn offset from the
+ *    frame's origin so the group survives the wrap unchanged.
+ */
+export function queueFlowCaptures(
+  captures: FlowCapture[],
+  newFrameId: string,
+  /** The drawn frame in CANVAS space — the space the captures were measured in. */
+  newFrameRect: FrameRect,
+  /** The frame's own box as written to its inline style. Equal to the canvas
+   *  size for an untransformed parent; under a SCALED parent the two differ, and
+   *  a child's left/top resolve in the FRAME's space, so canvas deltas are
+   *  converted with this ratio. */
+  frameLocalSize?: { width: number; height: number },
+): string[] {
+  const localW = frameLocalSize?.width ?? newFrameRect.width;
+  const localH = frameLocalSize?.height ?? newFrameRect.height;
+  const sx = newFrameRect.width > 0 ? localW / newFrameRect.width : 1;
+  const sy = newFrameRect.height > 0 ? localH / newFrameRect.height : 1;
+  const centerSingle = captures.length === 1;
+  const ids: string[] = [];
+  for (const { id, rect } of captures) {
+    const newLeft = centerSingle
+      ? Math.round((localW - rect.width * sx) / 2)
+      : Math.round((rect.left - newFrameRect.left) * sx);
+    const newTop = centerSingle
+      ? Math.round((localH - rect.height * sy) / 2)
+      : Math.round((rect.top - newFrameRect.top) * sy);
     const styles: Record<string, string> = {
       position: 'absolute',
       left: `${newLeft}px`,
@@ -896,9 +978,11 @@ function encapsulateFlowSiblings(opts: {
       // doesn't fight its new absolute placement.
       flex: '',
       order: '',
+      alignSelf: '',
+      marginTop: '', marginRight: '', marginBottom: '', marginLeft: '', margin: '',
     };
     trace.action('frame-creator:encapsulate-flow', {
-      childId: id, newParentId: newFrameId,
+      childId: id, newParentId: newFrameId, mode: centerSingle ? 'center' : 'preserve',
       rect: { left: Math.round(rect.left), top: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) },
       to: { left: newLeft, top: newTop },
     });
@@ -909,9 +993,9 @@ function encapsulateFlowSiblings(opts: {
       canvasNode: false,
       styles,
     });
-    encapsulatedIds.push(id);
+    ids.push(id);
   }
-  return encapsulatedIds;
+  return ids;
 }
 
 /** Clip the commit-gap placeholder so each wrapped element is a transparent
