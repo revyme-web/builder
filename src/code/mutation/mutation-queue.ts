@@ -63,6 +63,7 @@ import {
   updateBorderOverlayStyle,
   removeBorderOverlayStyle,
   healSparseVariantDefaults,
+  healStrandedVariantShorthands,
   normalizeResponsiveBandKeys,
 } from '../generation/generator-styles';
 import { setVariantVisibilityInCode } from '../generation/variant-visibility-gen';
@@ -1124,6 +1125,9 @@ export function flushNow(): void {
     // every variant object. Cheap scan-only no-op when nothing is missing;
     // validate-or-revert inside (can never make the file worse).
     code = healSparseVariantDefaults(code);
+    // Drop a variant-entry SHORTHAND stranded behind its own longhands — applied
+    // in key order it nullifies every side, so the entry paints as zero.
+    code = healStrandedVariantShorthands(code);
     // Converge drift-era stray @media bands onto the page's own @canvas
     // viewport keys (config-revert-era pages carry bands keyed at widths no
     // viewport has — panel override lookups miss, resizes strand them).
@@ -2019,6 +2023,9 @@ function processQueue(): void {
     // components repair on ANY edit — the user can't know WHICH node carries
     // `default: {}`. Scan-only no-op when healthy; validate-or-revert inside.
     code = healSparseVariantDefaults(code);
+    // Drop a variant-entry SHORTHAND stranded behind its own longhands — applied
+    // in key order it nullifies every side, so the entry paints as zero.
+    code = healStrandedVariantShorthands(code);
     // Converge drift-era stray @media bands onto the page's @canvas viewport
     // keys (mirrors the flushNow hook; cheap gate inside).
     code = normalizeResponsiveBandKeys(code);

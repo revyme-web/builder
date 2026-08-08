@@ -19,7 +19,7 @@ import { selectedNodeAtom, selectedIdsAtom, mapItemIndexAtom, mapContextAtom, is
 import { useNode, useLiveNode, useNodesComputed } from '@/code/stores/node-family';
 import { isReplicaViewportAtom, interactingViewportWidthAtom, interactingViewportIdAtom, isComponentVariantViewportAtom, activeComponentVariantAtom } from '@/code/stores/viewport-store';
 import { resolveParentVariantStyle } from './parent-variant-style';
-import { containerOverridesAtom, getOverrideBreakpoints, hasOverrideAtWidth, getOverridesAtWidth, clearShorthandSupersededLonghands } from '@/code/stores/container-query-store';
+import { containerOverridesAtom, getOverrideBreakpoints, hasOverrideAtWidth, getOverridesAtWidth, clearShorthandSupersededLonghands, overrideAliasKeys } from '@/code/stores/container-query-store';
 import { isDefaultLocaleAtom, localeOverridesAtom } from '@/code/stores/locale-store';
 import { queueMutation, flushNow } from '@/code/mutation/mutation-queue';
 import { removeComponentPropProjectWide } from '@/code/features/remove-component-prop';
@@ -663,7 +663,15 @@ export function ControlProvider({ children }: { children: ReactNode }) {
     // @media-rule check below but sourced from per-variant style map.
     if (isComponentVariantViewport && activeComponentVariant && node?.motionVariants) {
       const variantStyles = (node.motionVariants as Record<string, Record<string, string>>)[activeComponentVariant];
-      if (variantStyles && property in variantStyles) return true;
+      // ALIAS KEYS, not an exact match: a spacing/radius SHORTHAND control is
+      // overridden by any of its longhands, and a per-variant padding lands in
+      // the entry as `paddingTop/Right/Bottom/Left` — never as `padding`. The
+      // exact-key lookup left the Padding label unlit (and Reset Override
+      // unreachable) on a variant whose padding plainly differs from the
+      // primary's, while Gap — a single key — lit correctly (user report
+      // 2026-08-08). The @media path already resolves aliases this way; this is
+      // the variant-channel twin of that same fix.
+      if (variantStyles && overrideAliasKeys(property).some((k) => k in variantStyles)) return true;
       // svg group-child SIZE rides scaleX/scaleY in the entry (the px channel
       // isn't painted on nested svg) — surface it as a width/height override.
       if (variantStyles && node?.type === 'svg') {
@@ -685,8 +693,10 @@ export function ControlProvider({ children }: { children: ReactNode }) {
     // Conditional-style (ternary) override: a non-default variant has its OWN
     // branch for this layout prop → it's an override on this variant.
     if (isComponentVariantViewport && activeComponentVariant && activeComponentVariant !== 'default' && node?.conditionalStyles) {
-      const map = (node.conditionalStyles as Record<string, Record<string, string>>)[property];
-      if (map && activeComponentVariant in map) return true;
+      // Alias-aware for the same reason as the variants-object check above — a
+      // shorthand control is overridden by any longhand branch.
+      const cond = node.conditionalStyles as Record<string, Record<string, string>>;
+      if (overrideAliasKeys(property).some((k) => cond[k] && activeComponentVariant in cond[k])) return true;
     }
     // Per-variant CMS STYLE override (variantBindings.style) → Fill/style label accent + reset.
     if (isComponentVariantViewport && activeComponentVariant && activeComponentVariant !== 'default' && node?.variantBindings?.style?.[activeComponentVariant]) {

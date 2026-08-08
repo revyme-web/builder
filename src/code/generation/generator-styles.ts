@@ -7,7 +7,7 @@
 import { ensureRootPerfIsolation } from '@/code/variants/variant-perf';
 import { parseVariantConfig } from '@/code/variants/variant-config';
 
-import { toKebab } from '@/shared/css-utils';
+import { toKebab, SHORTHAND_LONGHANDS } from '@/shared/css-utils';
 import { escapeRegExp } from '@/shared/regex-utils';
 import { CSS_LAYOUT_DEFAULTS } from '@/shared/constants';
 import { cssTransformToMotionProps, MOTION_TRANSFORM_PROPS } from '@/shared/motion-transform';
@@ -1393,6 +1393,26 @@ export function ensureVariantListWiring(code: string): string {
  *  healSparseVariantDefaults applies the IDENTICAL logic file-wide — two
  *  implementations of the seed would drift. `pivotStyles` is the in-flight
  *  write on the closure path (rotation-pivot mirror); the healer passes none. */
+/**
+ * Would seeding `key` into an entry that already reads `entryContent` DESTROY
+ * values that are already there?
+ *
+ * The animate-back seed appends (`…, padding: '0px',`), and a SHORTHAND appended
+ * after its longhands nullifies every one of them. Editing the tablet variant's
+ * padding seeded `padding: '0px'` onto the `default` entry — behind
+ * `paddingTop: '90px'` — so the primary tile lost all its padding and the
+ * section collapsed (user report 2026-08-08). The seed exists to give motion a
+ * return value for a prop the entry otherwise lacks; when the entry already
+ * states that box side-by-side, it HAS a return value and the shorthand is pure
+ * destruction. Same law as `mergeStyleLayers`: with shorthands, position is
+ * load-bearing.
+ */
+function seedWouldClobberLonghands(key: string, entryContent: string): boolean {
+  const longhands = SHORTHAND_LONGHANDS[key];
+  if (!longhands) return false;
+  return longhands.some((lh) => new RegExp(`(?:^|[,{\\s])['"]?${lh}['"]?\\s*:`).test(entryContent));
+}
+
 function readBaseValuesForNode(
   code: string,
   nodeId: string,
@@ -1591,6 +1611,64 @@ function topLevelObjectKeys(code: string, bodyStart: number, bodyEnd: number): s
  *  whose shape it doesn't fully recognise; and validates the spliced result
  *  with a real parse, reverting to the input on failure — the worst case is a
  *  no-op, never a corrupted file. Idempotent: pass 2 finds nothing missing. */
+/** FILE-WIDE repair for a variant entry whose SHORTHAND sits behind its own
+ *  longhands — `{ paddingTop: '90px', …, paddingLeft: '0px', padding: '0px' }`.
+ *  Applied to the DOM in key order the trailing shorthand nullifies every side,
+ *  so the entry silently paints as zero. Nothing authors that shape on purpose
+ *  (this dialect always emits the shorthand FIRST); it is the signature of the
+ *  animate-back seed appending one, which `seedWouldClobberLonghands` now
+ *  prevents. Existing files stay broken until something rewrites them, so this
+ *  repairs on any edit — the [[feedback_variant_default_css_initial_seed]]
+ *  reasoning: the user can't know which node is corrupted.
+ *
+ *  Deletes only the STRANDED shorthand, never a value. Cheap precheck, no-op on
+ *  clean files, validate-or-revert like its sibling healer. */
+export function healStrandedVariantShorthands(code: string): string {
+  if (code.indexOf('variants={') === -1) return code;
+  const cuts: Array<{ start: number; end: number }> = [];
+  const constRe = /\bconst\s+(\w+)\s*=\s*\{/g;
+  let cm: RegExpExecArray | null;
+  while ((cm = constRe.exec(code))) {
+    const varName = cm[1];
+    if (!new RegExp(`variants=\\{(?:__applyInstanceSize\\()?${varName}\\b`).test(code)) continue;
+    const objOpen = cm.index + cm[0].length - 1;
+    const objEnd = findBraceEnd(code, objOpen);
+    if (objEnd === -1) continue;
+    const entries = parseVariantEntries(code, objOpen, objEnd);
+    if (!entries) continue;
+    for (const e of entries) {
+      const body = code.slice(e.bodyStart + 1, e.bodyEnd);
+      for (const [shorthand, longhands] of Object.entries(SHORTHAND_LONGHANDS)) {
+        const shortRe = new RegExp(`(?:^|[,{\\s])(['"]?${shorthand}['"]?\\s*:\\s*(?:'[^']*'|"[^"]*"|[^,}]+),?)`);
+        const sm = shortRe.exec(body);
+        if (!sm) continue;
+        const shortAt = sm.index + sm[0].indexOf(sm[1]);
+        // Stranded only when a longhand it governs is declared BEFORE it.
+        const strandedBy = longhands.some((lh) => {
+          const lm = new RegExp(`(?:^|[,{\\s])['"]?${lh}['"]?\\s*:`).exec(body);
+          return !!lm && lm.index < shortAt;
+        });
+        if (!strandedBy) continue;
+        const absStart = e.bodyStart + 1 + shortAt;
+        cuts.push({ start: absStart, end: absStart + sm[1].length });
+        trace.action('generator:heal-stranded-variant-shorthand', { varName, variant: e.name, shorthand });
+      }
+    }
+  }
+  if (cuts.length === 0) return code;
+  let healed = code;
+  for (const c of cuts.sort((a, b) => b.start - a.start)) {
+    healed = healed.slice(0, c.start) + healed.slice(c.end);
+  }
+  try {
+    parseJSX(healed);
+  } catch {
+    trace.error('generator:heal-stranded-variant-shorthand:revert', { count: cuts.length });
+    return code;
+  }
+  return healed;
+}
+
 export function healSparseVariantDefaults(code: string): string {
   if (code.indexOf('variants={') === -1) return code;
 
@@ -1643,6 +1721,8 @@ export function healSparseVariantDefaults(code: string): string {
     if (Object.keys(seed).length === 0) continue;
     let newInner = code.slice(def.bodyStart + 1, def.bodyEnd).trimEnd();
     for (const [k, v] of Object.entries(seed)) {
+      // Same guard as the write path — a heal must never make a file worse.
+      if (seedWouldClobberLonghands(k, newInner)) continue;
       if (newInner && !newInner.endsWith(',')) newInner += ',';
       const key = k.startsWith('--') ? `'${k}'` : k;
       // Motion transform props are numeric (unquoted), like the variant entries.
@@ -1879,6 +1959,13 @@ function updateVariantStyleInCodeInner(
   // along so the rotation-pivot mirror sees what this write carries.
   const readBaseValues = (props: string[]): Record<string, string> =>
     readBaseValuesForNode(code, nodeId, props, styles);
+
+  // Props this write actually SETS. A `'' = remove` entry has nothing to
+  // animate back FROM, so seeding a return value for it is backwards — and for
+  // a shorthand it is destructive: clearing `padding` on the tablet variant
+  // seeded `padding: '0px'` onto `default`, behind its longhands, and zeroed
+  // the primary's padding (user report 2026-08-08).
+  const setProps = Object.keys(styles).filter((k) => styles[k] !== '');
 
   // Check if this node has a variants={...} prop
   const tagEnd = code.indexOf('>', idIdx);
@@ -2183,6 +2270,8 @@ function updateVariantStyleInCodeInner(
     if (!defaultMatch) return result;
     let defaultContent = defaultMatch[2];
     for (const [key, value] of Object.entries(baseValues)) {
+      // Never let a shorthand seed land behind the longhands it would nullify.
+      if (seedWouldClobberLonghands(key, defaultContent)) continue;
       // Only add if not already in default entry
       if (!new RegExp(`${keyPat(key)}\\s*:`).test(defaultContent)) {
         defaultContent = defaultContent.trimEnd();
@@ -2345,7 +2434,7 @@ function updateVariantStyleInCodeInner(
     let result = code.slice(0, fullMatchStart) + entryMatch[1] + entryContent + entryMatch[3] + code.slice(fullMatchEnd);
     // Ensure default entry has base values for these properties
     if (variantName !== 'default') {
-      result = ensureDefaultHasBaseValues(result, Object.keys(styles));
+      result = ensureDefaultHasBaseValues(result, setProps);
     result = ensureTransformNeutralOnAllVariants(result, Object.keys(styles));
       result = ensureTransformNeutralOnAllVariants(result, Object.keys(styles));
     }
@@ -2380,7 +2469,7 @@ function updateVariantStyleInCodeInner(
     // (and order/layout) but skip creating an empty entry.
     let result = code;
     if (variantName !== 'default') {
-      result = ensureDefaultHasBaseValues(result, Object.keys(styles));
+      result = ensureDefaultHasBaseValues(result, setProps);
     result = ensureTransformNeutralOnAllVariants(result, Object.keys(styles));
       result = ensureTransformNeutralOnAllVariants(result, Object.keys(styles));
     }
@@ -2409,7 +2498,7 @@ function updateVariantStyleInCodeInner(
   let result = code.slice(0, insertPos) + newEntry + '\n' + code.slice(insertPos);
   // Ensure default entry has base values for these properties
   if (variantName !== 'default') {
-    result = ensureDefaultHasBaseValues(result, Object.keys(styles));
+    result = ensureDefaultHasBaseValues(result, setProps);
     result = ensureTransformNeutralOnAllVariants(result, Object.keys(styles));
   }
   // Add layout prop when order changes
