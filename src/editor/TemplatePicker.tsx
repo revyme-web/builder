@@ -799,6 +799,9 @@ export default function TemplatePicker() {
         placeholder="e.g. marketing, dashboard, blog..."
         defaultValue=""
         submitLabel="Create"
+        // Templates wear the component-system accent everywhere — Library
+        // panel, File Explorer, and here.
+        accent="secondary"
       />
     </>
   );

@@ -30,7 +30,7 @@ import ToolDivider from '@/editor/controls/ToolDivider';
 // Row components + pure helpers, the drag-reorder handler, and the search filter
 // live in LayersPanel/ (Phase 7 god-file split, item 7.7). computeSelectionSets +
 // FlatLayer are re-exported below for existing importers of this module.
-import { LayerRow, computeSelectionSets, computeRangeSelection, isNodeUnderOverlay, resolveDisplayForLayer, sortChildrenByVisualOrder, type FlatLayer } from './LayersPanel/rows';
+import { LayerRow, computeSelectionSets, computeRangeSelection, isNodeUnderOverlay, resolveDisplayForLayer, getEffectiveLayerStyle, sortChildrenByVisualOrder, type FlatLayer } from './LayersPanel/rows';
 import { startLayerDrag, vpIdFromLayerId } from './LayersPanel/drag';
 import { filterLayersForSearch } from './LayersPanel/search';
 
@@ -1055,11 +1055,21 @@ export default function LayersPanel() {
           const optHidden = layer.nodeId != null
             ? optimisticVis.get(`${layer.viewportId || interactingVpId}:${layer.nodeId}`)
             : undefined;
+          // ONE resolve per row, reused for both the eye state and the layer
+          // glyph — the icon must read the same per-tile cascade, or a frame
+          // that's flex only on `variant-1` would carry the primary's glyph on
+          // every tile (`node.styles.display` is the primary's answer).
+          const layerDisplay = layer.nodeId
+            ? resolveDisplayForLayer(layer.node, layer.viewportId, vpConfigs, containerOverrides, isCompMode)
+            : null;
+          // Only a flex frame's glyph needs the direction — skip the walk for
+          // every other row.
+          const layerFlexDir = layerDisplay?.display === 'flex' || layerDisplay?.display === 'inline-flex'
+            ? getEffectiveLayerStyle(layer.node, 'flexDirection', layer.viewportId, vpConfigs, containerOverrides, isCompMode)
+            : undefined;
           let effectiveHidden = optHidden !== undefined
             ? optHidden
-            : layer.nodeId
-              ? resolveDisplayForLayer(layer.node, layer.viewportId, vpConfigs, containerOverrides, isCompMode).isHidden
-              : false;
+            : layerDisplay?.isHidden ?? false;
           // Bridge-cache safety net: the parser-side cascade above can
           // miss storage paths that haven't been wired into the resolver
           // yet (e.g. component-instance child overrides redirected to the
@@ -1086,6 +1096,8 @@ export default function LayersPanel() {
               key={layer.id}
               layer={layer}
               nodes={nodes}
+              layerDisplay={layerDisplay?.display}
+              layerFlexDirection={layerFlexDir}
               presetTokens={presetTokens}
               isSelected={layer.id === selectedLayerId || (layer.nodeId != null && selectedIds.includes(layer.nodeId) && layer.viewportId === interactingVpId)}
               isMapTemplate={isMapTemplate}

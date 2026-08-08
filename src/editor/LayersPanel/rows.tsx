@@ -50,6 +50,58 @@ const FrameIcon = ({ size = 14 }: { size?: number }) => (
   <FrameToolbarIcon width={size} height={size} />
 )
 
+// ─── Layout Icons ─────────────────────────────────────────────────────────
+// A frame with a LAYOUT is a different thing from a plain frame — it places its
+// children — so it gets its own glyph instead of the crop-mark outline. Filled
+// (unlike FrameIcon's outline) because these say "this box arranges content",
+// which is a positive statement, not the absence of paint.
+//   flex column → three stacked bars
+//   flex row    → the same bars rotated 90°
+//   grid        → a 2x2 cell field
+// ONE glyph for both flex directions: three stacked bars = a COLUMN (children
+// flow down the page), rotated 90° = a ROW. Rotating rather than shipping a
+// second path keeps the two reading as the same idea seen from two angles, and
+// there's only one shape to keep in sync.
+const FlexLayoutIcon = ({ column, size = 14 }: { column: boolean; size?: number }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    style={column ? undefined : { transform: 'rotate(90deg)' }}
+  >
+    <path d="M0 0h24v24H0z" fill="none" />
+    <path fill="currentColor" d="M4 21q-.425 0-.712-.288T3 20v-2.65q0-.425.288-.712T4 16.35h16q.425 0 .713.288t.287.712V20q0 .425-.288.713T20 21zm0-6.65q-.425 0-.712-.288T3 13.35v-2.725q0-.425.288-.712T4 9.625h16q.425 0 .713.288t.287.712v2.725q0 .425-.288.713T20 14.35zm0-6.725q-.425 0-.712-.288T3 6.626V4q0-.425.288-.712T4 3h16q.425 0 .713.288T21 4v2.625q0 .425-.288.713T20 7.625z" />
+  </svg>
+);
+
+const GridLayoutIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M0 0h24v24H0z" fill="none" />
+    <rect width="8" height="8" x="3" y="3" fill="currentColor" rx="1.5" ry="1.5" />
+    <rect width="8" height="8" x="13" y="3" fill="currentColor" rx="1.5" ry="1.5" />
+    <rect width="8" height="8" x="3" y="13" fill="currentColor" rx="1.5" ry="1.5" />
+    <rect width="8" height="8" x="13" y="13" fill="currentColor" rx="1.5" ry="1.5" />
+  </svg>
+);
+
+/** Frame glyph by LAYOUT: flex (split by direction) and grid get their own,
+ *  everything else keeps the plain frame outline. `inline-flex` / `inline-grid`
+ *  count — they place children the same way. Direction defaults to `row`, which
+ *  is also the CSS initial value. */
+const FrameGlyph = ({ display, flexDirection, size = 14 }: {
+  display?: string;
+  flexDirection?: string;
+  size?: number;
+}) => {
+  const d = (display ?? '').trim();
+  if (d === 'flex' || d === 'inline-flex') {
+    return <FlexLayoutIcon column={(flexDirection ?? '').trim().startsWith('column')} size={size} />;
+  }
+  if (d === 'grid' || d === 'inline-grid') return <GridLayoutIcon size={size} />;
+  return <FrameIcon size={size} />;
+};
+
 const ComponentIcon = ComponentClusterIcon;
 
 // ─── Overlay Icon ──────────────────────────────────────────────────────────
@@ -114,6 +166,13 @@ function ViewportIcon({ width, size = 14 }: { width?: number; size?: number }) {
  *  layer for a tablet/mobile replica reflects an `@media (max-width: 768)
  *  { display: none }` rule, and the layer for a non-default variant
  *  reflects a `cardVariants.hover = { display: 'none' }` override.
+ *
+ *  Returns the RESOLVED `display` alongside the hidden flag: the layer icon
+ *  distinguishes a plain frame from a flex/grid one, and it must read the same
+ *  per-tile cascade the eye icon does — a frame that's flex only on `variant-1`
+ *  should carry the flex glyph on that variant's rows and the plain one
+ *  elsewhere. Reusing this beats a second `node.styles.display` read, which
+ *  would be the primary's answer on every tile.
  */
 export function resolveDisplayForLayer(
   node: CanvasNode,
@@ -121,7 +180,7 @@ export function resolveDisplayForLayer(
   vpConfigs: Array<{ id: string; width: number; isPrimary: boolean }>,
   containerOverrides: Map<string, Map<number, Map<string, string>>>,
   isComponentFile: boolean,
-): { isHidden: boolean; source: 'base' | 'override' | 'variant' | 'conditional' } {
+): { isHidden: boolean; source: 'base' | 'override' | 'variant' | 'conditional'; display: string } {
   // `hiddenOnVariants` (AnimatePresence) is the primary per-variant visibility
   // signal — if this layer's variant is in it, it's hidden. If NOT in it, fall
   // through to the display cascade (a stale/baked `display:none` from an older
@@ -129,7 +188,7 @@ export function resolveDisplayForLayer(
   if (node.hiddenOnVariants && node.hiddenOnVariants.size > 0) {
     const variantForLayer = !layerVpId || layerVpId === 'desktop' ? 'default' : layerVpId;
     if (node.hiddenOnVariants.has(variantForLayer)) {
-      return { isHidden: true, source: 'variant' };
+      return { isHidden: true, source: 'variant', display: 'none' };
     }
   }
 
@@ -162,7 +221,7 @@ export function resolveDisplayForLayer(
       effective = motionVariants.default.display ?? '';
       source = 'variant';
     }
-    return { isHidden: effective === 'none', source };
+    return { isHidden: effective === 'none', source, display: effective };
   }
 
   const vp = vpConfigs.find(v => v.id === layerVpId);
@@ -241,7 +300,7 @@ export function resolveDisplayForLayer(
     }
   }
 
-  return { isHidden: effective === 'none', source };
+  return { isHidden: effective === 'none', source, display: effective };
 }
 
 /**
@@ -323,6 +382,53 @@ function getEffectiveOrder(
     if (v != null) effective = v;
   }
 
+  return effective;
+}
+
+/**
+ * Effective value of a STRING style prop for a layer's own viewport/variant.
+ * The string twin of `getEffectiveOrder` above — identical precedence
+ * (inline base → default-variant entry → variant entry / conditional ternary →
+ * page-replica `@container` override), which is why the two read alike. Kept
+ * separate rather than generalised because `getEffectiveOrder` drives layer
+ * SORTING and its numeric parsing/`null` contract is load-bearing there.
+ *
+ * Used for `flexDirection`, so a frame that is a row on desktop and a column on
+ * tablet carries the right glyph on each row.
+ */
+export function getEffectiveLayerStyle(
+  node: CanvasNode,
+  prop: string,
+  layerVpId: string | null | undefined,
+  vpConfigs: Array<{ id: string; width: number; isPrimary: boolean }>,
+  containerOverrides: Map<string, Map<number, Map<string, string>>>,
+  isComponentFile: boolean,
+): string | undefined {
+  const motionVariants = node.motionVariants as Record<string, Record<string, string>> | null | undefined;
+  const conditionalStyles = node.conditionalStyles as Record<string, Record<string, string>> | null | undefined;
+  const take = (v: unknown): string | undefined =>
+    typeof v === 'string' && v !== '' ? v : undefined;
+
+  let effective = take(node.styles?.[prop]);
+  const applyDefaultEntry = () => {
+    const v = take(motionVariants?.default?.[prop]) ?? take(conditionalStyles?.[prop]?.['default']);
+    if (v) effective = v;
+  };
+
+  if (!layerVpId) { applyDefaultEntry(); return effective; }
+
+  if (isComponentFile && layerVpId !== 'desktop') {
+    const v = take(motionVariants?.[layerVpId]?.[prop]) ?? take(conditionalStyles?.[prop]?.[layerVpId]);
+    if (v) effective = v;
+    return effective;
+  }
+
+  applyDefaultEntry();
+  const vp = vpConfigs.find(v => v.id === layerVpId);
+  if (!isComponentFile && vp && !vp.isPrimary) {
+    const v = take(containerOverrides.get(node.id)?.get(vp.width)?.get(prop));
+    if (v) effective = v;
+  }
   return effective;
 }
 
@@ -500,12 +606,18 @@ export const LayerRow = React.memo(function LayerRow({
   layer, isSelected, isMapTemplate, isChildOfSelected, hasHighlightedChildren, isLastHighlightedChild,
   isDragOver, dropPosition, dropDepth, isDragging, effectiveHidden,
   onSelect, onToggleExpand, onDragStart, onContextMenu, onToggleLock, onToggleVisibility,
-  isRenaming, onRenameCommit, onVariantRenameCommit, onDoubleClickLayout, isComponentMode, nodes, presetTokens,
+  isRenaming, onRenameCommit, onVariantRenameCommit, onDoubleClickLayout, isComponentMode, nodes, presetTokens, layerDisplay, layerFlexDirection,
 }: {
   layer: FlatLayer;
   isSelected: boolean;
   isMapTemplate: boolean;
   isComponentMode: boolean;
+  /** The row's RESOLVED `display` for its own viewport/variant (from
+   *  resolveDisplayForLayer, computed once by the panel and shared with the eye
+   *  state). Drives the frame glyph: flex / grid frames get their own icon. */
+  layerDisplay?: string;
+  /** The row's RESOLVED `flexDirection` — splits the flex glyph row vs column. */
+  layerFlexDirection?: string;
   isChildOfSelected: boolean;
   hasHighlightedChildren: boolean;
   isLastHighlightedChild: boolean;
@@ -805,7 +917,11 @@ export const LayerRow = React.memo(function LayerRow({
               <span style={{ color: isSelected ? selFg : '#bababa' }}>
                 {node.attrs?.['data-overlay'] ? <OverlayIcon size={18} />
                   : isTextTag(node.type) ? <TextIcon size={18} />
-                    : <FrameIcon size={18} />}
+                    : <FrameGlyph
+                        display={layerDisplay ?? node.styles?.display}
+                        flexDirection={layerFlexDirection ?? node.styles?.flexDirection}
+                        size={18}
+                      />}
               </span>
             )}
         </div>

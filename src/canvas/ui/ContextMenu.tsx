@@ -414,7 +414,7 @@ export default function ContextMenu() {
       // Component flows use the purple component-system accent; the
       // sibling "Make Vector Set" modal below keeps the
       // default blue because vectors live in the Vectors section.
-      accentColor="var(--accent-secondary, #9a66ff)"
+      accent="secondary"
     />
   );
 

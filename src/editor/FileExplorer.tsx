@@ -1740,6 +1740,9 @@ export default function Page() {
         title="New Template"
         placeholder='Template name (e.g. "marketing")'
         submitLabel="Create Template"
+        // Templates share the component-system accent — purple fill, white
+        // label — everywhere else in the app; the modal has to match.
+        accent="secondary"
       />
     </div>
   );
