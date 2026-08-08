@@ -9,6 +9,8 @@ import { addConnection, removeConnectionEntry, removeConnectionsForVariantInCode
 import { projectFS } from '../project/project-fs';
 import { parseJSXToNodes } from '../parsing/parser';
 import { setVariantVisibilityInCode } from '../generation/variant-visibility-gen';
+import { removeObjectEntryBalanced } from '../generation/generator-utils';
+import { parseJSX } from '../parsing/ast-utils';
 import { trace } from '@/shared/debug-trace';
 
 const VARIANT_GAP = 200; // px gap between variant blocks on canvas
@@ -259,9 +261,24 @@ export function removeVariant(filePath: string, variantName: string): VariantCon
       updated = removeVariantBranchFromConditionalTernaries(updated, variantName);
       // Removing this variant may have dropped the LAST heavy animated prop —
       // sweep the root perf isolation in the SAME write (see variant-perf.ts).
-      return ensureRootPerfIsolation(updated);
+      updated = ensureRootPerfIsolation(updated);
+
+      // NEVER LAND UNPARSEABLE SOURCE. This op runs five string transforms over
+      // the whole file; if any of them mis-cuts, the parser returns an EMPTY
+      // node map and the canvas goes blank — indistinguishable from "the delete
+      // destroyed my component", and the user's work is only recoverable via
+      // undo. Refusing the write instead makes the worst case "the variant
+      // didn't get deleted", and the traced error is how the real defect
+      // surfaces. (Both known mis-cuts are fixed above; this is the backstop.)
+      if (!parseJSX(updated)) {
+        trace.error('variant-ops:removeVariant-would-corrupt', { filePath, variantName });
+        result = null;
+        return code;
+      }
+      return updated;
     });
 
+    if (result === null) return null;
     trace.action('variant-ops:remove', { filePath, variantName });
     return result;
   } catch (err) {
@@ -699,16 +716,15 @@ function removeVariantKeyFromAllObjects(code: string, variantName: string): stri
   // Remove entries like:  variantName: { ... },   OR   'variantName': { ... }
   // from every `const xxxVariants = { ... }` object.
   //
-  // Two fixes over the original `\s*name\s*:\s*\{…\}` regex:
-  //   1. QUOTED keys — a variant whose name has a hyphen (e.g. 'default-hover')
-  //      is ALWAYS written quoted in an object literal, so the unquoted-only
-  //      matcher silently skipped it (the exact bug: deleting `default-hover`
-  //      left `'default-hover': { rotate: 0 }` dangling in iconWrapVariants).
-  //   2. A required entry delimiter (`{` or `,`) before the key, so a short
-  //      name can't match as a SUBSTRING of a longer key (e.g. removing 'open'
-  //      must not chew into 'reopen'). The delimiter is preserved so the
-  //      surrounding object stays well-formed (a trailing comma is valid JS).
-  const esc = variantName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const entryRegex = new RegExp(`([{,])\\s*['"]?${esc}['"]?\\s*:\\s*\\{[^}]*\\},?`, 'g');
-  return code.replace(entryRegex, (_m, lead: string) => lead);
+  // Quoted keys, the entry delimiter, and NESTED brace values are all handled
+  // by the shared balanced remover. The third of those is what a `\{[^}]*\}`
+  // regex could never do: a per-variant transition —
+  //
+  //     'variant-1': { transition: { duration: 0.5 } }
+  //
+  // — ends at the SECOND `}`, so the regex consumed the inner object and left
+  // the entry's own closing brace stranded in the variants object. The file
+  // stopped parsing and the canvas rendered nothing, which read as "deleting
+  // a variant deleted my whole component" (user report 2026-08-08).
+  return removeObjectEntryBalanced(code, variantName);
 }

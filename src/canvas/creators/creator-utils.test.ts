@@ -184,6 +184,45 @@ describe('buildDuplicateDescriptor id map + queueBorderOverlayDuplicates', () =>
     expect(idMap.get('ring-1')).not.toBe('ring-1');
   });
 
+  it('bakes the TILE\'s values through the whole subtree, not the primary\'s', async () => {
+    // User report 2026-08-08: alt-drag duplicating a Button on `variant-2`,
+    // where the source carries `width: variant === 'variant-2' ? '100%' : ''`,
+    // produced an auto-width copy. Every per-tile channel is keyed by the
+    // SOURCE's data-id, so the fresh-id clone can only get these by baking.
+    const { buildDuplicateDescriptor } = await import('./creator-utils');
+    const nodes = new Map<string, any>([
+      ['btn', {
+        id: 'btn', type: 'div', name: 'Button', children: ['label'],
+        styles: { flex: '0 0 auto' }, attrs: { initialVariant: 'default' },
+        conditionalStyles: { width: { 'variant-2': '100%', default: '' } },
+        attrConditional: { initialVariant: { 'variant-2': 'variant-3', default: 'default' } },
+      }],
+      ['label', {
+        id: 'label', type: 'p', name: 'Label', children: [], styles: {}, attrs: {},
+        textContent: 'Book a Call',
+        motionVariants: { 'variant-2': { fontSize: '18px' } },
+      }],
+    ]);
+    const desc = buildDuplicateDescriptor('btn', nodes, undefined, { kind: 'variant', variant: 'variant-2' })!;
+    expect(desc.styles.width).toBe('100%');
+    expect(desc.attrs!.initialVariant).toBe('variant-3');
+    // The tile applies to descendants too — the copy has to look the same.
+    expect(desc.children![0].styles.fontSize).toBe('18px');
+  });
+
+  it('without a tile the descriptor is an unchanged 1:1 clone', async () => {
+    const { buildDuplicateDescriptor } = await import('./creator-utils');
+    const nodes = new Map<string, any>([
+      ['btn', {
+        id: 'btn', type: 'div', name: 'Button', children: [],
+        styles: { width: '73px' }, attrs: { initialVariant: 'default' },
+        conditionalStyles: { width: { 'variant-2': '100%', default: '73px' } },
+      }],
+    ]);
+    const desc = buildDuplicateDescriptor('btn', nodes)!;
+    expect(desc.styles.width).toBe('73px');
+  });
+
   it('queues an updateBorderOverlay copy for mapped ids that have an ::after rule', async () => {
     // Alt-drag duplicate flavor: rules live in the CURRENT file's <style>
     // block; the clone (fresh id) must get its own rule or the border is

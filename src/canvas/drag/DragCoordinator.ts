@@ -34,6 +34,7 @@ import { getDefaultStore } from 'jotai';
 import { isDefaultLocaleAtom } from '@/code/stores/locale-store';
 import { getScreenCornersById, getElementCenter } from '@/canvas/resize/geometry-utils';
 import { buildDuplicateDescriptor, queueBorderOverlayDuplicates, queueReplicaCreationUnhide } from '@/canvas/creators/creator-utils';
+import { tileContextFor } from '@/canvas/replica-bake';
 import { queueMutation, flushNow, setForceRender, setDeferNextFanOut, hasQueuedMutations } from '@/code/mutation/mutation-queue';
 import { isComponentLikeFilePath } from '@/code/project/file-path-kind';
 import { forceCanvasRender, isPrimaryViewport, getActiveFilePath } from '@/canvas/node-ops';
@@ -993,6 +994,13 @@ export class DragCoordinator {
       const rctx = isReplica
         ? getReplicaContext(vpId, getActiveFilePath(), vpWidths)
         : null;
+      // BAKE THE TILE'S TRUTH INTO THE CLONE. Per-tile styles live in channels
+      // keyed by the SOURCE's data-id (@media block, `<id>Variants` object,
+      // inline `variant === …` ternaries), so a fresh-id clone inherits none
+      // of them and would render the PRIMARY's values — the 100%-wide button
+      // duplicated on variant-2 came out auto-width. Resolve what the tile
+      // paints and write that in as the duplicate's flat base styles.
+      const tile = tileContextFor(vpId, getActiveFilePath(), vpWidths);
       // For flow strategies (LayoutLifted), the duplicate is a CLEAN
       // REAL FLEX SIBLING inserted at the dragged element's original
       // source index, with the placeholder's spaced-rank `order` so
@@ -1022,7 +1030,7 @@ export class DragCoordinator {
         // by data-id in the <style> block, so each clone needs its own copy
         // (queued below) or the duplicate silently loses its border.
         const dupIdMap = new Map<string, string>();
-        const descriptor = buildDuplicateDescriptor(draggedNode.id, this.context.nodes, dupIdMap);
+        const descriptor = buildDuplicateDescriptor(draggedNode.id, this.context.nodes, dupIdMap, tile);
         if (!descriptor) continue;
         const insertSpec = strategyInsertSpecFor(draggedNode.id);
         if (insertSpec) {

@@ -6,7 +6,14 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 
 vi.mock('@/shared/debug-trace', () => ({ trace: { action: vi.fn(), fn: vi.fn(), error: vi.fn(), dom: vi.fn() } }));
-vi.mock('@/canvas/node-ops', () => ({ findNodeRect: () => null, getActiveFilePath: () => '', getActiveTransform: () => ({ x: 0, y: 0, scale: 1 }) }));
+vi.mock('@/canvas/node-ops', () => ({
+  findNodeRect: () => null,
+  getActiveFilePath: () => '',
+  getActiveTransform: () => ({ x: 0, y: 0, scale: 1 }),
+  // Copy resolves the interacting tile's values (replica-bake) — 'desktop' here
+  // means "primary tile", i.e. the pass-through these fixtures expect.
+  getInteractingViewport: () => ({ vpId: 'desktop', vpWidth: 1440 }),
+}));
 vi.mock('@/code/project/project-fs', () => ({ projectFS: { readFile: () => '' } }));
 vi.mock('./effects-extractor', () => ({ extractEffectsForNodes: () => null }));
 

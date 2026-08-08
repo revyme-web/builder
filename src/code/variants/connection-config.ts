@@ -10,6 +10,7 @@ import { modifyProjectFile } from '@/code/project/modify-file';
 import { projectFS } from '@/code/project/project-fs';
 import { isIndexInsideSlotConst } from '@/code/generation/slot-ops';
 import { ensureVariantListWiring } from '@/code/generation/generator-styles';
+import { stripAllTagAttrsBalanced } from '@/code/generation/generator-utils';
 import { extractImports, resolveImportPath } from '@/code/components/import-resolver';
 import { forwardEventPropsToComponentRoot } from './event-prop-forwarding';
 import { trace } from '@/shared/debug-trace';
@@ -222,12 +223,15 @@ function rebuildConnections(code: string, connections: Connection[]): string {
   if (connections.length > 0) {
     updated = generateConnectionCode(updated, connections);
   } else {
-    // Remove stale handlers
-    updated = updated.replace(/\s*onTap=\{[^}]*\}/g, '');
-    updated = updated.replace(/\s*onTapStart=\{[^}]*\}/g, '');
-    updated = updated.replace(/\s*onHoverStart=\{[^}]*\}/g, '');
-    updated = updated.replace(/\s*onHoverEnd=\{[^}]*\}/g, '');
-    updated = updated.replace(/\s*onViewportEnter=\{[^}]*\}/g, '');
+    // Remove stale handlers. BALANCED — a toggle handler has a multi-statement
+    // body (`() => { const _n = …; if (_n) setVariant(_n); }`), so the old
+    // `\{[^}]*\}` form stopped at the arrow body's `}` and left the expression
+    // container's brace welded to the tag name: `<motion.div}`. The file no
+    // longer parsed, the node map came back empty, and the canvas went blank —
+    // "I delete variant 2 and it deletes the whole component" (2026-08-08).
+    for (const handler of ['onTap', 'onTapStart', 'onHoverStart', 'onHoverEnd', 'onViewportEnter']) {
+      updated = stripAllTagAttrsBalanced(updated, handler);
+    }
     // Remove useState + useEffect chain
     updated = updated.replace(/\s*const \[variant, setVariant\] = useState\([^)]*\);\n?/g, '');
     updated = updated.replace(/\s*const \[isInView, setIsInView\] = useState\(false\);\n?/g, '');

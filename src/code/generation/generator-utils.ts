@@ -55,6 +55,69 @@ export function stripTagAttrBalanced(tag: string, attr: string): string {
   return tag.slice(0, m.index) + tag.slice(i);
 }
 
+/** Strip EVERY occurrence of `attr={…}` across a whole source file, using the
+ *  balanced walk above. The `\s*attr=\{[^}]*\}` form this replaces stopped at
+ *  the FIRST `}`, so a multi-statement handler —
+ *
+ *      onTap={() => { const _n = …; if (_n) setVariant(_n); }}
+ *
+ *  — lost its body but left the expression container's closing brace behind,
+ *  producing `<motion.div}` and a file that no longer parses (user report
+ *  2026-08-08: deleting a variant blanked the whole component). */
+export function stripAllTagAttrsBalanced(code: string, attr: string): string {
+  let out = code;
+  for (;;) {
+    const next = stripTagAttrBalanced(out, attr);
+    if (next === out) return out;   // each pass removes one occurrence
+    out = next;
+  }
+}
+
+/** Remove the `key: { … }` entry from every object literal in `code`, walking
+ *  braces so a NESTED object value (`'variant-1': { transition: { duration: 0.5 } }`)
+ *  is consumed whole. The entry delimiter (`{` or `,`) is required so a short
+ *  key can't match as a substring of a longer one ('open' must not chew into
+ *  'reopen'), and is preserved so the surrounding object stays well-formed —
+ *  a trailing comma is valid JS. Quoted and bare keys both match: a hyphenated
+ *  name is always written quoted in an object literal. */
+export function removeObjectEntryBalanced(code: string, key: string): string {
+  const esc = escapeRegExp(key);
+  const entryRe = new RegExp(`([{,])\\s*['"]?${esc}['"]?\\s*:\\s*\\{`, 'g');
+  let out = code;
+  for (;;) {
+    entryRe.lastIndex = 0;
+    const m = entryRe.exec(out);
+    if (!m || m.index === undefined) return out;
+    const braceIdx = m.index + m[0].length - 1;
+    const end = findBalancedBraceEnd(out, braceIdx);
+    if (end === -1) return out;              // unbalanced source — leave it alone
+    let i = end;
+    while (i < out.length && /\s/.test(out[i])) i++;
+    if (out[i] === ',') i++;                 // swallow the entry's own separator
+    out = out.slice(0, m.index) + m[1] + out.slice(i);
+  }
+}
+
+/** Index just past the `}` matching the `{` at `openIdx`, or -1 when
+ *  unbalanced. String-aware so a brace inside a quoted value can't skew the
+ *  depth count. */
+function findBalancedBraceEnd(src: string, openIdx: number): number {
+  let depth = 0;
+  let inStr = '';
+  for (let i = openIdx; i < src.length; i++) {
+    const ch = src[i];
+    if (inStr) {
+      if (ch === '\\') i++;
+      else if (ch === inStr) inStr = '';
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') inStr = ch;
+    else if (ch === '{') depth++;
+    else if (ch === '}') { depth--; if (depth === 0) return i + 1; }
+  }
+  return -1;
+}
+
 /** Add/replace/remove (`value=null`) a single attribute on a node's opening
  *  tag. `value` is RAW attribute-value source — include the quotes/braces
  *  yourself (`"'<json>'"`, `'{expr}'`). New attributes are inserted right

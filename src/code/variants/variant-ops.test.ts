@@ -1,4 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { parse as babelParse } from '@babel/parser';
 
 // Mock modifyProjectFile so we can capture the transform function and test it in isolation.
 // The real modifyProjectFile reads/writes from ProjectFS; we just want to run the transform.
@@ -720,5 +721,104 @@ function Comp() {
     // The walker requires a LITERAL fallback; this toggle's fallback is the `variant`
     // identifier, so the walker skips it (no connections present to clean it here).
     expect(result).toContain("setVariant(variant === 'variant-1' ? 'mobile' : variant)");
+  });
+});
+
+// ─── removeVariant must never emit unparseable source ────────────────────────
+//
+// User report 2026-08-08: "I delete variant replica 2 and it deletes the whole
+// component." Nothing was deleted — two brace-blind string transforms mis-cut
+// the file, the parser returned an EMPTY node map, and the canvas rendered
+// nothing. Both mis-cuts are reproduced below on the reported file's shape.
+
+describe('removeVariant — brace-balanced teardown', () => {
+  const parses = (code: string): boolean => {
+    try {
+      babelParse(code, { sourceType: 'module', plugins: ['jsx', 'typescript'] });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // The accordion the user deleted `variant-1` ('open') from: a per-variant
+  // TRANSITION (a nested object inside the variant entry) and a two-statement
+  // click toggle — the two shapes the old `\{[^}]*\}` regexes could not cut.
+  const accordionCode = `const variantConfig = [{
+  name: 'default',
+  label: 'close',
+  x: 0,
+  y: 0,
+  isPrimary: true
+}, {
+  name: 'variant-1',
+  label: 'open',
+  x: 800,
+  y: 0
+}];
+const frameVariants = {
+  default: {
+    backgroundColor: 'var(--color-bg)'
+  },
+  'variant-1': {
+    transition: {
+      duration: 0.5
+    }
+  }
+};
+const connections = [{
+  from: 'default',
+  to: 'variant-1',
+  trigger: 'click'
+}, {
+  from: 'variant-1',
+  to: 'default',
+  trigger: 'click'
+}];
+function RoJiKu({ style, initialVariant = 'default', ...rest }) {
+  const [variant, setVariant] = useState(initialVariant);
+  useEffect(() => {
+    setVariant(initialVariant);
+  }, [initialVariant]);
+  return <motion.div onTap={() => {
+      const _n = variant === 'default' ? 'variant-1' : variant === 'variant-1' ? 'default' : null;
+      if (_n) setVariant(_n);
+    }} layout={true} data-id="frame-1b" variants={frameVariants} {...rest} style={{
+      height: variant === 'variant-1' ? 'min-content' : '41px'
+    }} animate={['default', variant]} />;
+}`;
+
+  test('the deleted file still parses — nested variant entry + multi-statement handler', () => {
+    expect(parses(accordionCode)).toBe(true);
+    removeVariant('test.tsx', 'variant-1');
+    const result = capturedTransform!(accordionCode);
+    expect(parses(result)).toBe(true);
+  });
+
+  test('a nested-brace variant entry is consumed whole, leaving no stray brace', () => {
+    removeVariant('test.tsx', 'variant-1');
+    const result = capturedTransform!(accordionCode);
+    expect(result).not.toContain("'variant-1'");
+    expect(result).not.toContain('duration: 0.5');
+    // The variants object keeps only `default` and closes cleanly.
+    expect(result).toMatch(/const frameVariants = \{\s*default: \{\s*backgroundColor: 'var\(--color-bg\)'\s*\},?\s*\};/);
+  });
+
+  test('a multi-statement toggle handler is stripped whole — no orphaned brace on the tag', () => {
+    removeVariant('test.tsx', 'variant-1');
+    const result = capturedTransform!(accordionCode);
+    expect(result).not.toContain('onTap');
+    expect(result).not.toContain('setVariant(_n)');
+    expect(result).not.toContain('<motion.div}');
+    expect(result).toContain('<motion.div layout={true}');
+  });
+
+  test('refuses the write rather than landing a file that cannot be parsed', () => {
+    // Force a corrupting outcome: an unbalanced variants object the balanced
+    // remover has to bail on. The delete must be a no-op, never a blank canvas.
+    const broken = accordionCode.replace("const frameVariants = {", "const frameVariants = { 'variant-1': { a: '}' ,");
+    removeVariant('test.tsx', 'variant-1');
+    const result = capturedTransform!(broken);
+    expect(result).toBe(broken);
   });
 });

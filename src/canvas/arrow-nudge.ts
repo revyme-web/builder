@@ -20,8 +20,9 @@ import { commitOrderAssignments } from './drag/strategies/order-commit';
 import { queueMutation, flushNow, type Mutation } from '@/code/mutation/mutation-queue';
 import { getViewportWidths } from '@/code/stores/viewport-store';
 import { getDefaultStore } from 'jotai';
-import { containerOverridesAtom, resolveEffectiveStylesForViewport } from '@/code/stores/container-query-store';
+import { containerOverridesAtom } from '@/code/stores/container-query-store';
 import { isComponentFilePath } from '@/code/project/active-file-store';
+import { bakeStylesForTile, tileContextFor } from './replica-bake';
 
 export type NudgeDirection = 'up' | 'down' | 'left' | 'right';
 
@@ -109,24 +110,12 @@ function nudgeValue(raw: string, deltaPx: number, parentPx: number): string | nu
 
 // ─── Effective styles for the interacting tile ──────────────────────────────
 
-/** Variant-tile effective styles on a COMPONENT MASTER: base + the always-on
- *  'default' entry + the tile's own variant entry + per-variant
- *  conditionalStyles — the same precedence the Renderer paints with. Pure;
- *  exported for tests. */
+/** Variant-tile effective styles on a COMPONENT MASTER: base + per-variant
+ *  conditionalStyles + the always-on 'default' entry + the tile's own variant
+ *  entry — the precedence the Renderer paints with, because it IS the
+ *  Renderer's resolver. Pure; exported for tests. */
 export function mergeVariantEffectiveStyles(node: CanvasNode, variant: string): Record<string, string> {
-  const mv = node.motionVariants as Record<string, Record<string, string>> | null | undefined;
-  const merged: Record<string, string> = {
-    ...(node.styles ?? {}),
-    ...(mv?.['default'] ?? {}),
-    ...((variant !== 'default' ? mv?.[variant] : undefined) ?? {}),
-  };
-  if (node.conditionalStyles) {
-    for (const [prop, map] of Object.entries(node.conditionalStyles as Record<string, Record<string, string>>)) {
-      const v = map[variant] ?? map['default'];
-      if (v != null) merged[prop] = v;
-    }
-  }
-  return merged;
+  return bakeStylesForTile(node, { kind: 'variant', variant });
 }
 
 /** The node's EFFECTIVE styles for the interacting tile. `node.styles` alone
@@ -137,15 +126,7 @@ export function mergeVariantEffectiveStyles(node: CanvasNode, variant: string): 
  *  (user trace 2026-08-06: identical `top: 478px` patch on consecutive
  *  presses). Same class as [[feedback_replica_effective_style_resolution]]. */
 function effectiveStylesFor(node: CanvasNode, vpId: string): Record<string, string> {
-  if (isComponentFilePath(getActiveFilePath())) {
-    const variant = isPrimaryViewport(vpId) ? 'default' : vpId;
-    return mergeVariantEffectiveStyles(node, variant);
-  }
-  if (isPrimaryViewport(vpId)) return node.styles ?? {};
-  const vpWidth = getViewportWidths()[vpId];
-  return resolveEffectiveStylesForViewport(
-    node.styles, node.id, vpWidth, getDefaultStore().get(containerOverridesAtom),
-  );
+  return bakeStylesForTile(node, tileContextFor(vpId, getActiveFilePath(), getViewportWidths()));
 }
 
 // ─── Pure: layout-child order nudge ─────────────────────────────────────────

@@ -10,7 +10,9 @@
 // the format later without crashing on stale data.
 
 import { trace } from '@/shared/debug-trace';
-import { findNodeRect, getActiveFilePath, getActiveTransform } from '@/canvas/node-ops';
+import { findNodeRect, getActiveFilePath, getActiveTransform, getInteractingViewport } from '@/canvas/node-ops';
+import { getViewportWidths } from '@/code/stores/viewport-store';
+import { bakeNodeForTile, tileContextFor, type TileContext } from '@/canvas/replica-bake';
 import { projectFS } from '@/code/project/project-fs';
 import type { CanvasNode } from '@/code/parsing/parser';
 import type { ClipboardData, ClipboardNode, CopyResult } from '../types';
@@ -80,7 +82,7 @@ function bakeTranslations(node: CanvasNode): { textContent?: string; attrs?: Rec
   return out;
 }
 
-function toClipboardNode(node: CanvasNode, nodes: Map<string, CanvasNode>): ClipboardNode {
+function toClipboardNode(node: CanvasNode, nodes: Map<string, CanvasNode>, tile: TileContext): ClipboardNode {
   // Surface the overlay-trigger targetId to a top-level field for the post-paste
   // remap to find without parsing data-overlay-trigger JSON twice.
   let overlayTriggerTargetId: string | undefined;
@@ -96,6 +98,15 @@ function toClipboardNode(node: CanvasNode, nodes: Map<string, CanvasNode>): Clip
 
   const baked = bakeTranslations(node);
 
+  // WHAT THE USER SAW IS WHAT GETS COPIED. A replica's real values live in
+  // channels addressed by the SOURCE's data-id (the page's `@media` block, the
+  // component's `<id>Variants` object, inline `variant === …` ternaries), and
+  // the paste allocates a FRESH id — so copying `node.styles` verbatim
+  // reproduced the PRIMARY's look on every paste made from a replica. Resolve
+  // the interacting tile's painted values first (no-op on the primary, where
+  // the node's own fields already are the truth).
+  const tileBake = bakeNodeForTile(node, tile);
+
   // CMS bindings are JSX expressions (`<h3>{item.title}</h3>`,
   // `src={item.image}`), not values — none of them survive a rebuild from the
   // plain node fields below, and a `{item.…}` ref would crash outside its
@@ -105,9 +116,9 @@ function toClipboardNode(node: CanvasNode, nodes: Map<string, CanvasNode>): Clip
   // back INSIDE one. Without this a duplicated bound `<h3>` pasted as an empty
   // text node (user report 2026-07-25).
   const dormant = bakeCmsValuesOnClone(dormantizeCloneBindings({
-    textContent: baked.textContent ?? node.textContent,
-    styles: { ...node.styles },
-    attrs: baked.attrs ?? (node.attrs ? { ...node.attrs } : undefined),
+    textContent: baked.textContent ?? tileBake.textContent,
+    styles: tileBake.styles,
+    attrs: baked.attrs ?? tileBake.attrs,
     textField: node.binding?.property === 'text' ? node.binding.field : undefined,
     attrBindings: node.attrBindings,
     styleBindings: node.styleBindings,
@@ -244,17 +255,23 @@ export function copyNodes(
     return { success: false, nodeCount: 0, message: 'Nothing to copy' };
   }
 
+  // 0. The tile the user is copying FROM — its @media band / variant entries
+  //    can't travel with a fresh-id paste, so each node's values are resolved
+  //    for it below. `{ kind: 'primary' }` on the primary tile = pass-through.
+  const { vpId } = getInteractingViewport();
+  const tile = tileContextFor(vpId, getActiveFilePath(), getViewportWidths());
+
   // 1. Collect subtree.
   const collected = new Map<string, CanvasNode>();
   for (const id of nodeIds) collectSubtree(id, nodes, collected);
 
   // 2. Collect overlays triggered by copied nodes.
-  const tempClipboard = Array.from(collected.values()).map(n => toClipboardNode(n, nodes));
+  const tempClipboard = Array.from(collected.values()).map(n => toClipboardNode(n, nodes, tile));
   const overlays = collectOverlays(tempClipboard, nodes, collected);
   for (const o of overlays) collected.set(o.id, o);
 
   // 3. Convert all to ClipboardNode.
-  const clipboardNodes = Array.from(collected.values()).map(n => toClipboardNode(n, nodes));
+  const clipboardNodes = Array.from(collected.values()).map(n => toClipboardNode(n, nodes, tile));
 
   // 4. Capture computed dims for the user-selected ROOTS only (not descendants
   //    or overlays — they'll size against their pasted parents).

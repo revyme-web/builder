@@ -20,6 +20,7 @@ import { overlayEditingIdAtom } from '@/code/stores/overlay-store';
 import { getCurrentCode } from '@/code/mutation/mutation-queue';
 import { extractStyleCSS } from '@/code/parsing/parser';
 import { extractBorderAfterRuleBody } from '@/editor/ui/border-utils';
+import { bakeNodeForTile, type TileContext } from '@/canvas/replica-bake';
 import type { Transform, Rect } from '@/shared/types';
 import type { CanvasNode } from '@/code/parsing/parser';
 
@@ -396,15 +397,27 @@ export function holdFlexSlotPlaceholder(opts: {
  * Unlike `buildCanvasCloneDescriptor` (canvas-extraction-specific —
  * unwraps `useResponsiveText`, drops hidden-on-source-vp children,
  * reorders by source-vp flex order), this helper is a 1:1 clone for
- * duplicating in place at the SAME viewport. Same vp = same effective
- * styles / visibility — no reinterpretation needed.
+ * duplicating in place at the SAME viewport.
+ *
+ * `tile` is the viewport/variant the user duplicated ON. Every per-tile
+ * channel — the page's `@media` block, the component's `<id>Variants` object,
+ * inline `variant === 'x' ? …` ternaries — is addressed by the SOURCE's
+ * data-id, so a clone with a fresh id can never inherit any of them. Cloning
+ * `node.styles` verbatim therefore reproduced the PRIMARY, not the tile: a
+ * 100%-wide button duplicated on `variant-2` came out auto-width, and a text
+ * node with a tablet font-size override came out at desktop size (user report
+ * 2026-08-08). Baking the tile's resolved values in is exactly right here,
+ * because a duplicate made on a replica is created SOLO (see the
+ * `hideInAllOthers` + source-vp unhide in DragCoordinator) — the tile it was
+ * made on is the only place it renders.
  */
 export function buildDuplicateDescriptor(
   sourceId: string,
-  nodes: Map<string, Pick<CanvasNode, 'type' | 'name' | 'styles' | 'attrs' | 'textContent' | 'children' | 'componentInstanceId'>>,
+  nodes: Map<string, CanvasNode>,
   /** Filled with sourceId → newId for the WHOLE subtree — lets the caller
    *  carry per-id side-band state (::after border rules) onto the clones. */
   idMap?: Map<string, string>,
+  tile?: TileContext,
 ): import('@/code/generation/generator-crud').AddNodeDef | null {
   const src = nodes.get(sourceId);
   if (!src) return null;
@@ -416,18 +429,19 @@ export function buildDuplicateDescriptor(
     // from their master — duplicating them inline would break the
     // master/instance link.
     if (childNode.componentInstanceId) continue;
-    const childDescriptor = buildDuplicateDescriptor(childId, nodes, idMap);
+    const childDescriptor = buildDuplicateDescriptor(childId, nodes, idMap, tile);
     if (childDescriptor) childDescriptors.push(childDescriptor);
   }
   const newId = generateNodeId('dup');
   idMap?.set(sourceId, newId);
+  const baked = bakeNodeForTile(src, tile ?? { kind: 'primary' });
   return {
     id: newId,
     type: src.type,
     name: src.name,
-    styles: { ...src.styles },
-    attrs: src.attrs ? { ...src.attrs } : undefined,
-    textContent: src.textContent || undefined,
+    styles: baked.styles,
+    attrs: baked.attrs,
+    textContent: baked.textContent,
     children: childDescriptors.length > 0 ? childDescriptors : undefined,
   };
 }
