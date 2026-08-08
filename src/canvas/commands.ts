@@ -21,6 +21,7 @@ import { getReplicaContext } from '@/canvas/drag/replica-context';
 import { parseOverlayCalls, parseOverlayTriggerCalls } from '@/code/parsing/overlay-parser';
 import { overlayEditingIdAtom } from '@/code/stores/overlay-store';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
+import { getAbsoluteCanvasRectById } from '@/canvas/canvas-math';
 import { queueMutation, flushNow, setDeferNextFanOut } from '@/code/mutation/mutation-queue';
 import { moveNodeInCache, updateNodeInCache, removeNodeFromCache } from '@/code/stores/store';
 import { generateNodeId } from '@/shared/id-utils';
@@ -455,8 +456,15 @@ export function wrapInFrame(
   nodesMap: Map<string, CanvasNode>,
   _contentEl: HTMLElement,
   _onMouseDown?: (nodeId: string, e: MouseEvent) => void,
+  /** `keepFlowChildren` opts out of the flow→absolute bake, giving the old
+   *  content-hugging flow wrapper. For INTERNAL wraps that only want to give one
+   *  element a box — Make Component on a bare text node — where a px-frozen
+   *  frame would stop the master growing with its text
+   *  ([[feedback_text_containers_never_fixed_size]]). The user-facing Create
+   *  Frame gesture never sets it. */
+  opts?: { keepFlowChildren?: boolean },
 ): string | null {
-  return wrapInternal(nodeIds, nodesMap, /* layout */ false);
+  return wrapInternal(nodeIds, nodesMap, /* layout */ false, !opts?.keepFlowChildren);
 }
 
 /**
@@ -488,6 +496,37 @@ function readNodeBox(node: CanvasNode): BoundingBox | null {
   return { left, top, width, height };
 }
 
+/**
+ * Live canvas-space boxes for a set of nodes, or `null` if ANY of them can't be
+ * measured (bridge not ready, node culled). All-or-nothing: a partial set would
+ * place some children against a bounding box that doesn't contain them.
+ *
+ * Inline geometry is unusable here — a flow child's size and position come from
+ * the PARENT's layout, so `parseFloat(styles.width)` reads `auto` (NaN) or a
+ * `%`, and `left`/`top` don't exist at all. Same lesson as
+ * [[feedback_frame_encapsulate_auto_size]]: never parseFloat inline geometry for
+ * containment or placement — read the bridge's measured rect.
+ */
+function measureCanvasBoxes(nodeIds: string[]): Map<string, BoundingBox> | null {
+  const { vpId } = getInteractingViewport();
+  const transform = transformManager.getTransform();
+  const out = new Map<string, BoundingBox>();
+  for (const id of nodeIds) {
+    const r = getAbsoluteCanvasRectById(id, vpId, transform);
+    if (!r || r.width <= 0 || r.height <= 0) return null;
+    out.set(id, { left: r.left, top: r.top, width: r.width, height: r.height });
+  }
+  return out;
+}
+
+/** `min-content` / FIT survive the flow→absolute move untouched: `align-self:
+ *  stretch` only stretches an AUTO cross size, so a fit box shrink-wraps
+ *  identically in both contexts — and baking px over it would flip the panel's
+ *  Fit classification into a fixed size. */
+function isShrinkWrapSize(v: string | undefined): boolean {
+  return v === 'min-content' || v === FIT_SIZE;
+}
+
 function unionBoxes(boxes: BoundingBox[]): BoundingBox | null {
   if (boxes.length === 0) return null;
   let minL = Infinity, minT = Infinity, maxR = -Infinity, maxB = -Infinity;
@@ -514,6 +553,7 @@ function wrapInternal(
   nodeIds: string[],
   nodesMap: Map<string, CanvasNode>,
   layout: boolean,
+  bakeFlowToAbsolute = false,
 ): string | null {
   if (nodeIds.length === 0) return null;
   const nodes = nodeIds.map((id) => nodesMap.get(id)).filter((n): n is CanvasNode => !!n);
@@ -558,6 +598,31 @@ function wrapInternal(
   // never needs a bounding box — skip it. That also lets an INSET-pinned child
   // (right/bottom, no left/top) be wrapped: readNodeBox requires all four and
   // would otherwise bail the whole command (its left/top parse to NaN).
+  // CREATE FRAME ON FLOW CHILDREN. A frame is a free-positioning container — it
+  // has no layout, so children inside it can only be placed by `position:
+  // absolute`. Leaving them `relative` produced the contradiction the user hit:
+  // a no-layout frame whose children still stack in document flow, ignoring the
+  // frame entirely (report 2026-08-08). Two things have to be baked from the
+  // live layout for the swap to be visually stable:
+  //
+  //   · the wrapper's SIZE — absolute children are out of flow, so a `width/
+  //     height: auto` wrapper would collapse to 0×0 and the parent's flex/grid
+  //     would reflow everything around the hole;
+  //   · each child's POSITION AND SIZE — both were the parent layout's to
+  //     decide (flex-grow width, stretched height, gap-derived offsets), and
+  //     none of it survives the move.
+  //
+  // Measured up front so a failure falls back to the old flow wrapper rather
+  // than emitting a frame with collapsed geometry. Create LAYOUT keeps the flow
+  // model and is deliberately untouched.
+  const wantsFlowBake = allSameParentFlow && !layout && bakeFlowToAbsolute;
+  const flowBoxes = wantsFlowBake ? measureCanvasBoxes(nodeIds) : null;
+  const flowBbox = flowBoxes ? unionBoxes([...flowBoxes.values()]) : null;
+  const flowToAbsolute = !!flowBoxes && !!flowBbox;
+  if (wantsFlowBake && !flowToAbsolute) {
+    trace.action('commands:wrap-in-frame:flow-unmeasurable', { ids: nodeIds });
+  }
+
   let bbox: BoundingBox | null = null;
   if ((allCanvas || allSameParentAbsolute) && !singleAbsChild) {
     const boxes = nodes.map(readNodeBox).filter((b): b is BoundingBox => !!b);
@@ -638,12 +703,25 @@ function wrapInternal(
           overflow: wrapOverflow,
           ...flowPlacement,
         }
+      : flowToAbsolute
+      ? {
+          // Absolute-positioning frame seated in the parent's flow. Its box is
+          // the selection's measured union, so it occupies exactly the space
+          // the wrapped children did — including the parent `gap`s BETWEEN
+          // them, which the union naturally spans (the gaps around the group
+          // are still the parent's to apply). `flex: 0 0 auto` keeps the parent
+          // from growing or shrinking it off that measured size.
+          width: `${Math.round(flowBbox!.width)}px`,
+          height: `${Math.round(flowBbox!.height)}px`,
+          flex: '0 0 auto',
+          backgroundColor: TRANSPARENT_FILL,
+          overflow: wrapOverflow,
+          ...flowPlacement,
+        }
       : {
-          // Plain "group" wrapper. `display: flex` with flex-direction
-          // matching the parent's would be ideal but we can't synchronously
-          // read parent display here; default to block which works for
-          // most static-flow parents. Layout-row siblings can re-flex via
-          // the Layout tool after the fact.
+          // Unmeasurable fallback — the pre-2026-08-08 flow wrapper. Children
+          // keep flowing inside it; not a frame in the positioning sense, but
+          // it never collapses.
           width: 'auto',
           height: 'auto',
           backgroundColor: TRANSPARENT_FILL,
@@ -758,7 +836,39 @@ function wrapInternal(
   //     on absolute or canvas selection).
   for (const node of nodes) {
     let styles: Record<string, string> | undefined;
-    if (allSameParentFlow) {
+    if (flowToAbsolute) {
+      // Flow → absolute inside the new frame. Position is the child's measured
+      // offset from the frame's origin: the frame has no border or padding, so
+      // its padding box (an absolute child's containing block) starts exactly
+      // at the union bbox's top-left.
+      const r = flowBoxes!.get(node.id)!;
+      const own = node.styles ?? {};
+      // Size has to be baked for the same reason position does — it was the
+      // parent layout's output. A flex-grown width or a stretched height reads
+      // `auto`, and `auto` on an out-of-flow box means shrink-to-fit, so the
+      // child would visibly collapse. Two values are left alone: a shrink-wrap
+      // size (identical in both models) and a TEXT node's height, which stays
+      // `auto` so editing the copy can still grow it — the baked width already
+      // pins the wrap, so the resolved height is unchanged either way.
+      const width = isShrinkWrapSize(own.width) ? '' : `${Math.round(r.width)}px`;
+      const height = isShrinkWrapSize(own.height)
+        ? ''
+        : isTextTag(node.type) ? 'auto' : `${Math.round(r.height)}px`;
+      styles = {
+        position: 'absolute',
+        left: `${Math.round(r.left - flowBbox!.left)}px`,
+        top: `${Math.round(r.top - flowBbox!.top)}px`,
+        right: '', bottom: '',
+        ...(width ? { width } : {}),
+        ...(height ? { height } : {}),
+        // Margins still apply to an absolute box and would offset it off the
+        // computed left/top; the flex props are inert on an out-of-flow child
+        // (an abspos child of a flex container is not a flex item) but keeping
+        // them would mislead the panel about how the node is placed.
+        margin: '', marginTop: '', marginRight: '', marginBottom: '', marginLeft: '',
+        flex: '', flexGrow: '', flexShrink: '', flexBasis: '', alignSelf: '', order: '',
+      };
+    } else if (allSameParentFlow) {
       // The wrapper now carries the flow placement (flowPlacement above). Clear
       // the SINGLE wrapped child's copy so it doesn't double-apply (margin
       // twice, order fighting) — the child becomes an in-flow child of the

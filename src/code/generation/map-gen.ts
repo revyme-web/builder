@@ -2,7 +2,8 @@
 // "Make into Map" converts a single element into a .map() with data array.
 
 import { trace } from '@/shared/debug-trace';
-import { findJSXDataIdIndex } from './generator-utils';
+import { findJSXDataIdIndex, findJSXDataIdIndexFrom } from './generator-utils';
+import { escapeRegExp } from '@/shared/regex-utils';
 import { findTagClose, findMatchingCloseTagIndex } from './generator-utils';
 import { findMatchingParen } from '../parsing/parse-utils';
 import { COLLECTION_MAP_CALL_RE, extractCollectionSlugSpan, itemVarFromCallbackParam } from './cms-gen';
@@ -308,6 +309,33 @@ export function unbindFromCmsCollectionInCode(
 /** `'team-members'` → `'teamMembers'`. Used as the import variable name. */
 function slugToVarName(slug: string): string {
   return slug.replace(/-(.)/g, (_, c: string) => c.toUpperCase());
+}
+
+/**
+ * The identifier a collection is actually ITERATED by in `code`.
+ *
+ * Callers hand these binders `cmsBinding.slug` — but the slug is only the file
+ * name; the import is camel-cased (`import collection1 from
+ * '@/cms/collection-1.json'`). So a HYPHENATED slug never matched
+ * `<varName>.map(`, the `.map()` range came back -1, and every "search inside
+ * the map body" fell back to searching from index 0 — where the page's <style>
+ * block sits. Binding a prop on `collection-1` then spliced the attribute into
+ * a `[data-id="…"]::after` CSS SELECTOR (user report 2026-08-08: the FAQ
+ * instances bound to nothing). Slugs without a hyphen were unaffected, which is
+ * why this survived.
+ *
+ * Resolves in order: the literal name (already an identifier), the camel-cased
+ * slug, then the import statement itself — so a hand-renamed import still works.
+ */
+function resolveCollectionVar(code: string, varName: string): string {
+  if (code.includes(`${varName}.map(`)) return varName;
+  const camel = slugToVarName(varName);
+  if (camel !== varName && code.includes(`${camel}.map(`)) return camel;
+  const imported = new RegExp(
+    `import\\s+([A-Za-z_$][\\w$]*)\\s+from\\s+['"]@/cms/${escapeRegExp(varName)}\\.json['"]`,
+  ).exec(code);
+  if (imported && code.includes(`${imported[1]}.map(`)) return imported[1];
+  return varName;
 }
 
 /**
@@ -622,16 +650,20 @@ export function bindStyleToMapInCode(
 ): string {
   trace.fn('map-gen:bindStyle', { nodeId, varName, styleProp, fieldName, currentValue });
 
+  // Callers pass the SLUG; the array is imported under its camel-cased name.
+  const arrayVar = resolveCollectionVar(code, varName);
   // Detect the iterator variable name from the .map() callback
-  const iterVar = detectIteratorVar(code, varName);
+  const iterVar = detectIteratorVar(code, arrayVar);
 
   // Find the .map() call range so we only modify the template INSIDE it (not duplicates outside)
-  const mapCallIdx = code.indexOf(`${varName}.map(`);
+  const mapCallIdx = code.indexOf(`${arrayVar}.map(`);
   const searchStart = mapCallIdx >= 0 ? mapCallIdx : 0;
 
-  // Find data-id INSIDE the .map() body
-  const idPattern = `data-id="${nodeId}"`;
-  const idIdx = code.indexOf(idPattern, searchStart);
+  // Find data-id INSIDE the .map() body. findJSXDataIdIndex, never a raw
+  // indexOf: the page's <style> block carries `[data-id="…"]::after` selectors
+  // that PRECEDE the JSX, so any search that starts before the map body would
+  // land in CSS and splice the binding into a selector.
+  const idIdx = findJSXDataIdIndexFrom(code, nodeId, searchStart);
   if (idIdx === -1) {
     trace.error('map-gen:bindStyle', { message: 'Node not found in .map() body', nodeId });
     return code;
@@ -694,7 +726,7 @@ export function bindStyleToMapInCode(
   let result = code.slice(0, styleStart) + newStyleBlock + code.slice(styleStart + styleBlock.length);
 
   // Step 2: Add the field to all items in the data array
-  result = addMapFieldInCode(result, varName, fieldName, currentValue);
+  result = addMapFieldInCode(result, arrayVar, fieldName, currentValue);
 
   trace.action('map-gen:bindStyle:done', { nodeId, styleProp, fieldName, currentValue, iterVar });
   return result;
@@ -715,8 +747,7 @@ export function unbindStyleFromMapInCode(
   trace.fn('map-gen:unbindStyle', { nodeId, varName, styleProp, fieldName, inlineValue });
 
   // Find the node's style and replace item.fieldName with the inline value
-  const idPattern = `data-id="${nodeId}"`;
-  const idIdx = code.indexOf(idPattern);
+  const idIdx = findJSXDataIdIndex(code, nodeId);
   if (idIdx === -1) {
     trace.error('map-gen:unbindStyle', { message: 'Node not found', nodeId });
     return code;
@@ -740,8 +771,7 @@ export function unbindStyleFromMapInCode(
  */
 export function unbindPropFromMapInCode(code: string, nodeId: string, propName: string): string {
   trace.fn('map-gen:unbindProp', { nodeId, propName });
-  const idPattern = `data-id="${nodeId}"`;
-  const idIdx = code.indexOf(idPattern);
+  const idIdx = findJSXDataIdIndex(code, nodeId);
   if (idIdx === -1) {
     trace.error('map-gen:unbindProp', { message: 'Node not found', nodeId });
     return code;
@@ -781,19 +811,23 @@ export function bindPropToMapInCode(
 ): string {
   trace.fn('map-gen:bindProp', { nodeId, varName, propName, fieldName, currentValue, urlWrap });
 
-  // Detect the iterator variable name from the .map() callback: varName.map((iterVar, idx) => ...)
-  const iterVar = detectIteratorVar(code, varName);
+  // Callers pass the SLUG (`collection-1`); the array is imported under its
+  // camel-cased name (`collection1`), so match on the resolved identifier.
+  const arrayVar = resolveCollectionVar(code, varName);
+  // Detect the iterator variable name from the .map() callback: arrayVar.map((iterVar, idx) => ...)
+  const iterVar = detectIteratorVar(code, arrayVar);
 
   // Find the .map() call range so we only modify the template INSIDE it
-  const mapCallIdx = code.indexOf(`${varName}.map(`);
+  const mapCallIdx = code.indexOf(`${arrayVar}.map(`);
   const searchStart = mapCallIdx >= 0 ? mapCallIdx : 0;
 
-  const idPattern = `data-id="${nodeId}"`;
-  const idIdx = code.indexOf(idPattern, searchStart);
+  // findJSXDataIdIndex, never a raw indexOf — see bindStyleToMapInCode.
+  const idIdx = findJSXDataIdIndexFrom(code, nodeId, searchStart);
   if (idIdx === -1) {
     trace.error('map-gen:bindProp', { message: 'Node not found in .map() body', nodeId });
     return code;
   }
+  const idPattern = `data-id="${nodeId}"`;
 
   // Search near the data-id for the prop — within the opening tag.
   // `\b` before the prop name is CRITICAL: a shorter prop must NOT match inside a
@@ -849,7 +883,7 @@ export function bindPropToMapInCode(
   // have the field in their schema, so addMapFieldInCode no-ops there). Image
   // fields hold PLAIN urls — unwrap a url(...)-wrapped current value before seeding.
   const seedValue = urlWrap ? currentValue.replace(/^url\((['"]?)(.*?)\1\)$/i, '$2') : currentValue;
-  result = addMapFieldInCode(result, varName, fieldName, seedValue);
+  result = addMapFieldInCode(result, arrayVar, fieldName, seedValue);
 
   trace.action('map-gen:bindProp:done', { nodeId, propName, fieldName, currentValue, iterVar });
   return result;

@@ -48,6 +48,7 @@ import {
   replaceNodeTextContent,
   stripInlineSpanStyleInCode,
   healDanglingModuleJsxInCode,
+  healStyleBlockSelectorAttrsInCode,
   addNodeInCode,
   addCanvasNodeInCode,
   removeNodeInCode,
@@ -175,7 +176,7 @@ import { createOverlayInCode, createCanvasOverlayInCode, cloneOverlayToCanvasTri
 import { setChildEventFireInCode, removeChildEventFireInCode, type EventFireTrigger } from '../generation/event-fire-gen';
 import { parseOverlayTriggerCalls } from '../parsing/overlay-parser';
 import { wrapInFitSVGInCode, unwrapFitSVGInCode } from '../generation/fit-text-gen';
-import { removeDanglingConnectionsInCode } from '../variants/connection-config';
+import { removeDanglingConnectionsInCode, healDriftedConnectionHandlersInCode } from '../variants/connection-config';
 import { setSketchAnimInCode, removeSketchAnimInCode } from '../sketch/sketch-anim-gen';
 import { projectFS, projectVersionAtom, installBuiltInCodeComponent } from '../project/project-fs';
 import { clearCanvasStyles } from '@/canvas/node-ops';
@@ -1129,6 +1130,15 @@ export function flushNow(): void {
     // Cheap keys-vs-config gate inside; no-op on healthy pages.
     code = normalizeResponsiveBandKeys(code);
     code = healDanglingModuleJsxInCode(code);
+    // Repair `[data-id="…" someAttr={…}]::after` — a JSX attribute spliced into
+    // a <style> selector by a generator that located the node with a raw
+    // indexOf. Kills the CSS rule AND means the intended write never landed.
+    code = healStyleBlockSelectorAttrsInCode(code);
+    // Repair event handlers that transition between variants `connections` has
+    // no edge for. Such a handler is INVISIBLE — the Interactions panel reads
+    // `connections`, so it shows nothing to remove while the runtime still
+    // fires. Scan-only no-op when every transition is backed.
+    code = healDriftedConnectionHandlersInCode(code);
 
     // SYNTAX GATE for the synchronous path. `processQueue` has always validated
     // + rolled back, but `flushNow` — which EVERY creator and the overlay tool
@@ -2013,6 +2023,15 @@ function processQueue(): void {
     // keys (mirrors the flushNow hook; cheap gate inside).
     code = normalizeResponsiveBandKeys(code);
     code = healDanglingModuleJsxInCode(code);
+    // Repair `[data-id="…" someAttr={…}]::after` — a JSX attribute spliced into
+    // a <style> selector by a generator that located the node with a raw
+    // indexOf. Kills the CSS rule AND means the intended write never landed.
+    code = healStyleBlockSelectorAttrsInCode(code);
+    // Repair event handlers that transition between variants `connections` has
+    // no edge for. Such a handler is INVISIBLE — the Interactions panel reads
+    // `connections`, so it shows nothing to remove while the runtime still
+    // fires. Scan-only no-op when every transition is backed.
+    code = healDriftedConnectionHandlersInCode(code);
   }
   const validationError = codeChanged ? validateGeneratedCode(code) : null;
   if (validationError) {

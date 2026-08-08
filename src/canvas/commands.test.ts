@@ -197,6 +197,15 @@ vi.mock('@/code/mutation/mutation-queue', () => ({
   queueMutation: vi.fn(),
 }));
 
+// Live canvas rects for the flow→absolute bake. Empty by default, so every
+// pre-existing test keeps exercising the UNMEASURABLE fallback (a real path:
+// bridge not ready, node culled); the flow-to-absolute tests below populate it.
+const mockCanvasRects = new Map<string, { left: number; top: number; width: number; height: number }>();
+vi.mock('@/canvas/canvas-math', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/canvas/canvas-math')>()),
+  getAbsoluteCanvasRectById: (id: string) => mockCanvasRects.get(id) ?? null,
+}));
+
 describe('deleteNode', () => {
   let mockRemoveNode: ReturnType<typeof vi.fn>;
   let mockGetInteractingViewport: ReturnType<typeof vi.fn>;
@@ -713,5 +722,152 @@ describe('selectNext/PrevSibling — template chrome + overlays are not Tab stop
   it('a selection ON an excluded node is a safe no-op', () => {
     expect(selectNextSibling('layout::footer', build())).toBeNull();
     expect(selectNextSibling('overlay-u', build())).toBeNull();
+  });
+});
+
+// ─── Create Frame on flow children → absolute, with baked geometry ───────────
+//
+// User report 2026-08-08: running Create Frame on flex/grid children produced a
+// no-layout frame whose children were still `position: relative`, so they
+// stacked in document flow and ignored the frame. A frame has no layout — the
+// only way to place anything inside one is absolutely — and both the child's
+// position AND its size were the parent layout's output, so both have to be
+// measured and baked or the swap moves things.
+
+describe('wrapInFrame — flow children become absolute against the frame box', () => {
+  const dummyEl = {} as unknown as HTMLElement;
+  let q: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    const mutQueue = await import('@/code/mutation/mutation-queue');
+    q = mutQueue.queueMutation as ReturnType<typeof vi.fn>;
+    q.mockClear();
+    mockCanvasRects.clear();
+  });
+
+  const calls = () => q.mock.calls.map(c => c[0]);
+  const framed = () => calls().find(m => m.type === 'addNode')?.node?.styles as Record<string, string> | undefined;
+  const moveStyles = (id: string) => calls().find(m => m.type === 'move' && m.nodeId === id)?.styles as Record<string, string> | undefined;
+
+  /** A flex column: two stretched children 24px apart. Both are `width: auto`
+   *  (the parent decides), which is exactly what makes the naive move collapse. */
+  const flexColumn = () => {
+    mockCanvasRects.set('a', { left: 100, top: 200, width: 320, height: 40 });
+    mockCanvasRects.set('b', { left: 100, top: 264, width: 320, height: 60 });
+    return buildMap([
+      makeNode('sec', null, ['a', 'b'], { display: 'flex', flexDirection: 'column', gap: '24px' }),
+      makeNode('a', 'sec', [], { position: 'relative', width: 'auto', height: 'auto', order: '0' }),
+      makeNode('b', 'sec', [], { position: 'relative', width: 'auto', height: 'auto', order: '1' }),
+    ]);
+  };
+
+  it('the frame takes the selection union — including the gap between the children', () => {
+    wrapInFrame(['a', 'b'], flexColumn(), dummyEl);
+    const f = framed()!;
+    expect(f.width).toBe('320px');
+    expect(f.height).toBe('124px');   // 40 + 24 gap + 60
+    // Seated in the parent's flow, and a positioning context for its children.
+    expect(f.position).toBe('relative');
+    // The parent must not grow or shrink it off the measured size.
+    expect(f.flex).toBe('0 0 auto');
+  });
+
+  it('each child goes absolute at its measured offset from the frame origin', () => {
+    wrapInFrame(['a', 'b'], flexColumn(), dummyEl);
+    expect(moveStyles('a')).toMatchObject({ position: 'absolute', left: '0px', top: '0px' });
+    expect(moveStyles('b')).toMatchObject({ position: 'absolute', left: '0px', top: '64px' });
+  });
+
+  it('bakes the size the parent layout was deciding — `auto` would shrink-wrap out of flow', () => {
+    wrapInFrame(['a', 'b'], flexColumn(), dummyEl);
+    expect(moveStyles('a')).toMatchObject({ width: '320px', height: '40px' });
+    expect(moveStyles('b')).toMatchObject({ width: '320px', height: '60px' });
+  });
+
+  it('clears the flow props — margin would offset the box, flex/order are inert', () => {
+    wrapInFrame(['a', 'b'], flexColumn(), dummyEl);
+    const ms = moveStyles('a')!;
+    for (const k of ['margin', 'marginTop', 'flex', 'alignSelf', 'order']) expect(ms[k]).toBe('');
+  });
+
+  it('a TEXT child keeps height auto — the baked width already pins the wrap', () => {
+    mockCanvasRects.set('t', { left: 0, top: 0, width: 200, height: 48 });
+    const map = buildMap([
+      makeNode('sec', null, ['t'], { display: 'flex' }),
+      { id: 't', type: 'h1', name: 't', parentId: 'sec', children: [], textContent: 'Join our newsletter',
+        styles: { position: 'relative', width: 'auto', height: 'auto' } } as unknown as CanvasNode,
+    ]);
+    wrapInFrame(['t'], map, dummyEl);
+    const ms = moveStyles('t')!;
+    expect(ms.width).toBe('200px');
+    expect(ms.height).toBe('auto');
+  });
+
+  it('a shrink-wrap (Fit) size is left alone — identical in both layout models', () => {
+    mockCanvasRects.set('fit', { left: 0, top: 0, width: 90, height: 20 });
+    const map = buildMap([
+      makeNode('sec', null, ['fit'], { display: 'flex' }),
+      { id: 'fit', type: 'p', name: 'fit', parentId: 'sec', children: [], textContent: 'x',
+        styles: { position: 'relative', width: 'min-content', height: 'min-content' } } as unknown as CanvasNode,
+    ]);
+    wrapInFrame(['fit'], map, dummyEl);
+    const ms = moveStyles('fit')!;
+    expect(ms.width).toBeUndefined();
+    expect(ms.height).toBeUndefined();
+  });
+
+  it('Create LAYOUT is untouched — it keeps the flow model on purpose', () => {
+    wrapInLayout(['a', 'b'], flexColumn(), dummyEl);
+    const f = framed()!;
+    expect(f.display).toBe('flex');
+    // Children stay in flow; no absolute rebasing.
+    expect(moveStyles('a')?.position).toBeUndefined();
+  });
+
+  it('unmeasurable selection falls back to the flow wrapper rather than collapsing', () => {
+    // No rects registered → the frame would otherwise get 0×0 and the parent
+    // would reflow around a hole.
+    const map = buildMap([
+      makeNode('sec', null, ['a'], { display: 'flex' }),
+      makeNode('a', 'sec', [], { position: 'relative', width: 'auto', height: 'auto' }),
+    ]);
+    wrapInFrame(['a'], map, dummyEl);
+    const f = framed()!;
+    expect(f.width).toBe('auto');
+    expect(moveStyles('a')?.position).toBeUndefined();
+  });
+});
+
+// Make Component wraps a bare text node in a frame BEFORE componentizing. That
+// wrap only exists to give the text a box, so it opts out of the bake — a
+// px-frozen frame around an absolute text would stop the master growing with
+// its own content.
+describe('wrapInFrame — keepFlowChildren opt-out', () => {
+  const dummyEl = {} as unknown as HTMLElement;
+  let q: ReturnType<typeof vi.fn>;
+  beforeEach(async () => {
+    const mutQueue = await import('@/code/mutation/mutation-queue');
+    q = mutQueue.queueMutation as ReturnType<typeof vi.fn>;
+    q.mockClear();
+    mockCanvasRects.clear();
+  });
+  const calls = () => q.mock.calls.map(c => c[0]);
+
+  it('keeps the hugging flow wrapper even when the selection IS measurable', () => {
+    mockCanvasRects.set('t', { left: 0, top: 0, width: 200, height: 48 });
+    const map = buildMap([
+      makeNode('sec', null, ['t'], { display: 'flex' }),
+      { id: 't', type: 'h1', name: 't', parentId: 'sec', children: [], textContent: 'Prima',
+        styles: { position: 'relative', width: 'auto', height: 'auto', order: '2' } } as unknown as CanvasNode,
+    ]);
+    wrapInFrame(['t'], map, dummyEl, undefined, { keepFlowChildren: true });
+    const f = calls().find(m => m.type === 'addNode')?.node?.styles as Record<string, string>;
+    expect(f.width).toBe('auto');
+    expect(f.height).toBe('auto');
+    // Placement still hands off to the wrapper — that part is unconditional.
+    expect(f.position).toBe('relative');
+    expect(f.order).toBe('2');
+    const ms = calls().find(m => m.type === 'move' && m.nodeId === 't')?.styles as Record<string, string>;
+    expect(ms.position).toBeUndefined();
   });
 });

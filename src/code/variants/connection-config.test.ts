@@ -1,5 +1,5 @@
 import { describe, test, expect, it } from 'vitest';
-import { parseConnections, serializeConnections, addConnection, removeConnection, removeConnectionEntry, removeDanglingConnectionsInCode, removeConnectionsForVariantInCode, generateConnectionCode, type Connection } from './connection-config';
+import { parseConnections, serializeConnections, addConnection, removeConnection, removeConnectionEntry, removeDanglingConnectionsInCode, removeConnectionsForVariantInCode, generateConnectionCode, healDriftedConnectionHandlersInCode, type Connection } from './connection-config';
 import { projectFS, resetProjectFS } from '@/code/project/project-fs';
 
 // ─── parseConnections ───────────────────────────────────────────────────────
@@ -1317,5 +1317,54 @@ export default withResponsiveProps(Menu);
     expect(out.match(/const __afterDelayChain:/g)?.length).toBe(1);
     expect(out).toContain('delay: 900');
     expect(out).not.toContain('delay: 550');
+  });
+});
+
+// ─── Drifted handler self-heal ───────────────────────────────────────────────
+//
+// A handler that transitions between variants `connections` has no edge for is
+// INVISIBLE: the Interactions panel reads `connections`, so it shows nothing to
+// remove while the runtime still fires on hover/click. Files corrupted before
+// the Add-Variant cascade learned the current handler dialect stay broken until
+// something rewrites them, so the repair runs on any edit.
+
+describe('healDriftedConnectionHandlersInCode', () => {
+  const driftedCode = `const connections = [{
+  from: 'default',
+  to: 'default-hover',
+  trigger: 'mouseEnter'
+}, {
+  from: 'default-hover',
+  to: 'default',
+  trigger: 'mouseLeave'
+}];
+function FeKaWo({ style, initialVariant = 'default', ...rest }) {
+  const [variant, setVariant] = useState(initialVariant);
+  return <motion.div onHoverEnd={() => {
+      const _n = variant === 'default-hover' ? 'default' : null;
+      if (_n) setVariant(_n);
+    }} onHoverStart={() => {
+      const _n = variant === 'variant-3' ? 'default-hover' : variant === 'default' ? 'default-hover' : null;
+      if (_n) setVariant(_n);
+    }} data-id="btn" animate={['default', variant]}>x</motion.div>;
+}`;
+
+  it('drops a transition no connection authorises (the mobile-hovers-desktop bug)', () => {
+    const out = healDriftedConnectionHandlersInCode(driftedCode);
+    expect(out).not.toContain("variant === 'variant-3'");
+    // The authorised transitions survive the regeneration.
+    expect(out).toContain("'default-hover'");
+    expect(out).toMatch(/onHoverStart=/);
+    expect(out).toMatch(/onHoverEnd=/);
+  });
+
+  it('is a no-op when every transition is backed by a connection', () => {
+    const healthy = driftedCode.replace("variant === 'variant-3' ? 'default-hover' : ", '');
+    expect(healDriftedConnectionHandlersInCode(healthy)).toBe(healthy);
+  });
+
+  it('is a no-op on a file with no connections at all', () => {
+    const plain = `function A() { return <div onClick={() => {}} />; }`;
+    expect(healDriftedConnectionHandlersInCode(plain)).toBe(plain);
   });
 });

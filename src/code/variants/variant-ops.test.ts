@@ -822,3 +822,69 @@ function RoJiKu({ style, initialVariant = 'default', ...rest }) {
     expect(result).toBe(broken);
   });
 });
+
+// ─── Add Variant must not cascade into connection handlers ───────────────────
+//
+// User report 2026-08-08: a `mobile` variant with NO hover/pressed states still
+// ran the desktop hover state in preview. Add Variant had cascaded a branch into
+// the onHoverStart handler — `variant === 'variant-3' ? 'default-hover'` — a
+// transition that appears nowhere in `connections`, so the Interactions panel
+// couldn't show it and the user had no way to remove it.
+//
+// The handler guard used to test one signature: a bare `variant` fallback, from
+// the legacy `setVariant(variant === 'a' ? 'b' : variant)` form. The generator
+// now emits `const _n = … : null`, so handlers stopped being recognised.
+
+describe('addVariant — connection handlers are not cascade targets', () => {
+  const buttonCode = `const variantConfig = [
+  { name: 'default', label: 'Button', x: 0, y: 0, isPrimary: true },
+  { name: 'default-hover', label: 'Button - Hover', x: 0, y: 47, interactionType: 'hover', parentVariant: 'default' },
+];
+const connections = [
+  { from: 'default', to: 'default-hover', trigger: 'mouseEnter' },
+  { from: 'default-hover', to: 'default', trigger: 'mouseLeave' },
+];
+const textVariants = {
+  default: { color: '#bbb9b5' },
+  'default-hover': { color: 'var(--color-brand)' },
+};
+function FeKaWo({ style, initialVariant = 'default', ...rest }) {
+  const [variant, setVariant] = useState(initialVariant);
+  return <motion.div onHoverEnd={() => {
+      const _n = variant === 'default-hover' ? 'default' : null;
+      if (_n) setVariant(_n);
+    }} onHoverStart={() => {
+      const _n = variant === 'default' ? 'default-hover' : null;
+      if (_n) setVariant(_n);
+    }} data-id="btn" style={{ order: variant === 'default-hover' ? 2 : 0 }} animate={['default', variant]}>
+    <motion.p data-id="txt" variants={textVariants} animate={['default', variant]}>Services</motion.p>
+  </motion.div>;
+}`;
+
+  test('the new variant gets NO transition into an interaction state', () => {
+    addVariant('test.tsx', 'variant-3', { x: 110, y: 0 }, 'mobile');
+    const result = capturedTransform!(buttonCode);
+    expect(result).not.toContain("variant === 'variant-3' ? 'default-hover'");
+    // The handler is byte-for-byte what it was.
+    expect(result).toContain("const _n = variant === 'default' ? 'default-hover' : null;");
+  });
+
+  test('the legacy setVariant dialect stays protected too', () => {
+    const legacy = buttonCode.replace(
+      "const _n = variant === 'default' ? 'default-hover' : null;\n      if (_n) setVariant(_n);",
+      "setVariant(variant === 'default' ? 'default-hover' : variant);",
+    );
+    addVariant('test.tsx', 'variant-3', { x: 110, y: 0 }, 'mobile');
+    const result = capturedTransform!(legacy);
+    expect(result).toContain("setVariant(variant === 'default' ? 'default-hover' : variant)");
+    expect(result).not.toContain("variant === 'variant-3' ? 'default-hover'");
+  });
+
+  test('real STYLE ternaries still cascade — the guard is not a blanket skip', () => {
+    // Sourced from 'default-hover', whose order is 2, so the new variant must
+    // inherit 2 rather than fall through to 0.
+    addVariant('test.tsx', 'variant-3', { x: 110, y: 0 }, 'mobile', 'default-hover');
+    const result = capturedTransform!(buttonCode);
+    expect(result).toContain("variant === 'variant-3' ? 2 : variant === 'default-hover' ? 2 : 0");
+  });
+});

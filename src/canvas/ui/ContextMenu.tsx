@@ -312,7 +312,10 @@ export default function ContextMenu() {
     if (targetNode && isTextTag(targetNode.type) && (!targetNode.children || targetNode.children.length === 0)) {
       const wrapEl = getContentRoot();
       if (wrapEl) {
-        const frameId = wrapInFrame([targetNodeId], nodes, wrapEl);
+        // keepFlowChildren: this wrap exists to give the text a BOX, not to
+        // build a positioning frame. Baking it to a px-sized frame with an
+        // absolute text would freeze the master's box against its own content.
+        const frameId = wrapInFrame([targetNodeId], nodes, wrapEl, undefined, { keepFlowChildren: true });
         if (frameId) {
           compTargetId = frameId;
           trace.action('component-ops:make-component-wrap-text', { textId: targetNodeId, frameId });

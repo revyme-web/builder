@@ -23,6 +23,24 @@ interface CmsBoundPillProps {
   fallbackValue?: string;
 }
 
+/**
+ * The human label for a CMS field ID. The JSX carries the field's ID
+ * (`content={item.title}`), but every pill must show the schema's display NAME
+ * ("Question") — so both pill variants resolve through this ONE function.
+ *
+ * They didn't before: the primary pill looked the name up while the replica
+ * pill rendered `field` verbatim, so the same binding read "Question" on
+ * desktop and "title" on tablet (user report 2026-08-08). Falls back to the id
+ * when the schema has no matching field — a detached/renamed binding still
+ * shows something recognisable rather than going blank.
+ */
+export function cmsFieldLabel(
+  fields: ReadonlyArray<{ id: string; name?: string }> | undefined,
+  fieldId: string,
+): string {
+  return fields?.find((f) => f.id === fieldId)?.name || fieldId;
+}
+
 export function CmsBoundPill({ property, fallbackValue }: CmsBoundPillProps) {
   const { cmsBinding } = useControl();
   const fieldId = cmsBinding?.getBindingForProperty(property);
@@ -63,8 +81,7 @@ export function CmsBoundPill({ property, fallbackValue }: CmsBoundPillProps) {
 
   if (!cmsBinding || !fieldId) return null;
 
-  const field = cmsBinding.fields.find(f => f.id === fieldId);
-  const fieldName = field?.name ?? fieldId;
+  const fieldName = cmsFieldLabel(cmsBinding.fields, fieldId);
 
   const openPicker = () => {
     if (!btnRef.current) return;

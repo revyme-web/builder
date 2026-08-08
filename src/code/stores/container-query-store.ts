@@ -9,7 +9,7 @@
 import { atom } from 'jotai';
 import { codeAtom } from './store';
 import { extractStyleCSS } from '../parsing/parser';
-import { toCamel } from '@/shared/css-utils';
+import { toCamel, SHORTHAND_LONGHANDS } from '@/shared/css-utils';
 import { trace } from '@/shared/debug-trace';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -278,13 +278,9 @@ export function getOverridesAtWidth(
 // longhands the override didn't itself set. Otherwise a control reading the
 // longhand (RadiusControl reads `borderTopLeftRadius`…) shows the stale base
 // value while the override pill says "overridden" — exactly the radius mismatch.
-const SHORTHAND_LONGHANDS: Record<string, string[]> = {
-  borderRadius: ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius'],
-  padding: ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'],
-  margin: ['marginTop', 'marginRight', 'marginBottom', 'marginLeft'],
-  gap: ['rowGap', 'columnGap'],
-  inset: ['top', 'right', 'bottom', 'left'],
-};
+// One definition, shared with the variant paint path's `mergeStyleLayers` — two
+// copies of this map would silently drift and only one of the two resolvers
+// would learn about a newly-handled shorthand.
 
 /** Drop base longhands superseded by a shorthand present in `appliedKeys`. A
  *  longhand that is ALSO overridden for this viewport is kept (it's more

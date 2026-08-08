@@ -63,7 +63,7 @@ import { propertyHasPresets, buildPresetSubmenuItems } from '../controls/control
 import { presetTokensAtom } from '@/code/stores/preset-store';
 import { flushNow, queueMutation } from '@/code/mutation/mutation-queue';
 import { useControl } from '../controls/ControlProvider';
-import { CmsBoundPill, CmsMissingPill, CmsFieldPill } from '../controls/CmsBoundPill';
+import { CmsBoundPill, CmsMissingPill, CmsFieldPill, cmsFieldLabel } from '../controls/CmsBoundPill';
 import { getScrollVariant, setScrollVariantInCode, rehydrateScrollVariant } from '@/code/generation/scroll-variant-gen';
 import { getActiveAnimationScope } from '@/editor/tools/AnimationTool/animation-scope-source';
 import { isComponentLikeFilePath, isTemplateFilePath } from '@/code/project/active-file-store';
@@ -2425,11 +2425,25 @@ export default function ComponentPropsTool() {
                     <div className="flex items-center justify-between w-full">
                       <ControlLabel label={prop.label || prop.name} property={cssProp ?? ''} plain={false} hideLocalize extraMenuItems={localizeMenuItem(prop.name, propValue)} overridden={propOverridden || localePropOverride(prop.name).overridden} onResetOverride={localePropOverride(prop.name).reset ?? propResetOverride} />
                       {isReplica
-                        // On a replica the binding lives in data-responsive (not the
+                        // On a replica the binding can live in data-responsive (not the
                         // node's propBindings), so CmsBoundPill can't read it — show a
                         // standalone pill; × unbinds THIS viewport→default, rebind via
                         // the chevron "Set Variable". Reset Override (chevron) → base.
-                        ? <CmsFieldPill field={cmsBoundField} onUnbind={() => unbindPropForViewport(prop.name, prop.defaultValue ?? '')} />
+                        //
+                        // `cmsBoundField` is the field's ID (`title`), which is what the
+                        // JSX carries. Resolve it to the field's display NAME the way
+                        // CmsBoundPill does, or the two pills disagree about the same
+                        // binding — desktop read "Question" while tablet read "title"
+                        // (user report 2026-08-08). The tooltip also has to say which
+                        // binding it is: with no data-responsive entry for this prop the
+                        // replica is simply INHERITING the base one.
+                        ? <CmsFieldPill
+                            field={cmsFieldLabel(cmsBinding?.fields, cmsBoundField)}
+                            title={responsiveOverrides.has(prop.name)
+                              ? `Bound to CMS field "${cmsBoundField}" for this viewport`
+                              : `Inherits the CMS field "${cmsBoundField}" from the base viewport`}
+                            onUnbind={() => unbindPropForViewport(prop.name, prop.defaultValue ?? '')}
+                          />
                         : <CmsBoundPill property={prop.name} fallbackValue={prop.defaultValue ?? ''} />}
                     </div>
                   </HoistMenuItemProvider>

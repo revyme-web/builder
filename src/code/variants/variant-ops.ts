@@ -586,6 +586,39 @@ function cascadeVisibilityForRemovedVariant(code: string, remainingVariants: str
  * `variant === 'newName' ? <sourceValue>` branch at the front. The
  * resolved value is computed by walking the chain against `sourceVariant`.
  */
+/**
+ * Is this ternary a connection HANDLER's state transition rather than a
+ * per-variant style/content binding?
+ *
+ * Both ternary walkers below rewrite `X === 'name' ? value : …` chains, and a
+ * handler's `setVariant` decision has the SAME SHAPE as a style binding — so
+ * the walkers have to tell them apart or they rewrite the component's state
+ * machine. They used to test one signature: a bare `variant` fallback, from the
+ * legacy `setVariant(variant === 'a' ? 'b' : variant)` form. The generator has
+ * since moved to
+ *
+ *     const _n = variant === 'default' ? 'default-hover' : null;
+ *     if (_n) setVariant(_n);
+ *
+ * whose fallback is `null` — so handlers stopped being recognised, and Add
+ * Variant cascaded a branch INTO the hover handler: adding a `mobile` variant
+ * wrote `variant === 'variant-3' ? 'default-hover'`, giving mobile a hover
+ * transition that appears nowhere in `connections` and that the Interactions
+ * panel therefore can't show or remove (user report 2026-08-08 — hovering the
+ * mobile Services link ran the desktop hover state).
+ *
+ * Tested by DIALECT, not by position, so all three forms are covered and a
+ * future one degrades to "don't cascade" rather than "corrupt the machine".
+ */
+function isVariantTransitionChain(code: string, start: number, fallback: string): boolean {
+  if (fallback === 'null') return true;                                  // current `const _n = … : null`
+  if (fallback === 'variant' || fallback === 'initialVariant') return true; // legacy `setVariant(… : variant)`
+  // Belt and braces: whatever the chain resolves to, is it being handed to the
+  // variant setter?
+  const before = code.slice(Math.max(0, start - 48), start).replace(/\s+$/, '');
+  return /(?:const\s+_n\s*=|\bsetVariant\s*\()$/.test(before);
+}
+
 function cascadeConditionalTernariesForNewVariant(
   code: string,
   newName: string,
@@ -665,6 +698,9 @@ function cascadeConditionalTernariesForNewVariant(
     // Claim this chain's whole extent so the inner `variant === '...'` starts are skipped (above) —
     // even when no branch is added below, the sub-chains belong to THIS chain and must not be re-walked.
     lastProcessedEnd = pos;
+    // A connection handler's transition — the state machine belongs to
+    // `connections`, never to this cascade.
+    if (isVariantTransitionChain(code, start, fallback)) continue;
     // Resolve the source variant's value
     const sourceBranch = branches.find(b => b.name === sourceVariant);
     const sourceValue = sourceBranch ? sourceBranch.value : fallback;
@@ -745,6 +781,10 @@ function removeVariantBranchFromConditionalTernaries(code: string, variantName: 
     }
     if (!ok || fallback === null) continue;
     lastProcessedEnd = pos;
+    // Handlers are the connection teardown's to rebuild (it strips and
+    // regenerates the whole set from `connections`) — same guard as the add
+    // cascade, so the two paths can't disagree about what a handler is.
+    if (isVariantTransitionChain(code, start, fallback)) continue;
     if (!branches.some(b => b.name === variantName)) continue; // chain doesn't mention X
     const kept = branches.filter(b => b.name !== variantName);
     const rebuilt = kept.length === 0

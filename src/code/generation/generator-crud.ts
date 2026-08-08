@@ -1815,6 +1815,39 @@ export function resolveMediaGateTernariesInCode(code: string, nodeId: string): s
 }
 
 /**
+ * SELF-HEAL: strip JSX attributes that were spliced INTO a `[data-id="…"]`
+ * selector in the page's <style> block.
+ *
+ * A generator that located the node with a raw `indexOf('data-id="…"')` could
+ * land on the CSS selector — which precedes the JSX — and write its attribute
+ * there, producing
+ *
+ *     [data-id="RoJiKu-msk6g4hq-2" content={item.title}]::after { … }
+ *
+ * The CSS rule is dead (its border overlay stops painting) and the intended
+ * write silently did nothing (user report 2026-08-08: CMS prop bindings on FAQ
+ * instances applied nothing). All such call sites now go through
+ * `findJSXDataIdIndex`; this repairs the files they already damaged. Cheap
+ * precheck, no-op on clean files.
+ */
+export function healStyleBlockSelectorAttrsInCode(code: string): string {
+  // The selector is well-formed up to the id's closing quote; anything between
+  // that and the `]` is spliced JSX. Restricted to `[data-id="` so a legitimate
+  // attribute selector (`[data-x="y"]`) is untouched.
+  const re = /(\[data-id="[^"]*")([^\]\n]+)(\])/g;
+  if (!re.test(code)) return code;
+  re.lastIndex = 0;
+  let count = 0;
+  const out = code.replace(re, (_m, head: string, junk: string, tail: string) => {
+    count++;
+    trace.action('generator:heal-style-selector-attrs', { stripped: junk.trim().slice(0, 80) });
+    return head + tail;
+  });
+  if (count > 0) trace.action('generator:heal-style-selector-attrs:done', { count });
+  return out;
+}
+
+/**
  * SELF-HEAL: a data-id'd JSX element sitting as a BARE module-level
  * ExpressionStatement — outside Page() and outside `canvasNodes` — is invalid
  * dialect: it never renders, but the parser's data-id scan still picks it up,

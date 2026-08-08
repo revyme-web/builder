@@ -13,7 +13,7 @@ import { extractStyleCSS } from '../code/parsing/parser';
 import type { ViewportConfig, CollectionItem, NodeOverride, FilterGroup, FilterConfig, SortConfig, OverlayConfig } from '@/shared/types';
 import { resolveOverlayConfig } from '@/code/parsing/overlay-parser';
 import { trace, pauseDOMObserver, resumeDOMObserver } from '@/shared/debug-trace';
-import { jsxStyleToHTML, coerceCssNumberToPx } from '@/shared/css-utils';
+import { jsxStyleToHTML, coerceCssNumberToPx, mergeStyleLayers } from '@/shared/css-utils';
 import { isSvgTag, isTextTag, WRAPPER_ONLY_STYLE_PROPS, isFitSize } from '@/shared/constants';
 import { resolveResponsiveUnits, resolveContainerQueryUnits } from '@/shared/responsive-units';
 import { hasMotionTransformProp, motionPropsToCSSTransform, MOTION_TRANSFORM_PROPS } from '@/shared/motion-transform';
@@ -422,7 +422,7 @@ function resolveVariantStylesUncached(
       overrides[prop] = map[resolvedVariant] ?? map['default'] ?? baseStyles[prop] ?? '';
     }
     if (Object.keys(overrides).length > 0) {
-      baseStyles = { ...baseStyles, ...overrides };
+      baseStyles = mergeStyleLayers(baseStyles, overrides);
     }
   }
 
@@ -446,8 +446,15 @@ function resolveVariantStylesUncached(
     const variantStyles = (resolvedVariant && resolvedVariant !== 'default')
       ? node.motionVariants[resolvedVariant]
       : undefined;
+    // mergeStyleLayers, NOT object spread: a spread gives a shared key the later
+    // layer's VALUE but the earlier layer's POSITION, so a shorthand present only
+    // in the variant entry lands AFTER the longhands it must precede and wipes
+    // them when the map is applied to the DOM in key order. A `default` entry of
+    // `{ padding: '0px', paddingTop: '80px', … }` painted as padding:0 on the
+    // canvas while live — where motion applies the entry in its own order —
+    // showed the 80px (user report 2026-08-08).
     result = (defaultEntry || variantStyles)
-      ? { ...baseStyles, ...(defaultEntry ?? {}), ...(variantStyles ?? {}) }
+      ? mergeStyleLayers(baseStyles, defaultEntry, variantStyles as Record<string, string> | undefined)
       : baseStyles;
   }
   // Diagnostic (only for per-tile-variant instances): does the expanded node actually carry the resolved
@@ -483,7 +490,7 @@ function resolveVariantStylesUncached(
   // (same class as the resolvedVariant interval fix above). Applied LAST so it wins.
   if (vpWidth && node.responsivePropStyles) {
     const propStyles = responsiveVariantForWidth(node.responsivePropStyles, vpWidth, node.responsiveVariantBp);
-    if (propStyles) folded = { ...folded, ...propStyles };
+    if (propStyles) folded = mergeStyleLayers(folded, propStyles);
   }
   // AnimatePresence + conditional render visibility (the pattern from
   // setVariantVisibilityInCode). When the active variant is in the node's

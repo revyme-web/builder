@@ -64,3 +64,42 @@ describe('resolveVariantStyles — hiddenOnVariants is the final word', () => {
     expect(resolveVariantStyles(node, 'variant-2').display).toBe('none');
   });
 });
+
+// ─── Variant shorthand/longhand order (the footer padding report) ────────────
+
+describe('resolveVariantStyles — a variant entry shorthand keeps its place', () => {
+  const footerTop = () => ({
+    id: 'frame-msk6imqi-8', type: 'div', name: 'top', parentId: 'root', children: [],
+    attrs: {}, textContent: '', hasMixedContent: false,
+    // The inline style the generator wrote for the primary.
+    styles: {
+      display: 'flex', paddingRight: '0px', paddingTop: '80px', paddingBottom: '80px',
+    },
+    // …and the matching `default` entry in the variants object.
+    motionVariants: {
+      default: {
+        padding: '0px', paddingTop: '80px', paddingRight: '0px', paddingBottom: '80px', paddingLeft: '0px',
+      },
+      'variant-1': {
+        paddingTop: '32px', paddingRight: '16px', paddingBottom: '32px', paddingLeft: '16px',
+      },
+    },
+  }) as any;
+
+  it('primary tile paints the 80px, not the shorthand 0', () => {
+    const r = resolveVariantStyles(footerTop(), 'default');
+    expect(r.paddingTop).toBe('80px');
+    expect(r.paddingBottom).toBe('80px');
+    // Order decides the paint: the shorthand has to be applied first.
+    const keys = Object.keys(r);
+    expect(keys.indexOf('padding')).toBeLessThan(keys.indexOf('paddingTop'));
+  });
+
+  it('the tablet variant still wins over both layers', () => {
+    const r = resolveVariantStyles(footerTop(), 'variant-1');
+    expect(r.paddingTop).toBe('32px');
+    expect(r.paddingLeft).toBe('16px');
+    const keys = Object.keys(r);
+    expect(keys.indexOf('padding')).toBeLessThan(keys.indexOf('paddingTop'));
+  });
+});

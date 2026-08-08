@@ -101,7 +101,7 @@ export function removeObjectEntryBalanced(code: string, key: string): string {
 /** Index just past the `}` matching the `{` at `openIdx`, or -1 when
  *  unbalanced. String-aware so a brace inside a quoted value can't skew the
  *  depth count. */
-function findBalancedBraceEnd(src: string, openIdx: number): number {
+export function findBalancedBraceEnd(src: string, openIdx: number): number {
   let depth = 0;
   let inStr = '';
   for (let i = openIdx; i < src.length; i++) {
@@ -280,8 +280,16 @@ export function findTagClose(code: string, startIdx: number): number {
  * Returns the index of the data-id attribute in JSX, or -1 if not found.
  */
 export function findJSXDataIdIndex(code: string, nodeId: string): number {
+  return findJSXDataIdIndexFrom(code, nodeId, 0);
+}
+
+/** `findJSXDataIdIndex` starting at an offset — for callers that first narrow
+ *  the search to a region (e.g. a `.map()` body). The CSS-selector rejection
+ *  still applies, so a bad offset degrades to "not found" instead of matching a
+ *  `[data-id="…"]` rule in the page's <style> block. */
+export function findJSXDataIdIndexFrom(code: string, nodeId: string, from: number): number {
   const idPattern = `data-id="${nodeId}"`;
-  let searchFrom = 0;
+  let searchFrom = Math.max(0, from);
 
   while (searchFrom < code.length) {
     const idx = code.indexOf(idPattern, searchFrom);

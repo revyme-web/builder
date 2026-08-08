@@ -10,7 +10,7 @@ import { modifyProjectFile } from '@/code/project/modify-file';
 import { projectFS } from '@/code/project/project-fs';
 import { isIndexInsideSlotConst } from '@/code/generation/slot-ops';
 import { ensureVariantListWiring } from '@/code/generation/generator-styles';
-import { stripAllTagAttrsBalanced } from '@/code/generation/generator-utils';
+import { stripAllTagAttrsBalanced, findBalancedBraceEnd } from '@/code/generation/generator-utils';
 import { extractImports, resolveImportPath } from '@/code/components/import-resolver';
 import { forwardEventPropsToComponentRoot } from './event-prop-forwarding';
 import { trace } from '@/shared/debug-trace';
@@ -311,6 +311,59 @@ export function removeConnectionsForVariantInCode(code: string, variantName: str
   if (remaining.length === all.length) return code; // variant wired to nothing
   trace.action('connection-config:remove-for-variant', { variantName, removed: all.length - remaining.length });
   return rebuildConnections(code, remaining);
+}
+
+/**
+ * SELF-HEAL: rebuild the event handlers whenever one transitions between
+ * variants that `connections` has no edge for.
+ *
+ * `connections` is the source of truth — it drives the Interactions panel and
+ * the connector arrows on canvas — while the handlers are its generated form.
+ * A drifted handler is therefore INVISIBLE: the panel shows no interaction for
+ * the variant, but the runtime still transitions on hover/click, and there's no
+ * control anywhere that can remove it. That's the state Add Variant left behind
+ * before `isVariantTransitionChain` learned the current handler dialect (user
+ * report 2026-08-08: a `mobile` variant with no interaction states still ran the
+ * desktop hover). Existing files stay broken until something rewrites them, so
+ * this repairs on any edit — the same "the user can't know which node is
+ * corrupted" reasoning as healSparseVariantDefaults.
+ *
+ * Scan-only no-op on a healthy file: the regeneration runs ONLY once an
+ * unbacked transition is found.
+ */
+export function healDriftedConnectionHandlersInCode(code: string): string {
+  const conns = parseConnections(code);
+  if (conns.length === 0) return code;
+  const drifted = findUnbackedTransitions(code, conns);
+  if (drifted.length === 0) return code;
+  trace.action('connection-config:handlers-drifted-healed', {
+    transitions: drifted.slice(0, 8), count: drifted.length,
+  });
+  return generateConnectionCode(code, conns);
+}
+
+/** Every `from → to` a handler performs that no connection authorises, as
+ *  `"from>to"` strings. Reads each handler's value with the balanced walker so
+ *  a nested brace can't truncate the scan. */
+function findUnbackedTransitions(code: string, conns: Connection[]): string[] {
+  const authorised = new Set<string>();
+  for (const c of conns) authorised.add(`${c.from}>${c.to}|${triggerToPropName(c.trigger)}`);
+  const out: string[] = [];
+  for (const prop of ['onTap', 'onTapStart', 'onHoverStart', 'onHoverEnd', 'onViewportEnter']) {
+    const re = new RegExp(`\\b${prop}=\\{`, 'g');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(code)) !== null) {
+      const openIdx = m.index + m[0].length - 1;
+      const end = findBalancedBraceEnd(code, openIdx);
+      if (end === -1) continue;
+      const body = code.slice(openIdx, end);
+      for (const t of body.matchAll(/(?:variant|initialVariant)\s*===\s*['"]([^'"]+)['"]\s*\?\s*['"]([^'"]+)['"]/g)) {
+        const key = `${t[1]}>${t[2]}|${prop}`;
+        if (!authorised.has(key)) out.push(key);
+      }
+    }
+  }
+  return out;
 }
 
 /**

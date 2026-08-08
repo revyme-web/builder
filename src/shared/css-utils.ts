@@ -370,3 +370,57 @@ export function parseShorthand(value: string | undefined): [string, string, stri
     default: return [parts[0], parts[1], parts[2], parts[3]];
   }
 }
+
+// ─── Layered style merge (shorthand-aware) ──────────────────────────────────
+
+/** CSS shorthands → the longhands they expand to. */
+export const SHORTHAND_LONGHANDS: Readonly<Record<string, readonly string[]>> = {
+  borderRadius: ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius'],
+  padding: ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'],
+  margin: ['marginTop', 'marginRight', 'marginBottom', 'marginLeft'],
+  gap: ['rowGap', 'columnGap'],
+  inset: ['top', 'right', 'bottom', 'left'],
+};
+
+/**
+ * Merge style layers (base → variant entries → …) the way CSS would.
+ *
+ * Object spread is NOT equivalent, and the difference is a real paint bug:
+ * `{...a, ...b}` gives a key present in BOTH layers b's value but keeps **a's
+ * position**, so a shorthand that exists only in the later layer is APPENDED
+ * after the longhands it is supposed to precede. Applied to the DOM in key
+ * order, the shorthand then wins and wipes them:
+ *
+ *   base    { paddingTop: '80px', paddingBottom: '80px' }
+ *   variant { padding: '0px', paddingTop: '80px', paddingBottom: '80px' }
+ *   spread  → …paddingTop:80, paddingBottom:80, padding:0   ← 0 wins, padding gone
+ *
+ * That is exactly what the canvas painted while the live site — where React
+ * renders the inline object and motion applies the entry in ITS OWN key order —
+ * showed the 80px correctly (user report 2026-08-08, footer "top" section).
+ *
+ * The rule this implements: a layer that sets a shorthand REPLACES every
+ * longhand inherited from earlier layers, then contributes its own keys in its
+ * own order. So a variant entry carrying only `padding: '0px'` zeroes the base's
+ * per-side padding (the author's intent), while one carrying `padding` PLUS
+ * per-side values lands the shorthand first and the sides on top of it.
+ */
+export function mergeStyleLayers(
+  ...layers: Array<Record<string, string> | null | undefined>
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const layer of layers) {
+    if (!layer) continue;
+    for (const key of Object.keys(layer)) {
+      const longhands = SHORTHAND_LONGHANDS[key];
+      if (!longhands) continue;
+      // This layer re-states the shorthand → earlier layers' longhands are
+      // superseded. Deleting them also frees their key SLOTS, so the shorthand
+      // below is inserted ahead of any the layer re-sets itself.
+      for (const lh of longhands) delete out[lh];
+      delete out[key];
+    }
+    for (const [key, value] of Object.entries(layer)) out[key] = value;
+  }
+  return out;
+}

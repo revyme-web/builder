@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { transform } from '@babel/standalone';
-import { setVariantTextBindingInCode, setVariantStyleBindingInCode, removeNodeInCode } from './generator-crud';
+import { setVariantTextBindingInCode, setVariantStyleBindingInCode, removeNodeInCode, healStyleBlockSelectorAttrsInCode } from './generator-crud';
 
 const parsesOk = (code: string) =>
   expect(() => transform(code, { presets: ['react', 'typescript'], filename: 'f.tsx' })).not.toThrow();
@@ -154,5 +154,39 @@ export default function Page() {
     expect(out).not.toContain('col-c-img');
     expect(out).toContain('col-c-card'); // template row survives
     expect(out).toContain('.map((item, index) =>');
+  });
+});
+
+// ─── Style-block selector heal ──────────────────────────────────────────────
+//
+// A generator that located the node with a raw indexOf could land on the CSS
+// selector (which precedes the JSX) and splice its attribute there — killing
+// the rule and silently dropping the intended write. All such call sites now
+// use findJSXDataIdIndex; this repairs the files they already damaged.
+
+describe('healStyleBlockSelectorAttrsInCode', () => {
+  it('strips JSX attrs spliced into a [data-id] selector', () => {
+    const corrupted = `<style>{\`
+    [data-id="RoJiKu-msk6g4hq-2" content1={item.untitled} content={item.title}]::after {
+      content: '';
+      border-width: 1px;
+    }
+    \`}</style>`;
+    const out = healStyleBlockSelectorAttrsInCode(corrupted);
+    expect(out).toContain('[data-id="RoJiKu-msk6g4hq-2"]::after');
+    expect(out).not.toContain('item.title');
+    // The rule body — including its own `content:` declaration — survives.
+    expect(out).toContain("content: ''");
+    expect(out).toContain('border-width: 1px');
+  });
+
+  it('is a no-op on a clean selector', () => {
+    const clean = `<style>{\`[data-id="a-1"]::after { content: ''; }\`}</style>`;
+    expect(healStyleBlockSelectorAttrsInCode(clean)).toBe(clean);
+  });
+
+  it('leaves a normal JSX data-id attribute alone', () => {
+    const jsx = `<div data-id="a-1" style={{ color: 'red' }}>x</div>`;
+    expect(healStyleBlockSelectorAttrsInCode(jsx)).toBe(jsx);
   });
 });

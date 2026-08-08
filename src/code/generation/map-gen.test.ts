@@ -1282,3 +1282,77 @@ export default function Page() {
     expect(cleared).not.toContain('href=');
   });
 });
+
+// ─── Hyphenated slug + the <style>-block selector trap ───────────────────────
+//
+// User report 2026-08-08: binding a component instance's props to CMS fields
+// inside a collection list "applied nothing". It wrote the attributes into a
+// CSS SELECTOR instead:
+//
+//   [data-id="RoJiKu-msk6g4hq-2" content1={item.untitled} content={item.title}]::after
+//
+// Two defects compounding: callers pass the SLUG (`collection-1`) while the
+// array is imported camel-cased (`collection1`), so `<varName>.map(` missed and
+// the "search inside the map body" offset fell back to 0 — where the page's
+// <style> block sits, ahead of the JSX.
+
+describe('CMS binding — hyphenated slug and the style-block selector', () => {
+  /** The reported page shape: a border-overlay rule for the instance sits in a
+   *  <style> block ABOVE the .map(), and the import is camel-cased. */
+  const pageWithStyleBlock = (attrs = '') => `import collection1 from '@/cms/collection-1.json';
+export default function Page() {
+  return <div data-id="root">
+    <style>{\`
+    [data-id="RoJiKu-1"${attrs}]::after {
+      content: '';
+      border-width: 1px;
+    }
+    \`}</style>
+    <div data-id="list">
+      {collection1.map((item, idx) => <Link data-id="row-1" key={idx}>
+        <RoJiKu data-id="RoJiKu-1" data-name="Frame" style={{ order: '0' }}></RoJiKu>
+      </Link>)}
+    </div>
+  </div>;
+}`;
+
+  it('binds the prop on the JSX tag, not into the CSS selector', () => {
+    const out = bindPropToMapInCode(pageWithStyleBlock(), 'RoJiKu-1', 'collection-1', 'content', 'title', '');
+    expect(out).toContain('<RoJiKu data-id="RoJiKu-1" content={item.title}');
+    // The selector is untouched — its border rule still paints.
+    expect(out).toContain('[data-id="RoJiKu-1"]::after');
+    expect(out).not.toMatch(/\[data-id="RoJiKu-1"[^\]]*content=/);
+  });
+
+  it('resolves the camel-cased import so the iterator is read from the real .map()', () => {
+    const renamed = pageWithStyleBlock().replace(/\bitem\b/g, 'faq');
+    const out = bindPropToMapInCode(renamed, 'RoJiKu-1', 'collection-1', 'content', 'title', '');
+    // `item` would be the blind fallback; the real iterator here is `faq`.
+    expect(out).toContain('content={faq.title}');
+  });
+
+  it('a slug that already IS the identifier still works (no regression)', () => {
+    const plain = `import blog from '@/cms/blog.json';
+export default function Page() {
+  return <div data-id="root">{blog.map((item, idx) => <Card data-id="c-1" key={idx} />)}</div>;
+}`;
+    const out = bindPropToMapInCode(plain, 'c-1', 'blog', 'title', 'heading', '');
+    expect(out).toContain('title={item.heading}');
+  });
+
+  it('binding a STYLE inside a hyphenated collection lands in the JSX too', () => {
+    const out = bindStyleToMapInCode(pageWithStyleBlock(), 'RoJiKu-1', 'collection-1', 'order', 'rank', '0');
+    expect(out).toContain('[data-id="RoJiKu-1"]::after');
+    expect(out).toContain('order: item.rank');
+  });
+
+  it('unbind finds the JSX occurrence, not the selector', () => {
+    const bound = pageWithStyleBlock().replace(
+      '<RoJiKu data-id="RoJiKu-1"',
+      '<RoJiKu data-id="RoJiKu-1" content={item.title}',
+    );
+    const out = unbindPropFromMapInCode(bound, 'RoJiKu-1', 'content');
+    expect(out).not.toContain('content={item.title}');
+    expect(out).toContain('[data-id="RoJiKu-1"]::after');
+  });
+});
