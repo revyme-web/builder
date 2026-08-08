@@ -272,6 +272,17 @@ export function emitAllMeasures(opts?: EmitAllMeasuresOptions): void {
 
   root.querySelectorAll('[data-node-id]').forEach(el => {
     if (ghostEls.has(el)) return;
+    // SVG INTERIOR SKIP. A <path>/<g>/<circle> INSIDE an <svg> never needs its
+    // own rect-cache entry: hit-testing, selection and drag all target the
+    // <svg> wrapper, and the shape-edit tools read geometry from the wrapper's
+    // synthetic __bbox*/matrix keys (emitted below). Measuring them anyway was
+    // pure cost — and the most expensive kind, since each one forces layout and
+    // (before the reuse gate) a getBBox. A Figma-imported protractor ships ~180
+    // <svg> + ~180 <path>, and the plugin's complexity-bake deliberately
+    // refuses to flatten it because it contains TEXT labels, so these reach the
+    // canvas by design ("still slow with all those svg", 2026-08-07 — the
+    // agreed-but-unbuilt half of the vector-perf fix).
+    if (el.tagName !== 'svg' && (el as Element).closest('svg')) return;
     const { nodeId, vpPrefix } = elCacheParts(el);
     const cacheKey = `${vpPrefix}:${nodeId}`;
     // CULLED subtree: display:none — measuring would write zeros over

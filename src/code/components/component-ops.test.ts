@@ -2146,3 +2146,101 @@ export default function Page() {
     expect(getWrittenComponentCode()).not.toContain("import Helper");
   });
 });
+
+describe('detachInstance — chained variant gates + per-variant text (2026-08-08)', () => {
+  // The master emits a MULTI-variant hide gate and a per-variant TEXT ternary
+  // chain. Only the single-comparison gate and JSX-branch ternary resolved, so
+  // both survived verbatim onto the page — where `variant` doesn't exist, so
+  // the whole <Page> threw "variant is not defined" and rendered nothing.
+  const MASTER = `import React from 'react';
+import { motion } from 'framer-motion';
+export default function Btn({ initialVariant = 'default' }) {
+  const [variant, setVariant] = React.useState(initialVariant);
+  const shapeVariants = { default: {}, 'variant-4': {} };
+  return <div data-id="btn-root" style={{ position: 'relative' }}>
+    {variant !== "default-hover" && variant !== "default-pressed" && <motion.svg data-id="btn-shape" variants={shapeVariants} animate={['default', variant]} viewBox="0 0 26 22" style={{ position: 'absolute' }}><path d="M13,0" /></motion.svg>}
+    <p data-id="btn-label" style={{ position: 'relative' }}>{variant === "variant-4" ? "Get Started" : variant === "variant-7" ? "Get Started" : "Book a Call"}</p>
+  </div>;
+}`;
+  const mkPage = (iv?: string) => {
+    const ivAttr = iv ? ' initialVariant="' + iv + '"' : '';
+    return [
+      "import React from 'react';",
+      "import Btn from '@/components/Btn';",
+      'export default function Page() {',
+      '  return (<div data-id="page-root"><Btn' + ivAttr + ' data-id="inst" data-name="Btn" style={{ position: \'relative\' }} /></div>);',
+      '}',
+    ].join('\n');
+  };
+  const setup = (iv?: string) => mockFS.readFile.mockImplementation((p: string) =>
+    p === 'app/page.tsx' ? mkPage(iv) : p === 'components/Btn.tsx' ? MASTER : null);
+
+  test('default: the chained gate KEEPS the shape and the text resolves to the fallback', () => {
+    setup(undefined);
+    const out = detachInstance('app/page.tsx', 'inst', 'components/Btn.tsx', 'default')!;
+    expect(out).not.toBeNull();
+    expect(parseJSX(out)).not.toBeNull();
+    expect(out).not.toContain('shapeVariants');
+    expect(out).toContain('Book a Call');
+    expect(out).not.toContain('Get Started');
+  });
+
+  test('variant-4: gate still true, text resolves through the ternary CHAIN', () => {
+    setup('variant-4');
+    const out = detachInstance('app/page.tsx', 'inst', 'components/Btn.tsx', 'variant-4')!;
+    expect(out).not.toBeNull();
+    expect(out).toContain('Get Started');
+    expect(out).not.toContain('Book a Call');
+  });
+
+  test('default-hover: the chained gate DROPS the gated shape entirely', () => {
+    setup('default-hover');
+    const out = detachInstance('app/page.tsx', 'inst', 'components/Btn.tsx', 'default-hover')!;
+    expect(out).not.toBeNull();
+    expect(out).not.toContain('viewBox');
+  });
+});
+
+describe('detachInstance — nested INSTANCES carrying variant props (2026-08-08)', () => {
+  // Detaching a Header whose children are themselves instances: those stay as
+  // instances (never inlined), so their props were copied verbatim from the
+  // master — including per-variant style ternaries. `variant` doesn't exist on
+  // the page, so <Page> threw "variant is not defined" and rendered nothing.
+  const MASTER = [
+    "import React from 'react';",
+    "import Btn from '@/components/Btn';",
+    "export default function Header({ initialVariant = 'default' }) {",
+    "  const [variant, setVariant] = React.useState(initialVariant);",
+    '  return <div data-id="hdr-root" style={{ position: \'relative\' }}>',
+    "    <Btn data-id=\"hdr-btn\" data-name=\"Button\" style={{ position: 'relative', width: variant === 'variant-2' ? '100%' : variant === 'variant-1' ? '50%' : '36px' }} />",
+    '  </div>;',
+    '}',
+  ].join('\n');
+  const PAGE = [
+    "import React from 'react';",
+    "import Header from '@/components/Header';",
+    'export default function Page() {',
+    '  return (<div data-id="page-root"><Header data-id="inst" data-name="Header" style={{ position: \'relative\' }} /></div>);',
+    '}',
+  ].join('\n');
+  const setup = () => mockFS.readFile.mockImplementation((p: string) =>
+    p === 'app/page.tsx' ? PAGE : p === 'components/Header.tsx' ? MASTER : null);
+
+  test('default: the nested instance keeps its prop with the ternary RESOLVED, no `variant` ref', () => {
+    setup();
+    const out = detachInstance('app/page.tsx', 'inst', 'components/Header.tsx', 'default')!;
+    expect(out).not.toBeNull();
+    expect(parseJSX(out)).not.toBeNull();
+    expect(out).toContain('<Btn');                 // nested instance survives
+    expect(out).not.toMatch(/\bvariant\b/);        // no component-scope ref left
+    expect(out).toContain("'36px'");               // fallback branch baked
+  });
+
+  test('variant-2: the same prop resolves to the matching branch', () => {
+    setup();
+    const out = detachInstance('app/page.tsx', 'inst', 'components/Header.tsx', 'variant-2')!;
+    expect(out).not.toBeNull();
+    expect(out).not.toMatch(/\bvariant\b/);
+    expect(out).toContain("'100%'");
+  });
+});

@@ -1365,6 +1365,29 @@ export function detachInstance(
         const eq = test.right.value === resolvedVariant;
         return test.operator === '===' ? eq : !eq;
       }
+      // CHAINED gates: a master that hides an element on several variants emits
+      // `variant !== "default-hover" && variant !== "default-pressed" && <svg/>`
+      // (and the `||` mirror). Only the single-comparison form resolved, so the
+      // chained one was copied VERBATIM into the page — where `variant` doesn't
+      // exist, so the page died with "variant is not defined" and rendered
+      // nothing at all (2026-08-08). Recurse through the operands; a `null`
+      // (unrecognisable) side is only fatal when it can still decide the result.
+      if (t.isLogicalExpression(test) && (test.operator === '&&' || test.operator === '||')
+          && t.isExpression(test.left) && t.isExpression(test.right)) {
+        const l = evalVariantTest(test.left);
+        const r = evalVariantTest(test.right);
+        if (test.operator === '&&') {
+          if (l === false || r === false) return false;   // short-circuits regardless of the other
+          return l === true && r === true ? true : null;
+        }
+        if (l === true || r === true) return true;
+        return l === false && r === false ? false : null;
+      }
+      // Parenthesised / negated forms.
+      if (t.isUnaryExpression(test) && test.operator === '!' && t.isExpression(test.argument)) {
+        const v = evalVariantTest(test.argument);
+        return v === null ? null : !v;
+      }
       return null;
     };
 
@@ -1393,11 +1416,30 @@ export function detachInstance(
               return t.isJSXFragment(e.right) ? resolveDetachedChildren(e.right.children) : resolveDetachedChildren([e.right]);
             }
           }
-          if (t.isConditionalExpression(e) && t.isExpression(e.test)
-              && (t.isJSXElement(e.consequent) || t.isJSXElement(e.alternate))) {
+          if (t.isConditionalExpression(e) && t.isExpression(e.test)) {
             const verdict = evalVariantTest(e.test);
-            if (verdict === true && t.isJSXElement(e.consequent)) return resolveDetachedChildren([e.consequent]);
-            if (verdict === false) return t.isJSXElement(e.alternate) ? resolveDetachedChildren([e.alternate]) : [];
+            // JSX branches → inline the chosen element.
+            if (t.isJSXElement(e.consequent) || t.isJSXElement(e.alternate)) {
+              if (verdict === true && t.isJSXElement(e.consequent)) return resolveDetachedChildren([e.consequent]);
+              if (verdict === false) return t.isJSXElement(e.alternate) ? resolveDetachedChildren([e.alternate]) : [];
+            } else if (verdict !== null) {
+              // VALUE branches — per-variant TEXT is emitted as a nested ternary
+              // chain: `{variant === "variant-4" ? "Get Started" : variant ===
+              // "variant-7" ? "Get Started" : "Book a Call"}`. Only JSX branches
+              // resolved, so the chain survived verbatim onto the page and threw
+              // "variant is not defined" (2026-08-08). Walk the chain to the
+              // branch this variant selects; a string lands as plain text, and
+              // anything still unresolvable is left for the guards below.
+              let cur: t.Expression = verdict ? e.consequent : e.alternate;
+              for (let guard = 0; guard < 50 && t.isConditionalExpression(cur); guard++) {
+                const v = evalVariantTest(cur.test);
+                if (v === null) break;
+                cur = v ? cur.consequent : cur.alternate;
+              }
+              if (t.isStringLiteral(cur)) return [t.jsxText(cur.value)];
+              if (t.isJSXElement(cur) || t.isJSXFragment(cur)) return resolveDetachedChildren([cur as t.JSXElement]);
+              if (!t.isConditionalExpression(cur)) return [t.jsxExpressionContainer(cur)];
+            }
           }
           return [c];
         }
@@ -1526,6 +1568,48 @@ export function detachInstance(
       }
     };
     transform(clone, true);
+
+    // FINAL RESOLVE SWEEP — runs LAST, after every inline/bake pass, so it can
+    // only touch what those left behind. Nested INSTANCES survive detach as
+    // instances (they aren't inlined), so their props were copied verbatim from
+    // the master — including per-variant style ternaries like
+    // `width: variant === 'variant-2' ? '100%' : ''`. On the page `variant`
+    // doesn't exist, so the whole <Page> threw "variant is not defined" and
+    // rendered nothing (2026-08-08, detaching a Header whose children are
+    // instances). Resolve every remaining variant conditional to the branch
+    // this detach's variant selects, and neutralize any other component-scope
+    // identifier to `undefined` — a value the page can evaluate instead of a
+    // reference that throws.
+    {
+      const sweepFile = t.file(t.program([t.expressionStatement(clone)]));
+      traverse(sweepFile, {
+        ConditionalExpression(path) {
+          const verdict = evalVariantTest(path.node.test as t.Expression);
+          if (verdict === null) return;
+          path.replaceWith(verdict ? path.node.consequent : path.node.alternate);
+        },
+        LogicalExpression(path) {
+          const verdict = evalVariantTest(path.node as t.Expression);
+          if (verdict === null) return;
+          path.replaceWith(t.booleanLiteral(verdict));
+        },
+      });
+      traverse(sweepFile, {
+        Identifier(path) {
+          if (!path.isReferencedIdentifier()) return;
+          const nm = path.node.name;
+          if (nm === 'variant' || nm === 'initialVariant') {
+            path.replaceWith(t.stringLiteral(resolvedVariant));
+            path.skip();
+            return;
+          }
+          if (scopeIds.has(nm) && !constLiterals.has(nm)) {
+            path.replaceWith(t.identifier('undefined'));
+            path.skip();
+          }
+        },
+      });
+    }
 
     // Report the detached root's fresh data-id so the caller can re-select it (the
     // instance is gone; its replacement is a normal node the user expects selected).
