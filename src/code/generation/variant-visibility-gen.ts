@@ -39,6 +39,7 @@ import { parseJSX, findFirstElementByDataId } from '../parsing/ast-utils';
 import generate from '@babel/generator';
 import * as t from '@babel/types';
 import { trace } from '@/shared/debug-trace';
+import traverse from '@babel/traverse';
 
 /** Build the variant condition expression matching:
  *    visible when `<ident> !== 'A' && <ident> !== 'B' && ...`
@@ -161,6 +162,52 @@ function findExistingWrapper(
  * `allVariants` should come from `variantConfig` (used to invert the
  * condition when hiddenVariants is the larger side).
  */
+/** Strip a lingering `display: 'none'` that would keep a node invisible even
+ *  after its render gate says show. A component node can hold display:none in
+ *  TWO places — its inline `style={{…}}` and the `default` entry of its
+ *  `<node>Variants` object (which `animate={['default', variant]}` applies
+ *  UNDER every variant). The unhide path only ever managed the AnimatePresence
+ *  gate, and the inline-display auto-substitution is deliberately skipped on
+ *  component files — so a node carrying both channels ignored Hide→No entirely:
+ *  the gate already permitted the variant, nothing unwrapped, and display:none
+ *  survived ("Hide No does nothing", 2026-08-08). */
+function clearHiddenDisplay(el: t.JSXElement, ast: t.File, nodeId: string): void {
+  // 1. inline style={{ …, display: 'none' }}
+  for (const attr of el.openingElement.attributes) {
+    if (!t.isJSXAttribute(attr) || attr.name.name !== 'style') continue;
+    if (attr.value?.type !== 'JSXExpressionContainer') continue;
+    const expr = attr.value.expression;
+    if (!t.isObjectExpression(expr)) continue;
+    expr.properties = expr.properties.filter((pr) => {
+      if (!t.isObjectProperty(pr)) return true;
+      const key = t.isIdentifier(pr.key) ? pr.key.name : t.isStringLiteral(pr.key) ? pr.key.value : '';
+      return !(key === 'display' && t.isStringLiteral(pr.value) && pr.value.value === 'none');
+    });
+  }
+  // 2. the `default` entry of the node's variants object.
+  // Same derivation the writer uses (generator-styles.ts): kebab id → camel + 'Variants'.
+  const variantsName = nodeId.replace(/-(.)/g, (_, c: string) => c.toUpperCase()).replace(/-/g, '') + 'Variants';
+  traverse(ast, {
+    VariableDeclarator(path) {
+      if (!t.isIdentifier(path.node.id) || path.node.id.name !== variantsName) return;
+      const init = path.node.init;
+      if (!t.isObjectExpression(init)) return;
+      for (const entry of init.properties) {
+        if (!t.isObjectProperty(entry)) continue;
+        const ename = t.isIdentifier(entry.key) ? entry.key.name : t.isStringLiteral(entry.key) ? entry.key.value : '';
+        if (ename !== 'default' || !t.isObjectExpression(entry.value)) continue;
+        entry.value.properties = entry.value.properties.filter((pr) => {
+          if (!t.isObjectProperty(pr)) return true;
+          const key = t.isIdentifier(pr.key) ? pr.key.name : t.isStringLiteral(pr.key) ? pr.key.value : '';
+          return !(key === 'display' && t.isStringLiteral(pr.value) && pr.value.value === 'none');
+        });
+      }
+      path.stop();
+    },
+  });
+  trace.action('generator:setVariantVisibility:clear-hidden-display', { nodeId });
+}
+
 export function setVariantVisibilityInCode(
   code: string,
   nodeId: string,
@@ -262,6 +309,18 @@ export function setVariantVisibilityInCode(
   };
 
   // ── Case 1: hiddenVariants empty → UNWRAP back to plain inline render ──
+  // The GATE is the single source of truth for per-variant visibility, so any
+  // display:none channel is at best redundant and at worst wrong: it lives on
+  // the element inline and in the variants object's `default` entry, which
+  // `animate={['default', variant]}` applies UNDER every variant — so it leaks
+  // onto the variants the gate is making VISIBLE. Unhiding on one variant
+  // therefore did nothing at all: hiddenVariants was still ['default'] (correct
+  // — the gate keeps hiding there), so the unwrap branch never ran and the
+  // display:none survived ("Hide No does nothing, eye icon does nothing",
+  // 2026-08-08). Clear it on EVERY visibility write; the gate keeps doing the
+  // hiding it was already doing.
+  clearHiddenDisplay(target, ast, nodeId);
+
   if (hiddenVariants.length === 0) {
     if (existingWrapperIdx >= 0) {
       // Unwrap: replace AnimatePresence wrapper with the bare element.
