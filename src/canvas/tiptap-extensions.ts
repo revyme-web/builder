@@ -1,6 +1,7 @@
 // Custom TipTap extensions for inline text styling
 
 import { Extension } from '@tiptap/react';
+import type { Editor } from '@tiptap/react';
 import '@tiptap/extension-text-style';
 
 // Swap Enter/Shift+Enter: Enter creates <br> (hard break), Shift+Enter creates new <p> paragraph
@@ -41,6 +42,155 @@ export const FontSize = Extension.create({
         },
       },
     }];
+  },
+});
+
+// FontStyle extension — the per-run counterpart to the element's own
+// `font-style`. Needed because `<em>` is a one-way switch: it can turn italic
+// ON for a run, but there is no tag that turns it OFF, and a Figma import
+// routinely lands `font-style: italic` on the block itself (a Fraunces display
+// heading, user report 2026-08-08). Only an explicit `font-style: normal` span
+// can carve a non-italic run out of an italic element.
+export const FontStyle = Extension.create({
+  name: 'fontStyle',
+
+  addGlobalAttributes() {
+    return [{
+      types: ['textStyle'],
+      attributes: {
+        fontStyle: {
+          default: null,
+          parseHTML: (el) => el.style.fontStyle || null,
+          renderHTML: (attrs) => {
+            if (!attrs.fontStyle) return {};
+            return { style: `font-style: ${attrs.fontStyle}` };
+          },
+        },
+      },
+    }];
+  },
+});
+
+/** `italic` and `oblique 14deg` both render slanted; `normal` is the only
+ *  upright keyword. Treat anything else as upright rather than guessing. */
+export function isItalicFontStyle(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const v = value.trim().toLowerCase();
+  return v === 'italic' || v.startsWith('oblique');
+}
+
+/** The `font-style` the selection INHERITS — from the edited element itself or
+ *  any ancestor — ignoring marks inside it. Computed rather than read off the
+ *  inline style so an italic set by a class, a variant, or a parent still
+ *  counts. Safe here: this module runs inside the canvas iframe, not the
+ *  parent frame. */
+function inheritedFontStyle(editor: Editor): string {
+  const dom = editor.view?.dom as HTMLElement | undefined;
+  const win = dom?.ownerDocument?.defaultView;
+  if (!dom || !win) return '';
+  try {
+    return win.getComputedStyle(dom).fontStyle || '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Cmd/Ctrl+I that toggles what the user actually SEES.
+ *
+ * StarterKit binds Mod-i to `toggleItalic`, which only knows about the `italic`
+ * mark. On text whose italic comes from the element's own `font-style` there is
+ * no such mark, so the shortcut fell through to "add one" — wrapping already-
+ * slanted text in `<em>` for zero visual change. Pressing it did nothing, twice
+ * over: nothing to remove, and nothing visible to add.
+ *
+ * This resolves the EFFECTIVE italic at the cursor — explicit run mark first,
+ * then `<em>`, then the inherited element style — and drives it the other way,
+ * splitting the text into runs as needed. Clearing a run's mark is preferred to
+ * writing the opposite value whenever the inherited style already gives the
+ * wanted result, so toggling twice returns the markup to where it started
+ * instead of accreting spans.
+ *
+ * Higher priority than StarterKit so this binding wins; the `italic` mark stays
+ * registered, because existing content and pasted HTML still carry `<em>`.
+ */
+export interface ItalicTogglePlan {
+  /** Effective italic at the cursor BEFORE the toggle — what the user sees. */
+  wasItalic: boolean;
+  /** Drop the `<em>` mark (only ever true when it's what carried the italic). */
+  unsetEm: boolean;
+  /** Add the `<em>` mark — the semantic path, for plain upright text. */
+  toggleEm: boolean;
+  /** Explicit `font-style` to write on the run. `null` clears the mark and lets
+   *  the element's own style show through; `undefined` = don't touch it. */
+  runFontStyle?: string | null;
+}
+
+/**
+ * PURE decision half of `ItalicToggle` — unit tested.
+ *
+ * Resolves the effective italic from the three places it can come from, in
+ * precedence order (run mark → `<em>` → inherited element style), then picks
+ * the smallest edit that flips it. Clearing a run mark is always preferred to
+ * writing the opposite value when the inherited style already yields the wanted
+ * result, so toggle-twice returns the markup to exactly where it started rather
+ * than leaving `font-style: italic` spans inside an italic heading.
+ */
+export function planItalicToggle(args: {
+  runFontStyle?: string | null;
+  emActive: boolean;
+  inheritedItalic: boolean;
+}): ItalicTogglePlan {
+  const { runFontStyle, emActive, inheritedItalic } = args;
+  const wasItalic = runFontStyle
+    ? isItalicFontStyle(runFontStyle)
+    : emActive || inheritedItalic;
+
+  if (wasItalic) {
+    // OFF. Drop the <em> if that's the carrier, and write an explicit `normal`
+    // only when the element underneath would otherwise still be italic —
+    // there is no tag for "not italic", which is the whole reason this exists.
+    return {
+      wasItalic,
+      unsetEm: emActive,
+      toggleEm: false,
+      runFontStyle: inheritedItalic ? 'normal' : null,
+    };
+  }
+  if (runFontStyle) {
+    // ON, over an explicit run value. If the element is italic, clearing the
+    // run restores the original markup exactly; otherwise write it.
+    return {
+      wasItalic,
+      unsetEm: false,
+      toggleEm: false,
+      runFontStyle: inheritedItalic ? null : 'italic',
+    };
+  }
+  // ON, over plain upright text: the semantic <em>, unchanged from before.
+  return { wasItalic, unsetEm: false, toggleEm: true };
+}
+
+export const ItalicToggle = Extension.create({
+  name: 'italicToggle',
+  priority: 1000,
+
+  addKeyboardShortcuts() {
+    const toggle = ({ editor }: { editor: Editor }) => {
+      const plan = planItalicToggle({
+        runFontStyle: editor.getAttributes('textStyle').fontStyle as string | undefined,
+        emActive: editor.isActive('italic'),
+        inheritedItalic: isItalicFontStyle(inheritedFontStyle(editor)),
+      });
+      const chain = editor.chain().focus();
+      if (plan.unsetEm) chain.unsetMark('italic');
+      if (plan.toggleEm) chain.toggleMark('italic');
+      if (plan.runFontStyle !== undefined) {
+        chain.setMark('textStyle', { fontStyle: plan.runFontStyle });
+      }
+      return chain.run();
+    };
+    return { 'Mod-i': toggle, 'Mod-I': toggle };
   },
 });
 

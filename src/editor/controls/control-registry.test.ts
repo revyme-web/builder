@@ -33,3 +33,45 @@ describe('resolveControl', () => {
     expect(def?.type).toBe('numeric');
   });
 });
+
+// The Italic control is the panel twin of the Cmd+I shortcut (ItalicToggle).
+// A two-value property reads as a button group, not a dropdown — the CSS values
+// stay real so both paths write the identical textStyle mark; only the labels
+// are Yes/No.
+describe('fontStyle — the Italic control', () => {
+  test('resolves to a segmented control, not a select', () => {
+    expect(resolveControl('fontStyle')?.type).toBe('segmented');
+  });
+
+  test('labels the segments Yes/No', () => {
+    const def = resolveControl('fontStyle');
+    expect(def?.type === 'segmented' && def.options).toEqual([
+      { value: 'no', label: 'No' },
+      { value: 'yes', label: 'Yes' },
+    ]);
+  });
+
+  test('maps CSS values to segments, treating oblique as italic', () => {
+    const def = resolveControl('fontStyle');
+    if (def?.type !== 'segmented') throw new Error('expected segmented');
+    expect(def.map('italic')).toBe('yes');
+    expect(def.map('oblique 14deg')).toBe('yes');
+    expect(def.map('normal')).toBe('no');
+    expect(def.map('')).toBe('no');
+  });
+
+  test('unmaps segments back to real CSS values', () => {
+    const def = resolveControl('fontStyle');
+    if (def?.type !== 'segmented') throw new Error('expected segmented');
+    // `normal`, not '' — an explicit upright is the only thing that beats an
+    // italic inherited from the element, which is the case this exists for.
+    expect(def.unmap('yes')).toBe('italic');
+    expect(def.unmap('no')).toBe('normal');
+  });
+
+  test('round-trips both directions', () => {
+    const def = resolveControl('fontStyle');
+    if (def?.type !== 'segmented') throw new Error('expected segmented');
+    for (const seg of ['yes', 'no']) expect(def.map(def.unmap(seg))).toBe(seg);
+  });
+});

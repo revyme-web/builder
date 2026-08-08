@@ -145,7 +145,7 @@ import { getSortedBreakpointWidths } from '../stores/viewport-store';
 import { transformAllResponsiveAttrs } from '../components/instance-prop-overrides';
 import { rewriteListConfigBreakpoints, addListConfigBreakpoint, removeListConfigBreakpoint } from './cms-responsive-gen';
 import { trace } from '@/shared/debug-trace';
-import { findTagClose, findJSXDataIdIndex, quoteStyleValue, findStyleObjectEnd, findMatchingCloseTagIndex, findSubtreeRange } from './generator-utils';
+import { findTagClose, findJSXDataIdIndex, quoteStyleValue, findStyleObjectEnd, findMatchingCloseTagIndex, findSubtreeRange, findBalancedBraceEnd } from './generator-utils';
 import { updateNodeInCode } from './generator-crud';
 import { isIndexInsideSlotConst } from './slot-ops';
 
@@ -312,6 +312,168 @@ export function updateContainerQueryStyle(
     const styleBlock = `  <style>{\`${newCss}\`}</style>\n`;
     return code.slice(0, insertIdx) + styleBlock + code.slice(insertIdx);
   }
+}
+
+/** Properties that place an OUT-OF-FLOW box. Meaningless-to-harmful on a flow
+ *  child: `left`/`top` still shift a `position: relative` element, and a banded
+ *  `position: absolute` would pull it back out of the layout entirely. */
+export const POSITIONAL_STYLE_KEYS = ['position', 'left', 'top', 'right', 'bottom', 'inset'] as const;
+
+/**
+ * Strip a node's POSITIONAL @media overrides from every breakpoint, leaving all
+ * its other per-viewport values (width, font-size, order, …) untouched.
+ *
+ * Needed whenever a child stops being absolutely positioned in the PRIMARY tile
+ * — sizing a parent to auto injects layout on it and converts its children to
+ * `position: relative`, but that conversion only ever cleared the tile it ran
+ * in. The replicas' banded `left: 69.5px !important` survived and kept shifting
+ * a child that is now a flow item, with no inset control left in the panel to
+ * undo it (user report 2026-08-08: the subtext sat offset on tablet + mobile
+ * and could not be recovered).
+ *
+ * `clearContainerStylesForNode` is the wrong tool here — it would also throw
+ * away the per-viewport width and font-size the user deliberately set. Only the
+ * keys that contradict the new flow model come out.
+ *
+ * `transform` is narrowed rather than dropped: a banded `translate(-50%, -50%)`
+ * offsets a flow child just like `left` does, but a `rotate`/`scale` in the same
+ * declaration is still valid and is kept.
+ */
+export function stripPositionalContainerStyles(code: string, nodeId: string): string {
+  const styleBlockRegex = /(<style>\s*\{[`'])([\s\S]*?)([`']\}\s*<\/style>)/s;
+  const blockMatch = styleBlockRegex.exec(code);
+  if (!blockMatch) return code;
+
+  const lang = extractLangRules(blockMatch[2]);
+  const rules = parseContainerRules(lang.css);
+
+  const kebabKeys = POSITIONAL_STYLE_KEYS.map((k) => toKebab(k));
+  let touched = 0;
+  for (const [, selectorMap] of rules) {
+    const props = selectorMap.get(nodeId);
+    if (!props) continue;
+    for (const key of kebabKeys) {
+      if (props.delete(key)) touched++;
+    }
+    const transform = props.get('transform');
+    if (transform) {
+      const residual = transform
+        .replace(/translate[XY3]?d?\([^)]*\)/g, '')
+        .trim()
+        .replace(/\s+/g, ' ');
+      if (residual !== transform) {
+        touched++;
+        if (residual) props.set('transform', residual);
+        else props.delete('transform');
+      }
+    }
+    if (props.size === 0) selectorMap.delete(nodeId);
+  }
+  if (touched === 0) return code;
+
+  trace.action('generator.stripPositionalContainerStyles', { nodeId, removed: touched });
+
+  const vpWidths = getSortedBreakpointWidths();
+  let newCss = '\n';
+  for (const rule of lang.topLevel) newCss += `    ${rule}\n`;
+  const sortedWidths = [...rules.keys()].sort((a, b) => b - a);
+  for (const width of sortedWidths) {
+    const selectors = rules.get(width) ?? new Map<string, Map<string, string>>();
+    const langRules = lang.banded.get(width) ?? [];
+    if (selectors.size === 0 && langRules.length === 0) continue;
+    const minW = getMinWidth(vpWidths, width);
+    const query = minW
+      ? `@media (max-width: ${width}px) and (min-width: ${minW + 0.02}px)`
+      : `@media (max-width: ${width}px)`;
+    newCss += `    ${query} {\n`;
+    for (const [id, props] of selectors) {
+      if (props.size === 0) continue;
+      const decls = [...props.entries()].map(([k, v]) => `${k}: ${v} !important;`).join(' ');
+      newCss += `      [data-id="${id}"] { ${decls} }\n`;
+    }
+    for (const rule of langRules) newCss += `      ${rule}\n`;
+    newCss += `    }\n`;
+  }
+  newCss += '  ';
+
+  const [fullMatch, prefix, , suffix] = blockMatch;
+  return code.slice(0, blockMatch.index!) + prefix + newCss + suffix + code.slice(blockMatch.index! + fullMatch.length);
+}
+
+/**
+ * The component-file twin of `stripPositionalContainerStyles`: drop the
+ * positional keys from every entry of the node's `variants` object.
+ *
+ * A component has no `@media` bands — its replicas are variant artboards, and a
+ * per-variant `left`/`top` lives in the `<id>Variants` const. Same failure, same
+ * shape: the primary's children go flow when the parent is sized to auto, and a
+ * variant entry's leftover `left: '40px'` keeps shoving one of them.
+ *
+ * Written directly against the object rather than looping
+ * `updateVariantStyleInCode`, because that path also runs the variant-list
+ * wiring and root perf-isolation passes — real edits to a file that may need no
+ * edit at all. This touches only the keys it removes, and returns `code`
+ * untouched when there are none.
+ *
+ * `transform` / `x` / `y` are deliberately left alone: in a variants object
+ * those are the animation channels, and clearing them would silently delete a
+ * per-variant motion the user authored. Only the CSS box-offset keys go.
+ */
+export function stripPositionalVariantStyles(code: string, nodeId: string): string {
+  const idIdx = findJSXDataIdIndex(code, nodeId);
+  if (idIdx === -1) return code;
+  let tagStart = idIdx;
+  while (tagStart > 0 && code[tagStart] !== '<') tagStart--;
+  const tagEnd = findTagClose(code, tagStart);
+  if (tagEnd === -1) return code;
+  const varMatch = code.slice(tagStart, tagEnd).match(/variants=\{(\w+)\}/);
+  if (!varMatch) return code;
+
+  const varName = varMatch[1];
+  const declMatch = new RegExp(`const\\s+${varName}\\s*=\\s*\\{`).exec(code);
+  if (!declMatch) return code;
+  const objOpen = declMatch.index + declMatch[0].length - 1;
+  const objEnd = findBalancedBraceEnd(code, objOpen);
+  if (objEnd === -1) return code;
+
+  // Walk the variant ENTRIES and rewrite each one's own body. A flat regex over
+  // the whole object can't do this: stripping `left: '0px',` consumes the comma
+  // that the very next key needed as its left delimiter, so `top` right after it
+  // survives — adjacent keys are the normal case here, not an edge one.
+  const keyAlt = POSITIONAL_STYLE_KEYS.join('|');
+  const declRe = new RegExp(
+    `(?:'(?:${keyAlt})'|"(?:${keyAlt})"|\\b(?:${keyAlt}))\\s*:\\s*(?:'[^']*'|"[^"]*"|[^,}\\n]+)`,
+    'g',
+  );
+  const entryOpen = /\{/g;
+  const pieces: string[] = [];
+  let cursor = objOpen + 1;
+  let changed = false;
+  entryOpen.lastIndex = cursor;
+  let open: RegExpExecArray | null;
+  while ((open = entryOpen.exec(code)) !== null && open.index < objEnd) {
+    const close = findBalancedBraceEnd(code, open.index);
+    if (close === -1 || close > objEnd) break;
+    const entry = code.slice(open.index + 1, close);
+    // Drop the declarations, then repair the separators the removal left behind.
+    const stripped = entry
+      .replace(declRe, '')
+      .replace(/,\s*,/g, ',')
+      .replace(/^\s*,/, '')
+      .replace(/,\s*$/, '');
+    if (stripped !== entry) {
+      changed = true;
+      pieces.push(code.slice(cursor, open.index + 1), stripped.trim() ? ` ${stripped.trim()} ` : '');
+      cursor = close;
+    }
+    entryOpen.lastIndex = close;
+  }
+  if (!changed) return code;
+  pieces.push(code.slice(cursor, objEnd));
+  const nextBody = pieces.join('').slice(1);
+
+  trace.action('generator.stripPositionalVariantStyles', { nodeId, varName });
+  return code.slice(0, objOpen + 1) + nextBody + code.slice(objEnd);
 }
 
 /**

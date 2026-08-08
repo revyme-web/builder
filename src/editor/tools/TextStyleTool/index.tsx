@@ -47,6 +47,7 @@ export default function TextStyleTool() {
               </CreateVariableGate>
               <FontFamilyControl />
               <TextPropertyControl property="fontWeight" label="Weight" />
+              <TextPropertyControl property="fontStyle" label="Italic" />
               <TextPropertyControl property="letterSpacing" label="Spacing" />
               <TextPropertyControl property="lineHeight" label="Line Height" />
               <ElementPropertyControl property="textTransform" label="Transform" />

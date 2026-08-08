@@ -682,3 +682,73 @@ describe('planChildAutoFreeze', () => {
     expect(plan).toEqual([]);
   });
 });
+
+// ─── The other tiles ────────────────────────────────────────────────────────
+//
+// User report 2026-08-08. Injecting on the PRIMARY converts the children to
+// flow in every tile — layout cascades to the replicas — but the '' inset
+// clears only ever deleted the primary's inline values. A replica that had
+// positioned the child independently kept its own banded `left`, which offsets
+// a `position: relative` box just as it does an absolute one. Worse, the panel
+// hides inset controls for a flow child, so there was no way back from the UI.
+describe('injectFlexLayoutOnFrame — sheds the other tiles placement overrides', () => {
+  beforeEach(() => {
+    updateNodeStyles.mockClear();
+    queueMutation.mockClear();
+    getContentRoot.mockReturnValue(document.createElement('div'));
+    findNodeSize.mockReturnValue({ width: 200, height: 100 });
+  });
+
+  const stripCalls = () =>
+    queueMutation.mock.calls
+      .map(c => c[0])
+      .filter((m: { type: string }) => m.type === 'stripPositionalTileOverrides');
+
+  it('queues one strip per child when injecting on the primary', () => {
+    const nodes = makeNodes(
+      makeNode('parent', ['c1', 'c2']),
+      makeNode('c1', [], { position: 'absolute', left: '10px', top: '4px' }),
+      makeNode('c2', [], { position: 'absolute', left: '80px' }),
+    );
+    injectFlexLayoutOnFrame('parent', nodes, 'desktop');
+    expect(stripCalls().map((m: { nodeId: string }) => m.nodeId)).toEqual(['c1', 'c2']);
+  });
+
+  it('does NOT strip when injecting on a REPLICA', () => {
+    // A replica-local layout is that tile's decision — the other tiles' children
+    // are still absolute there, and their insets are still correct.
+    const nodes = makeNodes(
+      makeNode('parent', ['c1']),
+      makeNode('c1', [], { position: 'absolute', left: '10px' }),
+    );
+    injectFlexLayoutOnFrame('parent', nodes, 'mobile');
+    expect(stripCalls()).toHaveLength(0);
+  });
+
+  it('a replica injection still neutralizes the base insets in its own band', () => {
+    // The pre-existing half of the behaviour, unchanged by this addition.
+    const nodes = makeNodes(
+      makeNode('parent', ['c1']),
+      makeNode('c1', [], { position: 'absolute', left: '10px', top: '4px' }),
+    );
+    injectFlexLayoutOnFrame('parent', nodes, 'mobile');
+    const childCall = updateNodeStyles.mock.calls.find(c => c[0].id === 'c1');
+    expect(childCall?.[0].styles).toMatchObject({ left: 'auto', top: 'auto' });
+  });
+
+  it('strips for a child that carries no inline inset of its own', () => {
+    // The inline style is the PRIMARY's truth only — a replica can hold an
+    // inset the primary never had, which is exactly the reported page.
+    const nodes = makeNodes(
+      makeNode('parent', ['c1']),
+      makeNode('c1', [], { position: 'absolute' }),
+    );
+    injectFlexLayoutOnFrame('parent', nodes, 'desktop');
+    expect(stripCalls()).toHaveLength(1);
+  });
+
+  it('a childless frame queues nothing', () => {
+    injectFlexLayoutOnFrame('parent', makeNodes(makeNode('parent', [])), 'desktop');
+    expect(stripCalls()).toHaveLength(0);
+  });
+});

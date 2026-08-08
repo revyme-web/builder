@@ -57,6 +57,8 @@ import {
   updateContainerQueryStyle,
   clearContainerStylesForNode,
   clearContainerStylesInSubtree,
+  stripPositionalContainerStyles,
+  stripPositionalVariantStyles,
   updateVariantStyleInCode,
   setConditionalOrderInCode,
   setConditionalStyleInCode,
@@ -193,6 +195,11 @@ export type Mutation =
   | { type: 'updateContainerStyle'; nodeId: string; maxWidth: number; styles: Record<string, string> }
   /** Remove all @container style overrides for an element. */
   | { type: 'clearContainerStyles'; nodeId: string }
+  /** Drop only the out-of-flow placement keys (position/insets) from an element's
+   *  OTHER tiles — every @media band on a page, every variant entry in a
+   *  component. Queued when a child becomes a flow item in the primary tile, so
+   *  a replica can't keep offsetting it with a stale `left`. */
+  | { type: 'stripPositionalTileOverrides'; nodeId: string }
   /** Update styles for a specific viewport variant (e.g. tablet/mobile overrides). */
   | { type: 'updateVariantStyle'; nodeId: string; variantName: string; styles: Record<string, string> }
   /** Set per-variant visibility via the AnimatePresence + conditional render
@@ -2223,6 +2230,14 @@ function applyMutationCore(code: string, mutation: Mutation): string {
 
       case 'clearContainerStyles':
         return clearContainerStylesForNode(code, mutation.nodeId);
+
+      case 'stripPositionalTileOverrides':
+        // Both run: a file is one or the other, and each is a no-op when its
+        // channel isn't present. Cheaper than asking which kind of file it is.
+        return stripPositionalVariantStyles(
+          stripPositionalContainerStyles(code, mutation.nodeId),
+          mutation.nodeId,
+        );
 
       case 'addNode': {
         let next = addNodeInCode(code, mutation.parentId, mutation.node, mutation.index);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ToolInput, ToolSlider, ToolSelect, ControlLabel } from '../../../controls';
+import { ToolInput, ToolSlider, ToolSelect, ToolSegmentedControl, ControlLabel } from '../../../controls';
 import { resolveControl } from '../../../controls/control-registry';
 import { LegacyVariableBoundPill } from '../../../controls/VariableBoundPill';
 import { useControlOptional } from '../../../controls/ControlProvider';
@@ -288,6 +288,23 @@ export function TextPropertyControl({ property, label, value: externalValue, onC
             removeVariable={ctl.removeVariable}
           />
         </div>
+      </div>
+    );
+  }
+
+  // Two-value properties (Italic) — a button group, matching Hide/Wrap
+  // elsewhere in the panel. Same value plumbing as every other control here;
+  // the registry's map/unmap sit between the CSS value and the segment.
+  if (registryDef?.type === 'segmented') {
+    return (
+      <div className="flex items-center justify-between w-full">
+        <ControlLabel label={label} property={property} plain={isExternal} />
+        <ToolSegmentedControl
+          value={isMixed ? '' : registryDef.map(value)}
+          onChange={(seg) => setValue(registryDef.unmap(seg))}
+          options={registryDef.options}
+          size="sm"
+        />
       </div>
     );
   }

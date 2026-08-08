@@ -23,7 +23,9 @@ import { FontFamily } from '@tiptap/extension-font-family';
 import Highlight from '@tiptap/extension-highlight';
 import {
   FontSize,
+  FontStyle,
   FontWeight,
+  ItalicToggle,
   LetterSpacing,
   LineHeight,
   TextDecoration,
@@ -47,6 +49,7 @@ import { trace } from '@/shared/debug-trace';
 const MARK_PROPS = [
   'fontSize',
   'fontWeight',
+  'fontStyle',
   'fontFamily',
   'color',
   'letterSpacing',
@@ -436,6 +439,7 @@ export function startTextEdit(
       Color,
       FontFamily,
       FontSize,
+      FontStyle,
       FontWeight,
       LetterSpacing,
       LineHeight,
@@ -447,6 +451,9 @@ export function startTextEdit(
       TextStrokeMark,
       Highlight.configure({ multicolor: true }),
       EnterHardBreak,
+      // Must come after StarterKit; its higher priority is what takes Mod-i
+      // away from StarterKit's mark-only toggleItalic.
+      ItalicToggle,
     ],
     content: html,
     // ProseMirror's DOM parser COLLAPSES leading/trailing whitespace by

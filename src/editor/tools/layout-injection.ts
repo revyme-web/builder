@@ -15,6 +15,10 @@
 //   - Parent gets `display: flex; flex-direction: column; align-items: center;
 //     justify-content: center` — a sensible default the user can re-tune
 //     via the Layout panel after.
+//   - Injecting on the PRIMARY additionally sheds each child's placement
+//     overrides in the OTHER tiles (@media bands / variant entries). Layout
+//     cascades to every replica, so a leftover `left` there would offset a box
+//     that is now a flow item — with no inset control left to undo it.
 //
 // The flush is the caller's responsibility — LayoutTool wants synchronous
 // flushNow for instant panel feedback, SizeTool may want to bundle the
@@ -301,10 +305,31 @@ export function injectFlexLayoutOnFrame(
       styles: { ...childStyles, flex: '0 0 auto' },
       contentEl,
     });
+
+    // OTHER TILES — the mirror image of `neutralize` above, and the half that
+    // was missing. Injecting on the PRIMARY makes the child a flow item in
+    // EVERY tile (layout cascades down; the replicas inherit `display: flex`),
+    // but the '' clears only delete the primary's inline inset. A replica that
+    // had independently positioned this child keeps its own banded
+    // `left: 69.5px !important` / variant `top: '40px'` — which still offsets a
+    // `position: relative` box, and the panel offers no inset control for a
+    // flow child, so the user cannot undo it from the UI at all (user report
+    // 2026-08-08: the subtext sat offset on tablet and mobile with no way back).
+    //
+    // Only the placement keys are dropped. Per-viewport width, font-size and
+    // order stay — those are still meaningful for a flow child and are usually
+    // the whole point of having a replica override.
+    //
+    // Primary only: injecting ON a replica is that replica's local decision,
+    // and the other tiles' children are still absolute there.
+    if (!neutralize) queueMutation({ type: 'stripPositionalTileOverrides', nodeId: childId });
+
     childIds.push(childId);
   }
 
-  trace.action('layout-injection:add', { nodeId, childCount: childIds.length, isHidden });
+  trace.action('layout-injection:add', {
+    nodeId, childCount: childIds.length, isHidden, strippedOtherTiles: !neutralize,
+  });
 }
 
 // ─── Direction flip ──────────────────────────────────────────────────────────

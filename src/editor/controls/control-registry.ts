@@ -9,7 +9,7 @@
 // auto-detected via css-property-options.ts so the two sources stay in sync.
 
 import { ComponentType } from 'react';
-import { getCSSPropertyOptions, CSSOption } from './css-property-options';
+import { getCSSPropertyOptions, CSSOption, YES_NO_OPTIONS } from './css-property-options';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -23,7 +23,12 @@ interface ControlRenderProps {
 export type ControlDef =
   | { type: 'custom'; component: ComponentType<ControlRenderProps> }
   | { type: 'numeric'; min?: number; max?: number; step?: number }
-  | { type: 'select'; options: CSSOption[] };
+  | { type: 'select'; options: CSSOption[] }
+  /** Two-or-three-way choice rendered as a button group rather than a dropdown.
+   *  `map`/`unmap` translate between the CSS value and the segment value, so a
+   *  property whose real values aren't the button labels (font-style's
+   *  `italic`/`normal` behind Yes/No) still rides the generic control. */
+  | { type: 'segmented'; options: CSSOption[]; map: (cssValue: string) => string; unmap: (segment: string) => string };
 
 // ─── Registry ────────────────────────────────────────────────────────────────
 
@@ -49,6 +54,17 @@ REGISTRY.set('flexShrink',   { type: 'numeric', min: 0,   max: 10,  step: 1 });
 REGISTRY.set('order',        { type: 'numeric', min: -10, max: 10,  step: 1 });
 // Sticky offset — the scroll distance at which a position:sticky element sticks.
 REGISTRY.set('top',          { type: 'numeric', min: -9999, max: 9999, step: 1 });
+
+// Italic. A two-value property reads as a button group, not a dropdown — same
+// shape as Hide. The CSS values stay real (`italic`/`normal`) so this writes
+// through the identical textStyle-mark path as the Cmd+I shortcut; only the
+// LABELS are Yes/No. `oblique` maps to Yes rather than showing as neither.
+REGISTRY.set('fontStyle', {
+  type: 'segmented',
+  options: YES_NO_OPTIONS,
+  map: (v) => (v && v.trim().toLowerCase().startsWith('oblique')) || v === 'italic' ? 'yes' : 'no',
+  unmap: (seg) => (seg === 'yes' ? 'italic' : 'normal'),
+});
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 
