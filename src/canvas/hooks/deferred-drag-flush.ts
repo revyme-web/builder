@@ -23,6 +23,7 @@
 // Bonus: the whole gesture lands as a single history entry.
 
 import { trace } from '@/shared/debug-trace';
+import { isForceRenderPending } from '@/code/mutation/mutation-queue';
 
 export interface DeferredDragFlush {
   /** Route a flushed code string: applies immediately when no drag is in
@@ -57,7 +58,16 @@ export function createDeferredDragFlush(opts: {
 
   return {
     onFlush(code: string) {
-      if (opts.isDragging()) {
+      // STRUCTURAL BYPASS. Stashing is right for style-only drag flushes — the
+      // DOM is already patched imperatively, so the flush is visually a no-op.
+      // But an ALT-DUPLICATE creates a NEW node mid-drag and explicitly asks to
+      // paint now (`setForceRender(); flushNow(); forceCanvasRender()`). Stashing
+      // that meant the new code never reached the nodes atom, so the forced
+      // render re-painted the PRE-duplicate tree: the duplicate existed in
+      // source but stayed invisible until some later unrelated edit flushed the
+      // stash — "no duplicate, then I create another node and suddenly it
+      // appears" (2026-08-08). A pending force-render marks exactly this case.
+      if (opts.isDragging() && !isForceRenderPending()) {
         pending = code;
         trace.action('deferred-drag-flush:stashed', { codeLength: code.length });
         return;

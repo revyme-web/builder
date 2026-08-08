@@ -37,6 +37,7 @@ import { buildDuplicateDescriptor, queueBorderOverlayDuplicates, queueReplicaCre
 import { queueMutation, flushNow, setForceRender, setDeferNextFanOut, hasQueuedMutations } from '@/code/mutation/mutation-queue';
 import { isComponentLikeFilePath } from '@/code/project/file-path-kind';
 import { forceCanvasRender, isPrimaryViewport, getActiveFilePath } from '@/canvas/node-ops';
+import { holdHistoryCoalescing, releaseHistoryCoalescing } from '@/code/mutation/history';
 import { getViewportWidths } from '@/code/stores/viewport-store';
 import { getReplicaContext } from './replica-context';
 import { runDragEndRestores } from './drag-end-restores';
@@ -568,6 +569,17 @@ export class DragCoordinator {
         pairs: Array.from(this.altDuplicateIds.entries()),
         flow: wasFlowStrategy,
       });
+      // STRUCTURAL RENDER OWED. The duplicate was created mid-drag via
+      // `addNode`, and drag-scoped flushes are STASHED (deferred-drag-flush) with
+      // their drain deferred to fan-out — so the new node exists in source but
+      // never gets a render that materializes it. Starting another alt-drag
+      // re-defers the drain, which is why several duplicates stayed invisible
+      // and then all appeared at once when the user finally stopped
+      // ("nothing happens for 3 drags then suddenly all the duplicates appear",
+      // 2026-08-08). Mark the render owed so the post-drag flush carries the
+      // new node instead of being skipped as a no-op re-render.
+      setForceRender();
+
       if (wasFlowStrategy) {
         // Duplicate is already a real flex sibling at its source index
         // and was participating in reorder calcs throughout the drag.
@@ -1092,6 +1104,14 @@ export class DragCoordinator {
         // — without this the canvasUpdating skip-flag would suppress
         // the post-flush render and the ghost wouldn't appear until
         // the next unrelated re-render.
+        // ONE HISTORY ENTRY PER GESTURE. The duplicate's structural flush lands
+        // immediately (it must, or the node never paints — see the stash
+        // bypass), and the drop commit flushes again. Two flushes = two undo
+        // steps, so the first Cmd+Z only appeared to change the selection and a
+        // SECOND was needed to remove the node (2026-08-08). Hold the history
+        // group open for the rest of the gesture so both merge into the single
+        // entry the user thinks of as "the duplicate".
+        holdHistoryCoalescing();
         setForceRender();
         flushNow();
         forceCanvasRender();
@@ -1352,6 +1372,9 @@ export class DragCoordinator {
       trace.action('drag:end-drain-fan-out-defer', {});
     }
     flushNow();
+    // Seal the alt-duplicate gesture's merged history entry (opened at
+    // ghost-show). Released unconditionally — a no-op when no hold is active.
+    releaseHistoryCoalescing();
     // Deferred whole-gesture restores (synced-replica unhides handed over by
     // a mid-drag strategy switch). AFTER the drop flush so the twins are
     // already gone from the other viewports' DOM when the hide lifts — no

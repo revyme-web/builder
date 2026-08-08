@@ -651,7 +651,24 @@ let onError: ((detail: MutationErrorDetail) => void) | null = null;
  *  Used by non-canvas-initiated code changes (JSON editor, etc.) that need a full Renderer rebuild. */
 let _forceRenderOnNextFlush = false;
 export function setForceRender(): void { _forceRenderOnNextFlush = true; }
-export function consumeForceRender(): boolean { const v = _forceRenderOnNextFlush; _forceRenderOnNextFlush = false; return v; }
+/** Peek WITHOUT consuming — the drag-flush stash uses it to decide whether a
+ *  mid-drag flush carries a STRUCTURAL change that must reach the canvas now
+ *  (see deferred-drag-flush.onFlush). */
+/** True while the flag is pending AND for the remainder of the flush that
+ *  consumed it. The flush consumes `_forceRenderOnNextFlush` while deciding
+ *  render-skip, which happens BEFORE onFlush subscribers run — so a plain peek
+ *  read `false` exactly when the drag-flush stash asked, and the alt-duplicate
+ *  kept being stashed ("still not rendering", 2026-08-08). */
+export function isForceRenderPending(): boolean { return _forceRenderOnNextFlush || _forceRenderThisFlush; }
+let _forceRenderThisFlush = false;
+export function consumeForceRender(): boolean {
+  const v = _forceRenderOnNextFlush;
+  _forceRenderOnNextFlush = false;
+  if (v) _forceRenderThisFlush = true;
+  return v;
+}
+/** Reset the per-flush latch — called at the START of each flush cycle. */
+export function beginFlushForceRenderWindow(): void { _forceRenderThisFlush = false; }
 
 // Render-resolved mutation types (the render-skip decision) live in their own
 // LEAF module — see `render-resolved-mutations.ts` for the full rationale.
@@ -1872,6 +1889,8 @@ function reglideInsertedParents(code: string, mutations: Mutation[]): string {
 }
 
 function processQueue(): void {
+  // New flush cycle — drop the previous cycle's force-render latch.
+  _forceRenderThisFlush = false;
   if (queue.length === 0) return;
   if (isProcessing) return;
   // ELEMENT-DRAG GATE: while a canvas element drag is live, HOLD the queue.
