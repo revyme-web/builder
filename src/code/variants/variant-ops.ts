@@ -259,6 +259,19 @@ export function removeVariant(filePath: string, variantName: string): VariantCon
       // which intentionally keep a `variant` identifier fallback and so are skipped
       // here anyway — are already free of the dead variant.
       updated = removeVariantBranchFromConditionalTernaries(updated, variantName);
+
+      // Re-emit every AnimatePresence visibility gate against the REMAINING
+      // variants. The ternary sweep above only reaches inline style/content
+      // ternaries, so a gate kept naming the dead variant —
+      // `{initialVariant !== "variant-1" && <svg/>}` survived deleting
+      // variant-1 (found replaying the user's own file). Always true now, so
+      // nothing looked wrong, but the dead reference is exactly what makes
+      // re-adding a variant of the same name resurrect the old visibility.
+      // Runs AFTER the connection teardown so the gates it reads are already
+      // in their post-teardown (`initialVariant`) form. The delete-path mirror
+      // of cascadeVisibilityForNewVariant.
+      updated = cascadeVisibilityForRemovedVariant(updated, result!.map(v => v.name));
+
       // Removing this variant may have dropped the LAST heavy animated prop —
       // sweep the root perf isolation in the SAME write (see variant-perf.ts).
       updated = ensureRootPerfIsolation(updated);
@@ -517,6 +530,45 @@ function cascadeVisibilityForNewVariant(
       result = setVariantVisibilityInCode(result, nodeId, Array.from(newHidden), allVariants);
     } catch (e) {
       trace.error('variant-ops:cascade-visibility-failed', { nodeId, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return result;
+}
+
+/**
+ * Delete-path mirror of `cascadeVisibilityForNewVariant`: re-emit every
+ * AnimatePresence visibility gate with the removed variant dropped from its
+ * hidden set and the remaining variant list as the new universe.
+ *
+ * Two shapes resolve on their own from that:
+ *  · hidden ONLY on the removed variant → the set empties → the generator
+ *    unwraps the gate entirely (the element is simply visible again);
+ *  · visible ONLY on the removed variant → its hidden set already covers every
+ *    survivor, so it re-emits as hidden everywhere. Kept rather than deleted —
+ *    a hidden element is recoverable from the Layers panel, a deleted one is
+ *    only recoverable by undo.
+ *
+ * Every gated node is re-emitted, not just the ones naming the removed variant:
+ * a positive gate (`variant === 'X'`) records its hidden set as "all the
+ * others", so the removed name isn't in it and a narrower filter would leave
+ * the dead `=== 'X'` test in the source.
+ */
+function cascadeVisibilityForRemovedVariant(code: string, remainingVariants: string[]): string {
+  let result = code;
+  let nodes: ReturnType<typeof parseJSXToNodes>;
+  try {
+    nodes = parseJSXToNodes(result);
+  } catch {
+    return result;
+  }
+  for (const [nodeId, node] of nodes) {
+    const hidden = node.hiddenOnVariants;
+    if (!hidden || hidden.size === 0) continue;
+    const next = [...hidden].filter(v => remainingVariants.includes(v));
+    try {
+      result = setVariantVisibilityInCode(result, nodeId, next, remainingVariants);
+    } catch (e) {
+      trace.error('variant-ops:cascade-visibility-remove-failed', { nodeId, error: e instanceof Error ? e.message : String(e) });
     }
   }
   return result;
