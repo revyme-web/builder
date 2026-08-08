@@ -69,9 +69,11 @@ describe('withResponsiveProps — animated-style socket for code components', ()
     expect(root.style.height).toBe('100%');
     expect(root.style.backgroundColor).toBe('rgb(17, 17, 17)');
     expect(root.style.opacity).toBe('');
-    // data-id stays on the component's own root (canvas selection contract).
+    // The instance's data-id rides BOTH boxes. It used to sit only on the
+    // component root, which broke every per-viewport override — see the
+    // dedicated describe block below.
     expect(root.getAttribute('data-id')).toBe('mq-1');
-    expect(wrapper.getAttribute('data-id')).toBeNull();
+    expect(wrapper.getAttribute('data-id')).toBe('mq-1');
   });
 
   it('motion-only key with a static value also routes through the wrapper', () => {
@@ -131,5 +133,103 @@ describe('withResponsiveProps — animated-style socket for code components', ()
     expect((ref.current as HTMLElement).style.height).toBe('160px');
     // The ref prop never leaks into the component (React 19 passes it as a prop).
     expect(root.getAttribute('ref')).toBeNull();
+  });
+});
+
+// ─── The wrapper must be reachable by the editor's responsive CSS ───────────
+//
+// User report 2026-08-08: a button instance set to `width: 100%` on mobile
+// rendered full-width on the canvas and stayed pill-sized on the live site.
+//
+// The editor writes every per-viewport override into the page's own <style>
+// block as `@media (…) { [data-id="<instanceId>"] { … !important } }`, and the
+// ONLY styles an instance tag may carry are placement ones — WRAPPER_ONLY_
+// STYLE_PROPS plus width/height (see component-spec/types.ts). Those are
+// exactly the keys the animated-style split moves onto the wrapper. So with
+// the data-id only on the inner, the rule landed on the element the split had
+// already pinned to `width/height: 100%` and did nothing at all.
+//
+// The canvas never saw it: Renderer.ts builds its OWN instance wrapper and
+// puts the instance's data-id on it, so the same selector hit the box that
+// owns the layout. The wrapper must carry the id in BOTH renderers or the
+// canvas keeps lying about the published page.
+describe('withResponsiveProps — per-viewport overrides reach the placement box', () => {
+  /** `[data-id="…"] { … !important }`, the shape the editor emits. */
+  function injectOverride(css: string): HTMLStyleElement {
+    const el = document.createElement('style');
+    el.textContent = css;
+    document.head.appendChild(el);
+    return el;
+  }
+
+  function AnimatedInstance({ id }: { id: string }) {
+    const op = useMotionValue(1);
+    const y = useMotionValue(0);
+    return (
+      <Wrapped
+        data-id={id}
+        data-name="Button"
+        label="Book a Call"
+        style={{ opacity: op, y, position: 'relative', width: 'min-content', height: 'min-content', flex: '0 0 auto', order: '1' }}
+      />
+    );
+  }
+
+  it('a width override on the instance id resolves against the WRAPPER', () => {
+    const style = injectOverride('[data-id="btn-1"] { width: 100% !important; }');
+    try {
+      const { container } = render(<AnimatedInstance id="btn-1" />);
+      const root = container.querySelector('[data-probe="root"]') as HTMLElement;
+      const wrapper = root.parentElement as HTMLElement;
+      // The wrapper is the flex item in the page's layout — it is the box the
+      // override has to hit. Inline `min-content` loses to the !important rule.
+      expect(getComputedStyle(wrapper).width).toBe('100%');
+    } finally {
+      style.remove();
+    }
+  });
+
+  it('data-name rides the wrapper too, so the box is identifiable', () => {
+    const { container } = render(<AnimatedInstance id="btn-2" />);
+    const root = container.querySelector('[data-probe="root"]') as HTMLElement;
+    expect((root.parentElement as HTMLElement).getAttribute('data-name')).toBe('Button');
+  });
+
+  it('an instance with NO id leaves the wrapper attribute off entirely', () => {
+    // `data-id` is optional (a code component dropped by a plugin, a nested
+    // render). React must not emit `data-id="undefined"`.
+    function NoId() {
+      const op = useMotionValue(1);
+      return <Wrapped label="x" style={{ opacity: op, width: '10px' }} />;
+    }
+    const { container } = render(<NoId />);
+    const root = container.querySelector('[data-probe="root"]') as HTMLElement;
+    const wrapper = root.parentElement as HTMLElement;
+    expect(wrapper.hasAttribute('data-id')).toBe(false);
+    expect(wrapper.hasAttribute('data-name')).toBe(false);
+  });
+
+  it('the inner root still answers to the id — nothing that matched stops matching', () => {
+    // Copied, not moved: overlay triggers, interactions and the component's
+    // own selectors keep resolving against the root they always did.
+    const { container } = render(<AnimatedInstance id="btn-3" />);
+    expect(container.querySelectorAll('[data-id="btn-3"]')).toHaveLength(2);
+    const root = container.querySelector('[data-probe="root"]') as HTMLElement;
+    expect(root.getAttribute('data-id')).toBe('btn-3');
+  });
+
+  it('placement rules are inert on the inner, so the duplicate id is harmless', () => {
+    // The inner is a lone block child already pinned to fill the wrapper, so an
+    // `order` / `flex` declaration reaching it changes nothing that renders.
+    const style = injectOverride('[data-id="btn-4"] { order: 5 !important; width: 100% !important; }');
+    try {
+      const { container } = render(<AnimatedInstance id="btn-4" />);
+      const root = container.querySelector('[data-probe="root"]') as HTMLElement;
+      // Inner fills its wrapper either way; the wrapper is what re-orders.
+      expect(root.style.width).toBe('100%');
+      expect(getComputedStyle(root.parentElement as HTMLElement).order).toBe('5');
+    } finally {
+      style.remove();
+    }
   });
 });
