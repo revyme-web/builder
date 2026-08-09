@@ -23,7 +23,7 @@ import { autoFocusLayersAtom } from '@/code/stores/user-preferences-store';
 import { snappedRulerGuideIdsAtom } from '@/code/stores/ruler-guides-store';
 import { overlayEditingIdAtom, overlayCallsAtom } from '@/code/stores/overlay-store';
 import { setViewportHeaderOverlayEditMode } from './ViewportHeaderManager';
-import { activeLocaleAtom, isDefaultLocaleAtom, i18nConfigAtom } from '@/code/stores/locale-store';
+import { activeLocaleAtom, isDefaultLocaleAtom, i18nConfigAtom, localeOverridesAtom } from '@/code/stores/locale-store';
 import {
   isSpaceBarDown,
 } from './transform';
@@ -715,6 +715,23 @@ export default function Canvas() {
         schemas: Object.fromEntries(freshSchemas),
         data: Object.fromEntries(freshData),
       },
+      // TRANSLATED TEXT LIVES HERE, NOT IN THE NODE.
+      //
+      // A `{t('key')}` node parses to an EMPTY `textContent` — the words come
+      // from this map. `patchElement` clears a node whose text went empty
+      // (`shouldClearEmptiedText`) and then re-applies the override; with the
+      // map missing, the clear lands and the re-apply is a no-op, so every
+      // translated node on the page is WIPED. This input omitted it, so any
+      // imperative `forceCanvasRender()` — entering overlay edit mode, and a
+      // dozen other paths — blanked all localized text until the next React
+      // render through `useRendererSync` put it back (user report 2026-08-09:
+      // "when i just open the overlay, suddenly all of the text on the page
+      // completely disappears").
+      //
+      // Read from the store, not a closure: this callback is imperative and
+      // long-lived, and `useLocaleOverrides` rewrites the atom whenever the
+      // locale, page or messages change.
+      localeOverrides: store.get(localeOverridesAtom),
     };
     // 'patch' (undo/redo): diff-patch via render() — no rebuild, no code-
     // component remount. INTENTIONAL: an undo restore must never be eaten by

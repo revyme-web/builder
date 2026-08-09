@@ -22,6 +22,7 @@ export default function Page() {
   const t = useTranslations("home");
   return <div data-id="root" data-name="Page" style={{ width: '100%' }}>
     <h1 data-id="in-page" style={{ color: '#000' }}>{t("in-page")}</h1>
+    <p data-id="plain" style={{ color: '#000' }}>+33 7 85 66 05 34</p>
   </div>;
 }
 const canvasNodes = <>
@@ -85,6 +86,48 @@ describe('canvas nodes resolve locale overrides', () => {
     render('en', overrides({ 'anchor-title': 'Lunch arrives by boat' }));
     expect(textOf('anchor-title')).toBe('Lunch arrives by boat');
     render('fr', overrides(FR));
+    expect(textOf('anchor-title')).toBe('Le déjeuner arrive en bateau');
+  });
+});
+
+// A `{t('key')}` node parses to an EMPTY textContent — the words come from the
+// override map. `patchElement` CLEARS a node whose text went empty and then
+// re-applies the override; with the map missing, the clear lands and the
+// re-apply is a no-op. Any render that forgets to pass the map therefore does
+// not merely fail to translate — it WIPES every translated node on the page.
+//
+// That is what an imperative `forceCanvasRender()` did: entering overlay edit
+// mode blanked all localized text until the next React render put it back
+// (user report 2026-08-09).
+
+describe('a render WITHOUT the override map', () => {
+  it('wipes already-painted translated text — the failure mode to guard', () => {
+    render('fr', overrides(FR));
+    expect(textOf('in-page')).toBe('Dans la page');
+
+    // Exactly what the forced-render input used to ship.
+    renderNodes(container, parseJSXToNodes(PAGE), null, () => {}, VIEWPORTS, PAGE, 'fr', 'en', undefined);
+    expect(textOf('in-page')).toBe('');
+    // The DORMANT canvas node survives: its JSX carries a real baked literal,
+    // so there is no "text went empty" for the clear to act on. It just falls
+    // back to the default-locale words — which is exactly why the canvas looked
+    // like it lost only SOME text.
+    expect(textOf('anchor-title')).toBe('Lunch arrives by boat');
+  });
+
+  it('leaves PLAIN text alone, which is why the page looked half-broken', () => {
+    // The words live in the JSX for these, so nothing clears them. On screen
+    // that reads as "the logo and phone number survived, everything else went".
+    render('fr', overrides(FR));
+    renderNodes(container, parseJSXToNodes(PAGE), null, () => {}, VIEWPORTS, PAGE, 'fr', 'en', undefined);
+    expect(container.querySelector('[data-node-id="plain"]')?.textContent).toBe('+33 7 85 66 05 34');
+  });
+
+  it('and passing the map restores every one of them', () => {
+    render('fr', overrides(FR));
+    renderNodes(container, parseJSXToNodes(PAGE), null, () => {}, VIEWPORTS, PAGE, 'fr', 'en', undefined);
+    render('fr', overrides(FR));
+    expect(textOf('in-page')).toBe('Dans la page');
     expect(textOf('anchor-title')).toBe('Le déjeuner arrive en bateau');
   });
 });
