@@ -9,9 +9,11 @@ vi.mock('@/code/mutation/mutation-queue', () => ({
   flushNowDeferredDuringDrag: vi.fn(() => calls.push({ fn: 'flushNowDeferredDuringDrag', args: [] })),
   flushNow: vi.fn(() => calls.push({ fn: 'flushNow', args: [] })),
 }));
+const nodeCache = new Map<string, any>();
 vi.mock('@/code/stores/store', () => ({
   moveNodeInCache: vi.fn((...args: any[]) => calls.push({ fn: 'moveNodeInCache', args })),
   updateNodeInCache: vi.fn((...args: any[]) => calls.push({ fn: 'updateNodeInCache', args })),
+  getNodeFromCache: (id: string) => nodeCache.get(id),
 }));
 vi.mock('@/canvas/node-ops', () => ({
   patchNodeStyles: vi.fn((...args: any[]) => calls.push({ fn: 'patchNodeStyles', args })),
@@ -33,7 +35,7 @@ import { commitExitToCanvas, flushExitToCanvas } from './exit-commit';
 
 const contentEl = {} as HTMLElement;
 
-beforeEach(() => { calls.length = 0; });
+beforeEach(() => { calls.length = 0; nodeCache.clear(); });
 
 describe('commitExitToCanvas — statement order', () => {
   it('queues clearContainerStyles before the canvas-root move', () => {
@@ -104,5 +106,57 @@ describe('flushExitToCanvas', () => {
   it('requests the drag-deferred flush + re-render (drop drains in one chain)', () => {
     flushExitToCanvas();
     expect(calls.map(c => c.fn)).toEqual(['flushNowDeferredDuringDrag', 'forceCanvasRenderDeferredDuringDrag']);
+  });
+});
+
+// ─── Replica-solo teardown ──────────────────────────────────────────────────
+//
+// User report 2026-08-09: a frame added directly on the THIRD viewport, dragged
+// out to the canvas and straight into the primary in ONE gesture, vanished on
+// mouse-up. It landed under the right parent at the right position — with
+// `display: none` still on it.
+//
+// A replica-only node is THREE things (node-ops.ts): inline `display: 'none'`,
+// a `display: 'unset'` @container band for the viewport it lives on, and
+// `data-replica-solo="<vpId>"`. Exit cleared the band and the attribute and
+// left the inline hide. The contract inverts the usual polarity — base hides,
+// band reveals — so "clear the band" reads like enough, which is why it stood.
+describe('commitExitToCanvas — replica-solo hide', () => {
+  it('THE BUG: clears the base display:none when the node is replica-solo', () => {
+    nodeCache.set('n1', { attrs: { 'data-replica-solo': 'iphone-15' }, styles: { display: 'none' } });
+    commitExitToCanvas({ nodeId: 'n1', styles: { left: '10px', top: '20px' } });
+    expect(calls[1].args[0].styles).toEqual({ left: '10px', top: '20px', display: '' });
+  });
+
+  it('the cache sync gets the same cleared styles, not the originals', () => {
+    // Overlays and the next onMove tick read the cache — leaving `display:none`
+    // there would re-hide the node for the rest of the gesture.
+    nodeCache.set('n1', { attrs: { 'data-replica-solo': 'iphone-15' }, styles: { display: 'none' } });
+    commitExitToCanvas({ nodeId: 'n1', styles: { left: '10px' } });
+    const sync = calls.find((c) => c.fn === 'updateNodeInCache')!;
+    expect(sync.args[1]).toEqual({ left: '10px', display: '' });
+  });
+
+  it('a deliberately HIDDEN node keeps its display — only solo nodes are cleared', () => {
+    nodeCache.set('n1', { attrs: {}, styles: { display: 'none' } });
+    commitExitToCanvas({ nodeId: 'n1', styles: { left: '10px' } });
+    expect(calls[1].args[0].styles).toEqual({ left: '10px' });
+  });
+
+  it('a solo node that is NOT hidden is untouched', () => {
+    nodeCache.set('n1', { attrs: { 'data-replica-solo': 'iphone-15' }, styles: { display: 'flex' } });
+    commitExitToCanvas({ nodeId: 'n1', styles: { left: '10px' } });
+    expect(calls[1].args[0].styles).toEqual({ left: '10px' });
+  });
+
+  it('an unknown node does not crash the exit', () => {
+    commitExitToCanvas({ nodeId: 'ghost', styles: { left: '10px' } });
+    expect(calls[1].args[0].styles).toEqual({ left: '10px' });
+  });
+
+  it('the band clear still runs first — order is unchanged', () => {
+    nodeCache.set('n1', { attrs: { 'data-replica-solo': 'iphone-15' }, styles: { display: 'none' } });
+    commitExitToCanvas({ nodeId: 'n1', styles: {} });
+    expect(calls[0].args[0]).toEqual({ type: 'clearContainerStyles', nodeId: 'n1' });
   });
 });

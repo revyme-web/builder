@@ -30,12 +30,13 @@ export function scanGates(code: string): Map<string, number> {
 // form-state, overlay…). These are THE shared read/write/strip primitives —
 // previously re-implemented per feature.
 
-/** Strip `attr={{…}}` / `attr={…}` / `attr='…'` from a tag, brace/string-balanced.
- *  (Promoted from generator-motion; the balanced walk replaces the per-feature
- *  `\{[^}]*\}` regexes that under-stripped nested-brace expression values.) */
-export function stripTagAttrBalanced(tag: string, attr: string): string {
+/** Source range of `attr=…` within a tag (leading whitespace included), or
+ *  null when the attribute isn't present. Brace/string-balanced, so a nested
+ *  object or an arrow body can't end the value early. Shared by the strip and
+ *  read helpers below so both agree on where an attribute ends. */
+export function findTagAttrRange(tag: string, attr: string): { start: number; end: number } | null {
   const m = tag.match(new RegExp(`\\s*\\b${escapeRegExp(attr)}=`));
-  if (!m || m.index === undefined) return tag;
+  if (!m || m.index === undefined) return null;
   let i = m.index + m[0].length;
   while (i < tag.length && /\s/.test(tag[i])) i++;
   if (tag[i] === "'" || tag[i] === '"') {
@@ -51,8 +52,24 @@ export function stripTagAttrBalanced(tag: string, attr: string): string {
       else if (ch === '{') depth++;
       else if (ch === '}') { depth--; if (depth === 0) { i++; break; } }
     }
-  } else return tag;
-  return tag.slice(0, m.index) + tag.slice(i);
+  } else return null;
+  return { start: m.index, end: i };
+}
+
+/** The raw `attr=…` source on this tag, or null when absent. Lets a caller
+ *  INSPECT an attribute before deciding whether to strip it. */
+export function readTagAttrRaw(tag: string, attr: string): string | null {
+  const range = findTagAttrRange(tag, attr);
+  return range ? tag.slice(range.start, range.end) : null;
+}
+
+/** Strip `attr={{…}}` / `attr={…}` / `attr='…'` from a tag, brace/string-balanced.
+ *  (Promoted from generator-motion; the balanced walk replaces the per-feature
+ *  `\{[^}]*\}` regexes that under-stripped nested-brace expression values.) */
+export function stripTagAttrBalanced(tag: string, attr: string): string {
+  const range = findTagAttrRange(tag, attr);
+  if (!range) return tag;
+  return tag.slice(0, range.start) + tag.slice(range.end);
 }
 
 /** Strip EVERY occurrence of `attr={…}` across a whole source file, using the

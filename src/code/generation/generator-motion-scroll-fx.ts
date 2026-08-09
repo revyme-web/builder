@@ -6,7 +6,7 @@ import { escapeRegExp } from '@/shared/regex-utils';
 import { nodeIdToVarName } from '@/shared/id-utils';
 import { parseScrollHooks, getScrollDataForNode, parseScrollDirection, parseRange } from '../parsing/scroll-parser';
 import { trace } from '@/shared/debug-trace';
-import { findTagClose, findJSXDataIdIndex, insertBeforeRenderReturn, findStyleObjectEnd, stripTagAttrBalanced, getJsonAttr } from './generator-utils';
+import { findTagClose, findJSXDataIdIndex, insertBeforeRenderReturn, findStyleObjectEnd, stripTagAttrBalanced, readTagAttrRaw, getJsonAttr } from './generator-utils';
 import { setScrollVariantInCode } from './scroll-variant-gen';
 import { setInstanceFxInCode } from './instance-fx-gen';
 import { type ResolvedScope } from '@/code/animations/animation-scope';
@@ -611,6 +611,20 @@ function removeScrollFxCall(code: string, name: string, e: string): string {
 /** Format-tolerant wipe of ALL of a node's data-scroll-fx machinery: the tag's effect
  *  attrs + style motion-value bindings + ref, and every `<cn>…` decl/handler. Robust to
  *  reformatting AND duplicate corruption (it removes everything, not just one form). */
+/** Motion gesture props that the VARIANT CONNECTION graph also writes. */
+const CONNECTION_HANDLER_ATTRS = new Set([
+  'onHoverStart', 'onHoverEnd', 'onTapStart', 'onTap', 'onTapCancel',
+]);
+
+/** True when this handler drives the variant state machine — i.e. it belongs to
+ *  a connection (`onTap={() => … setVariant(_n) …}`), not to the scroll-fx
+ *  effect being cleared. Scroll-fx handlers move motion values instead and
+ *  never call setVariant. */
+function handlerDrivesVariants(tag: string, attr: string): boolean {
+  const raw = readTagAttrRaw(tag, attr);
+  return !!raw && /\bsetVariant\s*\(/.test(raw);
+}
+
 export function robustClearScrollFx(code: string, nodeId: string): string {
   const cn = nodeIdToVarName(nodeId);
   const e = escapeRegExp(cn);
@@ -630,6 +644,13 @@ export function robustClearScrollFx(code: string, nodeId: string): string {
       'onTapStart', 'onTap', 'onTapCancel', 'initial', 'whileInView', 'viewport', 'transition'];
     if (!keepVariantAnimate) attrs.push('animate');
     for (const a of attrs) {
+      // The gesture handlers are in this list because a scroll-fx effect can
+      // emit its own. But VARIANT CONNECTIONS use the very same prop names, and
+      // those are a different feature entirely — clearing an Appear off a
+      // connected component silently deleted its onTap/onHoverStart, so the
+      // interactions stopped working (user report 2026-08-09). A connection
+      // handler is the one that drives the variant state; leave it alone.
+      if (CONNECTION_HANDLER_ATTRS.has(a) && handlerDrivesVariants(tag, a)) continue;
       tag = stripTagAttrBalanced(tag, a);
     }
     if (keepVariantAnimate) {

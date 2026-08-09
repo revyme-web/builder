@@ -753,8 +753,16 @@ function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boole
 
         {/* 5c. Overlay (right under Layout — title + collapsible body, same
             shape as Animation/Layout). Overlay NODES render it at the top of
-            the panel instead (see above). */}
-        {!isOverlayNode && !isCodeComponentInstance && !isTemplatedViewport && <OverlayTool />}
+            the panel instead (see above).
+
+            Hidden on the VIEWPORT FRAME: the tool's job is to make the
+            selected node a trigger, and the only triggers that exist are
+            click and hover — neither is meaningful on the page container
+            itself. This used to be gated on `isTemplatedViewport`, which
+            only caught the templated case, so a plain page still offered
+            "add an overlay" on its root. `isViewportFrame` covers both
+            (`root` and `layout::root`). */}
+        {!isOverlayNode && !isCodeComponentInstance && !isViewportFrame && <OverlayTool />}
 
         {/* 6. Text Style (only for text elements, just before Styles) */}
         {isText && <TextStyleTool />}

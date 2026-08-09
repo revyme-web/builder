@@ -8,7 +8,7 @@ import { ToolSection, ToolRow, ToolDivider, ControlLabel, ControlActionRow, Remo
 import ToolPopup from '../../ui/ToolPopup';
 import { useControl } from '../../controls/ControlProvider';
 import { keyframesBumpAtom, scrollAnimDataAtom, activeKeyframeSheetAtom, selectedKeyframeStopAtom, textAnimCallsAtom, cssHoverStylesAtom } from '@/code/stores/animation-store';
-import { codeAtom, getNodeFromCache } from '@/code/stores/store';
+import { codeAtom, getNodeFromCache, selectedIdsAtom } from '@/code/stores/store';
 import { overlayCallsAtom } from '@/code/stores/overlay-store';
 import { getScrollDataForNode, getMultiSectionForNode, parseScrollDirection } from '@/code/parsing/scroll-parser';
 import { queueMutation, flushNow } from '@/code/mutation/mutation-queue';
@@ -114,10 +114,25 @@ function AnimEntryCard({ type, summary, onEdit, onRemove, dataAttr, labelOverrid
   // and inject our own that snapshots / re-applies THIS animation entry.
   const copiedAnim = useAtomValue(copiedAnimationAtom);
   const setCopiedAnim = useSetAtom(copiedAnimationAtom);
+  // Paste Style fans out over the WHOLE selection, like every other control's
+  // paste (ControlProvider.updateStyle does the same over `selectedIds`).
+  // `useControl()` hands this card the PRIMARY node only, so pasting an Appear
+  // onto twelve selected cards landed on one of them (user report 2026-08-09).
+  // Each target resolves its own node: applyCopiedAnimation derives the reveal
+  // from the target's existing enter keys + authored styles, so they must not
+  // share the primary's.
+  const selectedIds = useAtomValue(selectedIdsAtom);
   const animMenuItems: MenuItem[] = copyable
     ? [
         { label: 'Copy Style', show: true, separator: true, onClick: () => { setCopiedAnim(copyable); trace.action('anim-clipboard:copy', { kind: copyable.kind }); } },
-        { label: 'Paste Style', show: canPasteAnimation(copiedAnim, type), onClick: () => { if (copiedAnim && nodeId) applyCopiedAnimation(copiedAnim, nodeId, node); } },
+        { label: 'Paste Style', show: canPasteAnimation(copiedAnim, type), onClick: () => {
+          if (!copiedAnim) return;
+          const targets = selectedIds.length > 0 ? selectedIds : (nodeId ? [nodeId] : []);
+          trace.action('anim-clipboard:paste-multi', { kind: copiedAnim.kind, count: targets.length });
+          for (const id of targets) {
+            applyCopiedAnimation(copiedAnim, id, id === nodeId ? node : getNodeFromCache(id));
+          }
+        } },
       ]
     : [];
 

@@ -549,6 +549,8 @@ export function makeComponent(
     //
     // Format: `propName: value` pairs, suitable for embedding into a JSX
     // style object literal verbatim.
+    let rootHasWidthKey = false;
+    let rootHugsContent = false;
     const wrapperStyleEntries: Array<{ key: string; jsx: string }> = [];
 
     findFirstElementByDataId(ast, nodeId, (path) => {
@@ -590,6 +592,14 @@ export function makeComponent(
         const valueText = pageCode.slice(prop.value.start, prop.value.end);
         wrapperStyleEntries.push({ key, jsx: `${key}: ${valueText}` });
       }
+      // Recorded for the instance-stretch compensation below (needs primaryDims,
+      // which isn't resolved until after this traverse).
+      rootHasWidthKey = expr.properties.some((p) => t.isObjectProperty(p)
+        && ((t.isIdentifier(p.key) && p.key.name === 'width')
+          || (t.isStringLiteral(p.key) && p.key.value === 'width')));
+      rootHugsContent = expr.properties.some((p) => t.isObjectProperty(p)
+        && ((t.isIdentifier(p.key) && p.key.name === 'flex') || (t.isStringLiteral(p.key) && p.key.value === 'flex'))
+        && t.isStringLiteral(p.value) && /^0\s/.test(p.value.value));
     });
 
     if (!nodeJSX || nodeStart === -1) {
@@ -603,6 +613,25 @@ export function makeComponent(
     const primaryDims = viewportDimensions?.find(v => v.vpId === 'desktop') ?? viewportDimensions?.[0];
     if (primaryDims) {
       processedJSX = replaceNonPxDimensions(processedJSX, primaryDims.width, primaryDims.height);
+    }
+
+    // NO WIDTH KEY AT ALL — the parent's layout was sizing it (a grid cell, a
+    // block container). replaceNonPxDimensions just baked the measured px onto
+    // the master root so its artboard is right, and that px would otherwise
+    // show through and stop the instance stretching in the page.
+    // `width: '100%'` on the instance restores exactly what "no width" meant in
+    // that parent, and it beats the master's px because the instance style
+    // spreads LAST.
+    //
+    // Gated on the bake actually having happened: with no measurement the
+    // master keeps no width either, so there is nothing to compensate for and
+    // the instance must stay clean. Skipped for a NON-growing `flex`
+    // (`0 0 auto`), the deliberate hug-your-content shape where no width key
+    // means shrink-to-fit and 100% would visibly widen it; a growing flex
+    // (`1 0 0px`) already rides the instance and wins on its own.
+    if (primaryDims && primaryDims.width > 0 && !rootHasWidthKey && !rootHugsContent
+      && !wrapperStyleEntries.some((e) => e.key === 'width')) {
+      wrapperStyleEntries.push({ key: 'width', jsx: "width: '100%'" });
     }
 
     // A node made into a component from the FREE CANVAS (not inside a
@@ -1749,23 +1778,36 @@ export function replaceNonPxDimensions(jsx: string, computedWidth: number, compu
     }
   }
 
-  // FILL nodes (`flex: '1 0 0px'` — any grow with a ZERO basis) carry NO
-  // width/height key at all: their size comes from growing in the parent's
-  // flex layout. On the master ARTBOARD there is no flex parent, so basis-0
-  // collapsed the root to 0px wide (live find 2026-07-08: Make Component on a
-  // Fill row → master Width 0). Inject the COMPUTED px for whichever axis has
-  // no key so the master matches the page visually. The instance tag keeps
-  // its own `flex: '1 0 0px'` placement, which beats the injected px on the
-  // published page (a zero flex-basis takes precedence over width as the
-  // flex base size), so instances still fill.
-  const fillFlex = /flex\s*:\s*['"][1-9][\d.]*\s+[\d.]+\s+0(?:px|%)?['"]/.test(newStyleContent);
-  if (fillFlex) {
+  // SIZE OWNED BY THE PARENT'S LAYOUT — the axis carries NO key at all.
+  //
+  // A node whose size comes from its parent has nothing to copy: a GRID child
+  // under `grid-template-columns: repeat(6, 1fr)` is sized by the cell, a FILL
+  // row by `flex: '1 0 0px'`, a block child by its container's width. The
+  // master ARTBOARD has no parent layout of any kind, so the root fell back to
+  // hugging its content — Width read `auto` on a card that is 120px wide on the
+  // page (user report 2026-08-09, grid child; live find 2026-07-08, Fill row →
+  // master Width 0). Inject the COMPUTED px for whichever axis has no key so
+  // the artboard matches what the page showed.
+  //
+  // Text roots are exempt: a text container frozen to a measured size stops
+  // growing with its own content ([[feedback_text_containers_never_fixed_size]]).
+  const isTextRoot = /^<\s*(?:motion\.)?(?:p|h[1-6]|span|a|li|blockquote|figcaption|label)[\s>]/
+    .test(jsx.trimStart());
+  if (!isTextRoot) {
     if (!/(?<![\w-])width\s*:/.test(newStyleContent) && computedWidth > 0) {
       newStyleContent = ` width: '${computedWidth}px',` + newStyleContent;
     }
     if (!/(?<![\w-])height\s*:/.test(newStyleContent) && computedHeight > 0) {
       newStyleContent = ` height: '${computedHeight}px',` + newStyleContent;
     }
+  }
+
+  // FILL nodes additionally resolve the fill itself — see below. The instance
+  // tag keeps its own `flex: '1 0 0px'` placement, which beats the injected px
+  // on the published page (a zero flex-basis takes precedence over width as the
+  // flex base size), so instances still fill.
+  const fillFlex = /flex\s*:\s*['"][1-9][\d.]*\s+[\d.]+\s+0(?:px|%)?['"]/.test(newStyleContent);
+  if (fillFlex) {
     // Resolve the fill itself to FIXED on the master root: the artboard has no
     // flex parent, so `flex: '1 0 0px'` is meaningless there — the panel reads
     // the root as "Fill" with a nonsense basis-0. Fill placement belongs to the

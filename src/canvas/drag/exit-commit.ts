@@ -33,7 +33,7 @@
  */
 
 import { queueMutation, flushNowDeferredDuringDrag, type Mutation } from '@/code/mutation/mutation-queue';
-import { moveNodeInCache, updateNodeInCache } from '@/code/stores/store';
+import { moveNodeInCache, updateNodeInCache, getNodeFromCache } from '@/code/stores/store';
 import { patchNodeStyles, forceCanvasRender, forceCanvasRenderDeferredDuringDrag } from '@/canvas/node-ops';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { trace } from '@/shared/debug-trace';
@@ -84,12 +84,35 @@ export function commitExitToCanvas(opts: ExitCommitOptions): void {
   // Wipe stale @media/@container rules so the canvas node doesn't inherit
   // display:none (see module comment).
   queueMutation({ type: 'clearContainerStyles', nodeId });
+
+  // REPLICA-SOLO teardown — the OTHER half of the same hide.
+  //
+  // A node added directly on a replica is stored as THREE things
+  // (node-ops.ts): inline `display: 'none'`, a `display: 'unset'` band for the
+  // viewport it actually lives on, and `data-replica-solo="<vpId>"`. The clear
+  // above drops the band and the call sites drop the attribute — but the inline
+  // `display: 'none'` was left, so the node exited to the canvas already
+  // hidden. Dropping it into the primary then produced a node at the right
+  // parent and the right position that simply never painted, and only when the
+  // drag STARTED on a replica (user report 2026-08-09). Clearing the band alone
+  // reads like it should be enough, which is exactly why this survived: the
+  // solo contract inverts the usual polarity — base hides, band reveals.
+  //
+  // Scoped to solo nodes: a node the user deliberately hid keeps its `display`.
+  const cached = getNodeFromCache(nodeId);
+  const exitStyles = cached?.attrs?.['data-replica-solo'] && cached?.styles?.display === 'none'
+    ? { ...styles, display: '' }
+    : styles;
+  if (exitStyles !== styles) {
+    trace.action('exit-commit:solo-display-cleared', { nodeId, solo: cached?.attrs?.['data-replica-solo'] });
+  }
+
   queueMutation({
     type: 'move',
     nodeId,
     newParentId: null,
     canvasNode: true,
-    styles,
+    styles: exitStyles,
     sourceVpWidth,
     sourceVariant,
   });
@@ -113,7 +136,7 @@ export function commitExitToCanvas(opts: ExitCommitOptions): void {
   // Sync the imperative cache so overlays / subsequent onMove ticks read
   // the node as a top-level canvas node at its committed position.
   moveNodeInCache(nodeId, null);
-  updateNodeInCache(nodeId, styles);
+  updateNodeInCache(nodeId, exitStyles);
   if (patch && patch.when === 'after-cache') {
     // IMPERATIVE RE-HOME for the drop-time exit too. This branch used to
     // rely on the drag-end drain's SYNCHRONOUS setCode → render to move the

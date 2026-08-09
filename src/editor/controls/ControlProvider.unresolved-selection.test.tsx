@@ -20,7 +20,13 @@ vi.mock('@/shared/debug-trace', () => ({
 // changed → a NEW selectAtom every render → jotai's useAtomValue effect (deps
 // [store, atom]) re-subscribed and called its rerender() → unbounded render
 // loop (~10k renders/s, measured in the saved trace).
-describe('ControlProvider — unresolvable selection', () => {
+// Timeout raised from the 5s default: each case dynamically imports the store
+// + ControlProvider module graph, and that COLD import — not the assertion,
+// which settles in ~50ms — is what runs long when the whole editor suite is
+// transforming modules in parallel. The first test in the file paid the cost
+// and timed out while the other two, reusing the cache, passed. Budget the
+// import, not the work.
+describe('ControlProvider — unresolvable selection', { timeout: 30_000 }, () => {
   const PAGE = `'use client';
 export default function Page() {
   return (

@@ -46,9 +46,13 @@ function applyHeaderModeStyles(header: HTMLElement, scale: number): void {
     header.style.backgroundColor = 'var(--accent)';
     header.style.borderColor = 'var(--accent)';
     if (title) {
+      // Same rule as the + glyph: the whole header is `--accent` in this
+      // mode, so its text takes `--accent-fg`, not a fixed white.
+      // (`--accent-text` is the OTHER direction — accent-coloured text on
+      // chrome, like the width badge below — and is unreadable here.)
       title.textContent = `Editing Overlay · ${header.getAttribute('data-vp-label') || ''}`;
-      title.style.color = '#fff';
-      title.parentElement!.style.color = '#fff';
+      title.style.color = 'var(--accent-fg)';
+      title.parentElement!.style.color = 'var(--accent-fg)';
     }
     if (widthBadge) widthBadge.style.display = 'none';
     if (addBtn) addBtn.style.display = 'none';
@@ -267,7 +271,8 @@ function createHeader(
       borderRadius: `${6 / scale}px`, backgroundColor: 'transparent',
       // `--text-primary` so the glyph is black on the light-mode header
       // and white on the dark one. On hover the bg flips to `--accent`,
-      // so the glyph goes white then (see the mouseover/out handlers).
+      // so the glyph switches to `--accent-fg` — the theme's own ink for
+      // text sitting ON an accent fill (see the handlers).
       border: 'none', color: 'var(--text-primary)', cursor: 'pointer',
       pointerEvents: 'auto', fontSize: `${14 / scale}px`, lineHeight: '1',
       transition: 'background-color 0.15s, color 0.15s',
@@ -280,7 +285,10 @@ function createHeader(
       // and the menu never opens.
       mousedown: (e: Event) => e.stopPropagation(),
       pointerdown: (e: Event) => e.stopPropagation(),
-      mouseover: () => { addBtn.style.backgroundColor = 'var(--accent)'; addBtn.style.color = 'white'; },
+      // Hardcoding white here made the glyph invisible on pale accents
+      // (khaki, sand, mint): those palettes set `--accent-fg` to near-black
+      // precisely because white fails on them.
+      mouseover: () => { addBtn.style.backgroundColor = 'var(--accent)'; addBtn.style.color = 'var(--accent-fg)'; },
       mouseout: () => { addBtn.style.backgroundColor = 'transparent'; addBtn.style.color = 'var(--text-primary)'; },
       click: (e: Event) => {
         e.stopPropagation();
@@ -297,7 +305,9 @@ function createHeader(
     text: 'Done',
     styles: {
       display: 'none', alignItems: 'center', justifyContent: 'center',
-      backgroundColor: 'transparent', border: 'none', color: '#fff',
+      // Only rendered in overlay-edit mode, where the header background is
+      // `--accent` — so it takes the accent's ink too.
+      backgroundColor: 'transparent', border: 'none', color: 'var(--accent-fg)',
       fontWeight: '600', fontSize: `${11 / scale}px`, lineHeight: '1',
       fontFamily: 'Inter, system-ui, sans-serif', cursor: 'pointer',
       pointerEvents: 'auto', padding: `0 ${4 / scale}px`,

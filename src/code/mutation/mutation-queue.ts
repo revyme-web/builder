@@ -1884,16 +1884,50 @@ function pumpDeferredAnim(): void {
 // decides its final home; the earlier ones are superseded. Their non-move
 // side mutations (clearContainerStyles / updateHtmlAttrs — all parent-
 // INDEPENDENT) stay untouched. Big drop-settle win on a big page.
-function coalesceMoves(mutations: Mutation[]): Mutation[] {
+/** @internal Exported for testing. */
+export function coalesceMoves(mutations: Mutation[]): Mutation[] {
   const lastMove = new Map<string, number>();
   for (let i = 0; i < mutations.length; i++) {
     const m = mutations[i];
     if (m.type === 'move') lastMove.set(m.nodeId, i);
   }
   if (lastMove.size === 0) return mutations;
-  const out = mutations.filter((m, i) => m.type !== 'move' || lastMove.get(m.nodeId) === i);
+
+  // CARRY THE SUPERSEDED MOVES' STYLES ONTO THE SURVIVOR.
+  //
+  // Only the LAST move per node runs — the destination is whatever the gesture
+  // ended on. But a move's `styles` are not positional noise: they are the
+  // commit's CLEANUP, and dropping the mutation dropped them silently.
+  //
+  // Drag a replica-only node OUT to the canvas and INTO the primary in one
+  // gesture and the queue holds two moves: exit→canvas (carrying the styles
+  // that undo the replica-solo hide) and enter→root. The queue is HELD for the
+  // whole drag, so both are still pending at drop, the exit move is dropped as
+  // superseded, and its `display: ''` goes with it — the node landed under the
+  // right parent, at the right position, still `display: none` (user report
+  // 2026-08-09). Starting the same drag from the canvas works because there is
+  // no earlier move to discard.
+  //
+  // Earlier styles are a BASE; the surviving move's own styles win on conflict,
+  // so the final position is unchanged.
+  const carried = new Map<string, Record<string, string>>();
+  for (let i = 0; i < mutations.length; i++) {
+    const m = mutations[i];
+    if (m.type !== 'move' || lastMove.get(m.nodeId) === i || !m.styles) continue;
+    carried.set(m.nodeId, { ...(carried.get(m.nodeId) ?? {}), ...m.styles });
+  }
+
+  const out = mutations
+    .filter((m, i) => m.type !== 'move' || lastMove.get(m.nodeId) === i)
+    .map((m) => {
+      if (m.type !== 'move') return m;
+      const base = carried.get(m.nodeId);
+      return base ? { ...m, styles: { ...base, ...(m.styles ?? {}) } } : m;
+    });
   if (out.length !== mutations.length) {
-    trace.action('mutation-queue:coalesced-moves', { before: mutations.length, after: out.length });
+    trace.action('mutation-queue:coalesced-moves', {
+      before: mutations.length, after: out.length, carriedStyles: [...carried.keys()],
+    });
   }
   return out;
 }

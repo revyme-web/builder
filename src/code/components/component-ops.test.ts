@@ -2244,3 +2244,51 @@ describe('detachInstance — nested INSTANCES carrying variant props (2026-08-08
     expect(out).toContain("'100%'");
   });
 });
+
+// ─── The instance half ──────────────────────────────────────────────────────
+//
+// Baking px on the master fixes the artboard but would break the PAGE: a grid
+// child with `width: 120px` stops stretching to its cell. The instance carries
+// `width: '100%'` to restore what "no width key" meant in that parent — it
+// spreads last, so it beats the master's px.
+const GRID_PAGE = `import React from 'react';
+export default function Page() {
+  return (
+    <div data-id="root" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)' }}>
+      <div data-id="card" style={{ position: 'relative', height: '178px', order: '1' }}>
+        <h2 data-id="t">Hi</h2>
+      </div>
+    </div>
+  );
+}`;
+
+const DIMS = [{ vpId: 'desktop', vpLabel: 'Desktop', width: 120, height: 178, vpWidth: 1440 }];
+
+function instanceTagFor(page: string, dims?: typeof DIMS): string {
+  mockFS.readFile.mockReturnValue(page);
+  mockFS.exists.mockReturnValue(false);
+  const r = makeComponent('app/page.tsx', 'card', 'Card', false, dims);
+  return r!.updatedPageCode.split('\n').find((l) => /<\w+\s+data-id="card"/.test(l)) || '';
+}
+
+describe('makeComponent — instance keeps filling its cell', () => {
+  test('a grid child gets width: 100% on the instance', () => {
+    expect(instanceTagFor(GRID_PAGE, DIMS)).toContain("width: '100%'");
+  });
+
+  test('with NO measurement the master bakes nothing, so the instance stays clean', () => {
+    // Nothing to compensate for — adding 100% here would widen a node the
+    // master never froze.
+    expect(instanceTagFor(GRID_PAGE)).not.toContain("width: '100%'");
+  });
+
+  test('a hug-your-content flex child is left alone', () => {
+    const hug = GRID_PAGE.replace("height: '178px', order: '1'", "height: '178px', flex: '0 0 auto'");
+    expect(instanceTagFor(hug, DIMS)).not.toContain("width: '100%'");
+  });
+
+  test('an authored width is not overridden with 100%', () => {
+    const fixed = GRID_PAGE.replace("position: 'relative',", "position: 'relative', width: '333px',");
+    expect(instanceTagFor(fixed, DIMS)).not.toContain("width: '100%'");
+  });
+});

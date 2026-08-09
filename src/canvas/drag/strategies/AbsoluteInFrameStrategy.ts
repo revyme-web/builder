@@ -2205,6 +2205,31 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
                       });
                       if (cloneRoot.styles.right) delete cloneRoot.styles.right;
                       if (cloneRoot.styles.bottom) delete cloneRoot.styles.bottom;
+                      // REPLICA-SOLO TEARDOWN. `buildCanvasCloneDescriptor`
+                      // already strips a `display: 'none'` that only the source
+                      // viewport's override was flipping visible — but the
+                      // assignment above REPLACES its whole style map with
+                      // `pSnap.originalStyles`, the source's RAW pre-drag map,
+                      // which puts it straight back. The clone then lands at
+                      // canvas root, where nothing flips it visible again, and
+                      // the node vanished the instant it left the viewport
+                      // (user report 2026-08-09: mobile → canvas → tablet →
+                      // canvas in one gesture).
+                      //
+                      // The sibling exit site above carries the identical guard
+                      // for the identical reason; this one only ever needed it
+                      // once `originalStyles` became the base.
+                      //
+                      // `data-replica-solo` goes with it: a canvas node has no
+                      // viewport context, so "solo on this replica, redirect
+                      // edits to base" no longer applies — same teardown
+                      // `commitExitToCanvas` performs on the other exit path.
+                      if (cloneRoot.styles.display === 'none') {
+                        cloneRoot.styles.display = '';
+                      }
+                      if (cloneRoot.attrs?.['data-replica-solo']) {
+                        cloneRoot.attrs = { ...cloneRoot.attrs, 'data-replica-solo': '' };
+                      }
                       // 1. Revert SOURCE: move back to original parent
                       //    + index + pre-drag styles. The grandparent
                       //    reparents along the way had been moving the
@@ -2270,17 +2295,32 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
                           store.set(overlayEditingIdAtom, `${cloneRoot.id}-overlay`);
                         }
                       }
-                      // 5. Hide clone on every non-source viewport.
-                      for (const otherVpId of Object.keys(getViewportWidths())) {
-                        if (otherVpId === pSnap.sourceVpId) continue;
-                        const otherWidth = getViewportWidths()[otherVpId] ?? 0;
-                        queueMutation({
-                          type: 'updateContainerStyle',
-                          nodeId: cloneRoot.id,
-                          maxWidth: otherWidth,
-                          styles: { display: 'none' },
-                        });
-                      }
+                      // 5. (removed) The clone used to be hidden here on every
+                      //    non-source viewport, so its viewport-only-ness would
+                      //    survive a drop back in. It never needed to be:
+                      //
+                      //    · While it is a CANVAS NODE those bands are inert —
+                      //      the node sits outside every viewport container.
+                      //    · On re-entry the entry path writes the whole solo
+                      //      state itself (per-viewport hides, the entered
+                      //      viewport's unhide band, `data-replica-solo`) —
+                      //      see CanvasDragStrategy's replica-entry branch.
+                      //
+                      //    What they DID do is outlive the gesture. Entering the
+                      //    PRIMARY writes no per-viewport hides at all, so a
+                      //    clone dropped there kept `@media (max-width: N) {
+                      //    display: none }` from its extraction and stayed
+                      //    invisible on that viewport forever — a node the user
+                      //    had just moved INTO the primary as a fresh shared
+                      //    node (user report 2026-08-09). The primary's own
+                      //    hide was worse still: the primary has no band, so it
+                      //    wrote `display: none` onto the inline base and hid
+                      //    the clone outright, mid-drag.
+                      //
+                      //    Same conclusion `commitExitToCanvas` already reached
+                      //    on the other exit path, where it CLEARS container
+                      //    styles rather than adding any: a canvas node has no
+                      //    viewport context to describe.
                       // 6. Swap dragged identity to the clone so the
                       //    post-switch CanvasDragStrategy operates on
                       //    it instead of the now-reverted source.
