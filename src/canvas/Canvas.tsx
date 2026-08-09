@@ -1310,8 +1310,13 @@ export default function Canvas() {
           TEXT EDIT MODE so the dashed connectors don't clutter the text the
           user is editing (same reason ConnectionHandle gates on !isTextEditing). */}
       {!isTextEditing && <PanelErrorBoundary name="pin-lines" resetKey={selectedId}><PinConstraintLines /></PanelErrorBoundary>}
-      {/* Distance indicators (ALT + selection) */}
-      <DistanceIndicators />
+      {/* Distance indicators (ALT + selection; ALT + hover measures to the
+          hovered element instead). Boundaried like pin-lines above: it is a
+          position:fixed overlay, so an unguarded throw takes the whole canvas
+          subtree with it. */}
+      <PanelErrorBoundary name="distance-indicators" resetKey={selectedId}>
+        <DistanceIndicators />
+      </PanelErrorBoundary>
       {/* Dimensions indicators (ALT + CTRL + selection) */}
       <DimensionsIndicators />
 
