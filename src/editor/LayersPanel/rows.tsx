@@ -905,6 +905,16 @@ export const LayerRow = React.memo(function LayerRow({
             ) : <ComponentIcon size={18} />}</span>
             : layer.isCmsContainer ? <span style={{ color: isSelected ? selFg : 'var(--accent)' }}><CmsIcon width={18} height={18} /></span>
             : layer.isCmsItem ? <span style={{ color: isSelected ? selFg : 'var(--accent)' }}><CmsItemIcon size={18} /></span>
+            // OVERLAY outranks the preview swatch. An overlay is usually a
+            // full-bleed panel WITH a background colour, so the swatch always
+            // won and the row became an anonymous coloured square — the one
+            // glyph that tells you this frame is an overlay at all (user report
+            // 2026-08-10). Nothing else in the tree carries that signal, whereas
+            // the fill is visible on the canvas. Same reasoning that already
+            // puts components and the CMS container/item glyphs above `preview`.
+            : node.attrs?.['data-overlay'] ? (
+              <span style={{ color: isSelected ? selFg : '#bababa' }}><OverlayIcon size={18} /></span>
+            )
             : preview ? (
               // Derived from parsed props — see LayerPreview.tsx. Only reached
               // for plain element nodes: viewport headers, components, CMS
@@ -915,8 +925,7 @@ export const LayerRow = React.memo(function LayerRow({
               // currentColor: dark on the gold/violet selection fill, neutral
               // grey otherwise. A fixed #bababa washed out on the accent row.
               <span style={{ color: isSelected ? selFg : '#bababa' }}>
-                {node.attrs?.['data-overlay'] ? <OverlayIcon size={18} />
-                  : isTextTag(node.type) ? <TextIcon size={18} />
+                {isTextTag(node.type) ? <TextIcon size={18} />
                     : <FrameGlyph
                         display={layerDisplay ?? node.styles?.display}
                         flexDirection={layerFlexDirection ?? node.styles?.flexDirection}

@@ -228,11 +228,17 @@ export default function OverlayTool() {
 
 // ─── Trigger row — "Hover | [▣ Overlay ×]" ──────────────────────────────────
 
+// The glyph sits ON the accent fill, so it takes `--accent-fg` — the per-theme
+// answer to exactly that (globals.css: "white on it only reaches 4.0, so
+// --accent-fg is near-black"). It was hard-coded white plus `currentColor`,
+// which inherited the row's light text: near-invisible on the default clay
+// accent (user report 2026-08-10). The back square keeps its 55% tint, now as
+// a lighter pass of the same colour rather than a different one.
 const OverlayPillIcon = (
   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-[var(--accent)]">
     <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
-      <rect x="2" y="2" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.55)" />
-      <rect x="5" y="5" width="8" height="8" rx="1.5" fill="currentColor" />
+      <rect x="2" y="2" width="8" height="8" rx="1.5" fill="var(--accent-fg)" fillOpacity="0.55" />
+      <rect x="5" y="5" width="8" height="8" rx="1.5" fill="var(--accent-fg)" />
     </svg>
   </span>
 );
