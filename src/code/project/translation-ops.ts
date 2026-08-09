@@ -10,6 +10,7 @@
 //                                          + seed default + messages/{locale}.json
 
 import { projectFS } from '@/code/project/project-fs';
+import { pushHistory } from '@/code/mutation/history';
 import { modifyProjectFile } from '@/code/project/modify-file';
 import { filePathToSlug } from '@/code/project/active-file-store';
 import {
@@ -20,6 +21,7 @@ import {
   setMessageValue,
   getMessageValue,
   nodeHasTranslationCall,
+  getTranslationOrphanKey,
 } from '@/code/generation/i18n-gen';
 import { extractTextRuns, replaceRunWithText, nodeInnerSpan, RUN_KEY_RE } from '@/code/parsing/rich-text-runs';
 import { updateNodeTextInCode } from '@/code/generation/generator-crud';
@@ -197,7 +199,34 @@ export function listTranslatableTexts(defaultLocale: string): TranslatableText[]
   return out;
 }
 
-export function commitTranslationText(opts: {
+/**
+ * UNDO for translation edits.
+ *
+ * Nothing subscribes ProjectFS to history — a write only becomes an undo entry
+ * if something calls `pushHistory` afterwards, and the only routine caller is
+ * the mutation-queue flush. Translation writes never go near the queue (they
+ * touch `messages/*.json`, not the page's JSX), so Cmd+Z skipped straight past
+ * them to the edit before (user report 2026-08-09). Worse, the un-recorded diff
+ * did not vanish: `commitPendingHistory` diffs the whole FS against the last
+ * committed snapshot, so it silently glued itself onto the NEXT unrelated
+ * entry, and undoing that one reverted the translation too. Same failure the
+ * template ops hit — see `pushHistoryFileOp`'s note.
+ *
+ * DEBOUNCED, not immediate: a bulk write (AI Translate, MCP `write_texts`)
+ * commits one row at a time, and 55 rows must undo as ONE step, not 55. The
+ * 300 ms group also captures the JSX transform + the default-locale seed +
+ * the locale message — three files, one entry — which the whole-FS snapshot
+ * diff already supports.
+ *
+ * Recorded in a wrapper rather than at each `return` so that the early exits
+ * (rich-text runs, instance props) cannot silently opt out.
+ */
+export function commitTranslationText(opts: Parameters<typeof commitTranslationTextInner>[0]): void {
+  commitTranslationTextInner(opts);
+  pushHistory('');
+}
+
+function commitTranslationTextInner(opts: {
   filePath: string;
   nodeId: string;
   /** Locale being edited. */
@@ -255,9 +284,38 @@ export function commitTranslationText(opts: {
   const key = nodeId;
   trace.fn('commitTranslationText', { nodeId, locale, defaultLocale, namespace, text: text.slice(0, 40) });
   ensureIntlScaffold();
+  const sourceCode = projectFS.readFile(filePath) ?? '';
+
+  // DORMANT CANVAS NODE — dragged out of the page, so its JSX is a baked
+  // literal plus `data-i18n-orphan` and `t` is out of scope at module level.
+  // The normal non-default path would inject `{t('key')}` right there, which
+  // is precisely the crash dormancy exists to prevent. Write the message under
+  // the STASHED key (the one re-entry restores) and leave the JSX alone —
+  // except on the default locale, where the baked literal IS the copy showing
+  // on the canvas and has to keep up.
+  const dormantKey = sourceCode ? getTranslationOrphanKey(sourceCode, nodeId) : null;
+  if (dormantKey) {
+    const msgPath = `messages/${locale}.json`;
+    projectFS.writeFile(msgPath, setMessageValue(projectFS.readFile(msgPath) ?? '{}', namespace, dormantKey, text));
+    if (locale === defaultLocale) {
+      modifyProjectFile(filePath, (code) => updateNodeTextInCode(code, nodeId, text));
+    } else {
+      // Seed the default message the same way the live path does. The canvas
+      // falls back to the baked literal without it, but the node re-entering
+      // the page restores `{t(key)}` — and that would render empty on the live
+      // site if the default locale never got a value.
+      const seed = opts.fallbackDefaultText ?? '';
+      const defaultMsgPath = `messages/${defaultLocale}.json`;
+      const defaultRaw = projectFS.readFile(defaultMsgPath) ?? '{}';
+      if (seed && getMessageValue(defaultRaw, namespace, dormantKey) === null) {
+        projectFS.writeFile(defaultMsgPath, setMessageValue(defaultRaw, namespace, dormantKey, seed));
+      }
+    }
+    trace.action('commitTranslationText:dormant', { nodeId, key: dormantKey, locale, namespace });
+    return;
+  }
 
   if (locale === defaultLocale) {
-    const sourceCode = projectFS.readFile(filePath) ?? '';
     if (sourceCode && nodeHasTranslationCall(sourceCode, nodeId)) {
       // Transformed node — the default text lives in messages, not JSX.
       const msgPath = `messages/${defaultLocale}.json`;
@@ -373,7 +431,13 @@ function commitRichRunTranslation(opts: {
 /** Per-locale commit for a translatable ATTR (input placeholder, alt, …).
  *  `transformed` = the attr already carries a translation call
  *  (node.attrTranslationKeys has it). */
-export function commitTranslationAttr(opts: {
+/** Attr twin of `commitTranslationText` — same history contract, see there. */
+export function commitTranslationAttr(opts: Parameters<typeof commitTranslationAttrInner>[0]): void {
+  commitTranslationAttrInner(opts);
+  pushHistory('');
+}
+
+function commitTranslationAttrInner(opts: {
   filePath: string;
   nodeId: string;
   attr: string;

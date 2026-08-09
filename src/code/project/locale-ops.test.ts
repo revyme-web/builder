@@ -8,6 +8,13 @@ vi.mock('@/shared/debug-trace', () => ({
   trace: { action: vi.fn(), fn: vi.fn(), dom: vi.fn(), error: vi.fn() },
 }));
 
+// locale-ops records its writes in the undo stack (see the note on
+// `setNodeOverride`). Stubbed here: pulling the real module in would drag the
+// mutation queue + node store behind it, and this file's projectFS mock is a
+// deliberate partial — history needs `getSnapshot`, which it has no business
+// exercising in a CRUD test.
+vi.mock('@/code/mutation/history', () => ({ pushHistory: vi.fn() }));
+
 // In-memory store backing the mock projectFS
 let fsStore: Map<string, string>;
 

@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } fr
 import { useAtomValue, useSetAtom, getDefaultStore } from 'jotai';
 import { selectedNodeAtom, selectedIdsAtom, hoveredIdAtom, hoveredViewportIdAtom, hoveredNodeIdAtom, canvasInteractingAtom, isRotatingAtom, isComponentSelectedAtom, isMapTemplateSelectedAtom, isComponentFileAtom, nodesAtom, mapItemIndexAtom, marqueeViewportSpreadAtom } from '@/code/stores/store';
 import { useNodesComputed } from '@/code/stores/node-family';
+import { getNodeFromCache } from '@/code/stores/store';
 import { marqueeSelectionSig } from './SelectionBox';
 import { activeEditorAtom, suppressSelectionOverlayAtom, colorPickerOpenAtom } from '@/code/stores/editor-store';
 import { activeFilePathAtom } from '@/code/project/active-file-store';
@@ -211,6 +212,27 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
   const [rotation, setRotation] = useState(0);
   const [resizeDisabled, setResizeDisabled] = useState<{ h: boolean; v: boolean }>({ h: false, v: false });
 
+  /**
+   * The selected node, CACHE-FIRST.
+   *
+   * `nodes` (nodesAtom) lags a drop by the deferred parse fan-out — measured
+   * ~90ms on a 115-node page, more on a big one. `exit-commit` writes the
+   * committed styles into the IMPERATIVE cache synchronously, so on the mouseup
+   * frame the cache already reads `width: 580px` while `nodes` still says
+   * `auto`. Resolving the handles from `nodes` is what made an auto/auto
+   * container land on the canvas with no resize circles, then pop into having
+   * them a tenth of a second later (user report 2026-08-09).
+   *
+   * This is the source the Properties panel already trusts: `updateNodeInCache`
+   * bumps `nodeStylesVersionAtom` with a comment about this exact lag. The
+   * overlay simply never switched over. Falls back to `nodes` when the cache has
+   * no entry (pre-seed, or a ghost id the cache doesn't track).
+   */
+  const liveNode = useCallback(
+    (id: string | null | undefined) => (id ? (getNodeFromCache(id) ?? nodes.get(id) ?? null) : null),
+    [nodes],
+  );
+
   // ── Corners DURING render on selection change (paint in the SAME commit) ──
   // The `instant-corners` layout effect below sets `corners` only AFTER the whole
   // selection re-render commits — which on a node-create includes the properties
@@ -300,7 +322,7 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
     setRotation(getElementRotationById(ghostId, vpId));
     if (c) {
       setCorners(c);
-      const selectedNode = selectedId ? nodes.get(selectedId) : null;
+      const selectedNode = liveNode(selectedId);
       const isInstanceWrapper = selectedNode?.componentFile && !selectedNode?.componentInstanceId;
       const nodeStyles = isInstanceWrapper ? (selectedNode?.styles ?? {}) : (selectedNode?.styles ?? {});
       // SVG group child: width/height live in `node.attrs` (SVG attrs),
@@ -309,7 +331,7 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
       // axes — the user gets no resize handles at all (just a tiny
       // rotate dot). Fall back to attrs so the resize handles render
       // for nested-SVG selections inside a group.
-      const selectedParent = selectedNode?.parentId ? nodes.get(selectedNode.parentId) : null;
+      const selectedParent = liveNode(selectedNode?.parentId);
       const isSvgGroupChild = selectedNode?.type === 'svg' && selectedParent?.type === 'svg';
       // Resolve width/height for THIS artboard's variant so a replica whose size
       // is overridden per-variant (e.g. height: variant === 'variant-1' ? '311px'
@@ -401,7 +423,7 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
       setRotation(getElementRotationById(pollGhostId, vpId));
       if (newCorners) {
         setCorners(prev => cornersEqual(prev, newCorners!) ? prev : newCorners!);
-        const selNode = selectedId ? nodes.get(selectedId) : null;
+        const selNode = liveNode(selectedId);
         const isInstWrap = selNode?.componentFile && !selNode?.componentInstanceId;
         const nStyles = selNode?.styles ?? {};
         // Mirror the instant-corners path's SVG-group-child fallback —
@@ -412,7 +434,7 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
         // handles ~1 frame after they first render via the instant
         // path. User-visible symptom: handles flash for ~0.1s then
         // disappear on every selection of a group child.
-        const selParent = selNode?.parentId ? nodes.get(selNode.parentId) : null;
+        const selParent = liveNode(selNode?.parentId);
         const selIsSvgGroupChild = selNode?.type === 'svg' && selParent?.type === 'svg';
         // Resolve per-artboard variant size (see instant-corners path above).
         const resolvedSize = selNode

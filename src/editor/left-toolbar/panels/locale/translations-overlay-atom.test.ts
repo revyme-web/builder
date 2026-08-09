@@ -4,8 +4,7 @@
 // don't get instantly dismissed by App's close-on-panel-switch effect.
 import { describe, it, expect } from 'vitest';
 import { createStore } from 'jotai';
-import { translationsOverlayOpenAtom } from '../LocalePanel';
-import { leftPanelAtom } from '@/code/stores/left-panel-store';
+import { translationsOverlayOpenAtom, leftPanelAtom } from '@/code/stores/left-panel-store';
 
 describe('translationsOverlayOpenAtom write-through', () => {
   it('opening selects the locale panel', () => {

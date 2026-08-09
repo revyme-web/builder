@@ -22,7 +22,7 @@ import TranslationsOverlay from './editor/left-toolbar/panels/locale/Translation
 import CmsOverlay, { cmsOverlayOpenAtom } from './editor/left-toolbar/panels/cms/CmsOverlay';
 import CmsEditorOverlay from './editor/left-toolbar/panels/cms/CmsEditorOverlay';
 import { cmsEditorOpenAtom } from '@/code/stores/cms-editor-store';
-import { translationsOverlayOpenAtom } from '@/editor/left-toolbar/panels/LocalePanel';
+import { translationsOverlayOpenAtom } from '@/code/stores/left-panel-store';
 import CodeEditorPopup from './editor/CodeEditorPopup';
 import ComponentEditorOverlay from './editor/component-editor/ComponentEditorOverlay';
 import SettingsOverlay from './editor/overlays/SettingsOverlay';

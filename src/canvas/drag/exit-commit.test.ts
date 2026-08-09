@@ -32,6 +32,7 @@ vi.mock('@/canvas/canvas-bridge', () => ({
 }));
 
 import { commitExitToCanvas, flushExitToCanvas } from './exit-commit';
+import { repositionSignalOps } from '@/canvas/drag/reposition-signal';
 
 const contentEl = {} as HTMLElement;
 
@@ -158,5 +159,44 @@ describe('commitExitToCanvas — replica-solo hide', () => {
     nodeCache.set('n1', { attrs: { 'data-replica-solo': 'iphone-15' }, styles: { display: 'none' } });
     commitExitToCanvas({ nodeId: 'n1', styles: {} });
     expect(calls[0].args[0]).toEqual({ type: 'clearContainerStyles', nodeId: 'n1' });
+  });
+});
+
+// An exit changes the node's KIND, and the overlay decides which handles exist
+// from node state that only reaches React after the deferred parse (~90ms). A
+// container dropped on the canvas briefly showed the grip and gap handles it
+// had as a layout child, then dropped them. Rather than chase each handle, the
+// exit reuses the reorder path's fade: hide on commit, fade back in once the
+// selection settles (user report 2026-08-09).
+
+describe('commitExitToCanvas — selection fade', () => {
+  beforeEach(() => { repositionSignalOps.consume(); repositionSignalOps.clearCommitPending(); });
+
+  it('pulses the reposition signal so the overlay fades in', () => {
+    commitExitToCanvas({ nodeId: 'n1', styles: { left: '10px' } });
+    expect(repositionSignalOps.consume()).toBe(true);
+  });
+
+  it('holds commit-pending across the gap, for consumers that stay hidden', () => {
+    commitExitToCanvas({ nodeId: 'n1', styles: { left: '10px' } });
+    expect(repositionSignalOps.isCommitPending()).toBe(true);
+  });
+
+  it('fires on the MID-DRAG exit too, not just the drop-time one', () => {
+    // `before-cache` is the mid-drag transition; the latch is a one-shot the
+    // overlay claims when it mounts on mouseup, so an exit at any point in the
+    // gesture still buys the fade.
+    commitExitToCanvas({
+      nodeId: 'n1', styles: { left: '10px' },
+      patch: { when: 'before-cache', contentEl, vpPrefix: '', styles: {} },
+    });
+    expect(repositionSignalOps.consume()).toBe(true);
+  });
+
+  it('fires from the COMMIT, not the flush — three of the six exits skip the flush', () => {
+    commitExitToCanvas({ nodeId: 'n1', styles: {} });
+    expect(repositionSignalOps.consume()).toBe(true);   // claimed by the commit…
+    flushExitToCanvas();
+    expect(repositionSignalOps.consume()).toBe(false);  // …and the flush adds nothing
   });
 });

@@ -97,6 +97,33 @@ function isEditingText(eventTarget?: EventTarget | null): boolean {
   return false;
 }
 
+/** Marks a surface whose text fields still hand UNDO/REDO to the app.
+ *
+ *  A plain value field (a translation cell, a properties-panel input) commits
+ *  on blur/Enter and holds a local draft in React state, so the browser's own
+ *  textarea undo would roll the DOM back behind that draft and desync it —
+ *  while the change the user actually wants to take back is the committed one,
+ *  which only the project history knows about. A real text EDITOR (TipTap,
+ *  Monaco) is the opposite: its undo is the meaningful one, so those surfaces
+ *  never carry this and keep the early return below.
+ *
+ *  Opt-in per surface rather than global: the guard exists because canvas
+ *  shortcuts must not fire mid-typing, and that is still true for everything
+ *  except undo/redo. */
+function allowsAppUndo(eventTarget?: EventTarget | null): boolean {
+  for (const el of [eventTarget as HTMLElement | null, document.activeElement as HTMLElement | null]) {
+    if (el?.closest?.('[data-app-undo]')) return true;
+  }
+  return false;
+}
+
+/** Cmd/Ctrl+Z, Cmd+Shift+Z, Cmd+Y. */
+function isUndoRedoCombo(e: KeyboardEvent): boolean {
+  if (!e.metaKey && !e.ctrlKey) return false;
+  const k = e.key.toLowerCase();
+  return k === 'z' || k === 'y';
+}
+
 // ─── Manager ────────────────────────────────────────────────────────────────
 
 class KeyboardManager {
@@ -145,6 +172,8 @@ class KeyboardManager {
     if (isEditingText(e.target)) {
       if (e.key === 'Escape') {
         // Let Escape through for text commit
+      } else if (isUndoRedoCombo(e) && allowsAppUndo(e.target)) {
+        // Let project undo/redo through — see `allowsAppUndo`.
       } else {
         return;
       }

@@ -22,6 +22,27 @@ interface FileDiff {
 /** A history entry: the set of file changes for one undo step, plus the
  *  selection on EITHER side of the change so undo/redo can put the user
  *  back on a node that exists in the restored state (the reference behaviour). */
+/**
+ * WHERE THE USER WAS in the editor chrome when the change was made — which
+ * full-screen overlay was covering the canvas, and on which locale.
+ *
+ * `activeFile` already restores the PAGE an edit belongs to, so the user sees
+ * it un-done. An edit typed in the Manage Translations overlay has the same
+ * problem one level up: the page is right but the overlay is gone, so the undo
+ * lands somewhere the change is invisible. This is the chrome-level twin of
+ * `activeFile` (user report 2026-08-09).
+ *
+ * Deliberately a flat, serializable record and deliberately OPAQUE to history:
+ * the app supplies a getter and a setter (see `initHistory`) and owns the
+ * shape, so adding the CMS overlay or a settings pane later touches the app
+ * wiring, not this module.
+ */
+export interface UiLocation {
+  /** Manage Translations overlay: the locale it was showing, or null/absent
+   *  when it was closed. */
+  localizationLocale?: string | null;
+}
+
 interface HistoryEntry {
   diffs: FileDiff[];
   /** Selected node ids BEFORE the operation (captured at its start). Undo
@@ -42,6 +63,10 @@ interface HistoryEntry {
    *  strands the user on a ghost file. Set via pushHistoryFileOp; absent for
    *  ordinary same-file edits (undo falls back to `activeFile`). */
   activeFileBefore?: string;
+  /** Editor chrome at the time of the change — see `UiLocation`. Restored by
+   *  BOTH undo and redo, exactly like `activeFile`: it records where the edit
+   *  was made, which is where either direction should show it. */
+  uiLocation?: UiLocation;
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -59,6 +84,10 @@ let pendingSelBefore: string[] | null = null;
 /** Active file captured at the START of the current debounce group —
  *  becomes the finalized entry's `activeFile`. */
 let pendingActiveFile: string | null = null;
+/** Editor chrome captured at the START of the current debounce group. Taken
+ *  with `pendingActiveFile` so a group that starts in the overlay and ends
+ *  after it closes still restores to the overlay. */
+let pendingUiLocation: UiLocation | null = null;
 
 // Callback to restore project state (set by React component)
 let onRestore: ((snapshot: Map<string, string>) => void) | null = null;
@@ -77,10 +106,18 @@ let _getNodeIds: (() => Set<string>) | null = null;
  *  re-derives the new file's restored code, so undo/redo must NOT also run
  *  the same-file `onRestore`. */
 let _navigateToFile: ((path: string) => boolean) | null = null;
+/** Editor-chrome location read/write — see `UiLocation`. */
+let _getUiLocation: (() => UiLocation) | null = null;
+let _setUiLocation: ((loc: UiLocation) => void) | null = null;
 
 /** Active file right now, or '' when not wired (tests). */
 function liveActiveFile(): string {
   return _getActiveFile ? _getActiveFile() : '';
+}
+
+/** Editor chrome right now, or `{}` when not wired (tests). */
+function liveUiLocation(): UiLocation {
+  return _getUiLocation ? _getUiLocation() : {};
 }
 
 /** Current live selection, or [] when not wired (tests). */
@@ -195,6 +232,8 @@ export function initHistory(
     /** Switch the editor to a file; returns true if it actually switched. */
     navigateToFile?: (path: string) => boolean;
   },
+  /** Editor-chrome location — which overlay covers the canvas. See `UiLocation`. */
+  ui?: { get: () => UiLocation; set: (loc: UiLocation) => void },
 ): void {
   undoStack = [];
   redoStack = [];
@@ -209,6 +248,8 @@ export function initHistory(
   _setSelection = selection?.set ?? null;
   _getNodeIds = selection?.getNodeIds ?? null;
   _navigateToFile = selection?.navigateToFile ?? null;
+  _getUiLocation = ui?.get ?? null;
+  _setUiLocation = ui?.set ?? null;
   onRestore = (snapshot) => {
     // The diffs have already been applied to projectFS by applyDiffsReverse/Forward.
     // Read the active file code and notify the caller.
@@ -232,6 +273,7 @@ export function pushHistory(newCode: string): void {
   if (!_historyDirty && pendingSelBefore === null) {
     pendingSelBefore = liveSelection();
     pendingActiveFile = liveActiveFile();
+    pendingUiLocation = liveUiLocation();
   }
   _historyDirty = true;
 
@@ -259,7 +301,7 @@ function commitPendingHistory(): void {
   const currentSnapshot = projectFS.getSnapshot();
   const finalDiffs = computeDiffs(lastSnapshot, currentSnapshot);
   if (finalDiffs.length > 0) {
-    undoStack.push({ diffs: finalDiffs, selBefore: pendingSelBefore ?? liveSelection(), selAfter: liveSelection(), activeFile: pendingActiveFile ?? liveActiveFile() });
+    undoStack.push({ diffs: finalDiffs, selBefore: pendingSelBefore ?? liveSelection(), selAfter: liveSelection(), activeFile: pendingActiveFile ?? liveActiveFile(), uiLocation: pendingUiLocation ?? liveUiLocation() });
     if (undoStack.length > MAX_HISTORY) undoStack.shift();
     lastSnapshot = currentSnapshot;
     redoStack = [];
@@ -276,6 +318,7 @@ function commitPendingHistory(): void {
   }
   pendingSelBefore = null;
   pendingActiveFile = null;
+  pendingUiLocation = null;
 }
 
 // ─── Session coalescing ─────────────────────────────────────────────────────
@@ -304,13 +347,13 @@ export function releaseHistoryCoalescing(): void {
 /** Force-push without debounce (for discrete operations like pin toggle, node create) */
 export function pushHistoryImmediate(newCode: string): void {
   if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
-  _historyDirty = false; pendingSelBefore = null; pendingActiveFile = null;
+  _historyDirty = false; pendingSelBefore = null; pendingActiveFile = null; pendingUiLocation = null;
 
   const currentSnapshot = projectFS.getSnapshot();
   const diffs = computeDiffs(lastSnapshot, currentSnapshot);
   if (diffs.length === 0) return;
 
-  const entry: HistoryEntry = { diffs, selBefore: liveSelection(), selAfter: liveSelection(), activeFile: liveActiveFile() };
+  const entry: HistoryEntry = { diffs, selBefore: liveSelection(), selAfter: liveSelection(), activeFile: liveActiveFile(), uiLocation: liveUiLocation() };
   undoStack.push(entry);
   if (undoStack.length > MAX_HISTORY) undoStack.shift();
   lastSnapshot = new Map(currentSnapshot);
@@ -362,6 +405,15 @@ export function pushHistoryFileOp(activeFileBefore: string): void {
 /** Sync history when code changes from external source (Monaco typing) */
 export function syncHistoryCode(code: string): void {
   pushHistory(code);
+}
+
+/** Put the editor chrome back where the change was made. No-op for entries
+ *  recorded before this existed (`uiLocation` absent) — undoing an old entry
+ *  must not yank an overlay closed on the strength of missing data. */
+function restoreUiLocation(loc: UiLocation | undefined): void {
+  if (!loc || !_setUiLocation) return;
+  trace.action('history:restore-ui-location', { ...loc });
+  _setUiLocation(loc);
 }
 
 /** Shared restore tail for undo/redo: navigate to the entry's page (so the
@@ -464,7 +516,7 @@ export function undo(): boolean {
   const forwardDiffs = applyDiffsReverse(entry.diffs);
   // Store forward diffs for redo — carry the SAME selection pair + page so
   // redo reselects `selAfter` on the right page and a later undo `selBefore`.
-  redoStack.push({ diffs: forwardDiffs, selBefore: entry.selBefore, selAfter: entry.selAfter, activeFile: entry.activeFile, activeFileBefore: entry.activeFileBefore });
+  redoStack.push({ diffs: forwardDiffs, selBefore: entry.selBefore, selAfter: entry.selAfter, activeFile: entry.activeFile, activeFileBefore: entry.activeFileBefore, uiLocation: entry.uiLocation });
   lastSnapshot = projectFS.getSnapshot();
 
   trace.action('history:undo', { undoSize: undoStack.length, redoSize: redoStack.length, diffCount: entry.diffs.length, paths: entry.diffs.map(d => d.path), activeFile: entry.activeFile, activeFileBefore: entry.activeFileBefore, hasBumpVersion: !!_bumpVersion });
@@ -472,6 +524,11 @@ export function undo(): boolean {
   // pre-op selection. A file-op entry (move/create/delete) carries the
   // UNDO-side path separately — the post-op `activeFile` doesn't exist in the
   // restored state.
+  // Editor chrome BEFORE the page restore: an entry made inside the Manage
+  // Translations overlay has to reopen it, and opening it first means the
+  // overlay's rows read the already-reverted files on their first render
+  // instead of flashing the undone values.
+  restoreUiLocation(entry.uiLocation);
   restoreToFileAndSelection(entry.activeFileBefore ?? entry.activeFile, entry.selBefore);
   return true;
 }
@@ -490,12 +547,13 @@ export function redo(): boolean {
   // Apply diffs forward (restore new content)
   const reverseDiffs = applyDiffsForward(entry.diffs);
   // Store reverse diffs for undo — carry the selection pair + page forward.
-  undoStack.push({ diffs: reverseDiffs, selBefore: entry.selBefore, selAfter: entry.selAfter, activeFile: entry.activeFile, activeFileBefore: entry.activeFileBefore });
+  undoStack.push({ diffs: reverseDiffs, selBefore: entry.selBefore, selAfter: entry.selAfter, activeFile: entry.activeFile, activeFileBefore: entry.activeFileBefore, uiLocation: entry.uiLocation });
   lastSnapshot = projectFS.getSnapshot();
 
   trace.action('history:redo', { undoSize: undoStack.length, redoSize: redoStack.length, diffCount: entry.diffs.length, activeFile: entry.activeFile });
   // Navigate to the page the change belongs to, restore code, reselect the
   // post-op selection (e.g. the re-created node from a redone paste).
+  restoreUiLocation(entry.uiLocation);
   restoreToFileAndSelection(entry.activeFile, entry.selAfter);
   return true;
 }

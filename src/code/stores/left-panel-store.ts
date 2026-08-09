@@ -1,5 +1,7 @@
-// left-panel-store.ts — Jotai atom for left panel open/close state.
-// The panel can never be fully closed — it falls back to DEFAULT_LEFT_PANEL.
+// left-panel-store.ts — Jotai atoms for WHERE THE USER IS in the editor chrome:
+// which left panel is open, and whether a full-screen overlay is covering the
+// canvas. The panel can never be fully closed — it falls back to
+// DEFAULT_LEFT_PANEL.
 
 import { atom } from 'jotai';
 import { trace } from '@/shared/debug-trace';
@@ -45,5 +47,26 @@ export const togglePanelAtom = atom(
     const next = current === panelId ? DEFAULT_LEFT_PANEL : panelId;
     trace.action('left-panel:toggle', { from: current, to: next });
     set(leftPanelAtom, next);
+  },
+);
+
+/** Manage Translations overlay open?
+ *
+ *  Write-through: OPENING also selects the locale panel in the left menu — the
+ *  overlay may only exist while the globe is the active panel (CMS-panel
+ *  parity; App.tsx closes it when the panel changes away), so openers from
+ *  elsewhere (LocalePropPill, LocaleStylePopup) must carry the panel along or
+ *  the close-on-switch effect would immediately dismiss them.
+ *
+ *  Lives HERE rather than in LocalePanel.tsx because undo/redo restore it (see
+ *  `UiLocation` in mutation/history.ts), and the canvas may not import an
+ *  editor panel component to read one atom. */
+const _translationsOverlayOpenAtom = atom(false);
+export const translationsOverlayOpenAtom = atom(
+  (get) => get(_translationsOverlayOpenAtom),
+  (get, set, open: boolean) => {
+    set(_translationsOverlayOpenAtom, open);
+    if (open) set(leftPanelAtom, 'locale');
+    trace.action('locale:translations-overlay', { open });
   },
 );

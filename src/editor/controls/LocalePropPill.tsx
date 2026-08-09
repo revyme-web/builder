@@ -20,7 +20,7 @@ import ToolPopup from '@/editor/ui/ToolPopup';
 import { RemoveButton } from '@/editor/controls/RemoveButton';
 import ColorInput from '@/editor/controls/ColorInput';
 import NumberVariableEditor from '@/editor/controls/NumberVariableEditor';
-import { translationsOverlayOpenAtom } from '@/editor/left-toolbar/panels/LocalePanel';
+import { translationsOverlayOpenAtom } from '@/code/stores/left-panel-store';
 import { trace } from '@/shared/debug-trace';
 
 // Match `prop="x"` / `prop='x'` / `prop={…}` on the instance tag (same shape

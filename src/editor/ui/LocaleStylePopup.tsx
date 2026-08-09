@@ -33,7 +33,7 @@ import { interactingViewportIdAtom } from '@/code/stores/viewport-store';
 import { findNodeComputedStyle } from '@/canvas/node-ops';
 import { i18nConfigAtom } from '@/code/stores/locale-store';
 import { useSetAtom } from 'jotai';
-import { translationsOverlayOpenAtom } from '@/editor/left-toolbar/panels/LocalePanel';
+import { translationsOverlayOpenAtom } from '@/code/stores/left-panel-store';
 import { parseLocaleRulesScoped, localeOffMarker } from '@/code/generation/locale-gen';
 import { useLocaleStyleState, localeScopeOf } from '@/editor/controls/LocaleBoundPill';
 import { extractStyleCSS } from '@/code/parsing/parser';

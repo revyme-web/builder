@@ -2,6 +2,7 @@
 // Pure functions for reading/writing i18n config + locale override files.
 
 import { projectFS } from './project-fs';
+import { pushHistory } from '@/code/mutation/history';
 import { trace } from '@/shared/debug-trace';
 import { buildProvidersSource, looksGeneratedProviders } from './providers-gen';
 import { syncLocaleRoutes } from './locale-route-ops';
@@ -176,6 +177,9 @@ export function setNodeOverride(
   }
 
   projectFS.writeFile(`i18n/${localeCode}.json`, JSON.stringify(all, null, 2));
+  // Undoable — nothing subscribes ProjectFS to history, and these writes never
+  // reach the mutation queue. See the contract note on `commitTranslationText`.
+  pushHistory('');
   trace.action('locale-ops:setNodeOverride:saved', { localeCode, filePath, nodeId });
 }
 
@@ -198,6 +202,7 @@ export function setCollectionItemOverride(
   };
 
   projectFS.writeFile(`i18n/${localeCode}.json`, JSON.stringify(all, null, 2));
+  pushHistory('');
   trace.action('locale-ops:setCollectionItemOverride:saved', { localeCode, collectionSlug, itemId });
 }
 

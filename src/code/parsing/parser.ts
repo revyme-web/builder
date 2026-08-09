@@ -134,6 +134,14 @@ export interface CanvasNode {
    * never keep another locale's stale paint. Undefined = untranslated node.
    */
   translationKey?: string;
+  /** `data-i18n-orphan="key"` — the translation key stashed when this node was
+   *  dragged onto module-scope `canvasNodes` and its `{t('key')}` call was
+   *  baked to a literal (`t` doesn't exist there). A first-class field rather
+   *  than an `attrs` entry: `attrs` is an ALLOWLIST (`PARSED_HTML_ATTRS`) and
+   *  stash attributes are deliberately off it — same treatment `data-var-orphan`
+   *  gets. The canvas locale resolver reads this so a dormant node still
+   *  translates. See i18n-gen's dormantize/rehydrate pair. */
+  translationOrphanKey?: string;
   /**
    * next-intl attr translation keys — `placeholder={t('id__attr_placeholder')}`
    * parses to `{ placeholder: 'id__attr_placeholder' }`. Rendered values come
@@ -612,6 +620,15 @@ export function extractComponentPropDefaults(ast: any): Record<string, string> {
  * `orphanVarBindings` for the pill's × + restore. Used by BOTH the main JSX path
  * and the separate canvasNodes path. See component-var-detach-gen.
  */
+function applyTranslationOrphanKey(node: CanvasNode, openingAttributes: any[], id: string): void {
+  const attr = openingAttributes.find(
+    (a: any) => a.type === 'JSXAttribute' && a.name?.name === 'data-i18n-orphan' && a.value?.type === 'StringLiteral',
+  );
+  if (!attr) return;
+  node.translationOrphanKey = attr.value.value as string;
+  trace.action('parser:translation-orphan-key', { nodeId: id, key: node.translationOrphanKey });
+}
+
 function applyVarOrphanBindings(node: CanvasNode, openingAttributes: any[], id: string): void {
   const attr = openingAttributes.find(
     (a: any) => a.type === 'JSXAttribute' && a.name?.name === 'data-var-orphan' && a.value?.type === 'StringLiteral',
@@ -2348,6 +2365,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
         // Orphaned COMPONENT-VARIABLE bindings (`data-var-orphan`) — surface as the
         // same purple pills an in-scope binding shows (textVariable / styleVariables).
         applyVarOrphanBindings(node, opening.attributes as any[], id);
+        applyTranslationOrphanKey(node, opening.attributes as any[], id);
 
         // If this element was wrapped in <AnimatePresence>{cond && <this/>}</AnimatePresence>,
         // attach the parsed condition's hidden-variants set now.
@@ -2850,6 +2868,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
       // the path that matters most: the live `{prop}` refs were swapped for literal
       // defaults here, so without this the canvas node loses its bound pill.
       applyVarOrphanBindings(node, opening.attributes as any[], id);
+      applyTranslationOrphanKey(node, opening.attributes as any[], id);
 
       // Carry the main traverse's `.map()` result forward (see comment at
       // `existingCanvasNode`): keep the detected collectionList + inline data and

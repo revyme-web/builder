@@ -471,72 +471,146 @@ export function getTranslationOrphanKey(code: string, nodeId: string): string | 
   return key;
 }
 
+/** Every JSXElement in a subtree, root first. */
+function collectSubtree(root: t.JSXElement, out: t.JSXElement[]): void {
+  out.push(root);
+  for (const child of root.children) {
+    if (child.type === 'JSXElement') collectSubtree(child, out);
+  }
+}
+
+/** The subtree of `nodeId`, or null when the node isn't in this file. */
+function subtreeOf(ast: Parameters<typeof findFirstElementByDataId>[0], nodeId: string): t.JSXElement[] | null {
+  let root: t.JSXElement | null = null;
+  findFirstElementByDataId(ast, nodeId, (path) => { root = path.node; path.stop(); });
+  if (!root) return null;
+  const out: t.JSXElement[] = [];
+  collectSubtree(root, out);
+  return out;
+}
+
+/** A node's stashed translation key, or null. */
+function stashOf(el: t.JSXElement): string | null {
+  const attr = el.openingElement.attributes.find(
+    (a): a is t.JSXAttribute => a.type === 'JSXAttribute' && a.name?.name === I18N_ORPHAN_ATTR,
+  );
+  return attr?.value?.type === 'StringLiteral' ? attr.value.value : null;
+}
+
+const hasStash = (el: t.JSXElement): boolean => el.openingElement.attributes.some(
+  (a) => a.type === 'JSXAttribute' && a.name?.name === I18N_ORPHAN_ATTR,
+);
+
+/** The `{someHook('key')}` text child's key, or null. Builder-injected text
+ *  calls are not translations — same exclusion the rest of this module makes. */
+function translationCallKey(el: t.JSXElement): string | null {
+  for (const child of el.children) {
+    if (child.type !== 'JSXExpressionContainer') continue;
+    const expr = child.expression;
+    if (expr?.type !== 'CallExpression' || expr.callee?.type !== 'Identifier') continue;
+    if (expr.callee.name === 'useResponsiveText') continue;
+    const arg = expr.arguments?.[0];
+    if (arg?.type === 'StringLiteral') return arg.value;
+  }
+  return null;
+}
+
+const isTranslationCall = (child: t.Node): boolean =>
+  child.type === 'JSXExpressionContainer' &&
+  (child as t.JSXExpressionContainer).expression?.type === 'CallExpression' &&
+  ((child as t.JSXExpressionContainer).expression as t.CallExpression).callee?.type === 'Identifier' &&
+  (((child as t.JSXExpressionContainer).expression as t.CallExpression).callee as t.Identifier).name !== 'useResponsiveText';
+
+/** One element's exit swap. Returns whether anything changed. */
+function dormantizeElement(el: t.JSXElement, resolveText: (key: string) => string | null): boolean {
+  // Already dormant — a second exit pass must not overwrite the stash.
+  if (hasStash(el)) return false;
+  const key = translationCallKey(el);
+  if (!key) return false;
+
+  // Swap the call for the resolved literal, keeping any non-text children.
+  const text = (resolveText(key) ?? '').trim() || key;
+  const newChildren: t.JSXElement['children'] = [];
+  let inserted = false;
+  for (const child of el.children) {
+    if (isTranslationCall(child)) {
+      if (!inserted) { newChildren.push(t.jsxText(text)); inserted = true; }
+      continue;
+    }
+    newChildren.push(child);
+  }
+  el.children = newChildren;
+  el.openingElement.attributes.push(
+    t.jsxAttribute(t.jsxIdentifier(I18N_ORPHAN_ATTR), t.stringLiteral(key)),
+  );
+  return true;
+}
+
+/** One element's re-entry swap. Returns whether anything changed. */
+function rehydrateElement(el: t.JSXElement, hookVarName: string): boolean {
+  const key = stashOf(el);
+  el.openingElement.attributes = el.openingElement.attributes.filter(
+    (a) => !(a.type === 'JSXAttribute' && a.name?.name === I18N_ORPHAN_ATTR),
+  );
+  if (key === null) return false;
+  // Emptied while dormant — drop the stash rather than restoring a call over
+  // nothing, so the node never carries a dead attribute.
+  if (!el.children.some((c) => c.type === 'JSXText' && c.value.trim())) return true;
+
+  const newChildren: t.JSXElement['children'] = [];
+  let inserted = false;
+  for (const child of el.children) {
+    if (child.type === 'JSXText') {
+      if (!child.value.trim()) continue;
+      if (!inserted) {
+        newChildren.push(t.jsxExpressionContainer(
+          t.callExpression(t.identifier(hookVarName), [t.stringLiteral(key)])));
+        inserted = true;
+      }
+      continue;
+    }
+    newChildren.push(child);
+  }
+  el.children = newChildren;
+  return true;
+}
+
 /**
- * Live `{t('key')}` → `literalText` + `data-i18n-orphan="key"`.
+ * EXIT: a node AND ITS WHOLE SUBTREE are leaving the component render for
+ * module-scope `canvasNodes`. Every translated element in it swaps its live
+ * `{t('key')}` for the default-locale literal and stashes the key in
+ * `data-i18n-orphan`.
  *
- * `resolveText` is handed the key we actually find in the call (which is NOT
- * always the nodeId — rich-text runs and attrs use derived keys) and returns
- * the default-locale string; the queue backs it with `readTranslationText`.
- * When it resolves to nothing we fall back to the key itself rather than
- * blanking the node, so the element stays visible and selectable on the
- * canvas. No-op when the node has no translation call.
+ * SUBTREE, not just the root: dragging a section out took its heading, body
+ * and pill labels with it, and each of those is its own translated node. With
+ * a root-only pass their `{t(...)}` calls travelled to module scope where `t`
+ * does not exist, and every one of them rendered empty — the container arrived
+ * on the canvas with all its text gone (user report 2026-08-09). The sibling
+ * `dormantizeComponentVarBindings` had walked the subtree since it was written;
+ * this one had not.
+ *
+ * `resolveText` is handed the key found in each call (which is NOT always the
+ * nodeId — attrs use derived keys) and returns the default-locale string; the
+ * queue backs it with `readTranslationText`. When it resolves to nothing we
+ * fall back to the key itself rather than blanking the node, so the element
+ * stays visible and selectable on the canvas.
  */
 export function dormantizeTranslationBinding(
   code: string,
   nodeId: string,
   resolveText: (key: string) => string | null,
 ): string {
+  if (!code.includes(`data-id="${nodeId}"`)) return code;
   const ast = parseJSX(code);
   if (!ast) return code;
+  const elements = subtreeOf(ast, nodeId);
+  if (!elements) return code;
 
-  let changed = false;
-  findFirstElementByDataId(ast, nodeId, (path) => {
-    // Already dormant — a second exit pass must not overwrite the stash.
-    const hasStash = path.node.openingElement.attributes.some(
-      (a: any) => a.type === 'JSXAttribute' && a.name?.name === I18N_ORPHAN_ATTR,
-    );
-    if (hasStash) { path.stop(); return; }
+  let changed = 0;
+  for (const el of elements) if (dormantizeElement(el, resolveText)) changed++;
+  if (changed === 0) return code;
 
-    // Find the `{someHook('key')}` text child and lift its key out.
-    let key: string | null = null;
-    for (const child of path.node.children as any[]) {
-      if (child.type !== 'JSXExpressionContainer') continue;
-      const expr = child.expression;
-      if (expr?.type !== 'CallExpression' || expr.callee?.type !== 'Identifier') continue;
-      // Builder-injected text calls are not translations — same exclusion the
-      // rest of this module makes for `useResponsiveText`.
-      if (expr.callee.name === 'useResponsiveText') continue;
-      const arg = expr.arguments?.[0];
-      if (arg?.type === 'StringLiteral') { key = arg.value; break; }
-    }
-    if (!key) { path.stop(); return; }
-
-    // Swap the call for the resolved literal, keeping any non-text children.
-    const text = (resolveText(key) ?? '').trim() || key;
-    const newChildren: any[] = [];
-    let inserted = false;
-    for (const child of path.node.children as any[]) {
-      const isTranslationCall =
-        child.type === 'JSXExpressionContainer' &&
-        child.expression?.type === 'CallExpression' &&
-        child.expression.callee?.type === 'Identifier' &&
-        child.expression.callee.name !== 'useResponsiveText';
-      if (isTranslationCall) {
-        if (!inserted) { newChildren.push(t.jsxText(text)); inserted = true; }
-        continue;
-      }
-      newChildren.push(child);
-    }
-    path.node.children = newChildren;
-    path.node.openingElement.attributes.push(
-      t.jsxAttribute(t.jsxIdentifier(I18N_ORPHAN_ATTR), t.stringLiteral(key)),
-    );
-    changed = true;
-    path.stop();
-  });
-
-  if (!changed) return code;
-  trace.action('i18n-gen:dormantize-translation', { nodeId });
+  trace.action('i18n-gen:dormantize-translation', { nodeId, nodes: changed });
   try {
     return generate(ast, { retainLines: false, concise: false }, code).code;
   } catch (err) {
@@ -546,41 +620,39 @@ export function dormantizeTranslationBinding(
 }
 
 /**
- * Inverse: drop `data-i18n-orphan` and re-inject `{t('key')}`, re-ensuring the
- * import + hook in the destination component (it may be a different file from
- * the one the node left). No-op when the node carries no stash.
+ * ENTRY: the inverse across the same subtree — drop every `data-i18n-orphan`
+ * and re-inject `{t('key')}`, re-ensuring the import + hook in the destination
+ * component (it may be a different file from the one the node left).
+ *
+ * The calls are rebuilt directly rather than by calling
+ * `transformTextToTranslation` per node: that re-parses the whole file each
+ * time, so a section with twenty translated descendants would cost twenty full
+ * Babel passes on re-entry. One parse covers the subtree.
  */
 export function rehydrateTranslationBinding(
   code: string,
   nodeId: string,
   namespace: string,
 ): string {
-  const key = getTranslationOrphanKey(code, nodeId);
-  if (!key) return code;
-
-  // Strip the stash first so `transformTextToTranslation` sees a plain text
-  // node and re-runs its normal path (scaffold + call injection).
+  if (!code.includes(I18N_ORPHAN_ATTR)) return code;
   const ast = parseJSX(code);
   if (!ast) return code;
-  findFirstElementByDataId(ast, nodeId, (path) => {
-    path.node.openingElement.attributes = path.node.openingElement.attributes.filter(
-      (a: any) => !(a.type === 'JSXAttribute' && a.name?.name === I18N_ORPHAN_ATTR),
-    );
-    path.stop();
-  });
+  const elements = subtreeOf(ast, nodeId);
+  if (!elements) return code;
+  const stashed = elements.filter(hasStash);
+  if (stashed.length === 0) return code;
 
-  let stripped: string;
+  // Only once the subtree is known to carry stashes — an untranslated node
+  // must not gain a `useTranslations` hook just by being dragged back in.
+  const hookVarName = ensureTranslationsScaffold(ast, namespace);
+  let changed = 0;
+  for (const el of stashed) if (rehydrateElement(el, hookVarName)) changed++;
+
+  trace.action('i18n-gen:rehydrate-translation', { nodeId, namespace, nodes: changed });
   try {
-    stripped = generate(ast, { retainLines: false, concise: false }, code).code;
+    return generate(ast, { retainLines: false, concise: false }, code).code;
   } catch (err) {
     trace.error('i18n-gen:rehydrate-generate-failed', { nodeId, error: err instanceof Error ? err.message : String(err) });
     return code;
   }
-
-  trace.action('i18n-gen:rehydrate-translation', { nodeId, key, namespace });
-  const result = transformTextToTranslation(stripped, nodeId, key, namespace);
-  // `changed:false` means the node had no text to swap (e.g. emptied while
-  // dormant) — keep the stash-stripped code rather than reverting, so the
-  // node never carries a dead attribute.
-  return result.changed ? result.code : stripped;
 }

@@ -5,7 +5,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useAtomValue } from 'jotai';
 import { isComponentFileAtom, getNodesSnapshot } from '@/code/stores/store';
-import { useNode } from '@/code/stores/node-family';
+import { useLiveNode } from '@/code/stores/node-family';
 import { viewportsConfigAtom } from '@/code/stores/viewport-store';
 import { resolveOverlaySize, resolveOverlaySpacing } from './overlay-size';
 import { findNodeRect, findNodeComputedStyles, updateNodeStyles, getContentRoot } from '@/canvas/node-ops';
@@ -67,7 +67,15 @@ export default function PaddingHandles({ nodeId, vpId, onInteracting }: Props) {
   // Per-node subscription — the handles only depend on the selected node;
   // commits elsewhere no longer re-render this overlay. The drag callback
   // below reads a fresh snapshot at pointer-down instead.
-  const node = useNode(nodeId);
+  // LIVE, not `useNode`: whether the padding handles show at all is decided by
+  // `isAutoOrFit(width/height)`, and a drop that bakes auto → px only reaches
+  // the parsed `nodesAtom` after the deferred fan-out (~90ms on a mid-size
+  // page). Reading the parsed map painted the auto-state handles on the mouseup
+  // frame and pulled them a tenth of a second later (user report 2026-08-09).
+  // `useLiveNode` reads the imperative cache, which `exit-commit` writes
+  // synchronously, and its gesture gate keeps this from re-rendering per frame
+  // mid-drag. Same reason ControlProvider uses it.
+  const node = useLiveNode(nodeId);
   const viewportConfigs = useAtomValue(viewportsConfigAtom);
   const isComponentFile = useAtomValue(isComponentFileAtom);
   const [hoveredHandle, setHoveredHandle] = useState<Side | null>(null);

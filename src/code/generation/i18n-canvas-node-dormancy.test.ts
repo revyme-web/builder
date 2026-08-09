@@ -97,3 +97,119 @@ export default function Page() {
     expect(dormantizeTranslationBinding(responsive, 'rt', () => 'x')).toBe(responsive);
   });
 });
+
+// Dragging a CONTAINER out is the same problem one level down: the container
+// itself carries no `{t()}`, its CHILDREN do. A root-only pass left every one
+// of those calls pointing at a `t` that doesn't exist at module scope, and the
+// section landed on the canvas with all its text gone (user report 2026-08-09,
+// "when i drop it on canvas its completely loses all the content").
+//
+// The sibling `dormantizeComponentVarBindings` had walked "the root AND every
+// descendant" since it was written; this one had not.
+
+const SECTION = `'use client';
+import { useTranslations } from "next-intl";
+export default function Page() {
+  const t = useTranslations("home");
+  return <div data-id="root">
+    <div data-id="card" data-name="Card">
+      <p data-id="eyebrow">{t("eyebrow")}</p>
+      <h2 data-id="title">{t("title")}</h2>
+      <div data-id="tags">
+        <span data-id="pill">{t("pill")}</span>
+      </div>
+    </div>
+  </div>;
+}
+`;
+
+const MESSAGES = { eyebrow: 'The part nobody sells you', title: 'Lunch arrives by boat', pill: 'Swimming' };
+
+describe('dragging a CONTAINER out takes its translated descendants with it', () => {
+  test('every descendant is baked and stashed, not just the root', () => {
+    const out = dormantizeTranslationBinding(SECTION, 'card', resolver(MESSAGES));
+
+    // No dangling `t` anywhere in the subtree — the whole point.
+    expect(out).not.toContain('t("eyebrow")');
+    expect(out).not.toContain('t("title")');
+    expect(out).not.toContain('t("pill")');
+    // …and the copy is on the canvas instead of an empty box.
+    for (const text of Object.values(MESSAGES)) expect(out).toContain(text);
+    // …with each key kept for the return trip, including the nested one.
+    for (const id of ['eyebrow', 'title', 'pill']) {
+      expect(getTranslationOrphanKey(out, id)).toBe(id);
+    }
+  });
+
+  test('re-entry restores every one of them', () => {
+    const dormant = dormantizeTranslationBinding(SECTION, 'card', resolver(MESSAGES));
+    const revived = rehydrateTranslationBinding(dormant, 'card', 'home');
+
+    expect(revived).toContain('t("eyebrow")');
+    expect(revived).toContain('t("title")');
+    expect(revived).toContain('t("pill")');
+    expect(revived).not.toContain(I18N_ORPHAN_ATTR);
+    // No baked literal left beside a restored call.
+    for (const text of Object.values(MESSAGES)) expect(revived).not.toContain(text);
+  });
+
+  test('the round trip is lossless for the whole subtree', () => {
+    const dormant = dormantizeTranslationBinding(SECTION, 'card', resolver(MESSAGES));
+    const revived = rehydrateTranslationBinding(dormant, 'card', 'home');
+    const again = dormantizeTranslationBinding(revived, 'card', resolver(MESSAGES));
+    for (const id of ['eyebrow', 'title', 'pill']) {
+      expect(getTranslationOrphanKey(again, id)).toBe(id);
+    }
+  });
+
+  test('a translated container AND its translated child both survive', () => {
+    const both = `'use client';
+import { useTranslations } from "next-intl";
+export default function Page() {
+  const t = useTranslations("home");
+  return <div data-id="root">
+    <div data-id="card">{t("card")}<p data-id="kid">{t("kid")}</p></div>
+  </div>;
+}
+`;
+    const out = dormantizeTranslationBinding(both, 'card', resolver({ card: 'Outer', kid: 'Inner' }));
+    expect(getTranslationOrphanKey(out, 'card')).toBe('card');
+    expect(getTranslationOrphanKey(out, 'kid')).toBe('kid');
+    expect(out).not.toContain('t("card")');
+    expect(out).not.toContain('t("kid")');
+  });
+
+  test('untranslated siblings are left exactly alone', () => {
+    const mixed = `'use client';
+import { useTranslations } from "next-intl";
+export default function Page() {
+  const t = useTranslations("home");
+  return <div data-id="root">
+    <div data-id="card"><p data-id="tx">{t("tx")}</p><p data-id="plain">Static copy</p></div>
+  </div>;
+}
+`;
+    const out = dormantizeTranslationBinding(mixed, 'card', resolver({ tx: 'Translated' }));
+    expect(out).toContain('Static copy');
+    expect(getTranslationOrphanKey(out, 'plain')).toBeNull();
+  });
+
+  test('a subtree with nothing translated is untouched, and gains no hook', () => {
+    const plain = `'use client';
+export default function Page() {
+  return <div data-id="root"><div data-id="card"><p data-id="p">Hello</p></div></div>;
+}
+`;
+    expect(dormantizeTranslationBinding(plain, 'card', () => 'x')).toBe(plain);
+    // Re-entry must not scaffold `useTranslations` into a file that has none.
+    const revived = rehydrateTranslationBinding(plain, 'card', 'home');
+    expect(revived).toBe(plain);
+    expect(revived).not.toContain('useTranslations');
+  });
+
+  test('a second exit pass still does not overwrite any stash', () => {
+    const once = dormantizeTranslationBinding(SECTION, 'card', resolver(MESSAGES));
+    const twice = dormantizeTranslationBinding(once, 'card', resolver({ eyebrow: 'DIFFERENT' }));
+    expect(twice).toBe(once);
+  });
+});

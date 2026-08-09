@@ -36,6 +36,7 @@ import { queueMutation, flushNowDeferredDuringDrag, type Mutation } from '@/code
 import { moveNodeInCache, updateNodeInCache, getNodeFromCache } from '@/code/stores/store';
 import { patchNodeStyles, forceCanvasRender, forceCanvasRenderDeferredDuringDrag } from '@/canvas/node-ops';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
+import { repositionSignalOps } from '@/canvas/drag/reposition-signal';
 import { trace } from '@/shared/debug-trace';
 
 export interface ExitCommitPatch {
@@ -154,6 +155,25 @@ export function commitExitToCanvas(opts: ExitCommitOptions): void {
     trace.action('exit-commit:imperative-reparent', { nodeId, vpPrefix: patch.vpPrefix, when: 'after-cache' });
     patchNodeStyles(patch.contentEl, nodeId, patch.vpPrefix, patch.styles);
   }
+
+  // FADE THE OVERLAY BACK IN, same as a drop-inside-parent reorder.
+  //
+  // LayoutLiftedStrategy pulses this for reorders and deliberately skipped
+  // exit-to-canvas, reasoning that a canvas drop has no snap-back jump. True
+  // for POSITION — the imperative re-home lands the element at its final spot
+  // on the mouseup frame. But an exit changes the node's KIND, and the overlay
+  // decides WHICH HANDLES EXIST from node state that only reaches React after
+  // the deferred parse (~90ms): a container dropped on the canvas showed grip
+  // and gap handles inherited from its layout-child past, then dropped them
+  // once the parse landed. Cache-first reads fixed the size-driven handles; the
+  // fade covers the rest of that window instead of chasing each handle
+  // separately (user report 2026-08-09).
+  //
+  // Pulsed in the shared CORE, not the six call sites, and not in
+  // `flushExitToCanvas` — only three of the six exits call that, so half of
+  // them would have silently missed the fade.
+  repositionSignalOps.signal();
+  trace.action('exit-commit:reposition-signal', { nodeId });
 }
 
 /**

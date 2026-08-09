@@ -3,14 +3,14 @@
 // ellipsis menu (set default / delete), delete confirmation via ConfirmDialog.
 
 import { useState, useCallback, useMemo } from 'react';
-import { atom, useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { i18nConfigAtom, activeLocaleAtom } from '@/code/stores/locale-store';
 import { removeLocale, saveI18nConfig, getI18nConfig } from '@/code/project/locale-ops';
 import { projectVersionAtom } from '@/code/project/project-fs';
 import AddLocaleModal from './locale/AddLocaleModal';
 import type { LocaleConfig } from '@/shared/types';
 import { trace } from '@/shared/debug-trace';
-import { leftPanelAtom } from '@/code/stores/left-panel-store';
+import { leftPanelAtom, translationsOverlayOpenAtom } from '@/code/stores/left-panel-store';
 import SectionLabel from '@/design-system/SectionLabel';
 import AddButton from '@/design-system/AddButton';
 import SidebarRow from '@/design-system/SidebarRow';
@@ -18,24 +18,6 @@ import ConfirmDialog from '@/design-system/ConfirmDialog';
 import SearchBar from '@/design-system/SearchBar';
 import type { DropdownMenuEntry } from '@/design-system/DropdownMenu';
 import { FlagIcon, localeToCC } from '@/shared/flag-icon';
-
-// ─── Exported Atoms ──────────────────────────────────────────────────────────
-
-/** TranslationsOverlay subscribes to this to know when to open.
- *  Write-through: OPENING also selects the locale panel in the left menu —
- *  the overlay may only exist while the globe is the active panel (CMS-panel
- *  parity; App.tsx closes it when the panel changes away), so openers from
- *  elsewhere (LocalePropPill, LocaleStylePopup) must carry the panel along
- *  or the close-on-switch effect would immediately dismiss them. */
-const _translationsOverlayOpenAtom = atom(false);
-export const translationsOverlayOpenAtom = atom(
-  (get) => get(_translationsOverlayOpenAtom),
-  (get, set, open: boolean) => {
-    set(_translationsOverlayOpenAtom, open);
-    if (open) set(leftPanelAtom, 'locale');
-    trace.action('locale:translations-overlay', { open });
-  },
-);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

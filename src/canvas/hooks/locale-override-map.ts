@@ -83,7 +83,15 @@ export function buildTranslationTextOverrides(opts: {
   const fallback = parseMessagesNamespace(opts.defaultMessagesRaw, namespace);
 
   for (const [nodeId, node] of nodes) {
-    const key = node.translationKey;
+    // A DORMANT canvas node has no `{t()}` call to read a key from — dragging
+    // it out of the page baked the default-locale literal and stashed the key
+    // in `data-i18n-orphan`, because `t` doesn't exist at module scope. The
+    // stash is still a translation key, so the canvas must resolve it like any
+    // other; without this the node sat on the canvas in English no matter which
+    // locale was selected (user report 2026-08-09).
+    const stashKey = node.translationOrphanKey;
+    const key = node.translationKey ?? stashKey;
+    const isDormant = !node.translationKey && !!stashKey;
     // Attr translation calls (placeholder={t('id__attr_placeholder')}) —
     // resolve each to a prop override with the same active→default→'' chain.
     let props: Record<string, string> | undefined;
@@ -110,7 +118,10 @@ export function buildTranslationTextOverrides(opts: {
       if (props) out.set(nodeId, { props });
       continue;
     }
-    const text = active[key] ?? fallback[key] ?? '';
+    // A live t() node resolves to '' when no message exists — its JSX carries
+    // no text either way. A DORMANT node does: its baked literal is the only
+    // copy left, so blanking it would delete words off the canvas.
+    const text = active[key] ?? fallback[key] ?? (isDormant ? (node.textContent ?? '') : '');
 
     // Replica buckets: `key__<vpWidth>` suffixed entries. Active locale wins
     // per width; default-locale buckets fill widths the active locale hasn't

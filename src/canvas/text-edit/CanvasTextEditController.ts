@@ -51,7 +51,7 @@ import { stripGhostSuffix } from '@/shared/ghost-id';
 import { toCamel } from '@/shared/css-utils';
 import { foldFitParagraphsToBr } from '@/shared/fit-measure';
 import { trace } from '@/shared/debug-trace';
-import { holdHistoryCoalescing, releaseHistoryCoalescing } from '@/code/mutation/history';
+import { holdHistoryCoalescing, releaseHistoryCoalescing, pushHistory } from '@/code/mutation/history';
 
 type JotaiStore = ReturnType<typeof useStore>;
 
@@ -379,6 +379,12 @@ export class CanvasTextEditController {
           }
           return next;
         });
+        // Record the messages write — these branches return BEFORE the
+        // mutation queue, so no flush ever pushes for them. See the contract
+        // note on `commitTranslationText`. The session's coalescing hold was
+        // already released at the top of this method, so this seals normally
+        // (merging with the node creation when the user created-and-typed).
+        pushHistory('');
         trace.action('locale:text-commit', {
           nodeId, locale: activeLocale, namespace, key: messageKey,
           text: inner.slice(0, 50),
@@ -417,6 +423,7 @@ export class CanvasTextEditController {
             next.set(nodeId, { ...existing, text: inner });
             return next;
           });
+          pushHistory('');
           trace.action('default-locale:message-commit', { nodeId, locale: defaultLocale, namespace, key, text: inner.slice(0, 50) });
           this.renderer.setTextEditing(true);
           requestAnimationFrame(() => { this.renderer.setTextEditing(false); });

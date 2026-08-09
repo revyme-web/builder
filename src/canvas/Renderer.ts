@@ -1623,7 +1623,7 @@ export function renderNodes(
 
   // ─── Canvas nodes (outside viewports) ─────────────────────────────────
   // Root-level canvas nodes (no parentId, isCanvasNode=true)
-  patchCanvasNodes(container, canvasRoots, nodes, onNodeMouseDown);
+  patchCanvasNodes(container, canvasRoots, nodes, onNodeMouseDown, localeOverrides);
 
   // A canvas-node OVERLAY (its trigger was dragged out to the canvas) stays
   // positioned relative to its (canvas-node) trigger — the reference behavior:
@@ -1665,7 +1665,7 @@ export function renderNodes(
     trace.action('renderer:hoistInspect', { viewportRootIds: viewportRoots.map(r => r.id), entries: hoistInspect });
   }
   if (hoistedCanvasNodes.length > 0) {
-    patchHoistedCanvasNodes(container, hoistedCanvasNodes, nodes, onNodeMouseDown);
+    patchHoistedCanvasNodes(container, hoistedCanvasNodes, nodes, onNodeMouseDown, localeOverrides);
   }
 
   // Remove stale hoisted canvas nodes (no longer isCanvasNode or deleted)
@@ -1702,7 +1702,7 @@ export function renderNodes(
     }
   }
   if (slotCanvasNodes.length > 0) {
-    patchSlotCanvasNodes(container, slotCanvasNodes, nodes, onNodeMouseDown);
+    patchSlotCanvasNodes(container, slotCanvasNodes, nodes, onNodeMouseDown, localeOverrides);
     trace.action('renderer:slot-canvas-nodes', { ids: [...slotSeen] });
   }
   container.querySelectorAll('[data-slot-canvas]').forEach(el => {
@@ -3066,6 +3066,13 @@ function patchHoistedCanvasNodes(
   hoisted: { node: CanvasNode; vpX: number; vpY: number }[],
   allNodes: Map<string, CanvasNode>,
   onNodeMouseDown: (nodeId: string, e: MouseEvent) => void,
+  /** Canvas nodes sit OUTSIDE the viewport system, so there is no breakpoint to
+   *  bucket by — `applyLocaleOverrides` degrades to the flat `override.text`,
+   *  which is the primary translation. Threaded in because these three helpers
+   *  were the only render paths that dropped it: a translated section dragged
+   *  onto the canvas stayed in English while every viewport copy translated
+   *  (user report 2026-08-09). */
+  localeOverrides?: Map<string, NodeOverride>,
 ): void {
   for (const { node } of hoisted) {
     // Look for existing element at container level (may have been hoisted in a previous render)
@@ -3078,7 +3085,7 @@ function patchHoistedCanvasNodes(
         totalMatches: allMatches.length,
         styles: { left: node.styles?.left, top: node.styles?.top, position: node.styles?.position },
       });
-      patchElement(el, node, allNodes, onNodeMouseDown, '');
+      patchElement(el, node, allNodes, onNodeMouseDown, '', undefined, undefined, localeOverrides);
     } else {
       // Also check if it exists inside the viewport (first render after adding this feature)
       const insideVp = container.querySelector(`[data-node-id="${node.id}"]:not([data-hoisted-canvas])`) as HTMLElement | null;
@@ -3090,7 +3097,7 @@ function patchHoistedCanvasNodes(
       });
       if (insideVp) insideVp.remove();
 
-      el = buildNodeElement(node, allNodes, onNodeMouseDown);
+      el = buildNodeElement(node, allNodes, onNodeMouseDown, '', undefined, undefined, '', localeOverrides);
       el.setAttribute('data-hoisted-canvas', 'true');
       el.style.position = 'absolute';
       container.appendChild(el);
@@ -3113,17 +3120,24 @@ function patchSlotCanvasNodes(
   slotNodes: CanvasNode[],
   allNodes: Map<string, CanvasNode>,
   onNodeMouseDown: (nodeId: string, e: MouseEvent) => void,
+  /** Canvas nodes sit OUTSIDE the viewport system, so there is no breakpoint to
+   *  bucket by — `applyLocaleOverrides` degrades to the flat `override.text`,
+   *  which is the primary translation. Threaded in because these three helpers
+   *  were the only render paths that dropped it: a translated section dragged
+   *  onto the canvas stayed in English while every viewport copy translated
+   *  (user report 2026-08-09). */
+  localeOverrides?: Map<string, NodeOverride>,
 ): void {
   for (const node of slotNodes) {
     let el = container.querySelector(`[data-node-id="${node.id}"][data-slot-canvas]`) as HTMLElement | null;
     if (el) {
-      patchElement(el, node, allNodes, onNodeMouseDown, '');
+      patchElement(el, node, allNodes, onNodeMouseDown, '', undefined, undefined, localeOverrides);
     } else {
       // First float after a connect — drop any copy still inside the
       // component's DOM subtree, then build a fresh container-level one.
       const inside = container.querySelector(`[data-node-id="${node.id}"]:not([data-slot-canvas])`) as HTMLElement | null;
       if (inside) inside.remove();
-      el = buildNodeElement(node, allNodes, onNodeMouseDown);
+      el = buildNodeElement(node, allNodes, onNodeMouseDown, '', undefined, undefined, '', localeOverrides);
       el.setAttribute('data-slot-canvas', 'true');
       container.appendChild(el);
     }
@@ -3136,6 +3150,13 @@ function patchCanvasNodes(
   canvasRoots: CanvasNode[],
   allNodes: Map<string, CanvasNode>,
   onNodeMouseDown: (nodeId: string, e: MouseEvent) => void,
+  /** Canvas nodes sit OUTSIDE the viewport system, so there is no breakpoint to
+   *  bucket by — `applyLocaleOverrides` degrades to the flat `override.text`,
+   *  which is the primary translation. Threaded in because these three helpers
+   *  were the only render paths that dropped it: a translated section dragged
+   *  onto the canvas stayed in English while every viewport copy translated
+   *  (user report 2026-08-09). */
+  localeOverrides?: Map<string, NodeOverride>,
 ): void {
   const canvasIds = new Set(canvasRoots.map(n => n.id));
 
@@ -3185,7 +3206,7 @@ function patchCanvasNodes(
   for (const node of canvasRoots) {
     let el = existingCanvasEls.get(node.id);
     if (el) {
-      patchElement(el, node, allNodes, onNodeMouseDown, '');
+      patchElement(el, node, allNodes, onNodeMouseDown, '', undefined, undefined, localeOverrides);
     } else {
       // Drag-locked node with NO element at the container root: the active
       // strategy moved its element imperatively (reparentLive entry into a
@@ -3201,7 +3222,7 @@ function patchCanvasNodes(
         trace.action('renderer:patchCanvasNodes-skip-locked-build', { nodeId: node.id });
         continue;
       }
-      el = buildNodeElement(node, allNodes, onNodeMouseDown);
+      el = buildNodeElement(node, allNodes, onNodeMouseDown, '', undefined, undefined, '', localeOverrides);
       el.style.position = 'absolute';
       container.appendChild(el);
     }

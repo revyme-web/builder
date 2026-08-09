@@ -8,6 +8,8 @@ import { useEffect } from 'react';
 import { useAtom, useSetAtom, useStore } from 'jotai';
 import { codeAtom, selectedIdsAtom, updatingFromCanvasAtom } from '@/code/stores/store';
 import { projectVersionAtom, projectFS } from '@/code/project/project-fs';
+import { translationsOverlayOpenAtom } from '@/code/stores/left-panel-store';
+import { activeLocaleAtom } from '@/code/stores/locale-store';
 import { activeFilePathAtom, switchActiveFile, setSwitchCameraHandler } from '@/code/project/active-file-store';
 import { applyPageCameraForSwitch, initCameraPersist } from '@/canvas/transform';
 import { setBumpVersion, consumeGestureVersionBump } from '@/code/project/modify-file';
@@ -111,6 +113,30 @@ export function useMutationQueueLifecycle({
           syncQueueCode(newCode);
           refreshCanvasTokens();
           return true;
+        },
+      },
+      // Editor chrome — the overlay covering the canvas. `activeFile` above
+      // restores the PAGE an edit belongs to; this restores the SURFACE, so a
+      // translation typed in the Manage Translations overlay is undone with
+      // the overlay reopened rather than silently behind it.
+      {
+        get: () => ({
+          localizationLocale: store.get(translationsOverlayOpenAtom)
+            ? store.get(activeLocaleAtom)
+            : null,
+        }),
+        set: (loc) => {
+          const wantLocale = loc.localizationLocale ?? null;
+          // Locale FIRST: the overlay derives its target column from the
+          // active locale, so opening before setting it renders one frame of
+          // the wrong language.
+          if (wantLocale && store.get(activeLocaleAtom) !== wantLocale) {
+            store.set(activeLocaleAtom, wantLocale);
+          }
+          const open = wantLocale !== null;
+          if (store.get(translationsOverlayOpenAtom) !== open) {
+            store.set(translationsOverlayOpenAtom, open);
+          }
         },
       },
     );

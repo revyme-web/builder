@@ -5,7 +5,7 @@
 // with active → default → '' fallback, so the renderer always rewrites text.
 import { describe, it, expect } from 'vitest';
 import { buildTranslationTextOverrides, parseMessagesNamespace } from './locale-override-map';
-import type { CanvasNode } from '@/code/parsing/parser';
+import { parseJSXToNodes, type CanvasNode } from '@/code/parsing/parser';
 
 const node = (id: string, translationKey?: string) =>
   ({ id, type: 'p', parentId: 'root', children: [], styles: {}, attrs: {}, textContent: '', translationKey }) as unknown as CanvasNode;
@@ -125,5 +125,103 @@ describe('rich-text run substitution', () => {
       namespace: 'home', activeMessagesRaw: '{}', defaultMessagesRaw: '{}',
     });
     expect(map.has('y')).toBe(false);
+  });
+});
+
+// A node dragged out onto the canvas keeps its key in `data-i18n-orphan`
+// rather than a `{t()}` call — `t` doesn't exist at module scope. The canvas
+// resolver read only the call, so the node stayed in English however the
+// locale was switched (user report 2026-08-09).
+
+describe('dormant canvas nodes still resolve', () => {
+  const dormant = (id: string, key: string, baked: string) => new Map([[id, {
+    id, translationOrphanKey: key, textContent: baked,
+  } as never]]);
+
+  it('resolves the stashed key against the active locale', () => {
+    const out = buildTranslationTextOverrides({
+      nodes: dormant('card', 'card', 'Lunch arrives by boat'),
+      namespace: 'home',
+      activeMessagesRaw: JSON.stringify({ home: { card: 'Le déjeuner arrive en bateau' } }),
+      defaultMessagesRaw: JSON.stringify({ home: { card: 'Lunch arrives by boat' } }),
+    });
+    expect(out.get('card')?.text).toBe('Le déjeuner arrive en bateau');
+  });
+
+  it('falls back to the default locale, then to the BAKED text', () => {
+    // The last step is what separates a dormant node from a live one: its
+    // baked literal is the only copy left, so resolving to '' would wipe the
+    // words off the canvas.
+    const nodes = dormant('card', 'card', 'Lunch arrives by boat');
+    expect(buildTranslationTextOverrides({
+      nodes, namespace: 'home',
+      activeMessagesRaw: '{}',
+      defaultMessagesRaw: JSON.stringify({ home: { card: 'Lunch arrives by boat' } }),
+    }).get('card')?.text).toBe('Lunch arrives by boat');
+
+    expect(buildTranslationTextOverrides({
+      nodes, namespace: 'home', activeMessagesRaw: '{}', defaultMessagesRaw: '{}',
+    }).get('card')?.text).toBe('Lunch arrives by boat');
+  });
+
+  it('a LIVE t() node still resolves to empty when unseeded', () => {
+    // Unchanged: its JSX carries no text either way, so '' is honest.
+    const out = buildTranslationTextOverrides({
+      nodes: new Map([['h', { id: 'h', translationKey: 'h', textContent: '' } as never]]),
+      namespace: 'home', activeMessagesRaw: '{}', defaultMessagesRaw: '{}',
+    });
+    expect(out.get('h')?.text).toBe('');
+  });
+
+  it('a live call WINS over a leftover stash', () => {
+    // Re-entry restores the call and strips the stash, but the two can coexist
+    // for one parse in between. The call is the live truth.
+    const out = buildTranslationTextOverrides({
+      nodes: new Map([['h', {
+        id: 'h', translationKey: 'live', translationOrphanKey: 'stale', textContent: '',
+      } as never]]),
+      namespace: 'home',
+      activeMessagesRaw: JSON.stringify({ home: { live: 'Vivant', stale: 'Périmé' } }),
+      defaultMessagesRaw: '{}',
+    });
+    expect(out.get('h')?.text).toBe('Vivant');
+  });
+});
+
+// The seam that let the last fix pass its tests and still not work: the
+// resolver read `node.attrs['data-i18n-orphan']`, and `attrs` is an ALLOWLIST
+// (`PARSED_HTML_ATTRS`) that stash attributes are deliberately off — so the key
+// was always undefined in the real app. These tests drive the REAL parser so
+// the field name can't drift from what the parser emits.
+
+describe('parser → resolver, on real dormant source', () => {
+  const DORMANT_PAGE = `'use client';
+import { useTranslations } from "next-intl";
+export default function Page() {
+  const t = useTranslations("home");
+  return <div data-id="root"><h1 data-id="in-page">{t("in-page")}</h1></div>;
+}
+const canvasNodes = <>
+  <div data-id="anchor-text" data-canvas-node="true" style={{ position: 'absolute' }}>
+    <h2 data-id="anchor-title" style={{ color: '#fff' }} data-i18n-orphan="anchor-title">Lunch arrives by boat</h2>
+  </div>
+</>;
+`;
+
+  it('the parser surfaces the stash as translationOrphanKey', () => {
+    const nodes = parseJSXToNodes(DORMANT_PAGE);
+    expect(nodes.get('anchor-title')?.translationOrphanKey).toBe('anchor-title');
+    // …and NOT via attrs, which is where the broken version looked.
+    expect(nodes.get('anchor-title')?.attrs?.['data-i18n-orphan']).toBeUndefined();
+  });
+
+  it('and the resolver translates it end to end', () => {
+    const out = buildTranslationTextOverrides({
+      nodes: parseJSXToNodes(DORMANT_PAGE),
+      namespace: 'home',
+      activeMessagesRaw: JSON.stringify({ home: { 'anchor-title': 'Le déjeuner arrive en bateau' } }),
+      defaultMessagesRaw: JSON.stringify({ home: { 'anchor-title': 'Lunch arrives by boat' } }),
+    });
+    expect(out.get('anchor-title')?.text).toBe('Le déjeuner arrive en bateau');
   });
 });

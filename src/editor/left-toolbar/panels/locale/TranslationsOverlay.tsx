@@ -12,11 +12,11 @@
 // Localization panel switches the whole view live. `?localization=<code>`
 // is mirrored into the URL while open.
 
-import { useState, useCallback, useMemo, useEffect, type JSX } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef, type JSX } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
 import { createPortal } from 'react-dom';
 import { i18nConfigAtom, activeLocaleAtom } from '@/code/stores/locale-store';
-import { translationsOverlayOpenAtom } from '@/editor/left-toolbar/panels/LocalePanel';
+import { translationsOverlayOpenAtom } from '@/code/stores/left-panel-store';
 import { commitTranslationText, readTranslationText, listTranslatableTexts } from '@/code/project/translation-ops';
 import { getLocaleOverrides, setCollectionItemOverride } from '@/code/project/locale-ops';
 import { projectFS, projectVersionAtom } from '@/code/project/project-fs';
@@ -246,7 +246,7 @@ export default function TranslationsOverlay() {
   }
 
   return createPortal(
-    <div data-localization-overlay>
+    <div data-localization-overlay data-app-undo>
       {/* Header bar — CMS-overlay geometry */}
       <div
         className="fixed z-[10000] border-b border-[var(--border-light)] bg-[var(--bg-surface)] flex items-center gap-3 px-4"
@@ -404,6 +404,20 @@ function SectionBlock({ section, collapsed, onToggle, target, savedTick, onSaved
 function TranslationRow({ row, target, onSaved }: { row: Row; target: string; onSaved: () => void }) {
   const stored = row.read(target);
   const [value, setValue] = useState(stored);
+  // Adopt the stored value when it changes UNDER the draft — undo/redo and AI
+  // Translate both rewrite messages while this row stays mounted, and without
+  // this the textarea kept showing the text that was just undone.
+  //
+  // Render-phase, keyed on the last value we adopted rather than on an effect:
+  // an effect keyed to `[stored]` re-runs on the row's OWN commit too, and
+  // clobbers the draft with a value that is briefly stale — the value-sync
+  // trap this codebase has hit before. Comparing against what we last adopted
+  // makes a self-commit a no-op (the draft already equals the new stored).
+  const adoptedRef = useRef(stored);
+  if (stored !== adoptedRef.current) {
+    adoptedRef.current = stored;
+    setValue(stored);
+  }
   const commit = () => {
     if (value === stored) return;
     trace.action('LocalizationOverlay:commit', { key: row.key, target, text: value.slice(0, 40) });
@@ -425,6 +439,12 @@ function TranslationRow({ row, target, onSaved }: { row: Row; target: string; on
           onBlur={commit}
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit(); (e.target as HTMLTextAreaElement).blur(); }
+            // Everything else is stopped so canvas shortcuts can't fire while
+            // typing — EXCEPT undo/redo, which must reach the window listener
+            // (React's stopPropagation calls through to the native event, so
+            // stopping here severed Cmd+Z entirely). KeyboardManager lets it
+            // past its text-field guard via this overlay's `data-app-undo`.
+            if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) return;
             e.stopPropagation();
           }}
           className="w-full px-2.5 py-2 text-sm bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] rounded-[var(--radius-lg)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none transition-colors resize-none leading-relaxed"

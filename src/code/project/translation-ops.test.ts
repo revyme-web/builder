@@ -271,3 +271,58 @@ export default Outer;
     expect(fsStore.get(FILE)!).toContain('content="plain new"');
   });
 });
+
+// A node dragged onto the canvas is at MODULE scope: its JSX is a baked
+// literal + `data-i18n-orphan`, and `t` does not exist there. Translating it
+// must not inject a call — that is the exact crash dormancy prevents.
+
+describe('translating a DORMANT canvas node', () => {
+  const DORMANT = `'use client';
+import { useTranslations } from "next-intl";
+const canvasNodes = <div data-id="card" data-i18n-orphan="card">Lunch arrives by boat</div>;
+export default function Page() {
+  const t = useTranslations("home");
+  return <div data-id="root" />;
+}
+`;
+
+  beforeEach(() => { fsStore.set(FILE, DORMANT); });
+
+  test('a non-default locale writes the message and leaves the JSX alone', () => {
+    commitTranslationText({
+      filePath: FILE, nodeId: 'card', locale: 'fr', defaultLocale: 'en',
+      text: 'Le déjeuner arrive en bateau', fallbackDefaultText: 'Lunch arrives by boat',
+    });
+    expect(JSON.parse(fsStore.get('messages/fr.json')!).home.card).toBe('Le déjeuner arrive en bateau');
+    // The JSX must be untouched — no `{t(...)}` at module scope.
+    expect(fsStore.get(FILE)).toBe(DORMANT);
+  });
+
+  test('…and seeds the default message so the round trip is not lossy', () => {
+    // Without this the node renders empty on the live site once it is dragged
+    // back into the page and its `{t('card')}` call is restored.
+    commitTranslationText({
+      filePath: FILE, nodeId: 'card', locale: 'fr', defaultLocale: 'en',
+      text: 'Le déjeuner', fallbackDefaultText: 'Lunch arrives by boat',
+    });
+    expect(JSON.parse(fsStore.get('messages/en.json')!).home.card).toBe('Lunch arrives by boat');
+  });
+
+  test('the DEFAULT locale also updates the baked literal', () => {
+    // That literal is the copy actually showing on the canvas.
+    commitTranslationText({
+      filePath: FILE, nodeId: 'card', locale: 'en', defaultLocale: 'en', text: 'Dinner arrives by boat',
+    });
+    expect(JSON.parse(fsStore.get('messages/en.json')!).home.card).toBe('Dinner arrives by boat');
+    expect(fsStore.get(FILE)).toContain('Dinner arrives by boat');
+    expect(fsStore.get(FILE)).toContain('data-i18n-orphan="card"');   // stash preserved
+  });
+
+  test('the stash key is what gets written, not the node id', () => {
+    fsStore.set(FILE, DORMANT.replace('data-i18n-orphan="card"', 'data-i18n-orphan="original-key"'));
+    commitTranslationText({ filePath: FILE, nodeId: 'card', locale: 'fr', defaultLocale: 'en', text: 'X' });
+    const fr = JSON.parse(fsStore.get('messages/fr.json')!);
+    expect(fr.home['original-key']).toBe('X');
+    expect(fr.home.card).toBeUndefined();
+  });
+});
