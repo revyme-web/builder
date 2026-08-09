@@ -67,6 +67,7 @@ import { shareAsTemplate } from '@/backend/revyme-backend';
 import { projectFS } from '@/code/project/project-fs';
 import { trace } from '@/shared/debug-trace';
 import { toast } from 'sonner';
+import { leaveBuilderTo } from '@/backend/leave-builder';
 
 const store = getDefaultStore();
 
@@ -267,10 +268,10 @@ function executeCommand(commandId: string): void {
     }
     case 'go-dashboard':
       // Hard nav — `/dashboard` belongs to revyme-cloud, which React
-      // Router (basename="/builder") cannot reach. Flush first or the
-      // autosave races the route swap and the last edit is lost.
-      flushNow();
-      window.location.href = '/dashboard';
+      // Router (basename="/builder") cannot reach. leaveBuilderTo flushes
+      // the mutation queue AND awaits the save, so the exit neither races
+      // the autosave nor trips the unload guard.
+      void leaveBuilderTo('/dashboard', 'command-palette');
       break;
     case 'create-remix-link':
       // Upload the current projectFS snapshot, copy the user-facing

@@ -13,7 +13,6 @@
 
 import { useRef, useState, useMemo } from 'react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { flushNow } from '@/code/mutation/mutation-queue';
 import { previewModeAtom } from '@/code/stores/editor-store';
 import {
   directSelectionEnabledAtom,
@@ -35,6 +34,7 @@ import Button from '@/design-system/Button';
 import { useIsViewer } from '@/code/stores/viewer-mode-store';
 import { settingsOverlayOpenAtom, settingsSectionAtom, hasActiveSubscriptionAtom } from '@/code/stores/website-settings-store';
 import { CLOUD_ENABLED } from '@/shared/cloud-flag';
+import { leaveBuilderTo } from '@/backend/leave-builder';
 
 // ─── Back chevron — same glyph the settings overlay uses for its
 // "Back to canvas" affordance. Inline so we don't pull a third-
@@ -130,19 +130,22 @@ export function LogoButton() {
         id: 'logo-dashboard',
         label: 'Go to Dashboard',
         onClick: () => {
-          flushNow();
           trace.action('left-header:logo-dashboard');
           // Hard nav: `/dashboard` is owned by revyme-cloud (different
           // app), reached via the dispatcher. React Router with
           // basename="/builder" can't route there.
-          window.location.href = '/dashboard';
+          //
+          // leaveBuilderTo, not a bare assignment: it flushes the mutation
+          // queue AND awaits the backend save. Doing only the first left the
+          // project dirty at unload, which is exactly when the browser's
+          // "Leave site?" guard fires.
+          void leaveBuilderTo('/dashboard', 'logo-dashboard');
         },
       },
       {
         id: 'logo-account',
         label: 'Your Account',
         onClick: async () => {
-          flushNow();
           trace.action('left-header:logo-account');
           // Route to the workspace-scoped account settings in the cloud
           // dashboard: `/dashboard?ws=<workspaceId>&view=settings:account`.
@@ -151,8 +154,8 @@ export function LogoButton() {
           //
           // workspaceId is fetched per-click. Local mode (or any fetch
           // error) → null → the `ws` param is omitted and the cloud app
-          // lands on the user's default workspace. flushNow() already
-          // committed pending mutations above, so the await here can't
+          // lands on the user's default workspace. leaveBuilderTo below
+          // commits + saves before the route swap, so this await can't
           // race autosave.
           const projectId = getProjectId();
           let workspaceId: string | null = null;
@@ -162,7 +165,7 @@ export function LogoButton() {
           const params = new URLSearchParams();
           if (workspaceId) params.set('ws', workspaceId);
           params.set('view', 'settings:account');
-          window.location.href = `/dashboard?${params.toString()}`;
+          await leaveBuilderTo(`/dashboard?${params.toString()}`, 'logo-account');
         },
       },
       // Sits directly under "Your Account" — a billing action belongs with

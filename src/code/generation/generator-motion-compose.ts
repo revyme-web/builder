@@ -70,8 +70,16 @@ export function hasAppearTransformConflict(code: string, nodeId: string): boolea
   const whileInView = parseTagObject(tag, 'whileInView') || {};
   const styleVars = parseTagObject(tag, 'style') || {};
   for (const k of new Set([...Object.keys(initial), ...Object.keys(whileInView)])) {
-    const v = styleVars[k];
-    if (v && /^[A-Za-z_$][\w$]*$/.test(v.trim())) return true;
+    // isStyleMotionVar, NOT a shape test. `parseTagObject` strips quotes, so a
+    // plain CSS keyword is indistinguishable from an identifier by shape —
+    // `style={{ width: 'auto' }}` + an appear that animates `width` read as a
+    // motion-value conflict and dragged the node through the whole composition
+    // for nothing: its declarative initial/whileInView/viewport/transition were
+    // torn out and replaced with useRef/useInView/useMotionValue/useTransform
+    // machinery, and the stripped `auto` went out as a bare identifier that the
+    // validator blocked. The node had no scroll effect at all (user report
+    // 2026-08-09: adding a Width animation to an auto-width grid child).
+    if (isStyleMotionVar(code, styleVars[k])) return true;
   }
   return false;
 }
@@ -121,7 +129,14 @@ export function composeScrollAppearInCode(code: string, nodeId: string): string 
   // the sibling effect (parallax) is orphaned. getScrollDataForNode excludes
   // Speed, so this is the only place we see it.
   const styleVars = parseTagObject(tag, 'style') || {};
-  const isMotionVar = (v: string | undefined) => !!v && /^[A-Za-z_$][\w$]*$/.test(v.trim());
+  // isStyleMotionVar (below), NOT a shape-only test. `parseTagObject` strips
+  // quotes, so a CSS keyword — 'auto', 'none', 'transparent' — is a perfectly
+  // valid identifier by shape and was folded in as if it were a motion value,
+  // emitting `useTransform([…, auto], …)`: a dangling reference that blocks the
+  // whole flush. The hardened check was written for the gesture path after the
+  // same failure in June and never reached this call site (user report
+  // 2026-08-09: adding a Width animation to an auto-width grid child).
+  const isMotionVar = (v: string | undefined) => isStyleMotionVar(code, v);
 
   const appearKeys = new Set<string>([...Object.keys(initial), ...Object.keys(whileInView)]);
   const refVar = `${cleanName}Ref`;
@@ -142,8 +157,17 @@ export function composeScrollAppearInCode(code: string, nodeId: string): string 
     } else {
       // Appear-only prop → map the reveal [0,1] onto [initial, resting].
       const neutral = mult ? '1' : '0';
-      const initV = initial[key] ?? neutral;
-      const restV = whileInView[key] ?? neutral;
+      // emitVal, not the raw value: parseTagObject STRIPS quotes, so a CSS
+      // string prop (`width: 'auto'`, `backgroundColor: '#fff'`) came back as
+      // bare text and was spliced into generated JS as an IDENTIFIER —
+      // `useTransform(…, [auto, auto])`. That parses, then dies as a
+      // ReferenceError, so the mutation validator blocked the whole edit:
+      // "References undefined identifier: auto" on adding a Width animation to
+      // an auto-width grid child (user report 2026-08-09). Numbers round-trip
+      // bare, which is why every appear prop before this — opacity, y, scale —
+      // happened to work and the gap stayed hidden.
+      const initV = emitVal(initial[key] ?? neutral);
+      const restV = emitVal(whileInView[key] ?? neutral);
       const ya = `${cleanName}${capProp(key)}A`;
       composedLines.push(`  const ${ya} = useTransform(${appearVar}, [0, 1], [${initV}, ${restV}]);`);
       // A sibling effect (Scroll Speed) already drives this prop → fold its
@@ -393,9 +417,19 @@ const isStyleMotionVar = (code: string, v: string | undefined): boolean => {
   return new RegExp(`\\bconst\\s+${id}\\s*=\\s*(use(MotionValue|Transform|Spring)\\s*\\(|useMotionTemplate\\s*\`)`).test(code);
 };
 // parseTagObject strips quotes, so re-quote non-numeric/non-boolean literals
-// (CSS strings like 'red'/'10px') when re-emitting a gesture object. Numbers
-// (1.05) and booleans stay bare.
-const emitVal = (v: string) => (/^-?\d*\.?\d+$/.test(v.trim()) || ['true', 'false', 'Infinity', '-Infinity'].includes(v.trim())) ? v : `'${v}'`;
+// (CSS strings like 'red'/'10px') when re-emitting into generated source.
+// Numbers (1.05) and booleans stay bare. Anything that reaches this UNQUOTED
+// becomes a JS identifier, which parses and then throws a ReferenceError at
+// runtime — the validator rightly blocks the whole mutation.
+const emitVal = (v: string) => {
+  const t = v.trim();
+  if (/^-?\d*\.?\d+$/.test(t)) return t;
+  if (['true', 'false', 'Infinity', '-Infinity'].includes(t)) return t;
+  // Keyframe array (`[0, 360]`) — splitStyleProps keeps it whole and the
+  // quote-strip leaves the brackets, so it is already valid source.
+  if (t.startsWith('[') && t.endsWith(']')) return t;
+  return `'${t.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+};
 const emitObj = (o: Record<string, string>) => `{ ${Object.entries(o).map(([k, v]) => `${k}: ${emitVal(v)}`).join(', ')} }`;
 
 const gestureRest = (p: string) => (p === 'opacity' || p.startsWith('scale')) ? '1' : '0';
