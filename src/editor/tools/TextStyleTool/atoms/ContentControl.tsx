@@ -5,6 +5,9 @@
 // Responsive-aware: when the user is on a non-primary viewport AND the node
 // has a `textOverrides` entry for that viewport's bucket, displays + writes
 // to the per-viewport variant via `updateTextOverride`.
+// Translation-aware: a `{t('key')}` node keeps its words in
+// `messages/{locale}.json`, so it reads the resolved message and commits
+// through `commitTranslationText` — see content-translation.ts.
 
 import { ToolInput, ControlLabel } from '../../../controls';
 import { LegacyVariableBoundPill } from '../../../controls/VariableBoundPill';
@@ -16,9 +19,11 @@ import { mapItemIndexAtom, mapContextAtom } from '@/code/stores/store';
 import { useNodesComputed } from '@/code/stores/node-family';
 import { resolveCmsRowValues } from '@/code/generation/cms-row-resolve';
 import { interactingViewportIdAtom, viewportsConfigAtom } from '@/code/stores/viewport-store';
-import { activeLocaleAtom, isDefaultLocaleAtom, localeOverridesAtom } from '@/code/stores/locale-store';
+import { activeLocaleAtom, isDefaultLocaleAtom, localeOverridesAtom, i18nConfigAtom } from '@/code/stores/locale-store';
 import { activeFilePathAtom, isComponentFilePath } from '@/code/project/active-file-store';
 import { setNodeOverride } from '@/code/project/locale-ops';
+import { commitTranslationText } from '@/code/project/translation-ops';
+import { resolveTranslatedContent } from './content-translation';
 import { isPrimaryViewport } from '@/canvas/node-ops';
 import { propagateToGhosts } from '@/code/generation/map-ghost-propagate';
 import { queueMutation } from '@/code/mutation/mutation-queue';
@@ -56,6 +61,7 @@ export function ContentControl() {
   const isDefaultLocale = useAtomValue(isDefaultLocaleAtom);
   const [localeOverrides, setLocaleOverrides] = useAtom(localeOverridesAtom);
   const activeFilePath = useAtomValue(activeFilePathAtom);
+  const i18nConfig = useAtomValue(i18nConfigAtom);
 
   // Locale text override: when the user is on a non-default locale, the
   // canonical text comes from `i18n/{locale}.json` (loaded into the atom),
@@ -66,6 +72,15 @@ export function ContentControl() {
     ? localeOverrides.get(node.id)?.text
     : undefined;
   const isLocaleOverride = localeTextOverride !== undefined;
+
+  // TRANSLATED TEXT — the JSX child is `{t('key')}`, so `textContent` is empty
+  // and the words live in `messages/{locale}.json`. See content-translation.ts
+  // for why the row was blank and why typing into it corrupted the element.
+  // FIT SVG: keyed off `textNode`, so the wrapper resolves to its inner text.
+  const translated = resolveTranslatedContent({
+    translationKey: textNode?.translationKey,
+    overrideText: textNode ? localeOverrides.get(textNode.id)?.text : undefined,
+  });
 
   // Determine if this node has a text binding in a map context
   const textField = node?.binding?.property === 'text' ? node.binding.field : null;
@@ -173,6 +188,12 @@ export function ContentControl() {
     // paths use to bake a row's values onto a clone, so unbind now leaves
     // exactly what the row was displaying.
     displayValue = (cmsRowText || '').replace(/<[^>]*>/g, '');
+  } else if (translated.isTranslated) {
+    // The active locale's message. Deliberately NOT flagged as an override:
+    // on the default locale this IS the canonical text, not a variation of
+    // something else, so the label shows no reset affordance. (On a non-
+    // default locale the branch above claims it first, with the accent.)
+    displayValue = translated.text;
   } else {
     const rawText = textNode?.textContent || '';
     const resolved = resolveForViewport(rawText);
@@ -358,6 +379,34 @@ export function ContentControl() {
             const next = new Map(localeOverrides);
             const existing = next.get(node.id) || {};
             next.set(node.id, { ...existing, text: v });
+            setLocaleOverrides(next);
+            return;
+          }
+          // TRANSLATED NODE: the words live in `messages/{locale}.json` and
+          // the JSX carries `{t('key')}`. Every JSX write path below is wrong
+          // here — `updateText` finds no JSXText to replace and APPENDS one
+          // beside the surviving t() call, so the element would render its
+          // translation AND the typed text. Route to the message store, which
+          // is what the canvas text editor already does for this exact case
+          // (CanvasTextEditController's default-locale branch).
+          if (translated.isTranslated) {
+            const defaultLocale = i18nConfig?.defaultLocale ?? 'en';
+            trace.action('content-control:updateTranslationText', {
+              nodeId: textNode!.id, locale: activeLocale, defaultLocale, newText: v,
+            });
+            commitTranslationText({
+              filePath: activeFilePath,
+              nodeId: textNode!.id,
+              locale: activeLocale,
+              defaultLocale,
+              text: v,
+            });
+            // Mirror into the override atom so the canvas repaints now.
+            // messages/*.json sits OUTSIDE the parse→render loop — the JSX did
+            // not change, so nothing else would repaint this node.
+            const next = new Map(localeOverrides);
+            const existing = next.get(textNode!.id) || {};
+            next.set(textNode!.id, { ...existing, text: v });
             setLocaleOverrides(next);
             return;
           }
