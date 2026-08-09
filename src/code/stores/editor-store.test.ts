@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { createStore } from 'jotai';
-import { leftPanelAtom } from '@/code/stores/left-panel-store';
+import { leftPanelAtom, DEFAULT_LEFT_PANEL } from '@/code/stores/left-panel-store';
 import {
   aiChatSheetOpenAtom, aiChatDetachedAtom, detachAiChatAtom, dockAiChatAtom,
 } from './editor-store';
@@ -21,7 +21,7 @@ describe('AI chat docking', () => {
     expect(store.get(aiChatDetachedAtom)).toBe(true);
     expect(store.get(aiChatSheetOpenAtom)).toBe(true);
     // Left panel falls back to the default so the docked panel is gone.
-    expect(store.get(leftPanelAtom)).toBe('pages-layers');
+    expect(store.get(leftPanelAtom)).toBe(DEFAULT_LEFT_PANEL);
   });
 
   it('dock closes the popup and keeps the panel the user is on', () => {

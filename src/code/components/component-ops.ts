@@ -576,18 +576,28 @@ export function makeComponent(
                   : t.isStringLiteral(prop.key) ? prop.key.value
                   : null;
         if (!key) continue;
-        // PARENT-RELATIVE sizes (100%, 50vw, …) describe how the node fills
-        // its parent's cell — placement, not content size. The master file
-        // freezes them to measured px (replaceNonPxDimensions), so unless
-        // they ALSO ride the instance tag the node stops filling its
-        // grid/flex cell after Make Component (a width/height 100% grid
-        // child came back as an auto×auto instance hugging the master's
-        // frozen size — user report 2026-07-29). px/auto sizes keep the old
-        // behavior: the master owns them, the instance stays unsized.
-        const isRelativeSize = (key === 'width' || key === 'height')
-          && t.isStringLiteral(prop.value)
-          && /^\d+(?:\.\d+)?(?:%|vw|vh|svh|dvh)$/.test(prop.value.value);
-        if (!WRAPPER_ONLY_STYLE_PROPS.has(key) && !isRelativeSize) continue;
+        // A CONCRETE size is the node's own placement and rides the instance.
+        //
+        // The instance must render exactly as the node did. Parent-relative
+        // sizes (100%, 50vw, …) were the first case — the master freezes them
+        // to measured px (replaceNonPxDimensions), so without them on the
+        // instance a `width: 100%` grid child came back as an auto×auto
+        // instance hugging the master's frozen size (user report 2026-07-29).
+        // But `height: '178px'` has the same problem in slower motion: the
+        // master owns the px, so the instance has no size of its own and a
+        // later edit to the master silently resizes every instance (user
+        // report 2026-08-09).
+        //
+        // `auto` and the Fit sizes (`min-content`/`max-content`/`fit-content`)
+        // are the exception, and stay off the instance: they say "size to your
+        // content", which the master's root does identically — copying them
+        // adds noise that means nothing.
+        const sizeVal = (key === 'width' || key === 'height') && t.isStringLiteral(prop.value)
+          ? prop.value.value.trim()
+          : '';
+        const isConcreteSize = !!sizeVal
+          && !/^(?:auto|min-content|max-content|fit-content(?:\(.*\))?)$/.test(sizeVal);
+        if (!WRAPPER_ONLY_STYLE_PROPS.has(key) && !isConcreteSize) continue;
         if (prop.value.start == null || prop.value.end == null) continue;
         const valueText = pageCode.slice(prop.value.start, prop.value.end);
         wrapperStyleEntries.push({ key, jsx: `${key}: ${valueText}` });

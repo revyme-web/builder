@@ -5,7 +5,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { togglePanelAtom, leftPanelAtom, codeEditorOpenAtom, type LeftPanelId } from '@/code/stores/left-panel-store';
+import { togglePanelAtom, leftPanelAtom, codeEditorOpenAtom, DEFAULT_LEFT_PANEL, type LeftPanelId } from '@/code/stores/left-panel-store';
 import { aiChatDetachedAtom } from '@/code/stores/editor-store';
 import { componentEditorFileAtom } from '@/code/stores/component-editor-store';
 import { pluginEditorFileAtom } from '@/editor/plugin-editor/plugin-editor-store';
@@ -146,7 +146,7 @@ export default function LeftMenu() {
   const inOverlay = componentEditorOpen || pluginEditorOpen || cmsEditorOpen;
   const setLeftPanel = useSetAtom(leftPanelAtom);
   useEffect(() => {
-    if (inOverlay && activePanel === 'vibe') setLeftPanel('pages-layers');
+    if (inOverlay && activePanel === 'vibe') setLeftPanel(DEFAULT_LEFT_PANEL);
   }, [inOverlay, activePanel, setLeftPanel]);
   // Modal for "Share & collaborate" (invite/manage). Anchored to the
   // Collaborators icon at the bottom of the LeftMenu, mirroring where
@@ -272,16 +272,19 @@ export default function LeftMenu() {
           <InsertPlusIcon className="w-[18px] h-[18px] text-white" />
         </button>
 
+        {/* Layers — FIRST, directly under the insert button, and the panel the
+            builder opens on. It is what you reach for on almost every edit;
+            Pages is a navigation action you take once per session. Split out
+            from the old combined Pages+Layers panel into its own tab. Enabled
+            for viewers too: navigating the layer tree to inspect / comment is
+            read-only. */}
+        <MenuButton panelId="layers" isActive={activePanel === 'layers'} onToggle={togglePanel} title="Layers" tooltip={tooltipHandlers} dataTutorial="layers-button">
+          <LayersIcon className="w-[18px] h-[18px]" />
+        </MenuButton>
+
         {/* Pages */}
         <MenuButton panelId="pages-layers" isActive={activePanel === 'pages-layers'} onToggle={togglePanel} title="Pages" tooltip={tooltipHandlers} dataTutorial="pages-layers-button">
           <PagesLayersIcon className="w-[18px] h-[18px]" size={18} />
-        </MenuButton>
-
-        {/* Layers — split out from the old combined Pages+Layers panel
-            into its own tab. Enabled for viewers too: navigating the
-            layer tree to inspect / comment is read-only. */}
-        <MenuButton panelId="layers" isActive={activePanel === 'layers'} onToggle={togglePanel} title="Layers" tooltip={tooltipHandlers} dataTutorial="layers-button">
-          <LayersIcon className="w-[18px] h-[18px]" />
         </MenuButton>
 
         {/* Library — enabled for viewers. The panel itself gates which

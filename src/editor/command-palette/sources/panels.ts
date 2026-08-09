@@ -23,8 +23,11 @@ const TABS: Array<{
   icon?: SearchableItem['icon'];
 }> = [
   { id: 'insert',       name: 'Insert',         keywords: ['insert', 'add', 'new', 'element', 'block'], icon: InsertPlusIcon },
-  { id: 'pages-layers', name: 'Pages',          keywords: ['pages', 'files', 'routes', 'site map'], icon: PagesLayersIcon },
+  // Same order as the LeftMenu — Layers first, then Pages. (Both show the
+  // Pages glyph here: the toolbar's LayersIcon is local to LeftMenu.tsx and
+  // isn't exported from @/shared/icons.)
   { id: 'layers',       name: 'Layers',         keywords: ['layers', 'tree', 'outline', 'hierarchy', 'nodes'], icon: PagesLayersIcon },
+  { id: 'pages-layers', name: 'Pages',          keywords: ['pages', 'files', 'routes', 'site map'], icon: PagesLayersIcon },
   { id: 'library',      name: 'Library',        keywords: ['library', 'components', 'sketches', 'vectors', 'assets'], icon: LibraryStackIcon },
   { id: 'presets',      name: 'Presets',        keywords: ['presets', 'styles', 'tokens', 'design system'] },
   { id: 'media',        name: 'Media Gallery',  keywords: ['media', 'gallery', 'images', 'photos', 'video', 'upload'], icon: ChatImageIcon },

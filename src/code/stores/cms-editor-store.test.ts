@@ -11,7 +11,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createStore } from 'jotai';
-import { leftPanelAtom } from './left-panel-store';
+import { leftPanelAtom, DEFAULT_LEFT_PANEL } from './left-panel-store';
 import {
   openCmsEditorAtom,
   cmsEditorOpenAtom,
@@ -25,7 +25,7 @@ beforeEach(() => { store = createStore(); });
 
 describe('openCmsEditorAtom', () => {
   it('selects the CMS left panel (App would close the overlay otherwise)', () => {
-    expect(store.get(leftPanelAtom)).toBe('pages-layers'); // fresh-load default
+    expect(store.get(leftPanelAtom)).toBe(DEFAULT_LEFT_PANEL); // fresh-load default
     store.set(openCmsEditorAtom, { collection: 'blog' });
     expect(store.get(leftPanelAtom)).toBe('cms');
   });

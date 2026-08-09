@@ -445,16 +445,22 @@ export default function Page() {
     expect(result!.updatedPageCode).toMatch(/style=\{\{\s*position:\s*['"]absolute['"]/);
     expect(result!.updatedPageCode).toContain("left: '64px'");
     expect(result!.updatedPageCode).toContain("top: '38px'");
-    // Visual props (width / backgroundColor / padding / borderRadius) belong
-    // on the master root, NOT the instance tag — they live in the new
-    // component file and reach the inner via the {...style} spread.
+    // VISUAL props (backgroundColor / padding / borderRadius) belong on the
+    // master root, NOT the instance tag — they live in the new component file
+    // and reach the inner via the {...style} spread.
+    //
+    // A CONCRETE SIZE is not visual, it is placement, and rides the instance:
+    // the instance has to render exactly as the node did, and without its own
+    // size a later edit to the master silently resizes every instance
+    // (user report 2026-08-09). `auto` / Fit sizes are the exception — they say
+    // "size to your content", which the master root already does.
     const tagStart = result!.updatedPageCode.indexOf('<', result!.updatedPageCode.indexOf('data-id="card"') - 50);
     const tagEnd = result!.updatedPageCode.indexOf('/>', tagStart) + 2;
     const instanceTag = result!.updatedPageCode.slice(tagStart, tagEnd);
     expect(instanceTag).not.toMatch(/backgroundColor/);
     expect(instanceTag).not.toMatch(/borderRadius/);
     expect(instanceTag).not.toMatch(/\bpadding\b/);
-    expect(instanceTag).not.toMatch(/\bwidth\b/);
+    expect(instanceTag).toContain("width: '320px'");
   });
 
   test('parent-relative width/height (100%) ride the instance tag so a grid child keeps filling its cell', () => {
@@ -2290,5 +2296,62 @@ describe('makeComponent — instance keeps filling its cell', () => {
   test('an authored width is not overridden with 100%', () => {
     const fixed = GRID_PAGE.replace("position: 'relative',", "position: 'relative', width: '333px',");
     expect(instanceTagFor(fixed, DIMS)).not.toContain("width: '100%'");
+  });
+});
+
+// ─── Concrete sizes ride the instance ───────────────────────────────────────
+//
+// User report 2026-08-09: a grid card with `height: '178px'` became an instance
+// with no size at all — `<RoKuDu style={{ position: 'relative', order: '5' }} />`.
+// The px lived only on the master root, so the instance had nothing of its own
+// and a later edit to the master would resize every instance.
+//
+// The rule: `auto` and the Fit sizes stay off (they say "size to your content",
+// which the master root does identically); anything concrete — px, %, vw/vh —
+// is a value set ON THIS NODE and must ride the instance.
+describe('makeComponent — the instance keeps its own size', () => {
+  const page = (style: string) => `import React from 'react';
+export default function Page() {
+  return (
+    <div data-id="root" style={{ display: 'grid' }}>
+      <div data-id="card" style={{ ${style} }}><h2 data-id="t">Hi</h2></div>
+    </div>
+  );
+}`;
+
+  const instance = (style: string, dims = DIMS) => instanceTagFor(page(style), dims);
+
+  test('THE BUG: a px height rides the instance', () => {
+    expect(instance("position: 'relative', width: 'auto', height: '178px', order: '5'"))
+      .toContain("height: '178px'");
+  });
+
+  test('px width rides too', () => {
+    expect(instance("position: 'relative', width: '320px', height: '178px'"))
+      .toContain("width: '320px'");
+  });
+
+  test('percentages and viewport units still ride (unchanged)', () => {
+    for (const v of ['100%', '50vw', '80vh', '50svh']) {
+      expect(instance(`position: 'relative', width: '${v}'`), v).toContain(`width: '${v}'`);
+    }
+  });
+
+  test('auto does NOT ride — the master root hugs identically', () => {
+    const tag = instance("position: 'relative', width: 'auto', height: 'auto'");
+    expect(tag).not.toMatch(/height:/);
+  });
+
+  test('Fit sizes do not ride either', () => {
+    for (const v of ['min-content', 'max-content', 'fit-content(200px)']) {
+      const tag = instance(`position: 'relative', height: '${v}'`);
+      expect(tag, v).not.toContain(v);
+    }
+  });
+
+  test('visual props still stay on the master', () => {
+    const tag = instance("position: 'relative', height: '178px', backgroundColor: '#fff', padding: '16px', borderRadius: '22px'");
+    expect(tag).not.toMatch(/backgroundColor|padding|borderRadius/);
+    expect(tag).toContain("height: '178px'");
   });
 });

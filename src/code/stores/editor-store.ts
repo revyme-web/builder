@@ -7,7 +7,7 @@
 
 import { atom } from 'jotai';
 import type { TextEditSnapshot } from '@/canvas-sandbox/protocol';
-import { leftPanelAtom } from '@/code/stores/left-panel-store';
+import { leftPanelAtom, DEFAULT_LEFT_PANEL } from '@/code/stores/left-panel-store';
 
 /** Backwards-compatible flat selection-styles type — used by callers that
  *  only need single uniform values, not the mixed-value shape. Populated
@@ -109,8 +109,8 @@ export const aiChatDetachedAtom = atom<boolean>(false);
 export const detachAiChatAtom = atom(null, (_get, set) => {
   set(aiChatDetachedAtom, true);
   set(aiChatSheetOpenAtom, true);
-  // Free the left panel — close the docked VIBE panel back to the default.
-  set(leftPanelAtom, 'pages-layers');
+  // Free the left panel — close the docked VIBE panel back to the home panel.
+  set(leftPanelAtom, DEFAULT_LEFT_PANEL);
 });
 
 /** Close the detached popup. Returns to docked mode — the VIBE left-menu icon
