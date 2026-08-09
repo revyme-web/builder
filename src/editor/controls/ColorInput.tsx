@@ -35,6 +35,12 @@ interface ColorInputProps {
    *  color unifies them. `value` is still used as the picker's starting
    *  color when opened. */
   mixed?: boolean;
+  /** No color is set at all. Renders the checkerboard swatch and an "Add"
+   *  label instead of a color — the same empty state the Styles Fill row uses,
+   *  so "no fill" reads as no fill rather than as a real color. `value` is
+   *  still the picker's starting color when opened (same contract as `mixed`).
+   *  Opt-in: without it a consumer that wants a default color keeps one. */
+  empty?: boolean;
 }
 
 // Alpha/transparent checkerboard — used for the "Mixed" swatch so it reads
@@ -47,7 +53,7 @@ const CHECKER_STYLE: CSSProperties = {
 };
 
 
-export default function ColorInput({ value, onChange, onChangeLive, showAlpha, swatchOnly, onRemove, mixed }: ColorInputProps) {
+export default function ColorInput({ value, onChange, onChangeLive, showAlpha, swatchOnly, onRemove, mixed, empty }: ColorInputProps) {
   const popupCtx = useToolPopupOptional();
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -214,8 +220,8 @@ export default function ColorInput({ value, onChange, onChangeLive, showAlpha, s
             </>
           ) : (
             <>
-              <ColorSwatch style={mixed ? CHECKER_STYLE : { backgroundColor: displayColor }} />
-              <span className="text-xs text-[var(--text-primary)] truncate flex-1 text-left">{mixed ? 'Mixed' : displayText}</span>
+              <ColorSwatch style={(mixed || empty) ? CHECKER_STYLE : { backgroundColor: displayColor }} />
+              <span className={`text-xs truncate flex-1 text-left ${empty && !mixed ? 'text-[var(--text-secondary)]' : 'text-[var(--text-primary)]'}`}>{mixed ? 'Mixed' : empty ? 'Add' : displayText}</span>
               {onRemove && (
                 <RemoveButton onClick={(e) => { e.stopPropagation(); onRemove(); }} />
               )}

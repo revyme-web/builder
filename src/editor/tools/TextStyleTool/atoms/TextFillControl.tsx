@@ -63,7 +63,14 @@ export function TextFillControl() {
         </ControlActionRow>
       ) : (
         <ColorInput
+          // `value` is only the PICKER's starting color. With no fill set the
+          // row renders the checkerboard + "Add" (see `empty`) instead of
+          // painting that fallback as if it were the real value — an unset
+          // text fill showed a solid yellow swatch reading `#FFFF00`, which
+          // looks like an applied fill (user report 2026-08-10). Matches the
+          // Styles Fill row's empty state.
           value={value || '#ffff00'}
+          empty={hasNone}
           onChange={(c) => text.set('backgroundColor', c)}
           onChangeLive={(c) => text.setLive('backgroundColor', c)}
           showAlpha
