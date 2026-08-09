@@ -20,6 +20,7 @@ import { updateVariantStyleInCode, setConditionalStyleInCode, syncLinkHandlerInC
 import { parseContainerRules } from '../stores/container-query-store';
 import { extractStyleCSS } from '../parsing/parser';
 import { rehydrateInstanceFx, setInstanceFxInCode } from '../generation/instance-fx-gen';
+import { adoptTranslationsForComponent } from '@/code/project/translation-ops';
 import { ensureResponsiveTextHook } from '../generation/text-override-gen';
 import { rehydrateScrollVariant, setScrollVariantInCode } from '../generation/scroll-variant-gen';
 import { healMissingFormStateDeclarations } from '../generation/form-state-gen';
@@ -811,6 +812,16 @@ export function makeComponent(
     // so the new component must get its own copy or it ReferenceError-crashes
     // on the live site (2026-07-28). No-op when the hook isn't referenced.
     componentCode = ensureResponsiveTextHook(componentCode);
+
+    // …and the SAME problem for the translation hook. `{t('key')}` in the
+    // extracted JSX referenced the PAGE's `useTranslations()` const, so the
+    // component rendered no text at all and crashed on the live site. This
+    // gives it its own hook AND copies the messages into the component's
+    // namespace (which is derived from the file path, so it differs from the
+    // page's). No-op when nothing in the subtree is translated.
+    componentCode = adoptTranslationsForComponent({
+      componentCode, pageFilePath, componentFilePath,
+    });
 
     // PORT CHILD ANIMATIONS INTO COMPONENT MODE. The extracted JSX may contain
     // descendant instances with `data-instance-fx`/`data-scroll-variant` whose

@@ -20,8 +20,11 @@ import {
   attrMessageKey,
   setMessageValue,
   getMessageValue,
+  deleteMessageValue,
   nodeHasTranslationCall,
   getTranslationOrphanKey,
+  collectTranslationKeys,
+  ensureTranslationsScaffoldInCode,
 } from '@/code/generation/i18n-gen';
 import { extractTextRuns, replaceRunWithText, nodeInnerSpan, RUN_KEY_RE } from '@/code/parsing/rich-text-runs';
 import { updateNodeTextInCode } from '@/code/generation/generator-crud';
@@ -602,4 +605,82 @@ export function readTranslationText(opts: {
   const raw = projectFS.readFile(`messages/${opts.locale}.json`);
   if (!raw) return null;
   return getMessageValue(raw, namespace, opts.key);
+}
+
+/**
+ * MAKE COMPONENT: carry a subtree's translations into the new component file.
+ *
+ * `t` is the PAGE component's `useTranslations()` const. Extracting a subtree
+ * into `components/Foo.tsx` moves the `{t('key')}` calls somewhere that const
+ * does not exist, so the component crashed on the live site and rendered no
+ * text at all on the canvas (user report 2026-08-09). Exactly the failure
+ * `ensureResponsiveTextHook` already prevents for the page's OTHER file-local
+ * hook — the translation hook simply never got the same treatment.
+ *
+ * Two halves, and both are needed:
+ *   1. Give the component its own import + `useTranslations(<its namespace>)`.
+ *   2. Copy the messages across, because the namespace is derived from the FILE
+ *      (`filePathToSlug`): the words lived under `home` and the component now
+ *      asks for `component:Foo`. Without the copy the scaffold resolves to
+ *      nothing and the text is still blank — the JSX just stops crashing.
+ *
+ * A MOVE: the page-namespace entry is deleted once the component's is written.
+ * The node itself left the page, and a key is the node's `data-id` — unique per
+ * FILE — so nothing on the page can still be asking for it. Leaving it behind
+ * is not merely untidy: the page and the component then hold the same key with
+ * different words, and any reader that picks the wrong namespace shows stale
+ * text (which is exactly how this surfaced, user report 2026-08-09).
+ *
+ * Copy and delete compose in ONE JSON string that is written once per locale
+ * file, so there is no instant where the words exist in neither namespace —
+ * which is what made an earlier version of this hedge and only copy.
+ *
+ * Returns the component code with the scaffold injected; no-op when the
+ * extracted JSX carries no translation calls.
+ */
+export function adoptTranslationsForComponent(opts: {
+  componentCode: string;
+  /** Page the subtree was extracted FROM — source namespace. */
+  pageFilePath: string;
+  /** New component file — destination namespace. */
+  componentFilePath: string;
+}): string {
+  const { componentCode, pageFilePath, componentFilePath } = opts;
+  const keys = collectTranslationKeys(componentCode);
+  if (keys.length === 0) return componentCode;
+
+  const fromNs = filePathToSlug(pageFilePath);
+  const toNs = filePathToSlug(componentFilePath);
+  if (fromNs === toNs) return componentCode;
+
+  // Copy each key in EVERY configured locale — a component extracted from a
+  // fully-translated page must stay fully translated, not just in the one the
+  // user happens to be viewing.
+  const config = getI18nConfig();
+  let moved = 0;
+  for (const locale of config.locales.map((l) => l.code)) {
+    const msgPath = `messages/${locale}.json`;
+    const raw = projectFS.readFile(msgPath);
+    if (!raw) continue;
+    let next = raw;
+    for (const key of keys) {
+      const value = getMessageValue(next, fromNs, key);
+      if (value === null) continue;   // nothing here to move
+      // Never clobber an existing component-namespace value: re-running Make
+      // Component on a name that already exists must not overwrite a
+      // translation the user has since edited on the component. The page entry
+      // still goes — it is unreachable either way.
+      if (getMessageValue(next, toNs, key) === null) {
+        next = setMessageValue(next, toNs, key, value);
+      }
+      next = deleteMessageValue(next, fromNs, key);
+      moved++;
+    }
+    if (next !== raw) projectFS.writeFile(msgPath, next);
+  }
+
+  trace.action('translation-ops:adopt-for-component', {
+    componentFilePath, fromNs, toNs, keys: keys.length, moved,
+  });
+  return ensureTranslationsScaffoldInCode(componentCode, toNs);
 }

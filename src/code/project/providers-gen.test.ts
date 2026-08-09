@@ -49,3 +49,25 @@ describe('looksGeneratedProviders', () => {
     expect(looksGeneratedProviders('export function Providers({children}) { return children; }')).toBe(false);
   });
 });
+
+// The isolated COMPONENT preview (preview-sandbox/main.tsx) short-circuits
+// route resolution, so it never mounts `app/layout.tsx` and never gets the
+// providers that way. It compiles this file and reads `.Providers` off the
+// module instead — which means the NAMED export is load-bearing for a surface
+// that lives in a different bundle and cannot type-check against it.
+//
+// If this ever became a default export, the preview would silently fall back
+// to rendering bare and every translated component would throw "the context
+// from NextIntlClientProvider was not found" again (user report 2026-08-09).
+
+describe('the Providers export contract', () => {
+  it('is a NAMED export — the component preview looks it up by name', () => {
+    const src = buildProvidersSource({ defaultLocale: 'en', locales: [{ code: 'en', label: 'English' }] });
+    expect(src).toMatch(/export function Providers\b/);
+  });
+
+  it('wraps children in NextIntlClientProvider, which is the context the preview needs', () => {
+    const src = buildProvidersSource({ defaultLocale: 'en', locales: [{ code: 'en', label: 'English' }] });
+    expect(src).toContain('NextIntlClientProvider');
+  });
+});

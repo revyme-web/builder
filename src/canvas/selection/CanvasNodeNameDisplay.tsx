@@ -49,7 +49,20 @@ import { queueMutation } from '@/code/mutation/mutation-queue';
 import { trace } from '@/shared/debug-trace';
 import { useIsViewer } from '@/code/stores/viewer-mode-store';
 
-const LABEL_HEIGHT = 24; // screen px; gap above the node
+const LABEL_HEIGHT = 24; // screen px
+/** Gap between the strip's bottom and the node's top edge.
+ *
+ *  4, not 2, because the strip is now FULL-WIDTH and interactive: the top-edge
+ *  resize hit area is 8px tall CENTRED on the edge (ResizeHandles), so it
+ *  reaches 4px above the node. At a 2px gap the strip — which sits at a higher
+ *  z-index — stole the upper 2px of that band. That was survivable while the
+ *  strip was only as wide as the name text; across the node's full width it
+ *  would have made the whole top edge harder to grab. Clearing the band costs
+ *  2px of visual shift and removes the contention entirely, corner handles
+ *  included (their radius is 4 too). */
+const LABEL_GAP = 4;
+/** Floor for very narrow nodes — a 20px node still needs a grabbable strip. */
+const MIN_LABEL_WIDTH = 60;
 const FONT_SIZE = 11;
 const ICON_SIZE = 12;
 const DRAG_THRESHOLD_PX = 5;
@@ -129,6 +142,30 @@ function PlayButton({
     </button>
   );
 }
+
+/**
+ * The interactive strip above a node: full node width, one row tall, sitting
+ * clear of the node's resize affordances.
+ *
+ * Pure so the clearance invariant can be asserted without a canvas — it is the
+ * part that is easy to break by nudging a constant. See `LABEL_GAP`.
+ */
+export function labelStripGeometry(rect: { left: number; top: number; width: number }): {
+  left: number; top: number; width: number; height: number;
+} {
+  return {
+    left: rect.left,
+    top: rect.top - LABEL_HEIGHT - LABEL_GAP,
+    width: Math.max(MIN_LABEL_WIDTH, rect.width),
+    height: LABEL_HEIGHT,
+  };
+}
+
+/** Half-height of the top-edge resize hit band (ResizeHandles' `hitHeight` / 2)
+ *  and the corner handles' radius — both reach this far ABOVE the node's top
+ *  edge, and the strip must not overlap either. Duplicated as a number rather
+ *  than imported so the test states the relationship explicitly. */
+export const RESIZE_BAND_REACH = 4;
 
 // ─── Per-node label component ─────────────────────────────────────────────
 
@@ -302,10 +339,15 @@ function NameDisplay({ nodeId, vpId }: LabelProps) {
         ? activeFilePath
         : null;
 
-  // Label sits one row above the node, anchored to its left edge.
-  const labelTop = rect.top - LABEL_HEIGHT - 2;
-  const labelLeft = rect.left;
-  const labelMaxWidth = Math.max(60, rect.width);
+  // Strip sits one row above the node, spanning its FULL WIDTH.
+  //
+  // The hit area used to shrink-wrap the name text, so only those few dozen
+  // pixels selected or dragged the node — the rest of the strip looked
+  // interactive and wasn't (user request 2026-08-09). `width` rather than
+  // `maxWidth` makes the whole band above the node grabbable; the name still
+  // renders left-aligned inside it and still ellipsises at the same place,
+  // because the text span keeps its own overflow rules.
+  const { left: labelLeft, top: labelTop, width: labelWidth } = labelStripGeometry(rect);
 
   // A top-level variant root shows its variant LABEL (kept in sync with the variant-select tool); everything
   // else shows the node's data-name.
@@ -343,7 +385,7 @@ function NameDisplay({ nodeId, vpId }: LabelProps) {
         left: labelLeft,
         top: labelTop,
         height: LABEL_HEIGHT,
-        maxWidth: labelMaxWidth,
+        width: labelWidth,
         display: 'flex',
         alignItems: 'center',
         gap: 4,
@@ -478,7 +520,7 @@ function NameDisplay({ nodeId, vpId }: LabelProps) {
             padding: 0,
             margin: 0,
             minWidth: 60,
-            maxWidth: labelMaxWidth - ICON_SIZE - 8,
+            maxWidth: labelWidth - ICON_SIZE - 8,
           }}
         />
       ) : (

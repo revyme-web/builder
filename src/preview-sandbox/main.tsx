@@ -456,6 +456,35 @@ const variantPageOverrides = new Map<string, string>();
 // `initialVariant` default (which is 'default' / the primary variant).
 let previewInitialVariant: string | null = null;
 
+/**
+ * The project's own `Providers` around an isolated component preview.
+ *
+ * A PAGE preview gets them from the layout chain (`app/layout.tsx` wraps its
+ * children in `<Providers>`). The component-isolation branch short-circuits
+ * route resolution entirely, so it rendered the component BARE — and a
+ * component that calls `useTranslations` threw "the context from
+ * NextIntlClientProvider was not found" and showed nothing (user report
+ * 2026-08-09, after Make Component started carrying translations across).
+ *
+ * The app's REAL providers, not a preview-only intl shim: they also carry
+ * next-themes and anything the user has added, and this file's whole approach
+ * is to drive the app through its own channels (see the `locale-change` note in
+ * the force-locale handler) rather than special-case the preview.
+ *
+ * Degrades to rendering bare when the project has no `providers.tsx` or it
+ * fails to compile — an un-localized component must still preview.
+ */
+function PreviewProviders({ children }: { children: React.ReactNode }) {
+  if (!projectFiles.has('app/providers.tsx')) return <>{children}</>;
+  try {
+    const Providers = compileFile('app/providers.tsx').Providers;
+    if (typeof Providers !== 'function') return <>{children}</>;
+    return <Providers>{children}</Providers>;
+  } catch {
+    return <>{children}</>;
+  }
+}
+
 function PreviewApp() {
   const [url, setUrl] = React.useState(() => location.pathname + location.search);
   React.useEffect(() => {
@@ -535,7 +564,9 @@ function PreviewApp() {
               bottom: auto !important;
             }
           `}</style>
-          <Component {...variantProp} />
+          <PreviewProviders>
+            <Component {...variantProp} />
+          </PreviewProviders>
         </div>
       );
     } catch (err) {

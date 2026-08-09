@@ -347,7 +347,11 @@ function MenuPanel({ items, hoverStyle, minWidth, onClose, style, rootRef, searc
             >
               {entry.icon && <span className="shrink-0 w-4 flex items-center justify-center opacity-80 group-hover:opacity-100">{entry.icon}</span>}
               <span className="flex-1 text-left font-medium">{entry.label}</span>
-              {entry.trailingIcon && <span className="shrink-0 w-4 flex items-center justify-center opacity-90 group-hover:opacity-100">{entry.trailingIcon}</span>}
+              {/* `min-w-4` rather than `w-4`: a single glyph still lands on the same
+                  column as every other menu's checkmark, but a richer trailing
+                  slot (the theme rows pair an accent swatch with the check) can
+                  grow instead of being squeezed into 16px. */}
+              {entry.trailingIcon && <span className="shrink-0 min-w-4 flex items-center justify-center opacity-90 group-hover:opacity-100">{entry.trailingIcon}</span>}
               {entry.shortcut && <span className="text-[10px] text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)]/70">{entry.shortcut}</span>}
               {hasSubmenu && (
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70 group-hover:opacity-100">

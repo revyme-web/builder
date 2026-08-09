@@ -24,25 +24,43 @@
 import type { CanvasNode } from '@/code/parsing/parser';
 import type { NodeOverride } from '@/shared/types';
 import { trace } from '@/shared/debug-trace';
+import { filePathToSlug } from '@/code/project/active-file-store';
 
 type MessageNs = Record<string, string>;
 
 /** Parse a messages/{locale}.json payload and return the given namespace's
  *  flat key→string map ({} on missing/invalid). */
 export function parseMessagesNamespace(raw: string | null | undefined, namespace: string): MessageNs {
+  return parseMessagesRoot(raw)[namespace] ?? {};
+}
+
+/** EVERY namespace in a messages file.
+ *
+ *  One page can need several: a component instance expands into the page's node
+ *  tree, but the component's own `useTranslations()` reads the namespace of the
+ *  COMPONENT FILE, so its nodes resolve under `component:Foo` while the page's
+ *  own nodes resolve under `home`. Parsing a single namespace made the canvas
+ *  read instance text from the page's namespace, where a stale copy left by
+ *  Make Component still sat — so the component showed the edited translation and
+ *  the page showed the old one (user report 2026-08-09). */
+function parseMessagesRoot(raw: string | null | undefined): Record<string, MessageNs> {
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw);
-    const ns = parsed?.[namespace];
-    if (!ns || typeof ns !== 'object') return {};
-    const out: MessageNs = {};
-    for (const [k, v] of Object.entries(ns)) {
-      if (typeof v === 'string') out[k] = v;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const out: Record<string, MessageNs> = {};
+    for (const [ns, entries] of Object.entries(parsed)) {
+      if (!entries || typeof entries !== 'object') continue;
+      const bucket: MessageNs = {};
+      for (const [k, v] of Object.entries(entries)) {
+        if (typeof v === 'string') bucket[k] = v;
+      }
+      out[ns] = bucket;
     }
     return out;
   } catch (err) {
     trace.error('locale-override-map:messages-parse-failed', {
-      namespace, error: err instanceof Error ? err.message : String(err),
+      error: err instanceof Error ? err.message : String(err),
     });
     return {};
   }
@@ -79,10 +97,20 @@ export function buildTranslationTextOverrides(opts: {
   const { nodes, namespace } = opts;
   if (!nodes || nodes.size === 0) return out;
 
-  const active = parseMessagesNamespace(opts.activeMessagesRaw, namespace);
-  const fallback = parseMessagesNamespace(opts.defaultMessagesRaw, namespace);
+  const activeRoot = parseMessagesRoot(opts.activeMessagesRaw);
+  const fallbackRoot = parseMessagesRoot(opts.defaultMessagesRaw);
+  // The page's own namespace, used for every node that isn't instance-expanded.
+  const active = activeRoot[namespace] ?? {};
+  const fallback = fallbackRoot[namespace] ?? {};
 
   for (const [nodeId, node] of nodes) {
+    // A node pulled in from a component master resolves under the COMPONENT's
+    // namespace — that is what its own `useTranslations()` call asks for at
+    // runtime, so this keeps the canvas matching the published site. The parser
+    // stamps `componentFile` on every expanded descendant of an instance.
+    const ownNs = node.componentFile ? filePathToSlug(node.componentFile) : namespace;
+    const active = ownNs === namespace ? activeRoot[namespace] ?? {} : activeRoot[ownNs] ?? {};
+    const fallback = ownNs === namespace ? fallbackRoot[namespace] ?? {} : fallbackRoot[ownNs] ?? {};
     // A DORMANT canvas node has no `{t()}` call to read a key from — dragging
     // it out of the page baked the default-locale literal and stashed the key
     // in `data-i18n-orphan`, because `t` doesn't exist at module scope. The

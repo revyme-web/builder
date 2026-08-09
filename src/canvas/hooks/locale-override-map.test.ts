@@ -225,3 +225,57 @@ const canvasNodes = <>
     expect(out.get('anchor-title')?.text).toBe('Le déjeuner arrive en bateau');
   });
 });
+
+// A component INSTANCE expands into the page's node tree, but the component's
+// own `useTranslations()` reads the namespace of the COMPONENT FILE. Resolving
+// every node against the active page's namespace made the instance read from
+// `home` — where Make Component's copy of the words still sat — so the
+// component master showed the edited translation and the page showed the stale
+// one (user report 2026-08-09).
+
+describe('instance-expanded nodes use their COMPONENT’s namespace', () => {
+  // What the parser produces for a page containing one instance: `componentFile`
+  // is stamped on every expanded descendant, absent on the page's own nodes.
+  const nodes = new Map([
+    ['page-title', { id: 'page-title', translationKey: 'page-title' } as never],
+    ['hero-intro', { id: 'hero-intro', translationKey: 'hero-intro', componentFile: 'components/CeCoGa.tsx' } as never],
+  ]);
+
+  const MESSAGES = JSON.stringify({
+    home: {
+      'page-title': 'Titre de la page',
+      // Make Component COPIED the words here and the component has since been
+      // edited. This entry is now unreachable — that is the point.
+      'hero-intro': 'Les îles de Lérins, rejointes à la voile…',
+    },
+    'component:CeCoGa': { 'hero-intro': 'sdfsdfsdfdsf' },
+  });
+
+  const build = () => buildTranslationTextOverrides({
+    nodes, namespace: 'home', activeMessagesRaw: MESSAGES, defaultMessagesRaw: MESSAGES,
+  });
+
+  it('reads the instance’s text from the component namespace', () => {
+    expect(build().get('hero-intro')?.text).toBe('sdfsdfsdfdsf');
+  });
+
+  it('and the page’s own nodes still read from the page namespace', () => {
+    expect(build().get('page-title')?.text).toBe('Titre de la page');
+  });
+
+  it('a stale same-key entry in the page namespace cannot win', () => {
+    // The exact shape of the bug: both namespaces carry `hero-intro`.
+    expect(build().get('hero-intro')?.text).not.toContain('Lérins');
+  });
+
+  it('falls back within the COMPONENT namespace, not across to the page', () => {
+    // An untranslated component key must show the component's default-locale
+    // words, never the page's leftover copy.
+    const out = buildTranslationTextOverrides({
+      nodes, namespace: 'home',
+      activeMessagesRaw: JSON.stringify({ home: { 'hero-intro': 'STALE PAGE COPY' } }),
+      defaultMessagesRaw: JSON.stringify({ 'component:CeCoGa': { 'hero-intro': 'Component default' } }),
+    });
+    expect(out.get('hero-intro')?.text).toBe('Component default');
+  });
+});

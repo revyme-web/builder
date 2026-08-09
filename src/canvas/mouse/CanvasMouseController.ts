@@ -81,6 +81,7 @@ import {
 
 
 import { leftPanelAtom } from '@/code/stores/left-panel-store';
+import { isDefaultLocaleAtom } from '@/code/stores/locale-store';
 import {
   getViewportPrefix,
   redirectToComponentInstance,
@@ -1135,7 +1136,18 @@ export class CanvasMouseController {
       // Empty-frame quick text: double-click an empty frame that isn't
       // already a flex/grid container → apply centered column layout, drop
       // a text node inside, immediately enter TipTap edit mode.
-      const emptyFrameNode = this.store.get(nodesAtom).get(nodeId);
+      //
+      // NOT IN TRANSLATION MODE. On a non-default locale the editor is a
+      // translation surface: every text commit routes to `messages/{locale}`
+      // and the JSX is meant to stay untouched. This gesture does the
+      // opposite — it writes a layout onto the frame, creates a NODE, and
+      // opens TipTap on it, all structural edits that belong to the source
+      // language. Doing that while translating produced a node whose default
+      // text only exists in the locale you happened to be in (user report
+      // 2026-08-09). Double-click falls through to plain selection instead.
+      const emptyFrameNode = this.store.get(isDefaultLocaleAtom)
+        ? this.store.get(nodesAtom).get(nodeId)
+        : null;
       if (
         emptyFrameNode &&
         isFrameTag(emptyFrameNode.type) &&

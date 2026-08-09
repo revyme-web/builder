@@ -15,7 +15,10 @@
 
 import * as t from '@babel/types';
 import { parseJSX, findFirstElementByDataId } from '../parsing/ast-utils';
+import _traverse from '@babel/traverse';
 import { generate } from './generator-utils';
+
+const traverseAst = (typeof _traverse === 'function' ? _traverse : (_traverse as any).default) as typeof _traverse;
 import { trace } from '@/shared/debug-trace';
 
 interface TransformResult {
@@ -45,6 +48,46 @@ interface TransformResult {
  *  exported component (handles the `export default withResponsiveProps(X)`
  *  shape). Returns the hook variable name in scope (an existing hook's name
  *  is reused). Shared by the text + attr transforms. */
+/**
+ * Every translation key CALLED in a file — `{t('key')}` text children, run
+ * calls, attr calls. Used to decide which messages travel when a subtree is
+ * extracted into its own file (Make Component).
+ *
+ * Matches the same call shape the transforms write and the parser reads:
+ * a single-argument call on a bare identifier with a string literal, excluding
+ * the builder's own `useResponsiveText`.
+ */
+export function collectTranslationKeys(code: string): string[] {
+  const ast = parseJSX(code);
+  if (!ast) return [];
+  const keys = new Set<string>();
+  traverseAst(ast, {
+    CallExpression(path: any) {
+      const callee = path.node.callee;
+      if (callee.type !== 'Identifier' || callee.name === 'useResponsiveText') return;
+      const args = path.node.arguments;
+      if (args.length !== 1 || args[0].type !== 'StringLiteral') return;
+      keys.add(args[0].value);
+    },
+  });
+  return [...keys];
+}
+
+/** Code-level wrapper for the scaffold — inject `useTranslations(namespace)`
+ *  plus its import into a file whose JSX already calls `t(...)`. Returns the
+ *  code unchanged when it parses badly. */
+export function ensureTranslationsScaffoldInCode(code: string, namespace: string): string {
+  const ast = parseJSX(code);
+  if (!ast) return code;
+  ensureTranslationsScaffold(ast, namespace);
+  try {
+    return generate(ast, { retainLines: false, concise: false }, code).code;
+  } catch (err) {
+    trace.error('i18n-gen:scaffold-generate-failed', { namespace, error: err instanceof Error ? err.message : String(err) });
+    return code;
+  }
+}
+
 function ensureTranslationsScaffold(ast: t.File, namespace: string): string {
   let hookVarName = 't';
   let hasUseTranslationsImport = false;
@@ -437,6 +480,30 @@ export function setMessageValue(
   if (!parsed || typeof parsed !== 'object') parsed = {};
   if (!parsed[namespace] || typeof parsed[namespace] !== 'object') parsed[namespace] = {};
   parsed[namespace][key] = value;
+  return JSON.stringify(parsed, null, 2);
+}
+
+/**
+ * Remove a namespaced key, dropping the namespace bucket when it empties.
+ * Same formatting contract as `setMessageValue` so the two compose in one
+ * string before a single write.
+ */
+export function deleteMessageValue(
+  messagesJson: string,
+  namespace: string,
+  key: string,
+): string {
+  let parsed: any = {};
+  try {
+    parsed = JSON.parse(messagesJson || '{}');
+  } catch {
+    return messagesJson;
+  }
+  if (!parsed || typeof parsed !== 'object') return messagesJson;
+  const ns = parsed[namespace];
+  if (!ns || typeof ns !== 'object' || !(key in ns)) return messagesJson;
+  delete ns[key];
+  if (Object.keys(ns).length === 0) delete parsed[namespace];
   return JSON.stringify(parsed, null, 2);
 }
 

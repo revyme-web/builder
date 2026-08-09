@@ -271,10 +271,28 @@ const pluginsSubmenu: DropdownMenuEntry[] = [
  *  the checkmark tracks the selection; reading a module-level value here would
  *  freeze it at whatever was active when LeftHeader last re-memoized. */
 export function buildThemeSubmenu(current: string, set: (id: string) => void): DropdownMenuEntry[] {
+  // Preview the accent for the mode the chrome is ACTUALLY in — each palette
+  // ships a separate light/dark accent, so showing the light one while the
+  // editor is dark would advertise a colour the user will never see.
+  const dark = typeof document !== 'undefined'
+    && document.documentElement.classList.contains('dark');
   return BUILDER_THEMES.map((t) => ({
     id: `builder-theme-${t.id}`,
     label: t.label,
-    trailingIcon: current === t.id ? <CheckGlyph /> : null,
+    trailingIcon: (
+      <span className="flex items-center gap-2">
+        <span
+          aria-hidden
+          className="h-3.5 w-3.5 rounded-[4px] border border-black/25 dark:border-white/25"
+          style={{ backgroundColor: (dark ? t.dark : t.light).accent }}
+        />
+        {/* Fixed-width cell so the swatches stay on one column whether or not
+            the row is the selected one. */}
+        <span className="w-3 flex items-center justify-center">
+          {current === t.id ? <CheckGlyph /> : null}
+        </span>
+      </span>
+    ),
     onClick: () => {
       set(t.id);
       trace.action('menu:builder-theme', { id: t.id });
