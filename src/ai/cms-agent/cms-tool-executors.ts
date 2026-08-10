@@ -26,6 +26,7 @@ import {
   updateCollectionItem,
   removeCollectionItem,
   resolveItemValues,
+  setCollectionItemTranslation,
 } from '@/code/project/cms-ops';
 import type { FieldDefinition } from '@/shared/types';
 import type { ToolResult } from '../page-agent/tool-executors';
@@ -82,6 +83,38 @@ function assertPureTextValues(values: Record<string, unknown>): void {
       );
     }
   }
+}
+
+/** Field names that mean "which language is this row" rather than content. */
+const LOCALE_FIELD_RE = /^(language|languages|locale|locales|lang|lng|idioma|langue|sprache)$/i;
+
+/**
+ * A translated collection is NOT one row per language.
+ *
+ * The moment a `language` column exists, the natural next step is duplicating
+ * every row per locale and filtering the array in the page — which renders, but
+ * produces an array the builder's parser cannot resolve back to a collection.
+ * The list then loses its CMS panel and its field bindings, so the owner can no
+ * longer edit their own content (real customer site, 2026-08-10: 2 of 7
+ * bindings survived, two whole sections went dead in the editor).
+ *
+ * Translations belong ON the row, under `_i18n[locale][field]` — one row per
+ * item, written via `set_item_translation` and resolved at render by
+ * `localizeRows`. Refused only on the AI/MCP path; a human who genuinely wants
+ * a content field about language can still add one in the CMS editor.
+ */
+function assertNotLocaleField(name: string): void {
+  if (!LOCALE_FIELD_RE.test(name.trim())) return;
+  throw new Error(
+    `Refusing to add a "${name}" field: a translated collection is NOT one row per language. ` +
+    `That shape duplicates every row and forces the page to filter by locale, which produces an ` +
+    `array the builder cannot resolve — the list loses its CMS panel and every field binding, and ` +
+    `the owner can no longer edit the content. Instead keep ONE row per item and attach its ` +
+    `translations: call set_item_translation({ itemId, locale, field, value }) for each translated ` +
+    `field. It writes _i18n[locale][field] on the row, and the page resolves it with ` +
+    `{localizeRows(<collection>, __activeLocale).map(...)} — untranslated fields fall back to the ` +
+    `base row automatically.`,
+  );
 }
 
 // ─── Executors ──────────────────────────────────────────────────────────────
@@ -152,6 +185,7 @@ const EXECUTORS: Record<string, (args: any) => Record<string, any>> = {
     const slug = resolveCollection(args);
     requireSchema(slug);
     if (!args.name || !args.type) throw new Error('add_field requires `name` and `type`.');
+    assertNotLocaleField(String(args.name));
     const fieldId = addCollectionField(slug, {
       name: String(args.name),
       type: args.type,
@@ -168,7 +202,7 @@ const EXECUTORS: Record<string, (args: any) => Record<string, any>> = {
     const slug = resolveCollection(args);
     if (!args.fieldId) throw new Error('update_field requires `fieldId`.');
     const patch: Partial<FieldDefinition> = {};
-    if (args.name !== undefined) patch.name = String(args.name);
+    if (args.name !== undefined) { assertNotLocaleField(String(args.name)); patch.name = String(args.name); }
     if (args.type !== undefined) patch.type = args.type;
     if (args.required !== undefined) patch.required = !!args.required;
     if (args.options !== undefined) patch.options = Array.isArray(args.options) ? args.options.map(String) : [];
@@ -219,6 +253,41 @@ const EXECUTORS: Record<string, (args: any) => Record<string, any>> = {
     updateCollectionItem(slug, String(args.itemId), values);
     bumpVersion();
     return { success: true, collection: slug, itemId: args.itemId };
+  },
+
+  // ── Translations ──
+  //
+  // The NATIVE way to translate collection content: one row, translations
+  // attached under `_i18n[locale][field]`. Never a `language` column and never
+  // duplicate rows per locale — see assertNotLocaleField.
+  set_item_translation: (args) => {
+    const slug = resolveCollection(args);
+    const schema = requireSchema(slug);
+    for (const key of ['itemId', 'locale', 'field'] as const) {
+      if (!args[key]) throw new Error(`set_item_translation requires \`${key}\`.`);
+    }
+    if (!getCollectionData(slug).some(i => i._id === args.itemId)) {
+      throw new Error(`No item "${args.itemId}" in "${slug}". Call get_collection.`);
+    }
+    // `field` must be a real field id — a typo would write a translation that
+    // shadows nothing and silently never appears.
+    const fieldId = String(args.field);
+    if (!schema.fields.some(f => f.id === fieldId)) {
+      throw new Error(
+        `No field "${fieldId}" in "${slug}" — a translation must target an existing field id ` +
+        `(call get_collection). Valid ids: ${schema.fields.map(f => f.id).join(', ')}.`,
+      );
+    }
+    const value = args.value == null ? '' : String(args.value);
+    assertPureTextValues({ [fieldId]: value });
+    setCollectionItemTranslation(slug, String(args.itemId), String(args.locale), fieldId, value);
+    bumpVersion();
+    return {
+      success: true, collection: slug, itemId: args.itemId, locale: args.locale, field: fieldId,
+      note: value
+        ? `Stored on the row as _i18n["${args.locale}"]["${fieldId}"]. The page renders it once the collection is wrapped: {localizeRows(${slug}, __activeLocale).map(...)}.`
+        : `Cleared — this field now falls back to the base row for "${args.locale}".`,
+    };
   },
 
   remove_item: (args) => {

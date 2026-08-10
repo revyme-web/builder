@@ -167,6 +167,27 @@ export const CMS_AGENT_TOOLS: ToolSchema[] = [
     },
   },
   {
+    name: 'set_item_translation',
+    description:
+      'Translate ONE field of ONE item into ONE locale. This is the ONLY way to localize collection content: '
+      + 'a translated collection keeps ONE row per item and stores its translations on that row as _i18n[locale][field]. '
+      + 'NEVER add a "language" field and NEVER duplicate rows per locale — that shape forces the page to filter by '
+      + 'locale, which produces an array the builder cannot resolve, and the list loses its CMS panel and every field '
+      + 'binding. Untranslated fields fall back to the base row automatically, so only send what actually differs. '
+      + 'Pass an empty value to clear a translation. The page renders it via {localizeRows(<collection>, __activeLocale).map(...)}.',
+    parameters: {
+      type: 'object',
+      properties: {
+        ...COLLECTION_PROP,
+        itemId: { type: 'string', description: 'The _id of the item (from get_collection).' },
+        locale: { type: 'string', description: 'Target locale code, e.g. "fr". The base row is the default locale.' },
+        field: { type: 'string', description: 'FIELD ID to translate (from get_collection) — not the display name.' },
+        value: { type: 'string', description: 'Translated text. Empty string clears it and falls back to the base row.' },
+      },
+      required: ['itemId', 'locale', 'field', 'value'],
+    },
+  },
+  {
     name: 'remove_item',
     description: 'Delete an item from a collection by its id.',
     parameters: {

@@ -84,14 +84,39 @@ export const bridgeHandlers: Record<string, BridgeHandler> = {
       // (the gate bounces unknown collections). Manage via revyme_manage_cms.
       collections: listCollections().map((slug) => {
         const schema = getCollectionSchema(slug);
+        const items = getCollectionData(slug);
         return {
           slug,
           name: schema?.name ?? slug,
           fields: schema?.fields.map((fd) => ({ id: fd.id, type: fd.type, label: fd.name })) ?? [],
-          itemCount: getCollectionData(slug).length,
+          itemCount: items.length,
+          // Locales this collection already has row translations for. Told up
+          // front so a multilingual site doesn't get a `language` column and
+          // duplicate rows invented for it — the gate rejects that shape, but
+          // learning it only on a bounce wastes a turn.
+          translatedLocales: [...new Set(items.flatMap((i) => Object.keys(i._i18n ?? {})))],
         };
       }),
     };
+
+    // LOCALIZATION — only when the project actually has more than one locale.
+    // A monolingual project gets nothing, so the common case stays quiet.
+    try {
+      const i18n = getI18nConfig();
+      if (i18n.locales.length > 1) {
+        (context as Record<string, unknown>).localization = {
+          defaultLocale: i18n.defaultLocale,
+          locales: i18n.locales.map((l) => l.code),
+          note: 'This project is multilingual. UI TEXT is localized with {t(\'<data-id>\')} + messages/<locale>.json. '
+            + 'CMS CONTENT is localized ON THE ROW: one row per item with _i18n[locale][field], written via '
+            + 'revyme_manage_cms set_item_translation, and rendered by wrapping the collection at the head of the '
+            + 'chain — {localizeRows(<collection>, __activeLocale).map((row, idx) => …)} with '
+            + "import { localizeRows } from '@revyme/runtime' and const __activeLocale = useLocale(). "
+            + 'NEVER add a language/locale field, never duplicate rows per locale, and never filter rows by locale: '
+            + 'that produces an array the builder cannot resolve, and the list loses its CMS panel and every field binding.',
+        };
+      }
+    } catch { /* no i18n config yet — monolingual project */ }
     // Credit the active file the client now sees — get_context serves its full
     // code, so a follow-up submit to it is NOT a blind write (the stale-write
     // guard in submitFiles keys off what the bridge has served).
@@ -382,7 +407,7 @@ export const bridgeHandlers: Record<string, BridgeHandler> = {
     const CMS_TOOL_ACTIONS = new Set([
       'list_collections', 'get_collection', 'create_collection', 'rename_collection',
       'delete_collection', 'add_field', 'update_field', 'remove_field',
-      'add_item', 'update_item', 'remove_item',
+      'add_item', 'update_item', 'remove_item', 'set_item_translation',
     ]);
 
     if (!READ_ACTIONS.has(action) && isViewerMode()) {
@@ -511,7 +536,7 @@ export const bridgeHandlers: Record<string, BridgeHandler> = {
       };
     }
 
-    throw new Error(`manageCms: unknown action "${action}" — use list_collections | get_collection | create_collection | rename_collection | delete_collection | add_field | update_field | remove_field | add_item | update_item | remove_item | create_pages | create_page | create_template.`);
+    throw new Error(`manageCms: unknown action "${action}" — use list_collections | get_collection | create_collection | rename_collection | delete_collection | add_field | update_field | remove_field | add_item | update_item | remove_item | set_item_translation | create_pages | create_page | create_template.`);
   },
 
   async readFile({ path }: { path: string }) {

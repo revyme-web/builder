@@ -38,6 +38,7 @@ import { checkTranslationDialect } from './checks/translation-dialect';
 import { checkMediaBandDialect, checkDuplicateBreakpointStack } from './checks/media-band-dialect';
 import { checkComponentLinks, checkPageLinks } from './checks/link-rules';
 import { checkCmsRowNavMarker, checkCmsCollectionDialect, checkCmsNavDialect } from './checks/cms-dialect';
+import { checkCmsLocaleFilter, checkCmsI18nDirectAccess, checkCmsMapResolves } from './checks/cms-locale-dialect';
 
 // Re-exports — the oracle's public surface stays on check-file.ts (external
 // importers and the test suites are unchanged by the split).
@@ -1139,12 +1140,21 @@ export function checkFile(
   if (kind === 'page' || kind === 'component') {
     checkCmsCollectionDialect(code, ast, v, kind);
     checkCmsRowNavMarker(code, ast, v);
+    checkCmsLocaleFilter(code, ast, v);
+    checkCmsI18nDirectAccess(code, ast, v);
   }
 
   // ── tier 3 — RESOLVE ───────────────────────────────────────────────────────
   if (v.every((x) => x.tier !== 1)) {
     try {
       const nodes = parseJSXToNodes(code);
+      // Every rendered CMS `.map()` must come back as a collection list. Uses
+      // the map tier 3 just built, so a list that PARSES but resolves to nothing
+      // (a locale filter hoisted into a const, any other derived array) is
+      // caught here rather than shipping as a section that is live on the site
+      // and dead in the editor.
+      checkCmsMapResolves(code, ast, nodes, v, kind);
+
       if (nodes.size === 0) {
         v.push({
           code: 'RESOLVE_EMPTY', tier: 3,
