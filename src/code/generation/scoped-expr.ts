@@ -164,6 +164,34 @@ export function ensureLocaleHook(code: string): string {
 }
 
 /**
+ * SELF-HEAL: declare `__activeLocale` when something REFERENCES it but nothing
+ * declares it.
+ *
+ * `__activeLocale` arrives in a file by more routes than the one that creates
+ * it. Paste a localized collection list onto another page and the JSX comes
+ * across — `{localizeRows(programme, __activeLocale).map(…)}` — while the hook
+ * declaration and the `next-intl` import stay behind, so the new page throws
+ * "__activeLocale is not defined" on first render (user report 2026-08-11).
+ * Copy/paste, cross-project paste, Make Component and an AI submit can all do
+ * the same thing.
+ *
+ * The REMOVAL side of this already existed (`sweepOrphanMediaGates` drops a
+ * declaration whose only reference is itself); this is the missing half, and it
+ * mirrors `healMissingFormStateDeclarations` exactly. Run from the flush heal
+ * chain, so it doesn't matter HOW the reference got there.
+ *
+ * No-op when nothing references it, and `ensureLocaleHook` is itself idempotent
+ * (import present → untouched, declaration present → untouched, declaration in
+ * the wrong scope → re-anchored), so a healthy file comes back unchanged.
+ */
+export function healMissingLocaleHook(code: string): string {
+  if (!/\b__activeLocale\b/.test(code)) return code;
+  const healed = ensureLocaleHook(code);
+  if (healed !== code) trace.action('scoped-expr:healed-missing-locale-hook', {});
+  return healed;
+}
+
+/**
  * Move a `const __activeLocale = useLocale();` that landed in a module-scope
  * HELPER back into the component.
  *

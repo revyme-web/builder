@@ -7,6 +7,7 @@ import { CLOUD_ENABLED } from '@/shared/cloud-flag';
 import { useSetAtom, getDefaultStore } from 'jotai';
 import App from './App';
 import RemixWorkspacePicker from './RemixWorkspacePicker';
+import { remixTemplate, remixTemplateShare } from '@/backend/revyme-backend';
 import { backend } from './backend';
 import { getProjectId } from './backend/project-id';
 import { userAtom } from './backend/user-store';
@@ -41,7 +42,7 @@ export default function ProjectLoader() {
   const [ready, setReady] = useState(false);
   // When set, a `?remix=` load is paused on the workspace picker — the
   // remix only runs once the user chooses a workspace (see below).
-  const [remixPrompt, setRemixPrompt] = useState<{ kind: 'approved' | 'share'; token: string } | null>(null);
+  const [remixPrompt, setRemixPrompt] = useState<{ websiteId: string } | null>(null);
   const setUser = useSetAtom(userAtom);
   const setActiveFile = useSetAtom(activeFilePathAtom);
   const openCmsEditor = useSetAtom(openCmsEditorAtom);
@@ -188,8 +189,29 @@ export default function ProjectLoader() {
         // blocking picker instead; it performs the remix with the chosen
         // workspace and redirects to the new website. Bail out of the
         // normal load — no placeholder project is created until then.
-        trace.action('project-loader:remix-prompt', { kind, token });
-        if (!cancelled) setRemixPrompt({ kind, token });
+        // REMIX NOW, ASK AFTER. The backend's `resolveRemixWorkspace` defaults
+        // to the user's PERSONAL workspace when none is given, so the copy can
+        // be created immediately and the builder can open the REAL, editable
+        // site. The workspace question is then asked inside the builder and
+        // answered by PATCH /websites/:id/workspace — no second page load.
+        //
+        // (This replaces a read-only snapshot preview of the template: that
+        // needed an extra endpoint, only worked for approved templates, and
+        // still reloaded after the choice.)
+        trace.action('project-loader:remix-now', { kind, token });
+        try {
+          const result = kind === 'approved'
+            ? await remixTemplate(token)
+            : await remixTemplateShare(token);
+          trace.action('project-loader:remix-created', { websiteId: result.website_id });
+          // `assign-workspace` re-opens the picker once the real site is loaded.
+          window.location.replace(`/builder/${result.website_id}?assign-workspace=1`);
+        } catch (err) {
+          trace.error('project-loader:remix-failed', { error: String(err) });
+          // Paid-template gate / permission failure — the marketplace page is
+          // where the user can act on it (buy, sign in), not a blank builder.
+          window.location.replace('/dashboard');
+        }
         return;
       }
 
@@ -275,6 +297,17 @@ export default function ProjectLoader() {
       // into the in-memory cameraStash, and apply the active file's camera on the
       // first render — so a reload lands where you left it.
       hydrateCameras();
+
+      // Freshly remixed: ask which workspace the copy should live in, now that
+      // the real site is open behind the modal. Strip the flag first so a
+      // refresh doesn't re-ask.
+      if (queryParams.get('assign-workspace') === '1') {
+        const clean = new URL(window.location.href);
+        clean.searchParams.delete('assign-workspace');
+        window.history.replaceState({}, '', clean.toString());
+        if (!cancelled) setRemixPrompt({ websiteId: id });
+        trace.action('project-loader:assign-workspace-armed', { websiteId: id });
+      }
 
       // 5. Store user in atom
       setUser(user);
@@ -460,18 +493,10 @@ export default function ProjectLoader() {
     return () => { cancelled = true; };
   }, [setUser, setActiveFile, openCmsEditor]);
 
-  // Remix flow: hold on the workspace picker over a plain backdrop until
-  // the user chooses a workspace (or cancels back to the dashboard). The
-  // picker performs the remix + redirect itself.
-  if (remixPrompt) {
-    return (
-      <>
-        <div style={{ position: 'fixed', inset: 0, background: 'var(--bg-canvas, #1a1a2e)' }} />
-        <RemixWorkspacePicker kind={remixPrompt.kind} token={remixPrompt.token} />
-      </>
-    );
-  }
-
+  // Remix flow: the picker is BLOCKING and renders over whatever we managed
+  // to show behind it — the previewed template inside the builder when the
+  // snapshot loaded, the ordinary loading shell when it didn't (share links).
+  // The picker performs the remix + redirect itself.
   if (!ready) {
     return <BuilderLoadingShell />;
   }
@@ -484,6 +509,10 @@ export default function ProjectLoader() {
     <>
       <App />
       <CanvasReadyShellOverlay />
+      {/* The remix picker rides ON TOP of the mounted builder so the choice is
+          made over the template the user is looking at. Blocking — see the
+          component: no ×, no Escape, no backdrop. */}
+      {remixPrompt && <RemixWorkspacePicker websiteId={remixPrompt.websiteId} onDone={() => setRemixPrompt(null)} />}
     </>
   );
 }

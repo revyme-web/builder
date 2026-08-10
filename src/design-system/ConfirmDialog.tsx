@@ -33,6 +33,10 @@ export default function ConfirmDialog({
   danger = false, loading = false,
 }: ConfirmDialogProps) {
   const confirmBg = danger ? 'var(--accent-danger, #dc2626)' : 'var(--accent)';
+  // Text colour follows the BACKGROUND: white reads on the danger red, but the
+  // default theme's accent is a light gold where white is barely legible —
+  // that's what `--accent-fg` (near-black, defined by every theme) is for.
+  const confirmFg = danger ? '#ffffff' : 'var(--accent-fg)';
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} width={256}>
       <div className="px-3 py-3 flex flex-col gap-3">
@@ -52,8 +56,8 @@ export default function ConfirmDialog({
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            style={{ backgroundColor: confirmBg }}
-            className="flex-1 h-8 text-xs font-medium text-white hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: confirmBg, color: confirmFg }}
+            className="flex-1 h-8 text-xs font-medium hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {confirmLabel}
           </button>

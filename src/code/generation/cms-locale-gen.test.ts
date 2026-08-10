@@ -197,3 +197,84 @@ export default function Page() {
     expect(localizeCollectionListsInCode(once)).toBe(once);
   });
 });
+
+// ─── `__activeLocale` arriving without its declaration ──────────────────────
+//
+// A localized collection list carries `{localizeRows(coll, __activeLocale)…}`
+// in its JSX. PASTE that onto another page and the reference comes across while
+// the hook declaration and the next-intl import stay behind — the new page
+// throws "__activeLocale is not defined" on first render (user report
+// 2026-08-11, after pasting a CMS collection onto a fresh page).
+//
+// The REMOVAL side already existed (`sweepOrphanMediaGates` drops a declaration
+// whose only reference is itself). This is the missing half, and it runs from
+// the flush heal chain so it doesn't matter HOW the reference got there —
+// paste, cross-project paste, Make Component, or an AI submit.
+
+import { healMissingLocaleHook } from './scoped-expr';
+
+const PASTED = `'use client';
+import React from 'react';
+import { localizeRows } from '@revyme/runtime';
+import programme from '@/cms/programme.json';
+
+export default function Page() {
+  return <div data-id="root" style={{ position: 'relative', width: '100%' }}>
+    <div data-id="row" style={{ display: 'flex' }}>
+      {localizeRows(programme, __activeLocale).map((row, idx) => (
+        <div data-id="card" key={idx} style={{ width: '424px', height: '554px' }}>{row.title}</div>
+      ))}
+    </div>
+  </div>;
+}
+`;
+
+describe('healMissingLocaleHook', () => {
+  it('declares the hook when only the REFERENCE was pasted', () => {
+    const out = healMissingLocaleHook(PASTED);
+    expect(out).toContain('const __activeLocale = useLocale();');
+    expect(out).toMatch(/import \{ useLocale \} from 'next-intl'/);
+  });
+
+  it('puts it INSIDE the component, not at module scope', () => {
+    const out = healMissingLocaleHook(PASTED);
+    const body = out.slice(out.indexOf('export default function'));
+    expect(body).toContain('const __activeLocale = useLocale();');
+    expect(body.indexOf('const __activeLocale')).toBeLessThan(body.indexOf('localizeRows(programme, __activeLocale)'));
+  });
+
+  it('the healed page PARSES and the list still resolves', () => {
+    const out = healMissingLocaleHook(PASTED);
+    const nodes = parseJSXToNodes(out);
+    expect(nodes.get('row')?.collectionList?.source).toBe('programme');
+    expect(nodes.get('card')).toBeTruthy();
+  });
+
+  it('declares it exactly once', () => {
+    const out = healMissingLocaleHook(PASTED);
+    expect(out.match(/const __activeLocale = useLocale\(\);/g)).toHaveLength(1);
+  });
+
+  it('is IDEMPOTENT — it runs on every flush', () => {
+    const once = healMissingLocaleHook(PASTED);
+    expect(healMissingLocaleHook(once)).toBe(once);
+  });
+
+  it('does NOTHING to a page that never mentions it', () => {
+    const plain = `export default function Page() { return <div data-id="root" />; }`;
+    expect(healMissingLocaleHook(plain)).toBe(plain);
+  });
+
+  it('leaves an already-correct page untouched', () => {
+    const fine = `'use client';
+import { useLocale } from 'next-intl';
+import { localizeRows } from '@revyme/runtime';
+import programme from '@/cms/programme.json';
+export default function Page() {
+  const __activeLocale = useLocale();
+  return <div data-id="root">{localizeRows(programme, __activeLocale).map((r, i) => <p data-id="t" key={i}>{r.title}</p>)}</div>;
+}
+`;
+    expect(healMissingLocaleHook(fine)).toBe(fine);
+  });
+});

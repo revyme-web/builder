@@ -19,6 +19,7 @@ import { findTagClose, insertAfterLastImportLine } from './generator-utils';
 import { paginationStateVar } from './cms-pagination-gen';
 import { insertConstIntoEnclosingFn, listConfigVar, ensureResponsiveListHooks } from './cms-responsive-gen';
 import { addCanvasNodeInCode } from './generator-crud';
+import { ensureLocaleHook } from './scoped-expr';
 import { trace } from '@/shared/debug-trace';
 
 /** Verbatim snapshot of a CMS collection-list container for paste. */
@@ -194,6 +195,18 @@ export function rebuildPastedCollectionInCode(
   // (__applyListConfig / __matchListFilter / useResponsiveListConfig) exists in the
   // destination (idempotent) — the verbatim `.map()` references `__applyListConfig`.
   if (/\b__applyListConfig\s*\(/.test(renamedJsx)) result = ensureResponsiveListHooks(result);
+
+  // LOCALIZED list: the verbatim `.map()` head is
+  // `localizeRows(<coll>, __activeLocale)`, so the destination needs the
+  // `const __activeLocale = useLocale();` hook AND the next-intl import.
+  // Neither travels with the capture — `bodyHooks` only collects the
+  // PAGINATION consts, and `imports` only the cms/LoadMore/Spinner lines — so
+  // pasting a translated collection onto a fresh page produced JSX referencing
+  // a binding that did not exist: "__activeLocale is not defined", nothing
+  // rendered (user report 2026-08-11, trace: `cms-paste:rebuild … hooks:0`).
+  // `ensureLocaleHook` adds both and is idempotent, exactly like the
+  // responsive-list line above.
+  if (/\b__activeLocale\b/.test(renamedJsx)) result = ensureLocaleHook(result);
 
   trace.action('cms-paste:rebuild', { oldId: cap.id, newId, hooks: cap.bodyHooks.length, imports: cap.imports.length });
   return result;

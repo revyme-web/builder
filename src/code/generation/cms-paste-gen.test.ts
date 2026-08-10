@@ -218,3 +218,95 @@ describe('duplicateCollectionListToCanvasInCode', () => {
 
   it('produces parseable JSX', () => parses(out));
 });
+
+// ─── Pasting a LOCALIZED collection ────────────────────────────────────────
+//
+// A translated list's `.map()` head is `localizeRows(<coll>, __activeLocale)`.
+// That binding is a hook declaration in the SOURCE page's body — it doesn't
+// travel with the capture (`bodyHooks` collects only the pagination consts,
+// `imports` only the cms/LoadMore/Spinner lines). Pasting onto a fresh page
+// therefore produced JSX referencing a binding that didn't exist and the page
+// rendered nothing: "__activeLocale is not defined" (user report 2026-08-11,
+// trace: `cms-paste:rebuild {hooks: 0, imports: 1}`).
+//
+// Same shape as the `__applyListConfig` → `ensureResponsiveListHooks` line
+// beside it: if the pasted JSX references it, ensure it in the destination.
+
+const LOCALIZED_SOURCE = `'use client';
+import React from 'react';
+import { useLocale } from 'next-intl';
+import { localizeRows } from '@revyme/runtime';
+import programme from '@/cms/programme.json';
+
+export default function Page() {
+  const __activeLocale = useLocale();
+  return (
+    <div data-id="root">
+      <div data-id="prog-row" style={{ display: 'flex' }}>
+        {localizeRows(programme, __activeLocale).map((row, idx) => (
+          <div data-id="prog-card" key={idx} style={{ width: '424px' }}>{row.title}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+`;
+
+/** Destination: the engine has already pasted a PLAIN empty container at the
+ *  new id (no imports, no hook, no `.map()`) — same shape the suite's other
+ *  rebuild tests use. */
+const destWith = (id: string) => `'use client';
+import React from 'react';
+export default function Other() {
+  return <div data-id="dest-root">
+    <div data-id="${id}" data-name="Panels" style={{ display: 'flex' }}>
+    </div>
+  </div>;
+}`;
+const LOC_IDS = new Map([['prog-row', 'new-row'], ['prog-card', 'new-card']]);
+
+describe('rebuildPastedCollectionInCode — localized list', () => {
+  const cap = captureCollectionForPaste(LOCALIZED_SOURCE, 'prog-row', 'programme')!;
+
+  it('captures the container', () => {
+    expect(cap).toBeTruthy();
+    expect(cap.rawJsx).toContain('localizeRows(programme, __activeLocale)');
+  });
+
+  it('brings the locale HOOK to the destination page', () => {
+    const out = rebuildPastedCollectionInCode(destWith('new-row'), cap, LOC_IDS);
+    expect(out).toContain('const __activeLocale = useLocale();');
+  });
+
+  it('brings the next-intl IMPORT too', () => {
+    const out = rebuildPastedCollectionInCode(destWith('new-row'), cap, LOC_IDS);
+    expect(out).toMatch(/import \{ useLocale \} from 'next-intl'/);
+  });
+
+  it('the pasted page COMPILES — the whole point', () => {
+    const out = rebuildPastedCollectionInCode(destWith('new-row'), cap, LOC_IDS);
+    expect(() => transform(out, { presets: ['react', 'typescript'], filename: 'f.tsx' })).not.toThrow();
+    // …and the hook is declared BEFORE the JSX that reads it.
+    const body = out.slice(out.indexOf('export default function'));
+    expect(body.indexOf('const __activeLocale')).toBeLessThan(body.indexOf('__activeLocale)'));
+  });
+
+  it('declares it exactly once when pasted TWICE', () => {
+    // Two plain containers already in the destination, as the engine leaves them.
+    const dest = destWith('new-row').replace(
+      '</div>\n  </div>;',
+      '</div>\n    <div data-id="row-2" style={{ display: \'flex\' }}></div>\n  </div>;',
+    );
+    let out = rebuildPastedCollectionInCode(dest, cap, LOC_IDS);
+    out = rebuildPastedCollectionInCode(out, cap, new Map([['prog-row', 'row-2'], ['prog-card', 'card-2']]));
+    expect(out.match(/const __activeLocale = useLocale\(\);/g)).toHaveLength(1);
+  });
+
+  it('leaves a NON-localized paste alone', () => {
+    const plainCap = captureCollectionForPaste(SOURCE, 'frame-a', 'advisors')!;
+    const out = rebuildPastedCollectionInCode(destWith('new-row'), plainCap,
+      new Map([['frame-a', 'new-row'], ['card-a', 'new-card']]));
+    expect(out).not.toContain('__activeLocale');
+    expect(out).not.toContain('next-intl');
+  });
+});

@@ -18,19 +18,26 @@ interface ModalProps {
   headerAction?: ReactNode;
   /** Hide the × close button (modal still closes via Escape / backdrop click). */
   hideClose?: boolean;
+  /** When false the modal cannot be dismissed AT ALL — no ×, no Escape, no
+   *  backdrop click. For a decision the flow genuinely cannot continue without
+   *  (the remix workspace choice: the copy has nowhere to live until it's made).
+   *  Use sparingly — every other modal should stay escapable. */
+  dismissible?: boolean;
 }
 
-export default function Modal({ isOpen, onClose, title, children, width = 384, headerAction, hideClose }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children, width = 384, headerAction, hideClose, dismissible = true }: ModalProps) {
   // Close on Escape
   useEffect(() => {
     if (!isOpen) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+      // A non-dismissible modal still SWALLOWS Escape — letting it through
+      // would run canvas shortcuts behind the modal.
+      if (e.key === 'Escape') { e.stopPropagation(); if (dismissible) onClose(); }
     };
     window.addEventListener('keydown', handleKey, true);
     trace.action('modal:open', { title });
     return () => window.removeEventListener('keydown', handleKey, true);
-  }, [isOpen, onClose, title]);
+  }, [isOpen, onClose, title, dismissible]);
 
   return createPortal(
     <AnimatePresence>
@@ -74,7 +81,7 @@ export default function Modal({ isOpen, onClose, title, children, width = 384, h
             transition={{ duration: 0.2 }}
             className="absolute inset-0 bg-black/50"
             style={{ backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
-            onClick={onClose}
+            onClick={dismissible ? onClose : undefined}
           />
 
           {/* Panel */}
@@ -92,7 +99,7 @@ export default function Modal({ isOpen, onClose, title, children, width = 384, h
               <h3 className="text-xs font-bold text-[var(--text-primary)]">{title}</h3>
               <div className="flex items-center gap-1">
                 {headerAction}
-                {!hideClose && (
+                {!hideClose && dismissible && (
                   <button
                     onClick={onClose}
                     className="p-1 hover:bg-[var(--bg-hover)] rounded-md transition-colors cursor-pointer"

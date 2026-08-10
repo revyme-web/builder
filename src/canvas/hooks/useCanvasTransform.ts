@@ -28,6 +28,7 @@ import {
 } from '../ViewportHeaderManager';
 import { useSetAtom } from 'jotai';
 import { canvasInteractingAtom } from '@/code/stores/store';
+import { cameraMoveOps } from '@/canvas/camera-move-store';
 import { trace, observeDOM } from '@/shared/debug-trace';
 import type { PostMessageBridge } from '@/canvas-sandbox/bridge-host';
 
@@ -84,6 +85,9 @@ export function useCanvasTransform(opts: UseCanvasTransformOptions) {
         setViewportHeadersVisible(vpOverlay, false);
       }
       setCanvasInteracting(true);
+      // …and specifically that the CAMERA is what's moving, so node-scoped
+      // overlays can hide (SelectionOverlay's InteractionOutline).
+      cameraMoveOps.set(true);
 
       if (postMessageBridgeRef.current?.isReady) {
         const t = transformManager.getTransform();
@@ -116,6 +120,9 @@ export function useCanvasTransform(opts: UseCanvasTransformOptions) {
         if (!dragCoordinatorRef.current?.isDragging) {
           setCanvasInteracting(false);
         }
+        // The camera has settled either way — an auto-panning drag keeps
+        // `canvasInteracting` (above) but the camera itself has stopped.
+        cameraMoveOps.set(false);
         if (vpOverlay) setViewportHeadersVisible(vpOverlay, true);
       }, 100);
     });

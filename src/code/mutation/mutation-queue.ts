@@ -24,6 +24,7 @@ import { canvasRootFlowReset } from '@/shared/flex-helpers';
 // those use canvasInteractingAtom). drag-state-store is a leaf module.
 import { dragStateOps } from '@/canvas/drag/drag-state-store';
 import { getDefaultStore } from 'jotai';
+import { healMissingLocaleHook } from '@/code/generation/scoped-expr';
 import { trace } from '@/shared/debug-trace';
 import { parse } from '@babel/parser';
 import _traverse from '@babel/traverse';
@@ -2066,6 +2067,10 @@ function processQueue(): void {
     // whose lifecycle useState stayed in the page. Heals the active file (page or
     // master). No-op when every referenced var is already declared.
     code = healMissingFormStateDeclarations(code);
+    // Same shape for the locale hook: pasting a localized collection list
+    // carries `{localizeRows(coll, __activeLocale).map(…)}` to a page that
+    // never declared it. The orphan sweep already handles the reverse.
+    code = healMissingLocaleHook(code);
     // ROOT-CAUSE HEAL for the sticky-residue class (mirrors the flushNow hook):
     // re-seed every sparse variant default so pre-CSS_NEUTRAL_FALLBACK
     // components repair on ANY edit — the user can't know WHICH node carries

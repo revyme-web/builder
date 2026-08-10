@@ -124,6 +124,8 @@ export function computeMergedTemplatedOrder(mergedChildren: string[], pageSectio
   return out;
 }
 
+
+
 export class LayoutLiftedStrategy implements DragStrategy {
   readonly name = 'layout-lifted';
 
@@ -856,11 +858,41 @@ export class LayoutLiftedStrategy implements DragStrategy {
     // read returns mid-drag we correct the lifted element + placeholder +
     // the reorder model. Rotated/scaled elements are skipped: getRectAsync
     // returns the AABB, which is bigger than the CSS box the lift needs.
+    // Will this drag hide the parent's collection ghosts? Same test the
+    // ghost-hide below performs, hoisted because the live-size read has to know
+    // BEFORE it issues (see the skip inside the loop).
+    const ghostParentForRead = getNodeFromCache(parentId);
+    const hidesCollectionGhosts = !!ghostParentForRead?.collectionList
+      && Object.values(ghostParentForRead.collectionList.templateIds).includes(draggedNodes[0]?.id ?? '');
+
     const liveSizeReads = new Map<string, Promise<DOMRect | null>>();
     if ('getRectAsync' in bridge) {
       for (const node of draggedNodes) {
         const ns0 = getNodeFromCache(node.id)?.styles ?? {};
         if (ns0.transform || ns0.rotate) continue;
+        // COLLECTION-LIST TEMPLATE rows are skipped. Dragging one hides its
+        // ghost siblings (`setCollectionGhostsHidden`, below) so a single row
+        // drags cleanly — which leaves the template as the ONLY flex child and
+        // reflows it to the container's full width. The read is a Comlink RPC
+        // whose completion is NOT ordered against our own mutations (the header
+        // comment's FIFO argument covers the postMessage, not when the sandbox
+        // actually measures), so the answer can describe that post-hide layout
+        // instead of the pre-drag one.
+        //
+        // Live find 2026-08-11: a CMS row lifted at a correct 424px was
+        // "corrected" to 1328px — the whole row — the instant its two ghosts
+        // went `display: none`; the card visibly exploded on mousedown. Trace:
+        //   layout-lifted:lifted            width 424
+        //   sandbox:collection-ghosts-hidden
+        //   layout-lifted:live-size-correct from {w:424} to {w:1328}
+        //
+        // Narrow on purpose: the staleness this correction exists for is an
+        // OFFSCREEN section replaying remembered geometry, which has nothing to
+        // do with collection ghosts — every other node keeps the correction.
+        if (hidesCollectionGhosts) {
+          trace.action('layout-lifted:live-size-skip-collection-row', { nodeId: node.id });
+          continue;
+        }
         liveSizeReads.set(
           node.id,
           (bridge as PostMessageBridge).getRectAsync(node.id, vpPrefix).catch(() => null),

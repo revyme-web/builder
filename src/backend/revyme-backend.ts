@@ -556,6 +556,38 @@ export async function shareAsTemplate(args: {
 }
 
 /**
+ * Move a website into a workspace.
+ *
+ * The remix flow creates the copy in the user's PERSONAL workspace immediately
+ * (the backend's `resolveRemixWorkspace` defaults there when none is given) so
+ * the builder can open the real, editable site at once. The workspace question
+ * is then asked INSIDE the builder and answered by this call — no second page
+ * load, and no read-only preview standing in for the site.
+ *
+ * Sending the workspace it is already in is a no-op server-side, so the picker
+ * can always send its selection.
+ */
+export async function setWebsiteWorkspace(
+  websiteId: string,
+  workspaceId: string,
+): Promise<void> {
+  const res = await fetch(url(`/api/websites/${encodeURIComponent(websiteId)}/workspace`), {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspaceId }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    trace.error('website:set-workspace-failed', { websiteId, workspaceId, status: res.status, body: text });
+    let msg = 'Could not move this site to that workspace.';
+    try { msg = (JSON.parse(text) as { error?: string }).error || msg; } catch { /* keep default */ }
+    throw new Error(msg);
+  }
+  trace.action('website:set-workspace', { websiteId, workspaceId });
+}
+
+/**
  * Remix an approved template — backend creates a new `websites` row
  * owned by the current user, deep-copies template media into the new
  * user's storage path, and returns the new website id. The caller

@@ -2,7 +2,7 @@
 // Single RAF loop polls selected element position.
 // Composes: HoverHighlight, SelectionBorder, ResizeHandles, RotateHandle.
 
-import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useAtomValue, useSetAtom, getDefaultStore } from 'jotai';
 import { selectedNodeAtom, selectedIdsAtom, hoveredIdAtom, hoveredViewportIdAtom, hoveredNodeIdAtom, canvasInteractingAtom, isRotatingAtom, isComponentSelectedAtom, isMapTemplateSelectedAtom, isComponentFileAtom, nodesAtom, mapItemIndexAtom, marqueeViewportSpreadAtom } from '@/code/stores/store';
 import { useNodesComputed } from '@/code/stores/node-family';
@@ -56,6 +56,8 @@ import { shapeEditingIdAtom, shapeEditCommitPendingAtom, groupEditingIdAtom } fr
 import { sketchEditingIdAtom } from '@/code/stores/sketch-edit-store';
 import { isPickingAnimTargetAtom } from '@/code/stores/animation-store';
 import { panHighlightAtom } from '@/code/stores/tool-store';
+import { cameraMoveOps } from '@/canvas/camera-move-store';
+import { dragStateOps } from '@/canvas/drag/drag-state-store';
 
 /**
  * Determine if hover should be suppressed (hovering the exact same element as selection).
@@ -202,6 +204,9 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
   const groupEditingId = useAtomValue(groupEditingIdAtom);
   const isPickingAnimTarget = useAtomValue(isPickingAnimTargetAtom);
   const isPanMode = useAtomValue(panHighlightAtom);
+  const isCameraMoving = useSyncExternalStore(cameraMoveOps.subscribe, cameraMoveOps.get, cameraMoveOps.get);
+  const isElementGesture = useSyncExternalStore(dragStateOps.subscribe, dragStateOps.get, dragStateOps.get);
+  const isRotating = useAtomValue(isRotatingAtom);
   const activeEditor = useAtomValue(activeEditorAtom);
   const isTextEditing = !!activeEditor;
   const suppressOverlay = useAtomValue(suppressSelectionOverlayAtom);
@@ -638,6 +643,20 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
 
   // Pan mode (space held or hand tool) — hide all overlays, no hover, no selection handles
   if (isPanMode) return null;
+
+  // CAMERA MOVING (wheel / trackpad pan, zoom) — same treatment. `isPanMode`
+  // only covers the space-bar and hand tool; a two-finger scroll or a pinch
+  // sets `canvasInteracting` exactly like a node drag does, so this component
+  // fell into the interacting branch below and painted a thin
+  // `<InteractionOutline/>` — a blue rectangle floating over the design with
+  // no handles to explain it (user report 2026-08-10).
+  //
+  // Gated on there being no ELEMENT gesture: a drag that auto-pans moves the
+  // camera too, and its outline must stay (that outline is the whole point of
+  // the interacting branch). `dragStateOps` covers drag AND resize;
+  // `isRotating` covers the rotate gesture, which drives the camera-less
+  // RotateManager. A panel slider scrub moves no camera, so it is unaffected.
+  if (isCameraMoving && !isElementGesture && !isRotating) return null;
 
   // VIEWPORT-frame interaction (resize / tile drag) — hide the selection
   // chrome for the gesture and refit once on mouseup. The overlay refits
