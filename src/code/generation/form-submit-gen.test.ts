@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { transform } from '@babel/standalone';
 import {
   buildFormSubmitComponentCode,
@@ -149,7 +149,8 @@ describe('form-submit-gen: convertSubmitButtonInCode', () => {
 // that painted "Subscribe" and "Thank you" on top of each other before settling
 // green — the reported symptom (2026-08-10).
 
-import { upgradeFormSubmitDisplayTransitions } from './form-submit-gen';
+import { upgradeFormSubmitDisplayTransitions, migrateFormSubmitDisplayTransitions } from './form-submit-gen';
+import { projectFS } from '@/code/project/project-fs';
 
 describe('display variants switch instantly', () => {
   const master = buildFormSubmitComponentCode();
@@ -224,5 +225,30 @@ export default function X() { return <button data-id="formsubmit-root" />; }
   it('ignores a component that is not ours', () => {
     const foreign = `const labelVariants = { default: { display: 'block' } };\nexport default function X() { return <button />; }`;
     expect(upgradeFormSubmitDisplayTransitions(foreign)).toBe(foreign);
+  });
+});
+
+describe('migrateFormSubmitDisplayTransitions — heals on LOAD', () => {
+  // Without this, the only trigger was dropping a NEW form: an existing project
+  // would have had to delete its form and re-add it to get the fix.
+  beforeEach(() => { projectFS.loadSnapshot(new Map()); });
+
+  it('patches an existing master in place', () => {
+    projectFS.writeFile('components/FormSubmit.tsx',
+      `const labelVariants = {\n  'loading': { display: 'none' },\n};\n<button data-id="formsubmit-root" />`);
+    migrateFormSubmitDisplayTransitions();
+    expect(projectFS.readFile('components/FormSubmit.tsx')).toContain('transition: { duration: 0 }');
+  });
+
+  it('is a NO-OP when the project has no form', () => {
+    migrateFormSubmitDisplayTransitions();
+    expect(projectFS.readFile('components/FormSubmit.tsx')).toBeNull();
+  });
+
+  it('leaves an already-correct master byte-identical (no dirty write)', () => {
+    const good = `const labelVariants = {\n  'loading': { display: 'none', transition: { duration: 0 } },\n};\n<button data-id="formsubmit-root" />`;
+    projectFS.writeFile('components/FormSubmit.tsx', good);
+    migrateFormSubmitDisplayTransitions();
+    expect(projectFS.readFile('components/FormSubmit.tsx')).toBe(good);
   });
 });

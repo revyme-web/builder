@@ -33,6 +33,7 @@ import { setProjectName } from '@/code/stores/project-store';
 import { setCredits } from '@/code/stores/credits-store';
 import { migrateLegacyLocaleTextOverrides, ensureIntlScaffold } from '@/code/project/translation-ops';
 import { migrateCmsLocalization } from '@/code/project/cms-locale-migrate';
+import { migrateFormSubmitDisplayTransitions } from '@/code/generation/form-submit-gen';
 import { getI18nConfig } from '@/code/project/locale-ops';
 import { openPluginIdAtom } from '@/plugins/registry';
 
@@ -71,6 +72,10 @@ export default function ProjectLoader() {
         // CMS half of the same migration: legacy collection overrides move onto
         // the rows, and existing collection lists gain their locale wrapper.
         try { migrateCmsLocalization(getI18nConfig()); } catch (err) { trace.error('cms-locale-migration-failed', err); }
+        // Form Submit master: `display` in a variant is applied by framer at the
+        // END of the transition, so the old label lingered ~300ms over the new one.
+        // Patched in place — regenerating would discard the user's own styling.
+        try { migrateFormSubmitDisplayTransitions(); } catch (err) { trace.error('formsubmit-migration-failed', err); }
         try { ensureIntlScaffold(); } catch (err) { trace.error('intl-scaffold-failed', err); }
         setUser(null);
         // Expose the dev introspection hook for E2E tests even in
@@ -260,6 +265,10 @@ export default function ProjectLoader() {
         // CMS half of the same migration: legacy collection overrides move onto
         // the rows, and existing collection lists gain their locale wrapper.
         try { migrateCmsLocalization(getI18nConfig()); } catch (err) { trace.error('cms-locale-migration-failed', err); }
+        // Form Submit master: `display` in a variant is applied by framer at the
+        // END of the transition, so the old label lingered ~300ms over the new one.
+        // Patched in place — regenerating would discard the user's own styling.
+        try { migrateFormSubmitDisplayTransitions(); } catch (err) { trace.error('formsubmit-migration-failed', err); }
         try { ensureIntlScaffold(); } catch (err) { trace.error('intl-scaffold-failed', err); }
 
       // 4c. Restore each file's saved camera (pan/zoom) from `_meta/page-camera.json`

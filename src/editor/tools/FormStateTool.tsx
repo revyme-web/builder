@@ -12,7 +12,7 @@ import { useMemo, useState, useRef, useEffect } from 'react';
 import { useAtomValue } from 'jotai';
 import { codeAtom, selectedNodeAtom } from '@/code/stores/store';
 import { useNode, useNodesComputed } from '@/code/stores/node-family';
-import { ToolSection, ToolRow, ToolSelect, ControlActionRow, RemoveButton } from '../controls';
+import { ToolSection, ToolRow, ToolSelect, ToolDivider, ControlActionRow } from '../controls';
 import { queueMutation, flushNow } from '@/code/mutation/mutation-queue';
 import { projectFS } from '@/code/project/project-fs';
 import { parseVariantConfig } from '@/code/variants/variant-config';
@@ -24,6 +24,10 @@ import {
   type FormStateMapping,
 } from '@/code/generation/form-state-gen';
 import { trace } from '@/shared/debug-trace';
+
+/** Sentinel value for the dropdown's "Not mapped" entry — no variant may use
+ *  it (a variant name is a JS-ish identifier, never empty). */
+const UNMAPPED = '';
 
 const STATE_LABEL: Record<FormState, string> = {
   loading: 'Loading',
@@ -132,21 +136,34 @@ export default function FormStateTool() {
   };
 
   return (
-    <ToolSection title="Form State" action={<AddStateMenu addable={addable} onAdd={addState} />}>
-      {activeStates.length === 0 ? (
-        <ControlActionRow onClick={() => addable[0] && addState(addable[0])} className="!pr-2">
-          <span className="flex-1 text-left text-[var(--text-secondary)]">Add…</span>
-        </ControlActionRow>
-      ) : (
-        activeStates.map((s) => (
-          <ToolRow key={s} label={STATE_LABEL[s]}>
-            <div className="flex items-center gap-1 w-full">
-              <ToolSelect value={mapping[s]!} onChange={(v) => setVariantFor(s, v)} options={variantOptions} />
-              <RemoveButton onClick={() => removeState(s)} />
-            </div>
-          </ToolRow>
-        ))
-      )}
-    </ToolSection>
+    <>
+      <ToolSection title="Form State" action={<AddStateMenu addable={addable} onAdd={addState} />}>
+        {activeStates.length === 0 ? (
+          <ControlActionRow onClick={() => addable[0] && addState(addable[0])} className="!pr-2">
+            <span className="flex-1 text-left text-[var(--text-secondary)]">Add…</span>
+          </ControlActionRow>
+        ) : (
+          activeStates.map((s) => (
+            <ToolRow key={s} label={STATE_LABEL[s]}>
+              {/* Unmapping lives IN the dropdown, not behind a trailing "×".
+                  RemoveButton is built for a full-width ControlActionRow (that's
+                  how the Overlay pill uses it); squeezed beside a select it
+                  shrinks the control and leaves a bare glyph floating in the
+                  panel gutter. The state→variant relationship is what this row
+                  edits, so "Not mapped" is just another value for it. */}
+              <ToolSelect
+                value={mapping[s]!}
+                onChange={(v) => (v === UNMAPPED ? removeState(s) : setVariantFor(s, v))}
+                options={[{ value: UNMAPPED, label: 'Not mapped' }, ...variantOptions]}
+              />
+            </ToolRow>
+          ))
+        )}
+      </ToolSection>
+      {/* Trailing divider so Component Props below is separated — lives INSIDE
+          the tool so it's skipped when the tool renders null (the same reason
+          OverlayTool owns its own). */}
+      <ToolDivider />
+    </>
   );
 }

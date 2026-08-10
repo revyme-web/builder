@@ -113,6 +113,7 @@ import {
   rehydrateFormStateBinding,
   healOrphanedFormStateBindings,
   healMissingFormStateDeclarations,
+  dedupeFormStateDeclarations,
   dormantizeFormBindingsInCanvas,
   formStateVar,
   formStateSetter,
@@ -2055,6 +2056,11 @@ function processQueue(): void {
   // dangling binding so it stops blocking every later mutation. Keeps the spec.
   if (codeChanged) {
     code = healOrphanedFormStateBindings(code);
+    // A DUPLICATE `const [formState<X>, …]` is a SyntaxError that takes the whole
+    // component off the canvas — and once it's on disk the UI can't reach it to
+    // fix it. Runs before the missing-declaration healer so a file that is both
+    // duplicated here and missing one elsewhere lands with exactly one of each.
+    code = dedupeFormStateDeclarations(code);
     // Re-declare a formState<X> that's referenced (onSubmit setter / FormSubmit
     // binding) but undeclared in its function — e.g. a form made into a component
     // whose lifecycle useState stayed in the page. Heals the active file (page or

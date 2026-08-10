@@ -252,6 +252,26 @@ export function upgradeFormSubmitDisplayTransitions(code: string): string {
   return out;
 }
 
+/**
+ * ON LOAD: heal an existing project's Form Submit master.
+ *
+ * `ensureFormSubmitComponentFile` only runs when a form is DROPPED, so a project
+ * whose form already exists would never pick up the instant-display fix — the
+ * user would have to delete their form and drop a new one to get it, which is
+ * not a fix. This runs the same in-place patch at load time.
+ *
+ * No-op when the project has no Form Submit master, and identity-preserving when
+ * it is already correct, so an untouched project is never marked dirty.
+ */
+export function migrateFormSubmitDisplayTransitions(): void {
+  const existing = projectFS.readFile(FORMSUBMIT_COMPONENT_PATH);
+  if (existing == null) return;
+  const healed = upgradeFormSubmitDisplayTransitions(existing);
+  if (healed === existing) return;
+  projectFS.writeFile(FORMSUBMIT_COMPONENT_PATH, healed);
+  trace.action('form-submit-gen:migrated-display-transitions', { path: FORMSUBMIT_COMPONENT_PATH });
+}
+
 /** Write the Form Submit master to ProjectFS (idempotent; upgrades old gens). */
 export function ensureFormSubmitComponentFile(): void {
   const existing = projectFS.readFile(FORMSUBMIT_COMPONENT_PATH);

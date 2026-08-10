@@ -10,6 +10,8 @@ import {
   rehydrateFormStateBinding,
   healOrphanedFormStateBindings,
   healMissingFormStateDeclarations,
+  hasFormStateDeclaration,
+  dedupeFormStateDeclarations,
   dormantizeFormBindingsInCanvas,
   enclosingFormIdInCode,
   DEFAULT_FORM_STATE_MAPPING,
@@ -230,5 +232,102 @@ export default function Page() {
     const r = rehydrateFormStateBinding(loose, 'btn-1');
     expect(r).not.toContain('initialVariant=');
     expect(r).toBe(loose);
+  });
+});
+
+// ─── Duplicate lifecycle declaration ────────────────────────────────────────
+//
+// Unmapping a form state on an EXTRACTED component (Make Component had run, so
+// the healer had written the `React.useState` form) inserted a SECOND const:
+//
+//   const [formStateFormmsk6t7e8b, …] = useState('idle');        ← the mapping writer
+//   const [formStateFormmsk6t7e8b, …] = React.useState('idle');  ← the healer, earlier
+//
+// A duplicate `const` in one scope is a SyntaxError, so the component stopped
+// compiling and vanished from the canvas (live find 2026-08-10, from the user's
+// own before/after debug snapshot).
+
+describe('hasFormStateDeclaration — one guard, both forms', () => {
+  it('sees the bare useState form', () => {
+    expect(hasFormStateDeclaration(`const [formStateX, setFormStateX] = useState('idle');`, 'formStateX')).toBe(true);
+  });
+
+  it('sees the React.useState form the healer writes', () => {
+    expect(hasFormStateDeclaration(`const [formStateX, setFormStateX] = React.useState('idle');`, 'formStateX')).toBe(true);
+  });
+
+  it('is false when genuinely absent', () => {
+    expect(hasFormStateDeclaration(`const [other, setOther] = useState('idle');`, 'formStateX')).toBe(false);
+  });
+
+  it('does not match a PREFIX of another var', () => {
+    expect(hasFormStateDeclaration(`const [formStateXY, setFormStateXY] = useState('idle');`, 'formStateX')).toBe(false);
+  });
+});
+
+describe('setFormStateMappingInCode does not duplicate the declaration', () => {
+  // The file as Make Component leaves it: healer-written React.useState form.
+  const EXTRACTED = `function Footer() {
+  const [formStateForm1, setFormStateForm1] = React.useState('idle');
+  return <form data-id="form-1"><FormSubmit data-id="btn" data-form-state='{"loading":"loading","success":"success"}' initialVariant={formStateForm1 === 'loading' ? 'loading' : formStateForm1 === 'success' ? 'success' : 'default'} /></form>;
+}`;
+
+  it('unmapping one state leaves exactly ONE declaration', () => {
+    const out = setFormStateMappingInCode(EXTRACTED, 'btn', 'formStateForm1', { success: 'success' });
+    expect(out.match(/const \[\s*formStateForm1\b/g) ?? []).toHaveLength(1);
+    expect(out).toContain(`data-form-state='{"success":"success"}'`);
+    parses(out); // the duplicate const was a SyntaxError — this is the real check
+  });
+
+  it('the survivor is still the React.useState form (untouched)', () => {
+    const out = setFormStateMappingInCode(EXTRACTED, 'btn', 'formStateForm1', { success: 'success' });
+    expect(out).toContain("React.useState('idle')");
+  });
+
+  it('still DECLARES it when genuinely absent', () => {
+    const bare = `function Page() {
+  return <form data-id="form-1"><FormSubmit data-id="btn" /></form>;
+}`;
+    const out = setFormStateMappingInCode(bare, 'btn', 'formStateForm1', { loading: 'loading' });
+    expect(out.match(/const \[\s*formStateForm1\b/g) ?? []).toHaveLength(1);
+  });
+});
+
+describe('dedupeFormStateDeclarations — repair what is already on disk', () => {
+  it('removes the duplicate and keeps the first', () => {
+    const broken = `function Footer() {
+  const [formStateForm1, setFormStateForm1] = useState('idle');
+  const [formStateForm1, setFormStateForm1] = React.useState('idle');
+  return null;
+}`;
+    const out = dedupeFormStateDeclarations(broken);
+    expect(out.match(/const \[\s*formStateForm1\b/g) ?? []).toHaveLength(1);
+    expect(out).toContain("useState('idle')");
+    parses(out);
+  });
+
+  it('leaves DIFFERENT form vars alone (two forms on one page)', () => {
+    const twoForms = `function Page() {
+  const [formStateForm1, setFormStateForm1] = useState('idle');
+  const [formStateForm2, setFormStateForm2] = useState('idle');
+  return null;
+}`;
+    expect(dedupeFormStateDeclarations(twoForms)).toBe(twoForms);
+  });
+
+  it('is identity-preserving on a healthy file (runs on every flush)', () => {
+    const fine = `function Page() {\n  const [formStateForm1, setFormStateForm1] = useState('idle');\n  return null;\n}`;
+    expect(dedupeFormStateDeclarations(fine)).toBe(fine);
+  });
+
+  it('composes with the missing-declaration healer', () => {
+    const broken = `function Footer() {
+  const [formStateForm1, setFormStateForm1] = useState('idle');
+  const [formStateForm1, setFormStateForm1] = React.useState('idle');
+  return <FormSubmit data-id="b2" initialVariant={formStateForm2 === 'loading' ? 'loading' : 'default'} />;
+}`;
+    const out = healMissingFormStateDeclarations(dedupeFormStateDeclarations(broken));
+    expect(out.match(/const \[\s*formStateForm1\b/g) ?? []).toHaveLength(1);
+    expect(out.match(/const \[\s*formStateForm2\b/g) ?? []).toHaveLength(1);
   });
 });

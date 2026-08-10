@@ -49,6 +49,27 @@ export function formStateSetter(stateVar: string): string {
 }
 
 /**
+ * Is the lifecycle var already declared anywhere in the file?
+ *
+ * Matches on the BINDING, never on the initializer text. Two injectors write
+ * this declaration and they disagree on the form:
+ * `setFormStateMappingInCode` emits bare `useState('idle')`, while
+ * `healMissingFormStateDeclarations` emits `React.useState('idle')` (it runs
+ * after Make Component, where the import may not exist). The mapping writer used
+ * to guard with an exact-string `includes()` of its OWN form, so on a file the
+ * healer had touched it saw no match and inserted a SECOND const — a duplicate
+ * `const` in one scope is a SyntaxError, so the whole component stopped
+ * compiling and vanished from the canvas (live find 2026-08-10, triggered by
+ * unmapping a form state on an extracted footer).
+ *
+ * `formStateVar` strips everything but alphanumerics, so the name is always
+ * regex-safe.
+ */
+export function hasFormStateDeclaration(code: string, stateVar: string): boolean {
+  return new RegExp(`const\\s*\\[\\s*${stateVar}\\b`).test(code);
+}
+
+/**
  * The `initialVariant` expression for an instance: a ternary chain mapping the
  * form's lifecycle state to the chosen variant, falling back to 'default'.
  *   `formStateX === 'loading' ? 'loading' : formStateX === 'success' ? 'success' : 'default'`
@@ -116,8 +137,10 @@ export function setFormStateMappingInCode(
     const newTag = rebuiltTag.slice(0, afterName) + inject + rebuiltTag.slice(afterName);
     next = code.slice(0, ltIdx) + newTag + code.slice(tagClose);
     // Declare the lifecycle var once (insertConstIntoEnclosingFn isn't idempotent).
+    // Guard on the BINDING, not this exact string — the healer writes the
+    // `React.useState` form and an exact-match guard duplicated the const.
     const decl = `const [${stateVar}, ${formStateSetter(stateVar)}] = useState('idle');`;
-    if (!next.includes(decl)) next = insertConstIntoEnclosingFn(next, nodeId, decl);
+    if (!hasFormStateDeclaration(next, stateVar)) next = insertConstIntoEnclosingFn(next, nodeId, decl);
   } else {
     next = code.slice(0, ltIdx) + tag + code.slice(tagClose);
   }
@@ -264,12 +287,41 @@ export function dormantizeFormBindingsInCanvas(code: string): string {
  * `React.useState`, so no import dependency) at the top of the function that
  * holds the first reference. Idempotent; run on the master after extraction.
  */
+/**
+ * SELF-HEAL: drop a DUPLICATE lifecycle declaration.
+ *
+ * Two `const [formState<X>, …]` in one scope is a SyntaxError — the file stops
+ * compiling and the whole component disappears from the canvas, with no way to
+ * fix it from the UI (the parser can't read the file, so there is nothing to
+ * select). Files in that state exist on disk already, so the guard above is not
+ * enough on its own.
+ *
+ * Keeps the FIRST declaration and removes later ones for the same var. Runs
+ * before the missing-declaration healer, so a file that is both duplicated and
+ * (elsewhere) missing one ends up with exactly one of each.
+ */
+export function dedupeFormStateDeclarations(code: string): string {
+  const seen = new Set<string>();
+  const decl = /\n[ \t]*const \[\s*(formState[A-Za-z0-9]+)\s*,[^\]]*\]\s*=\s*(?:React\.)?useState\([^)]*\);/g;
+  const drop: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = decl.exec(code)) !== null) {
+    if (seen.has(m[1])) drop.push(m[0]);
+    else seen.add(m[1]);
+  }
+  if (drop.length === 0) return code;
+  let out = code;
+  for (const line of drop) out = out.replace(line, '');
+  trace.action('form-state-gen:deduped-decls', { removed: drop.length });
+  return out;
+}
+
 export function healMissingFormStateDeclarations(code: string): string {
   const refs = new Set<string>();
   for (const m of code.matchAll(/\bformState[A-Za-z0-9]+\b/g)) refs.add(m[0]);
   let result = code;
   for (const v of refs) {
-    if (new RegExp(`const \\[\\s*${v}\\b`).test(result)) continue; // already declared
+    if (hasFormStateDeclaration(result, v)) continue; // already declared (either form)
     const refIdx = result.search(new RegExp(`\\b${v}\\b`));
     if (refIdx < 0) continue;
     // Find the opening brace of the function that ENCLOSES the first reference.
