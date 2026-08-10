@@ -3,6 +3,8 @@
 
 import { atom } from 'jotai';
 import { projectFS, projectVersionAtom } from '../project/project-fs';
+import { activeLocaleAtom, isDefaultLocaleAtom } from './locale-store';
+import { localizeCollections } from './cms-locale';
 import type { CollectionSchema, CollectionItem } from '@/shared/types';
 
 // All collection schemas, keyed by slug — derived from ProjectFS
@@ -35,6 +37,24 @@ export const collectionDataAtom = atom<Map<string, CollectionItem[]>>((get) => {
     }
   }
   return data;
+});
+
+/**
+ * Collection data with the ACTIVE LOCALE's field translations merged in.
+ *
+ * `collectionDataAtom` is the raw CMS JSON — the default language, and what the
+ * CMS panel edits. This is what anything RENDERING rows should read, so a
+ * translated collection actually shows its translation.
+ *
+ * Identity-preserving: on the default locale, or with no overrides, it returns
+ * the base Map untouched, so subscribers don't re-render.
+ */
+export const localizedCollectionDataAtom = atom<Map<string, CollectionItem[]>>((get) => {
+  const base = get(collectionDataAtom);
+  if (get(isDefaultLocaleAtom)) return base;
+  // `_i18n` rides on the rows themselves, so `collectionDataAtom`'s own
+  // version dependency already covers a translation write.
+  return localizeCollections(base, get(activeLocaleAtom));
 });
 
 // Currently selected collection in CMS panel

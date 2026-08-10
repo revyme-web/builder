@@ -202,6 +202,10 @@ const MODULE_MAP: Record<string, any> = {
     // call this with the wrapper SVG + the user's animation options.
     playSketchDraw: RevymeRuntime.playSketchDraw,
     RevymeSplitText: RevymeRuntime.RevymeSplitText,
+    // Collection-list locale resolution — a localized list's source is
+    // `localizeRows(slug, __activeLocale)`, so the preview needs it or the
+    // page throws "localizeRows is not a function" and renders nothing.
+    localizeRows: RevymeRuntime.localizeRows,
   }),
   // Legacy `@/lib/...` entries — old projects that still use these paths
   // resolve to the same package functions, so they keep working without a

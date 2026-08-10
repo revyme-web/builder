@@ -153,6 +153,7 @@ import { dormantizeCmsBindings, rehydrateCmsBindings, clearCmsOrphanInCode, heal
 import { resolveCmsRowForNodeInCode } from '../generation/cms-row-resolve';
 import { dormantizeComponentVarBindings, rehydrateComponentVarBindings, clearVarOrphanInCode, isCanvasNode } from '../generation/component-var-detach-gen';
 import { dormantizeTranslationBinding, rehydrateTranslationBinding } from '../generation/i18n-gen';
+import { localizeCollectionListsInCode } from '../generation/cms-locale-gen';
 import { readTranslationText } from '../project/translation-ops';
 import { getI18nConfig } from '../project/locale-ops';
 import { filePathToSlug } from '../project/active-file-store';
@@ -3322,7 +3323,16 @@ function applyMutationCore(code: string, mutation: Mutation): string {
       }
 
       case 'createCollectionList':
-        return createCollectionListInCode(code, mutation.parentId, mutation.collectionSlug, mutation.templateJSX);
+        {
+          const created = createCollectionListInCode(code, mutation.parentId, mutation.collectionSlug, mutation.templateJSX);
+          // Localize the new list when the project has more than one language,
+          // so its rows resolve per-locale field values on the canvas AND on
+          // the published site. No-op on a single-locale project (nothing to
+          // resolve) and idempotent, so a re-drop can't double-wrap.
+          return getI18nConfig().locales.length > 1
+            ? localizeCollectionListsInCode(created)
+            : created;
+        }
       case 'bindField':
         return bindFieldInCode(code, mutation.nodeId, mutation.property, mutation.fieldId, mutation.itemVar, mutation.fieldType);
       case 'unbindField':

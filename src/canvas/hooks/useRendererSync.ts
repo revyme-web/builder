@@ -27,7 +27,7 @@ import {
   localeOverridesAtom,
   i18nConfigAtom,
 } from '@/code/stores/locale-store';
-import { collectionSchemasAtom, collectionDataAtom } from '@/code/stores/cms-store';
+import { collectionSchemasAtom, localizedCollectionDataAtom } from '@/code/stores/cms-store';
 import { cmsPageMetaAtom, activePreviewItemAtom } from '@/code/stores/cms-page-store';
 import {
   viewportPositionsAtom,
@@ -117,7 +117,9 @@ export function useRendererSync(
   const i18nConfig = useAtomValue(i18nConfigAtom);
   const localeOverrides = useAtomValue(localeOverridesAtom);
   const cmsSchemas = useAtomValue(collectionSchemasAtom);
-  const cmsData = useAtomValue(collectionDataAtom);
+  // LOCALIZED, not raw: the canvas must show the active locale's CMS field
+  // values. On the default locale this is the same Map, so nothing changes.
+  const cmsData = useAtomValue(localizedCollectionDataAtom);
   const cmsPageMeta = useAtomValue(cmsPageMetaAtom);
   const previewItem = useAtomValue(activePreviewItemAtom);
   const vpPositions = useAtomValue(viewportPositionsAtom);

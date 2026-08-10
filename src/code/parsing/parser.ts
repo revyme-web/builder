@@ -2473,6 +2473,18 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
           }
           cursor = cursor.callee.object;
         }
+        // LOCALIZED shape: the chain head is `localizeRows(slug, __activeLocale)`
+        // (@revyme/runtime) — the source resolves per-locale field values at
+        // RUNTIME, so the published site translates itself with no build step.
+        // Unwrap to the slug so the list stays a first-class collection list in
+        // the editor: same bindings, same CMS panel, same filter/sort round
+        // trip. Without this the map source is an unresolvable call and the
+        // whole list goes dark in the builder (which is exactly what a
+        // hand-written locale filter did — user report 2026-08-09).
+        if (cursor && cursor.type === 'CallExpression'
+          && cursor.callee?.type === 'Identifier' && cursor.callee.name === 'localizeRows') {
+          cursor = cursor.arguments?.[0];
+        }
         // RESPONSIVE-UPGRADED shape: the chain head is `__applyListConfig(slug, cfgVar)`
         // (filter/sort live in the cfg, not the inline chain). Unwrap to the slug
         // identifier and pull base filter/sort + per-viewport/variant partials from

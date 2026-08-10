@@ -342,6 +342,59 @@ export function saveCollectionData(slug: string, items: CollectionItem[]): void 
   triggerAutosave();
 }
 
+/**
+ * Read one item's translation for a field, or '' when untranslated.
+ *
+ * Translations live ON the item as `_i18n[locale][field]` — the same place the
+ * published site reads them from via `localizeRows`, so authoring and rendering
+ * can't diverge. (They used to live in `i18n/{locale}.json`, which nothing on
+ * the deployed site could reach — that store is now migrated on load.)
+ */
+export function getCollectionItemTranslation(
+  slug: string, itemId: string, locale: string, field: string,
+): string {
+  const raw = projectFS.readFile(`cms/${slug}.json`);
+  if (!raw) return '';
+  try {
+    const items = JSON.parse(raw) as CollectionItem[];
+    const v = items.find((i) => i._id === itemId)?._i18n?.[locale]?.[field];
+    return typeof v === 'string' ? v : '';
+  } catch { return ''; }
+}
+
+/**
+ * Write one item's translation for a field.
+ *
+ * An EMPTY value CLEARS the translation (and prunes the now-empty locale /
+ * `_i18n` containers) rather than storing '', so the row falls back to the
+ * base language — the same "empty means not translated" rule `localizeRows`
+ * applies at render.
+ */
+export function setCollectionItemTranslation(
+  slug: string, itemId: string, locale: string, field: string, value: string,
+): void {
+  const raw = projectFS.readFile(`cms/${slug}.json`);
+  if (!raw) return;
+  let items: CollectionItem[];
+  try { items = JSON.parse(raw) as CollectionItem[]; } catch { return; }
+  const item = items.find((i) => i._id === itemId);
+  if (!item) return;
+
+  const i18n: Record<string, Record<string, string>> = { ...(item._i18n ?? {}) };
+  const forLocale: Record<string, string> = { ...(i18n[locale] ?? {}) };
+  if (value) forLocale[field] = value;
+  else delete forLocale[field];
+
+  if (Object.keys(forLocale).length > 0) i18n[locale] = forLocale;
+  else delete i18n[locale];
+
+  if (Object.keys(i18n).length > 0) item._i18n = i18n;
+  else delete item._i18n;
+
+  saveCollectionData(slug, items);
+  trace.action('cms-ops:setCollectionItemTranslation', { slug, itemId, locale, field, cleared: !value });
+}
+
 // Per-session guard so the backfill scans each collection at most once.
 const _backfilledSlugs = new Set<string>();
 

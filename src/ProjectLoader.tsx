@@ -32,6 +32,7 @@ import { setViewerMode } from '@/code/stores/viewer-mode-store';
 import { setProjectName } from '@/code/stores/project-store';
 import { setCredits } from '@/code/stores/credits-store';
 import { migrateLegacyLocaleTextOverrides, ensureIntlScaffold } from '@/code/project/translation-ops';
+import { migrateCmsLocalization } from '@/code/project/cms-locale-migrate';
 import { getI18nConfig } from '@/code/project/locale-ops';
 import { openPluginIdAtom } from '@/plugins/registry';
 
@@ -67,6 +68,9 @@ export default function ProjectLoader() {
         // Legacy i18n/{locale}.json text overrides → messages/*.json (one-shot,
         // idempotent — localization overhaul Phase 5).
         try { migrateLegacyLocaleTextOverrides(getI18nConfig()); } catch (err) { trace.error('locale-migration-failed', err); }
+        // CMS half of the same migration: legacy collection overrides move onto
+        // the rows, and existing collection lists gain their locale wrapper.
+        try { migrateCmsLocalization(getI18nConfig()); } catch (err) { trace.error('cms-locale-migration-failed', err); }
         try { ensureIntlScaffold(); } catch (err) { trace.error('intl-scaffold-failed', err); }
         setUser(null);
         // Expose the dev introspection hook for E2E tests even in
@@ -253,6 +257,9 @@ export default function ProjectLoader() {
         // Legacy i18n/{locale}.json text overrides → messages/*.json (one-shot,
         // idempotent — localization overhaul Phase 5).
         try { migrateLegacyLocaleTextOverrides(getI18nConfig()); } catch (err) { trace.error('locale-migration-failed', err); }
+        // CMS half of the same migration: legacy collection overrides move onto
+        // the rows, and existing collection lists gain their locale wrapper.
+        try { migrateCmsLocalization(getI18nConfig()); } catch (err) { trace.error('cms-locale-migration-failed', err); }
         try { ensureIntlScaffold(); } catch (err) { trace.error('intl-scaffold-failed', err); }
 
       // 4c. Restore each file's saved camera (pan/zoom) from `_meta/page-camera.json`

@@ -6,6 +6,8 @@ import {
   updateCollectionListConfigInCode,
   findClosingTag,
   findJSXElementByDataId,
+  findCollectionChainHead,
+  buildChainCode,
 } from './cms-gen';
 
 describe('findClosingTag — self-closing same-tag children', () => {
@@ -683,5 +685,58 @@ describe('bindFieldInCode (style properties)', () => {
     // Unrelated keys remain intact.
     expect(result).toContain("width: '60px'");
     expect(result).toContain("flexShrink: '0'");
+  });
+});
+
+// PER-LOCALE CMS CONTENT. A localized list's source is wrapped so the SOURCE
+// resolves the active locale's field values — canvas and published site alike,
+// with no build step:
+//
+//   {localizeRows(programme, __activeLocale).filter(…).map((item, idx) => …)}
+//
+// The chain walker stops at that call's closing paren (its callee isn't reached
+// through a dot), so without explicit handling the bare-identifier scan finds
+// nothing, `updateCollectionListConfigInCode` bails, and Filter/Sort silently
+// stop working on any translated list.
+
+describe('localized collection chain head', () => {
+  const headOf = (c: string) => findCollectionChainHead(c, c.indexOf('.map'));
+
+  it('reads a plain head', () => {
+    const h = headOf('{programme.filter(item => item.x === "y").map((item, idx) => (')!;
+    expect(h.slug).toBe('programme');
+    expect(h.localized).toBe(false);
+  });
+
+  it('reads the slug out of a localized head', () => {
+    const h = headOf('{localizeRows(programme, __activeLocale).map((item, idx) => (')!;
+    expect(h.slug).toBe('programme');
+    expect(h.localized).toBe(true);
+  });
+
+  it('still reads it with a filter/sort chain after the wrapper', () => {
+    const c = '{localizeRows(programme, __activeLocale).filter(item => item.x === "y").slice(0, 3).map((item, idx) => (';
+    const h = headOf(c)!;
+    expect(h.slug).toBe('programme');
+    expect(h.localized).toBe(true);
+  });
+
+  it('spans the WHOLE call, so a rewrite replaces the wrapper instead of nesting', () => {
+    const c = '{localizeRows(programme, __activeLocale).map((item, idx) => (';
+    const h = headOf(c)!;
+    expect(c.slice(h.slugStart, h.slugStart + 12)).toBe('localizeRows');
+  });
+
+  it('rebuilds the wrapper, keeping the chain OUTSIDE it', () => {
+    // filter/sort/slice must operate on whole rows, not on the wrapper call.
+    expect(buildChainCode('programme', undefined, null, undefined, null, 0, true))
+      .toBe('localizeRows(programme, __activeLocale)');
+    expect(buildChainCode('programme', undefined, null, 3, null, 0, true))
+      .toBe('localizeRows(programme, __activeLocale).slice(0, 3)');
+  });
+
+  it('leaves an unlocalized list unwrapped', () => {
+    expect(buildChainCode('programme', undefined, null, 3, null, 0, false))
+      .toBe('programme.slice(0, 3)');
   });
 });

@@ -13,12 +13,12 @@
 // is mirrored into the URL while open.
 
 import { useState, useCallback, useMemo, useEffect, useRef, type JSX } from 'react';
-import { useAtom, useAtomValue } from 'jotai';
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { createPortal } from 'react-dom';
 import { i18nConfigAtom, activeLocaleAtom } from '@/code/stores/locale-store';
 import { translationsOverlayOpenAtom } from '@/code/stores/left-panel-store';
 import { commitTranslationText, readTranslationText, listTranslatableTexts } from '@/code/project/translation-ops';
-import { getLocaleOverrides, setCollectionItemOverride } from '@/code/project/locale-ops';
+import { getCollectionItemTranslation, setCollectionItemTranslation } from '@/code/project/cms-ops';
 import { projectFS, projectVersionAtom } from '@/code/project/project-fs';
 import { getFileDisplayName, getPageSlug } from '@/code/project/active-file-store';
 import { collectionSchemasAtom, collectionDataAtom } from '@/code/stores/cms-store';
@@ -72,6 +72,7 @@ export default function TranslationsOverlay() {
   const config = useAtomValue(i18nConfigAtom);
   const activeLocale = useAtomValue(activeLocaleAtom);
   const projectVersion = useAtomValue(projectVersionAtom);
+  const bumpProjectVersion = useSetAtom(projectVersionAtom);
   const schemas = useAtomValue(collectionSchemasAtom);
   const cmsData = useAtomValue(collectionDataAtom);
   const [search, setSearch] = useState('');
@@ -147,11 +148,16 @@ export default function TranslationsOverlay() {
             key: `cms:${slug}:${item._id}:${field.id}`,
             label: `${String(item.title ?? item._id)} · ${field.name}`,
             source,
-            read: (loc) => {
-              const ov = getLocaleOverrides(loc).collections?.[slug]?.[item._id]?.[field.id];
-              return typeof ov === 'string' ? ov : '';
+            // Translations live ON the row (`_i18n`) — the same place
+            // `localizeRows` reads them at runtime, so what you type here is
+            // literally what the published site resolves.
+            read: (loc) => getCollectionItemTranslation(slug, item._id, loc, field.id),
+            write: (loc, text) => {
+              setCollectionItemTranslation(slug, item._id, loc, field.id, text);
+              // `cms/<slug>.json` changed — bump so the canvas re-derives
+              // `localizedCollectionDataAtom` and the row updates live.
+              bumpProjectVersion((v: number) => v + 1);
             },
-            write: (loc, text) => setCollectionItemOverride(loc, slug, item._id, { [field.id]: text }),
           });
         }
       }

@@ -128,7 +128,7 @@ export function buildSortKeyExpr(field: string, direction: 'asc' | 'desc'): stri
   return `(a.${field} > b.${field} ? ${gt} : a.${field} < b.${field} ? ${lt} : 0)`;
 }
 
-function buildChainCode(
+export function buildChainCode(
   slug: string,
   filterGroup?: FilterGroup,
   sort?: SortConfig | SortConfig[] | null,
@@ -139,8 +139,13 @@ function buildChainCode(
   /** Start offset — skip the first N items. `.slice(offset, offset+limit)` (both),
    *  `.slice(offset)` (offset only). Ignored when pagination is on. */
   offset?: number,
+  /** Wrap the source in `localizeRows(<slug>, __activeLocale)` so the SOURCE
+   *  resolves per-locale CMS field values — on the canvas and on the published
+   *  site alike, with no build step. The filter/sort/slice chain stays OUTSIDE
+   *  the wrapper so it still operates on whole rows. */
+  localized?: boolean,
 ): string {
-  let chain = slug;
+  let chain = localized ? `localizeRows(${slug}, __activeLocale)` : slug;
 
   if (filterGroup && filterGroup.filters.length > 0) {
     chain += `.filter(item => ${buildFilterExpression(filterGroup)})`;
@@ -641,7 +646,9 @@ export function updateCollectionListConfigInCode(
   const paginationVar = /data-pagination="/.test(openingTag) ? paginationVarForId(parentId) : null;
 
   // Build the new chain
-  const newChain = buildChainCode(slug, filterGroup, sort, limit, paginationVar, offset);
+  // Preserve the localized head across a Filter/Sort/Limit edit — dropping it
+  // would silently un-translate the list.
+  const newChain = buildChainCode(slug, filterGroup, sort, limit, paginationVar, offset, head.localized);
   const newChainWithMap = `${newChain}.map(${callbackParam} =>`;
 
   // Replace from slug start to end of `.map(itemVar =>`
@@ -698,7 +705,7 @@ export const COLLECTION_MAP_CALL_RE = /\.map\(\s*(\(\s*\w+(?:\s*,\s*\w+)?\s*\)|\
 export function findCollectionChainHead(
   content: string,
   mapDotIdx: number,
-): { slugStart: number; slugEnd: number; slug: string } | null {
+): { slugStart: number; slugEnd: number; slug: string; localized: boolean } | null {
   let chainStart = mapDotIdx;
   // Skip past `.methodName(...)` segments (filter/sort/slice) tracking balanced parens.
   while (chainStart > 0) {
@@ -714,11 +721,32 @@ export function findCollectionChainHead(
     chainStart = methodStart - 1; // position of the dot
   }
   const slugEnd = chainStart;
+  // LOCALIZED HEAD: `localizeRows(<slug>, __activeLocale)` (@revyme/runtime).
+  // The walk above stops at its closing paren because the callee isn't reached
+  // through a dot, so the bare-identifier scan below would find nothing and the
+  // whole edit would bail — Filter/Sort would stop working on any localized
+  // list. Read the slug out of the call's FIRST ARGUMENT and report the span of
+  // the entire call, so a rewrite replaces the wrapper rather than nesting
+  // inside it. `localized` tells the caller to put the wrapper back.
+  const beforeHead = skipWhitespaceBackward(content, slugEnd - 1);
+  if (beforeHead >= 0 && content[beforeHead] === ')') {
+    const open = findMatchingParenBackward(content, beforeHead);
+    if (open > 0) {
+      let calleeStart = open;
+      while (calleeStart > 0 && /\w/.test(content[calleeStart - 1])) calleeStart--;
+      if (content.slice(calleeStart, open) === 'localizeRows') {
+        const arg = content.slice(open + 1, beforeHead).split(',')[0].trim();
+        if (/^\w+$/.test(arg)) {
+          return { slugStart: calleeStart, slugEnd, slug: arg, localized: true };
+        }
+      }
+    }
+  }
   let slugStart = slugEnd;
   while (slugStart > 0 && /\w/.test(content[slugStart - 1])) slugStart--;
   const slug = content.slice(slugStart, slugEnd);
   if (!slug || !/^\w+$/.test(slug)) return null;
-  return { slugStart, slugEnd, slug };
+  return { slugStart, slugEnd, slug, localized: false };
 }
 
 /** Extract the iterator var (first param) from a `.map()` callback-param capture,
