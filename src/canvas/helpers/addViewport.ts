@@ -70,10 +70,23 @@ export function addViewport(opts: AddViewportOpts): void {
   //    reflects the just-synced widths (step 3). Runs even when there's nothing to copy so `_bp`
   //    always tracks the live viewport set.
   const newWidths = getSortedBreakpointWidths();
+  // WHICH band do the new viewport's rules come from? Not the tile whose "+"
+  // was clicked — the band that was ALREADY styling this width. Bands don't
+  // cascade, and the smallest one is emitted open (`@media (max-width: 430px)`,
+  // no min-width), so every width beneath it renders with its rules. Adding a
+  // viewport below installs a floor on that band and revokes the coverage; seed
+  // from the next-LARGER breakpoint and the new tile opens looking exactly like
+  // what the user was already seeing. Clicking "+" on Desktop used to copy
+  // nothing at all (the primary's styles are inline, it has no band), so the
+  // new tile silently fell back to the desktop base (live find 2026-08-10).
+  // Falls back to the clicked source when there is no larger breakpoint.
+  const nextLarger = [...newWidths].sort((a, b) => a - b).find(w => w > width);
+  const seedWidth = nextLarger ?? sourceWidth;
   modifyProjectFile(activeFilePath, code => {
     let next = code;
-    if (sourceWidth > 0 && sourceWidth !== width) next = copyContainerRulesToNewWidth(next, sourceWidth, width);
+    if (seedWidth > 0 && seedWidth !== width) next = copyContainerRulesToNewWidth(next, seedWidth, width);
     next = addResponsiveBreakpoint(next, width, sourceWidth, newWidths);
     return next;
   });
+  trace.action('canvas:add-viewport-seed', { vpId, width, seedWidth, clickedSource: sourceWidth });
 }

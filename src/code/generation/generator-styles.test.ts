@@ -1569,3 +1569,89 @@ export default function Page() {
     expect(clearContainerStylesInSubtree(PAGE, 'nope')).toBe(PAGE);
   });
 });
+
+// ─── A band losing its implicit coverage ────────────────────────────────────
+//
+// The SMALLEST viewport's band is emitted OPEN (no min-width), so it also
+// styles every width beneath it. Add a viewport below it and `getMinWidth`
+// installs a floor — the range that band was implicitly styling is revoked in
+// one write, and since bands don't cascade the new tile renders with the
+// DESKTOP base.
+//
+// The collapse is DELAYED: adding the viewport doesn't regenerate the CSS, so
+// the page falls apart on the next unrelated responsive edit. Live find
+// 2026-08-10 — a 4-viewport page whose 375 band held 1 rule while the 430 band
+// that had been styling it held 65.
+
+const OPEN_SMALLEST = `'use client';
+import React from 'react';
+export default function Page() {
+  return (
+    <div data-id="root">
+      <div data-id="hero" style={{ width: '900px' }}>Hi</div>
+  <style>{\`
+    @media (max-width: 768px) and (min-width: 430.02px) {
+      [data-id="hero"] { width: 700px !important; }
+    }
+    @media (max-width: 430px) {
+      [data-id="hero"] { width: 340px !important; flex-direction: column !important; }
+      [data-id="nav"] { display: none !important; }
+    }
+  \`}</style>
+    </div>
+  );
+}
+`;
+
+describe('band losing implicit coverage', () => {
+  beforeEach(() => { syncViewportWidths({ desktop: 1440, tablet: 768, phone: 430 }); });
+
+  it('carries the open band DOWN when a smaller viewport appears', () => {
+    // 375 is added below 430 → the 430 band gains `min-width: 375.02px`.
+    syncViewportWidths({ desktop: 1440, tablet: 768, phone: 430, mobile: 375 });
+    const out = updateContainerQueryStyle(OPEN_SMALLEST, 'nav', 375, { paddingTop: '0px' });
+
+    const band375 = out.match(/@media \(max-width: 375px\)[^{]*\{([\s\S]*?)\n    \}/)![1];
+    // Everything the 430 band was already rendering at this width:
+    expect(band375, 'hero width must be carried down').toContain('width: 340px');
+    expect(band375, 'flex-direction must be carried down').toContain('flex-direction: column');
+    expect(band375, 'the nav hide must be carried down').toContain('display: none');
+    // …plus the edit that triggered it.
+    expect(band375).toContain('padding-top: 0px');
+  });
+
+  it('the 430 band still gets its floor (bands must not overlap)', () => {
+    syncViewportWidths({ desktop: 1440, tablet: 768, phone: 430, mobile: 375 });
+    const out = updateContainerQueryStyle(OPEN_SMALLEST, 'nav', 375, { paddingTop: '0px' });
+    expect(out).toContain('@media (max-width: 430px) and (min-width: 375.02px)');
+  });
+
+  it('the LOWER band wins where both define the same prop', () => {
+    syncViewportWidths({ desktop: 1440, tablet: 768, phone: 430, mobile: 375 });
+    // 375 sets its own hero width — the carried 340px must not clobber it.
+    const out = updateContainerQueryStyle(OPEN_SMALLEST, 'hero', 375, { width: '300px' });
+    const band375 = out.match(/@media \(max-width: 375px\)[^{]*\{([\s\S]*?)\n    \}/)![1];
+    expect(band375).toContain('width: 300px');
+    expect(band375).not.toContain('width: 340px');
+    expect(band375, 'other props still carry down').toContain('flex-direction: column');
+  });
+
+  it('is a NO-OP on an ordinary write (band already bounded)', () => {
+    // 430 is bounded here, so nothing is carried and the 375 band holds only
+    // what was written to it.
+    const already = OPEN_SMALLEST.replace('@media (max-width: 430px) {',
+      '@media (max-width: 430px) and (min-width: 375.02px) {');
+    syncViewportWidths({ desktop: 1440, tablet: 768, phone: 430, mobile: 375 });
+    const out = updateContainerQueryStyle(already, 'nav', 375, { paddingTop: '0px' });
+    const band375 = out.match(/@media \(max-width: 375px\)[^{]*\{([\s\S]*?)\n    \}/)![1];
+    expect(band375).toContain('padding-top: 0px');
+    expect(band375).not.toContain('flex-direction: column');
+  });
+
+  it('does not disturb a write when the smallest band stays smallest', () => {
+    // No viewport below 430 → the band stays open, nothing to carry.
+    const out = updateContainerQueryStyle(OPEN_SMALLEST, 'hero', 430, { width: '320px' });
+    expect(out).toContain('@media (max-width: 430px) {');
+    expect(out).not.toContain('min-width: 375.02px');
+  });
+});

@@ -74,6 +74,60 @@ function getMinWidth(vpWidths: number[], mw: number): number | undefined {
   return vpWidths[idx + 1];
 }
 
+/**
+ * Carry a band's rules DOWN before it gains a lower bound it never had.
+ *
+ * The smallest viewport's band is emitted OPEN (`@media (max-width: 430px)`, no
+ * min-width), so it also styles every width beneath it. Add a viewport below it
+ * and `getMinWidth` now returns a floor — the band becomes
+ * `(max-width: 430px) and (min-width: 375.02px)` and the range it used to cover
+ * implicitly is revoked in one write. Bands do not cascade, so the new viewport
+ * renders with the DESKTOP base: the tile visibly collapses.
+ *
+ * The trap is that the collapse is DELAYED. Adding the viewport doesn't
+ * regenerate the CSS; the floor appears on the next unrelated responsive edit,
+ * so the page falls apart long after the change that doomed it (live find
+ * 2026-08-10: a 4-viewport page whose 375 tile held 1 rule while the band that
+ * had been styling it held 65).
+ *
+ * So: whenever a band is OPEN in the file but is about to be bounded, seed the
+ * band below it with what it was already rendering. Existing rules in the lower
+ * band WIN — it is the more specific intent — and this is a no-op when the band
+ * was already bounded, which is every ordinary write.
+ */
+export function seedBandLosingImplicitCoverage(
+  code: string,
+  rules: Map<number, Map<string, Map<string, string>>>,
+  vpWidths: number[],
+): void {
+  for (const width of [...rules.keys()]) {
+    const floor = getMinWidth(vpWidths, width);
+    if (floor === undefined) continue;                       // still the smallest — stays open
+    // Was this band OPEN in the file we're rewriting? (`(max-width: Npx) {`,
+    // no `and (min-width…)`). Decimal-tolerant, matching the parser regexes.
+    const open = new RegExp(`@(?:media|container)[^{]*?\\(max-width:\\s*${width}(?:\\.\\d+)?px\\s*\\)\\s*\\{`);
+    const bounded = new RegExp(`@(?:media|container)[^{]*?\\(max-width:\\s*${width}(?:\\.\\d+)?px\\s*\\)\\s*and\\s*\\(min-width`);
+    if (!open.test(code) || bounded.test(code)) continue;    // absent, or already bounded
+    const source = rules.get(width);
+    if (!source || source.size === 0) continue;
+    if (!rules.has(floor)) rules.set(floor, new Map());
+    const target = rules.get(floor)!;
+    let carried = 0;
+    for (const [nodeId, props] of source) {
+      if (!target.has(nodeId)) target.set(nodeId, new Map());
+      const into = target.get(nodeId)!;
+      for (const [prop, value] of props) {
+        if (into.has(prop)) continue;                        // the lower band already decided
+        into.set(prop, value);
+        carried++;
+      }
+    }
+    if (carried > 0) {
+      trace.action('generator-styles:seeded-uncovered-band', { from: width, to: floor, props: carried });
+    }
+  }
+}
+
 /** Resting value for each motion transform prop — the `default` variant needs
  *  this explicitly so framer-motion can animate BACK to it from another variant
  *  (0 for rotate/skew/translate, 1 for scale). */
@@ -240,6 +294,9 @@ export function updateContainerQueryStyle(
   //      mobile (375px) → @media (max-width: 375px)   (no min-width for smallest)
   // Uses getSortedBreakpointWidths() which reads the live (possibly resized) viewport widths.
   const vpWidths = getSortedBreakpointWidths();
+  // A band that is OPEN in the file but about to be bounded loses the range it
+  // was implicitly styling — carry its rules down first.
+  seedBandLosingImplicitCoverage(code, rules, vpWidths);
 
   // Serialize back to CSS (union of regular-rule widths and :lang-only widths
   // so a band whose regular rules vanished still carries its locale rules).
@@ -374,6 +431,7 @@ export function stripPositionalContainerStyles(code: string, nodeId: string): st
   trace.action('generator.stripPositionalContainerStyles', { nodeId, removed: touched });
 
   const vpWidths = getSortedBreakpointWidths();
+  seedBandLosingImplicitCoverage(code, rules, vpWidths);
   let newCss = '\n';
   for (const rule of lang.topLevel) newCss += `    ${rule}\n`;
   const sortedWidths = [...rules.keys()].sort((a, b) => b - a);

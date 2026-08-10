@@ -39,6 +39,7 @@ import { checkMediaBandDialect, checkDuplicateBreakpointStack } from './checks/m
 import { checkComponentLinks, checkPageLinks } from './checks/link-rules';
 import { checkCmsRowNavMarker, checkCmsCollectionDialect, checkCmsNavDialect } from './checks/cms-dialect';
 import { checkCmsLocaleFilter, checkCmsI18nDirectAccess, checkCmsMapResolves } from './checks/cms-locale-dialect';
+import { checkConditionalRenderDialect, checkHandWrittenMediaQuery } from './checks/conditional-render-dialect';
 
 // Re-exports — the oracle's public surface stays on check-file.ts (external
 // importers and the test suites are unchanged by the split).
@@ -1143,6 +1144,14 @@ export function checkFile(
     checkCmsLocaleFilter(code, ast, v);
     checkCmsI18nDirectAccess(code, ast, v);
   }
+
+  // What may gate a MOUNTED element. The canvas is rendered from the parsed
+  // source, so a condition it can't evaluate paints the element in every
+  // viewport while the live site mounts it conditionally.
+  checkConditionalRenderDialect(ast, v, opts.kind);
+  // …and the SOURCE of a breakpoint boolean, which otherwise escapes the rule
+  // above through a ternary or a prop.
+  checkHandWrittenMediaQuery(code, ast, v, opts.kind);
 
   // ── tier 3 — RESOLVE ───────────────────────────────────────────────────────
   if (v.every((x) => x.tier !== 1)) {
