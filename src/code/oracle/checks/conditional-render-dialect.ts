@@ -37,6 +37,7 @@
 
 import * as t from '@babel/types';
 import { traverse, jsxTagName, jsxAttrs, stringAttr, hasAttr } from './shared';
+import { MOTION_ONLY_PROPS } from './motion-tag';
 import type { OracleViolation, FileKind } from './shared';
 
 /** Identifiers the builder's own variant gating uses. */
@@ -130,6 +131,75 @@ export function checkHandWrittenMediaQuery(
         code: 'RESPONSIVE_JS_HANDWRITTEN', tier: 2, line,
         message: `[responsive] Line ${line} reads window.${prop.name} to drive responsive behaviour by hand. That is not how this builder expresses responsive: per-viewport differences are CSS — the page's ONE <style> block carries \`@media (max-width: <viewportWidth>px) { [data-id="…"] { … } }\` rules keyed exactly at each replica viewport's width, and the canvas renders them as @container queries. HIDE ON A VIEWPORT is \`display: none\` inside that viewport's rule, with the element MOUNTED in every viewport — never a conditional mount, ternary or prop driven by a breakpoint boolean, because the canvas renders from the parsed source and cannot evaluate your boolean: the element shows in every viewport in the editor while the live site follows the media query. For a RESPONSIVE NAV, build a design component with 'default' / 'mobile' / 'mobile-open' variants — the page instance's data-responsive width map picks desktop⇄mobile (no connection), and a click connection drives mobile⇄mobile-open. When a value genuinely must be a JS boolean (a motion prop, a responsive input attr), the EDITOR injects its own \`function useMediaQuery(query)\` helper and reads it as \`const __mqN = useMediaQuery('(max-width: …px)')\` — a shape the parser round-trips. A bespoke useState + listener is invisible to every panel in the editor.`,
       });
+    },
+  });
+}
+
+/**
+ * Event handlers the builder can WRITE and READ BACK.
+ *
+ * Derived from what the generators actually emit: the Interactions panel owns
+ * `click` / `mouseEnter` / `mouseLeave` (page-interactions.ts), forms own
+ * `onSubmit` / `onChange`, framer connections on a component master own the
+ * tap/hover pair, and `onLoadMore` / `onTrigger` are instance props.
+ */
+const READABLE_HANDLERS = new Set([
+  // Interactions panel (page-interactions.ts owns exactly these three).
+  'onClick', 'onMouseEnter', 'onMouseLeave',
+  // Forms.
+  'onSubmit', 'onChange',
+  // Instance props the builder wires (Load More, plugin trigger, icon pick).
+  'onLoadMore', 'onTrigger', 'onPick',
+  // Every framer gesture/viewport event, taken from the ONE list the codebase
+  // already maintains (motion-tag.ts). Hand-curating this set is how the first
+  // version of this rule flagged `onTapCancel` — which the composed-fx press
+  // generator emits — on the builder's own canonical fixture.
+  ...[...MOTION_ONLY_PROPS].filter((p) => /^on[A-Z]/.test(p)),
+]);
+
+/**
+ * A HANDLER NO CONTROL CAN SEE.
+ *
+ * An interaction is only real if a panel can read it back — otherwise the page
+ * behaves one way and the editor shows nothing, and the user cannot change or
+ * remove it. On a real customer page (2026-08-10) a close button carried BOTH
+ * `onClick` (the Close Overlay interaction, visible in the panel) and
+ * `onPointerDown` doing the same thing (invisible to everything).
+ *
+ * Scoped to INTRINSIC elements — a lowercase tag or `motion.*`. A capitalised
+ * tag is a component instance whose props are declared by that component (a
+ * code component's `@controls` can expose any handler it likes), and those are
+ * none of this rule's business.
+ */
+export function checkUnreadableHandlers(
+  code: string,
+  ast: t.File,
+  v: OracleViolation[],
+  kind: FileKind,
+): void {
+  if (kind !== 'page' && kind !== 'component' && kind !== 'template') return;
+  if (/@controls\s*\{/.test(code)) return;
+  const seen = new Set<string>();
+
+  traverse(ast, {
+    JSXOpeningElement(path) {
+      const tag = jsxTagName(path.node.name);
+      const base = tag.startsWith('motion.') ? tag.slice(7) : tag;
+      if (!base || base[0] !== base[0].toLowerCase()) return;   // component instance — skip
+      const attrs = jsxAttrs(path.node);
+      const id = stringAttr(attrs, 'data-id');
+      for (const a of attrs) {
+        const name = typeof a.name.name === 'string' ? a.name.name : '';
+        if (!/^on[A-Z]/.test(name) || READABLE_HANDLERS.has(name)) continue;
+        const key = `${id ?? ''}:${name}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        v.push({
+          code: 'INTERACTION_HANDLER_UNREADABLE', tier: 2,
+          line: a.loc?.start.line, elementId: id ?? undefined,
+          message: `[interaction] <${tag}>${id ? ` (data-id="${id}")` : ''} carries \`${name}\`, which no control in the editor can read back — the page behaves one way and every panel shows nothing, so the user cannot see, change or remove it. The builder authors exactly these handlers: onClick / onMouseEnter / onMouseLeave (the Interactions panel, incl. Set Variable and Close Overlay), onSubmit + onChange (forms), onTap / onTapStart / onHoverStart / onHoverEnd (framer connections between variants on a component master), and onLoadMore / onTrigger (instance props). Express the behaviour with one of those — a tap is \`onClick\`, and if you added ${name} for touch responsiveness note that \`touchAction: 'manipulation'\` is what actually removes the tap delay.`,
+        });
+      }
     },
   });
 }

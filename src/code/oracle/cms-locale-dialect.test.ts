@@ -259,3 +259,57 @@ export default function Page() {
     expect(codes).not.toContain('CMS_I18N_DIRECT_ACCESS');
   });
 });
+
+// ─── A CMS field in a style value the panel can't read back ─────────────────
+//
+// A palette-remap helper on a real customer page (2026-08-10) hid FOUR style
+// bindings: `backgroundColor: backgroundOf(row.background)` renders perfectly
+// but comes back from the parser as styleBindings `null`, so the CMS panel
+// shows no binding and the owner can never change that colour from the UI.
+
+const CMS_PAGE = (styleValue: string) => `'use client';
+import programme from '@/cms/programme.json';
+export default function Page() {
+  return (
+    <div data-id="root" style={{ position: 'relative', width: '100%' }}>
+      <div data-id="row" style={{ display: 'flex' }}>
+        {programme.map((row, idx) => (
+          <div data-id="card" key={idx} style={{ width: '100px', height: '100px', backgroundColor: ${styleValue} }}>
+            <h3 data-id="t" style={{ fontSize: '16px' }}>{row.title}</h3>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+`;
+
+describe('CMS_STYLE_BINDING_UNRESOLVED', () => {
+  it('REJECTS a field wrapped in a function call', () => {
+    expect(codesOf(CMS_PAGE('backgroundOf(row.background)'))).toContain('CMS_STYLE_BINDING_UNRESOLVED');
+  });
+
+  it('REJECTS a field buried in a ternary', () => {
+    expect(codesOf(CMS_PAGE("row.background ? row.background : '#fff'"))).toContain('CMS_STYLE_BINDING_UNRESOLVED');
+  });
+
+  it('ACCEPTS the plain field — the panel reads it back', () => {
+    expect(codesOf(CMS_PAGE('row.background'))).not.toContain('CMS_STYLE_BINDING_UNRESOLVED');
+  });
+
+  it('ACCEPTS a template literal — also round-trips', () => {
+    expect(codesOf(CMS_PAGE('`2px solid ${row.background}`'))).not.toContain('CMS_STYLE_BINDING_UNRESOLVED');
+  });
+
+  it('ignores style values that do not reference the row at all', () => {
+    expect(codesOf(CMS_PAGE("'#ffffff'"))).not.toContain('CMS_STYLE_BINDING_UNRESOLVED');
+  });
+
+  it('names the element, the property and the native fix', () => {
+    const msg = checkFile(CMS_PAGE('backgroundOf(row.background)'), { kind: 'page' })
+      .find((x) => x.code === 'CMS_STYLE_BINDING_UNRESOLVED')!.message;
+    expect(msg).toContain('card');
+    expect(msg).toContain('backgroundColor');
+    expect(msg).toContain('do it in the CMS DATA');
+  });
+});

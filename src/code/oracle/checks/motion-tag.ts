@@ -23,7 +23,7 @@ import type { OracleViolation } from './shared';
 
 /** Props that ONLY mean something on a framer-motion component. `style` /
  *  `className` are deliberately absent — those work anywhere. */
-const MOTION_ONLY_PROPS = new Set([
+export const MOTION_ONLY_PROPS = new Set([
   'layout', 'layoutId', 'layoutScroll', 'layoutDependency', 'layoutRoot',
   'variants', 'animate', 'initial', 'exit', 'transition',
   'whileHover', 'whileTap', 'whileFocus', 'whileDrag', 'whileInView', 'viewport',

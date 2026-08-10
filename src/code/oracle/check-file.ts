@@ -38,8 +38,8 @@ import { checkTranslationDialect } from './checks/translation-dialect';
 import { checkMediaBandDialect, checkDuplicateBreakpointStack } from './checks/media-band-dialect';
 import { checkComponentLinks, checkPageLinks } from './checks/link-rules';
 import { checkCmsRowNavMarker, checkCmsCollectionDialect, checkCmsNavDialect } from './checks/cms-dialect';
-import { checkCmsLocaleFilter, checkCmsI18nDirectAccess, checkCmsMapResolves } from './checks/cms-locale-dialect';
-import { checkConditionalRenderDialect, checkHandWrittenMediaQuery } from './checks/conditional-render-dialect';
+import { checkCmsLocaleFilter, checkCmsI18nDirectAccess, checkCmsMapResolves, checkCmsStyleBindingsResolve } from './checks/cms-locale-dialect';
+import { checkConditionalRenderDialect, checkHandWrittenMediaQuery, checkUnreadableHandlers } from './checks/conditional-render-dialect';
 
 // Re-exports — the oracle's public surface stays on check-file.ts (external
 // importers and the test suites are unchanged by the split).
@@ -1152,6 +1152,8 @@ export function checkFile(
   // …and the SOURCE of a breakpoint boolean, which otherwise escapes the rule
   // above through a ternary or a prop.
   checkHandWrittenMediaQuery(code, ast, v, opts.kind);
+  // …and handlers no panel can read back.
+  checkUnreadableHandlers(code, ast, v, opts.kind);
 
   // ── tier 3 — RESOLVE ───────────────────────────────────────────────────────
   if (v.every((x) => x.tier !== 1)) {
@@ -1163,6 +1165,9 @@ export function checkFile(
       // caught here rather than shipping as a section that is live on the site
       // and dead in the editor.
       checkCmsMapResolves(code, ast, nodes, v, kind);
+      // A CMS field inside a style value must come back as a styleBinding, or
+      // the CMS panel shows no binding and the value becomes uneditable.
+      checkCmsStyleBindingsResolve(code, ast, nodes, v, kind);
 
       if (nodes.size === 0) {
         v.push({

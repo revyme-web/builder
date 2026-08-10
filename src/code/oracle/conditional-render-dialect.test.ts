@@ -14,6 +14,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { checkFile } from './check-file';
+import { execSync } from 'node:child_process';
 
 const codesOf = (code: string, kind: 'page' | 'component' | 'code-component' = 'page') =>
   checkFile(code, { kind }).map((x) => x.code);
@@ -293,5 +294,82 @@ export default function W() {
 }
 `;
     expect(codesOf(code, 'code-component')).not.toContain('RESPONSIVE_JS_HANDWRITTEN');
+  });
+});
+
+// ─── Handlers no control can read back ──────────────────────────────────────
+//
+// A close button on a real customer page (2026-08-10) carried BOTH `onClick`
+// (the Close Overlay interaction, visible in the panel) and `onPointerDown`
+// doing the same thing — invisible to every control, so the user could not see,
+// change or remove it.
+
+describe('INTERACTION_HANDLER_UNREADABLE', () => {
+  it('rejects onPointerDown', () => {
+    const code = page(`${ROOT_OPEN}
+      <button data-id="x" onPointerDown={() => {}} onClick={() => {}} style={{ width: '10px', height: '10px' }} />
+${ROOT_CLOSE}`);
+    expect(codesOf(code)).toContain('INTERACTION_HANDLER_UNREADABLE');
+  });
+
+  it('accepts every handler the builder itself emits', () => {
+    for (const h of ['onClick', 'onMouseEnter', 'onMouseLeave', 'onSubmit', 'onChange', 'onTap', 'onHoverStart']) {
+      const code = page(`${ROOT_OPEN}
+      <button data-id="x" ${h}={() => {}} style={{ width: '10px', height: '10px' }} />
+${ROOT_CLOSE}`);
+      expect(codesOf(code), `${h} must be accepted`).not.toContain('INTERACTION_HANDLER_UNREADABLE');
+    }
+  });
+
+  it('does NOT touch a component instance — its props are the component\'s business', () => {
+    const code = page(`${ROOT_OPEN}
+      <MyWidget data-id="w" onPointerDown={() => {}} style={{ width: '10px', height: '10px' }} />
+${ROOT_CLOSE}`);
+    expect(codesOf(code)).not.toContain('INTERACTION_HANDLER_UNREADABLE');
+  });
+
+  it('a CODE COMPONENT may use any handler', () => {
+    const code = `/** @controls { "n": { "type": "number" } } */
+import React from 'react';
+export default function W() { return <div onPointerDown={() => {}} />; }
+`;
+    expect(codesOf(code, 'code-component')).not.toContain('INTERACTION_HANDLER_UNREADABLE');
+  });
+
+  it('points at the touchAction alternative', () => {
+    const code = page(`${ROOT_OPEN}
+      <button data-id="x" onPointerDown={() => {}} style={{ width: '10px', height: '10px' }} />
+${ROOT_CLOSE}`);
+    const msg = checkFile(code, { kind: 'page' }).find((x) => x.code === 'INTERACTION_HANDLER_UNREADABLE')!.message;
+    expect(msg).toContain('onPointerDown');
+    expect(msg).toContain("touchAction: 'manipulation'");
+  });
+});
+
+// The allowlist above is DERIVED (motion-tag.ts) plus a short hand-written tail
+// for the panel/form/instance handlers. A hand-curated set rots: the first
+// version of this rule missed `onTapCancel` — emitted by the composed-fx press
+// generator — and flagged the builder's own canonical fixture. This test fails
+// the moment a generator starts emitting a handler the rule would reject.
+describe('the readable-handler allowlist tracks the generators', () => {
+  it('accepts every on*= attribute the generators actually emit', () => {
+    const roots = ['src/code/generation', 'src/code/features', 'src/code/animations', 'src/code/components'];
+    const emitted = new Set<string>();
+    for (const root of roots) {
+      let out = '';
+      try { out = execSync(`grep -rhoE "\\bon[A-Z][a-zA-Z]+=\\{" ${root} 2>/dev/null || true`).toString(); } catch { /* none */ }
+      for (const m of out.split('\n')) { const n = m.replace('={', '').trim(); if (n) emitted.add(n); }
+    }
+    expect(emitted.size, 'grep found no handlers — the probe broke').toBeGreaterThan(5);
+    const rejected = [...emitted].filter((h) => {
+      const code = `'use client';
+export default function Page() {
+  return (<div data-id="root" style={{ position: 'relative', width: '100%' }}>
+    <button data-id="x" ${h}={() => {}} style={{ width: '10px', height: '10px' }} />
+  </div>);
+}`;
+      return checkFile(code, { kind: 'page' }).some((v) => v.code === 'INTERACTION_HANDLER_UNREADABLE');
+    });
+    expect(rejected, `generators emit these but the rule rejects them: ${rejected.join(', ')}`).toEqual([]);
   });
 });

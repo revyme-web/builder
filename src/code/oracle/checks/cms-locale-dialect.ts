@@ -218,6 +218,87 @@ export function checkCmsI18nDirectAccess(code: string, ast: t.File, v: OracleVio
 }
 
 /**
+ * A CMS FIELD IN A STYLE VALUE THE PANEL CANNOT READ BACK.
+ *
+ * `backgroundColor: row.background` and `` border: `2px solid ${row.accent}` ``
+ * both come back from the parser as styleBindings — the CMS panel shows the
+ * bound-field pill and the colour stays editable. Wrap the field in ANYTHING
+ * else and the binding goes dark:
+ *
+ *   backgroundColor: backgroundOf(row.background)   ← styleBindings: null
+ *
+ * It renders perfectly, so nothing else notices; the field is simply no longer
+ * editable from the panel. On a real customer page (2026-08-10) a palette-remap
+ * helper hid FOUR bindings this way, and the owner had no way to change those
+ * colours from the UI.
+ *
+ * Like CMS_MAP_UNRESOLVED, this asks the REAL parser rather than trying to
+ * recognise the wrapper — so it catches whatever shape gets invented next, not
+ * just the function-call one.
+ */
+export function checkCmsStyleBindingsResolve(
+  code: string,
+  ast: t.File,
+  nodes: Map<string, CanvasNode>,
+  v: OracleViolation[],
+  kind: FileKind,
+): void {
+  if (kind !== 'page' && kind !== 'component') return;
+  const cmsVars = cmsImportNames(code);
+  if (cmsVars.size === 0) return;
+  const derived = cmsDerivedNames(code, ast, cmsVars);
+  const seen = new Set<string>();
+
+  traverse(ast, {
+    CallExpression(path) {
+      const obj = mapObjectOf(path.node);
+      if (!obj || !referencesAny(code, obj, derived)) return;
+      const cb = path.node.arguments[0];
+      if (!t.isArrowFunctionExpression(cb) && !t.isFunctionExpression(cb)) return;
+      const param = cb.params[0];
+      if (!t.isIdentifier(param)) return;
+      const itemVar = param.name;
+      const usesItem = new RegExp(`\\b${itemVar}\\s*[.?[]`);
+
+      // Walk the callback body. Wrapped in a File the same way the predicate
+      // walk above is — node positions stay absolute into `code`, so the source
+      // slices and line numbers below are unaffected.
+      const cbAst = { type: 'File', program: { type: 'Program', body: [t.expressionStatement(cb as t.Expression)], directives: [], sourceType: 'module' } } as t.File;
+      traverse(cbAst, {
+        JSXOpeningElement(ep) {
+          const attrs = jsxAttrs(ep.node);
+          const id = stringAttr(attrs, 'data-id');
+          if (!id) return;
+          const styleAttr = attrs.find((a) => a.name.name === 'style');
+          const val = styleAttr?.value;
+          if (!val || !t.isJSXExpressionContainer(val) || !t.isObjectExpression(val.expression)) return;
+          const bound = new Set((nodes.get(id)?.styleBindings ?? []).map((b) => b.styleProp));
+
+          for (const prop of val.expression.properties) {
+            if (!t.isObjectProperty(prop)) continue;
+            const key = t.isIdentifier(prop.key) ? prop.key.name
+              : t.isStringLiteral(prop.key) ? prop.key.value : null;
+            if (!key || prop.value.start == null || prop.value.end == null) continue;
+            const src = code.slice(prop.value.start, prop.value.end);
+            if (!usesItem.test(src)) continue;          // not a CMS-driven value
+            if (bound.has(key)) continue;               // parser read it back → fine
+            const dedupe = `${id}:${key}`;
+            if (seen.has(dedupe)) continue;
+            seen.add(dedupe);
+            const field = src.match(new RegExp(`\\b${itemVar}\\.([\\w$]+)`))?.[1] ?? 'field';
+            v.push({
+              code: 'CMS_STYLE_BINDING_UNRESOLVED', tier: 2,
+              line: prop.loc?.start.line, elementId: id,
+              message: `[CMS binding] <${id}> sets \`${key}\` from the collection row (\`${src.trim().slice(0, 60)}\`), but the builder's parser could NOT read it back as a bound field — the CMS panel shows no binding for ${key}, so the owner can never change that value from the UI. It renders correctly, which is why nothing else complains. A style value may reference the row ONLY as the whole value (\`${key}: ${itemVar}.${field}\`) or inside a template literal (\`${key}: \\\`2px solid \${${itemVar}.${field}}\\\`\`) — both round-trip. Wrapping it in a function call, a lookup table, a ternary or any other expression makes it opaque. If you are remapping values (a palette migration, a unit conversion), do it in the CMS DATA so the rows already hold the final value, and keep the style value a plain field reference.`,
+            });
+          }
+        },
+      });
+    },
+  });
+}
+
+/**
  * UNRESOLVABLE COLLECTION `.map()` — the general net (tier 3).
  *
  * Every rendered `.map()` rooted in a CMS import must come back from the REAL
