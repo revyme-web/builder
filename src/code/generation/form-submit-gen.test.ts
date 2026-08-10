@@ -139,3 +139,90 @@ describe('form-submit-gen: convertSubmitButtonInCode', () => {
     expect(convertSubmitButtonInCode(code, 'form-1', formStateVar('form-1'))).toBe(code);
   });
 });
+
+// ─── display must switch INSTANTLY ──────────────────────────────────────────
+//
+// Framer Motion can't interpolate `display`: a SHOW value lands at the start of
+// the transition, a HIDE value only at the END. Under the default spring the old
+// label stayed visible ~300ms after the state changed (measured in Chromium:
+// still `block` at 200ms, `none` by 400ms). A form whose API answers faster than
+// that painted "Subscribe" and "Thank you" on top of each other before settling
+// green — the reported symptom (2026-08-10).
+
+import { upgradeFormSubmitDisplayTransitions } from './form-submit-gen';
+
+describe('display variants switch instantly', () => {
+  const master = buildFormSubmitComponentCode();
+
+  it('every display-only variant entry carries a zero-duration transition', () => {
+    for (const obj of ['labelVariants', 'spinnerWrapVariants', 'successTextVariants', 'errorTextVariants']) {
+      const block = master.match(new RegExp(`const ${obj} = \\{[\\s\\S]*?\\n\\};`))![0];
+      const entries = block.match(/\{[^{}]*display[^{}]*\}/g) ?? [];
+      expect(entries.length, `${obj} should have one entry per variant`).toBe(7);
+      for (const e of entries) expect(e, `${obj}: ${e}`).toMatch(/transition:/);
+    }
+  });
+
+  it('the ROOT keeps its default transition — the background still animates', () => {
+    const root = master.match(/const rootVariants = \{[\s\S]*?\n\};/)![0];
+    expect(root).not.toMatch(/transition:/);
+  });
+});
+
+describe('upgradeFormSubmitDisplayTransitions — heal without regenerating', () => {
+  // A master the user has STYLED. Regenerating would discard all of this, so the
+  // upgrade must be surgical.
+  const styled = `'use client';
+/* @formsubmit-gen v3 */
+const rootVariants = {
+  default: { backgroundColor: 'var(--color-brand)', opacity: 1, borderRadius: '32px' },
+  'success': { backgroundColor: '#22c55e', opacity: 1 },
+};
+
+const labelVariants = {
+  default: { display: 'block', color: 'var(--color-text)' },
+  'loading': { display: 'none' },
+  'success': { display: 'none' },
+};
+
+const successTextVariants = {
+  default: { display: 'none' },
+  'success': { display: 'block' },
+};
+export default function X() { return <button data-id="formsubmit-root" />; }
+`;
+
+  it('adds the instant transition to display entries', () => {
+    const out = upgradeFormSubmitDisplayTransitions(styled);
+    expect(out).toContain(`{ display: 'block', color: 'var(--color-text)', transition: { duration: 0 } }`);
+    expect(out).toContain(`{ display: 'none', transition: { duration: 0 } }`);
+  });
+
+  it('PRESERVES the user styling verbatim', () => {
+    const out = upgradeFormSubmitDisplayTransitions(styled);
+    expect(out).toContain(`backgroundColor: 'var(--color-brand)'`);
+    expect(out).toContain(`borderRadius: '32px'`);
+    expect(out).toContain(`color: 'var(--color-text)'`);
+  });
+
+  it('leaves the ROOT variants alone', () => {
+    const out = upgradeFormSubmitDisplayTransitions(styled);
+    const root = out.match(/const rootVariants = \{[\s\S]*?\n\};/)![0];
+    expect(root).not.toMatch(/transition:/);
+  });
+
+  it('is IDEMPOTENT — the heal runs on every ensure', () => {
+    const once = upgradeFormSubmitDisplayTransitions(styled);
+    expect(upgradeFormSubmitDisplayTransitions(once)).toBe(once);
+  });
+
+  it('keeps a transition the user set themselves', () => {
+    const custom = styled.replace(`'loading': { display: 'none' }`, `'loading': { display: 'none', transition: { duration: 0.4 } }`);
+    expect(upgradeFormSubmitDisplayTransitions(custom)).toContain(`transition: { duration: 0.4 }`);
+  });
+
+  it('ignores a component that is not ours', () => {
+    const foreign = `const labelVariants = { default: { display: 'block' } };\nexport default function X() { return <button />; }`;
+    expect(upgradeFormSubmitDisplayTransitions(foreign)).toBe(foreign);
+  });
+});

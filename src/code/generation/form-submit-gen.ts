@@ -80,44 +80,54 @@ const rootVariants = {
   'error': { backgroundColor: '#ef4444', opacity: 1, pointerEvents: 'none' },
 };
 
+// Framer Motion cannot interpolate \`display\`, so it applies a SHOW value at the
+// START of the transition but a HIDE value only at the END. Under the default
+// spring that left the old label visible for ~300ms after the state changed —
+// long enough that a fast API response painted "Subscribe" and "Thank you" on
+// top of each other before settling (user report 2026-08-10, measured: hide
+// landed between 200ms and 400ms). These four objects only ever carry
+// \`display\`, so switching them instantly is exactly right; the ROOT keeps its
+// default transition so the background still animates between states.
+const INSTANT = { duration: 0 };
+
 const labelVariants = {
-  default: { display: 'block' },
-  'default-hover': { display: 'block' },
-  'default-pressed': { display: 'block' },
-  'loading': { display: 'none' },
-  'disabled': { display: 'block' },
-  'success': { display: 'none' },
-  'error': { display: 'none' },
+  default: { display: 'block', transition: INSTANT },
+  'default-hover': { display: 'block', transition: INSTANT },
+  'default-pressed': { display: 'block', transition: INSTANT },
+  'loading': { display: 'none', transition: INSTANT },
+  'disabled': { display: 'block', transition: INSTANT },
+  'success': { display: 'none', transition: INSTANT },
+  'error': { display: 'none', transition: INSTANT },
 };
 
 const spinnerWrapVariants = {
-  default: { display: 'none' },
-  'default-hover': { display: 'none' },
-  'default-pressed': { display: 'none' },
-  'loading': { display: 'flex' },
-  'disabled': { display: 'none' },
-  'success': { display: 'none' },
-  'error': { display: 'none' },
+  default: { display: 'none', transition: INSTANT },
+  'default-hover': { display: 'none', transition: INSTANT },
+  'default-pressed': { display: 'none', transition: INSTANT },
+  'loading': { display: 'flex', transition: INSTANT },
+  'disabled': { display: 'none', transition: INSTANT },
+  'success': { display: 'none', transition: INSTANT },
+  'error': { display: 'none', transition: INSTANT },
 };
 
 const successTextVariants = {
-  default: { display: 'none' },
-  'default-hover': { display: 'none' },
-  'default-pressed': { display: 'none' },
-  'loading': { display: 'none' },
-  'disabled': { display: 'none' },
-  'success': { display: 'block' },
-  'error': { display: 'none' },
+  default: { display: 'none', transition: INSTANT },
+  'default-hover': { display: 'none', transition: INSTANT },
+  'default-pressed': { display: 'none', transition: INSTANT },
+  'loading': { display: 'none', transition: INSTANT },
+  'disabled': { display: 'none', transition: INSTANT },
+  'success': { display: 'block', transition: INSTANT },
+  'error': { display: 'none', transition: INSTANT },
 };
 
 const errorTextVariants = {
-  default: { display: 'none' },
-  'default-hover': { display: 'none' },
-  'default-pressed': { display: 'none' },
-  'loading': { display: 'none' },
-  'disabled': { display: 'none' },
-  'success': { display: 'none' },
-  'error': { display: 'block' },
+  default: { display: 'none', transition: INSTANT },
+  'default-hover': { display: 'none', transition: INSTANT },
+  'default-pressed': { display: 'none', transition: INSTANT },
+  'loading': { display: 'none', transition: INSTANT },
+  'disabled': { display: 'none', transition: INSTANT },
+  'success': { display: 'none', transition: INSTANT },
+  'error': { display: 'block', transition: INSTANT },
 };
 
 function ${FORMSUBMIT_COMPONENT_NAME}({ style, label = 'Submit', initialVariant = 'default', ...rest }: { style?: React.CSSProperties; label?: string; initialVariant?: string; [key: string]: any; }) {
@@ -207,6 +217,41 @@ export default withResponsiveProps(${FORMSUBMIT_COMPONENT_NAME});
 `;
 }
 
+/** The four variant objects that carry ONLY `display` (see the INSTANT note). */
+const DISPLAY_VARIANT_OBJECTS = [
+  'labelVariants', 'spinnerWrapVariants', 'successTextVariants', 'errorTextVariants',
+] as const;
+
+/**
+ * Give an EXISTING master's display-only variants an instant transition.
+ *
+ * Surgical on purpose. A master is styled by the user the moment they touch a
+ * variant artboard — brand colours, radius, the button label — so regenerating
+ * it (the gen-token path below) would silently throw all of that away. This
+ * adds the one missing key and leaves every other byte alone.
+ *
+ * Idempotent: an entry that already declares a `transition` is skipped, so a
+ * user who set their own transition keeps it.
+ */
+export function upgradeFormSubmitDisplayTransitions(code: string): string {
+  if (!code.includes('data-id="formsubmit-root"')) return code;   // not ours
+  let out = code;
+  for (const name of DISPLAY_VARIANT_OBJECTS) {
+    const decl = new RegExp(`const ${name} = \\{[\\s\\S]*?\\n\\};`);
+    const m = out.match(decl);
+    if (!m) continue;
+    // Only entries that set `display` and have no `transition` of their own.
+    const patched = m[0].replace(
+      /\{([^{}]*\bdisplay\s*:[^{}]*)\}/g,
+      (whole, body: string) => (/\btransition\s*:/.test(body)
+        ? whole
+        : `{${body.replace(/[,\s]*$/, '')}, transition: { duration: 0 } }`),
+    );
+    if (patched !== m[0]) out = out.replace(m[0], patched);
+  }
+  return out;
+}
+
 /** Write the Form Submit master to ProjectFS (idempotent; upgrades old gens). */
 export function ensureFormSubmitComponentFile(): void {
   const existing = projectFS.readFile(FORMSUBMIT_COMPONENT_PATH);
@@ -216,7 +261,16 @@ export function ensureFormSubmitComponentFile(): void {
   const isOldAutoGen = existing != null
     && existing.includes('data-id="formsubmit-root"')
     && !existing.includes(FORMSUBMIT_GEN_TOKEN);
-  if (existing != null && !isOldAutoGen) return;
+  if (existing != null && !isOldAutoGen) {
+    // Current-token master: keep the user's styling, but heal the display
+    // transitions if it predates them.
+    const healed = upgradeFormSubmitDisplayTransitions(existing);
+    if (healed !== existing) {
+      projectFS.writeFile(FORMSUBMIT_COMPONENT_PATH, healed);
+      trace.action('form-submit-gen:healed-display-transitions', { path: FORMSUBMIT_COMPONENT_PATH });
+    }
+    return;
+  }
   projectFS.writeFile(FORMSUBMIT_COMPONENT_PATH, buildFormSubmitComponentCode());
   trace.action('form-submit-gen:ensureComponentFile', { path: FORMSUBMIT_COMPONENT_PATH, upgraded: isOldAutoGen });
 }

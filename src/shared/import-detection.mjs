@@ -119,6 +119,14 @@ export function buildAutoImports(body) {
   if (/\bwithCursor\b/.test(body)) revymeRuntime.push('withCursor');
   if (/\bCursorPortal\b/.test(body)) revymeRuntime.push('CursorPortal');
   if (/\bRevymeSplitText\b/.test(body)) revymeRuntime.push('RevymeSplitText');
+  // localizeRows — a translated CMS collection list resolves its own locale at
+  // the head of the chain. Missing here, the dedup pass above dropped the
+  // import line and nothing rebuilt it, so the FIRST edit after the list was
+  // localized crashed the page with "localizeRows is not defined" (live find
+  // 2026-08-10). Every runtime callable a generated page can reference belongs
+  // in this list — see runtime-exports-covered.test.ts, which fails when one
+  // is missing.
+  if (/\blocalizeRows\b/.test(body)) revymeRuntime.push('localizeRows');
   if (revymeRuntime.length > 0) {
     lines.push(`import { ${revymeRuntime.join(', ')} } from '@revyme/runtime';`);
   }
