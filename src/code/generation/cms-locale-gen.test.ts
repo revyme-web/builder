@@ -105,3 +105,95 @@ export default function Page() {
     expect(localizeCollectionListsInCode(none)).toBe(none);
   });
 });
+
+// ─── The hook must land INSIDE the component ────────────────────────────────
+//
+// `ensureLocaleHook` anchored at the FIRST function declaration in the file. On
+// any page carrying an injected module-scope helper (useResponsiveText /
+// useMediaQuery) that helper comes first, so the hook was declared inside IT and
+// the component threw "__activeLocale is not defined" on every render — the whole
+// page blank. This is the same trap ensureMediaGate was fixed for on 2026-07-03;
+// this function never inherited the fix (live find 2026-08-10, hit every project
+// that opened after the CMS locale heal shipped).
+
+const HELPER = `function useResponsiveText(primary, overrides, vpWidths) {
+  const ref = useRef(null);
+  return primary;
+}
+// @useResponsiveText-end`;
+
+const WITH_HELPER = `'use client';
+import { useLocale } from 'next-intl';
+import React, { useState, useRef } from 'react';
+import collection1 from '@/cms/collection-1.json';
+
+${HELPER}
+
+export default function Page() {
+  return <div data-id="root">
+    <div data-id="faqs">
+      {collection1.map((item, idx) => (<div data-id="item" key={idx}>{item.title}</div>))}
+    </div>
+  </div>;
+}
+`;
+
+/** The slice of the file that is the component body. */
+const componentBody = (code: string) => code.slice(code.indexOf('export default function'));
+const helperBody = (code: string) =>
+  code.slice(code.indexOf('function useResponsiveText'), code.indexOf('export default function'));
+
+describe('__activeLocale placement', () => {
+  it('declares the hook INSIDE the component, not the helper above it', () => {
+    const out = localizeCollectionListsInCode(WITH_HELPER);
+    expect(componentBody(out)).toContain('const __activeLocale = useLocale();');
+    expect(helperBody(out), 'the hook must NOT be in useResponsiveText').not.toContain('const __activeLocale');
+  });
+
+  it('declares it exactly once', () => {
+    const out = localizeCollectionListsInCode(WITH_HELPER);
+    expect(out.match(/const __activeLocale = useLocale\(\);/g)).toHaveLength(1);
+  });
+
+  it('REPAIRS a file already broken by the old anchor', () => {
+    // Already wrapped + hook stuck in the helper: the exact on-disk state of
+    // every project healed before the fix. It must not need a re-wrap to heal.
+    const broken = `'use client';
+import { useLocale } from 'next-intl';
+import { localizeRows } from '@revyme/runtime';
+import React, { useState, useRef } from 'react';
+import collection1 from '@/cms/collection-1.json';
+
+function useResponsiveText(primary, overrides, vpWidths) {
+  const __activeLocale = useLocale();
+  const ref = useRef(null);
+  return primary;
+}
+
+export default function Page() {
+  return <div data-id="root">
+    <div data-id="faqs">
+      {localizeRows(collection1, __activeLocale).map((item, idx) => (<div data-id="item" key={idx}>{item.title}</div>))}
+    </div>
+  </div>;
+}
+`;
+    const out = localizeCollectionListsInCode(broken);
+    expect(helperBody(out), 'the stale declaration must be removed').not.toContain('const __activeLocale');
+    expect(componentBody(out)).toContain('const __activeLocale = useLocale();');
+    expect(out.match(/const __activeLocale = useLocale\(\);/g)).toHaveLength(1);
+  });
+
+  it('the repaired file RESOLVES — no dangling reference left', () => {
+    const out = localizeCollectionListsInCode(WITH_HELPER);
+    const body = componentBody(out);
+    // The declaration must precede the JSX reference inside the same body.
+    expect(body.indexOf('const __activeLocale = useLocale();'))
+      .toBeLessThan(body.indexOf('localizeRows(collection1, __activeLocale)'));
+  });
+
+  it('still a no-op on a correctly-placed file (idempotent)', () => {
+    const once = localizeCollectionListsInCode(WITH_HELPER);
+    expect(localizeCollectionListsInCode(once)).toBe(once);
+  });
+});

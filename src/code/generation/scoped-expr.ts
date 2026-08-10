@@ -8,6 +8,7 @@
 // generator-motion and generator-styles re-export these for existing callers.
 
 import { escapeRegExp } from '@/shared/regex-utils';
+import { trace } from '@/shared/debug-trace';
 import { insertBeforeRenderReturn, insertAfterLastImportLine } from './generator-utils';
 import type { ResolvedScope } from '@/code/animations/animation-scope';
 
@@ -137,16 +138,53 @@ export function ensureLocaleHook(code: string): string {
       code = code.slice(0, at) + "import { useLocale } from 'next-intl';\n" + code.slice(at);
     }
   }
+  code = repairMisplacedLocaleHook(code);
+
   if (!code.includes('const __activeLocale')) {
-    // Same body-start injection ensureMediaGate uses — top of the exported
-    // component function.
-    const fn = code.match(/(?:export default function\s+\w+|function\s+\w+)\s*\([^)]*\)\s*\{/);
+    // Anchor BEFORE the component's render `return <jsx>` (RENDER_RETURN_RE) —
+    // IDENTICAL to ensureMediaGate. The old "first function declaration in the
+    // file" heuristic put the hook inside whichever module-scope helper came
+    // first (useResponsiveText / useMediaQuery), leaving `__activeLocale`
+    // undefined at the JSX reference — the same trap ensureMediaGate was fixed
+    // for on 2026-07-03, which this function did not inherit. It surfaced when
+    // the CMS locale heal started calling this on load: every page with an
+    // injected helper above the component threw "__activeLocale is not defined"
+    // (live find 2026-08-10).
+    const inserted = insertBeforeRenderReturn(code, `  const __activeLocale = useLocale();`);
+    if (inserted !== null) return inserted;
+    // Fallback (no render return found): the EXPORTED component's body — never
+    // a bare `function \w+`, which is what caused the bug above.
+    const fn = code.match(/export default function\s+\w+\s*\([^)]*\)\s*\{/);
     if (fn && fn.index !== undefined) {
       const at = fn.index + fn[0].length;
       code = code.slice(0, at) + `\n  const __activeLocale = useLocale();` + code.slice(at);
     }
   }
   return code;
+}
+
+/**
+ * Move a `const __activeLocale = useLocale();` that landed in a module-scope
+ * HELPER back into the component.
+ *
+ * Files written by the broken anchor above are ALREADY on disk, and they can't
+ * self-heal: the declaration exists, so the `!code.includes(...)` guard skips
+ * re-insertion, and the CMS heal returns early once a list is already wrapped.
+ * The page throws `__activeLocale is not defined` on every render until this
+ * runs. Strip the misplaced declaration and let the caller re-anchor it.
+ *
+ * A declaration ABOVE `export default function` is outside the component by
+ * definition — that's the precise test, and it's a no-op for every correctly
+ * placed file (identity-preserving, so callers can run it unconditionally).
+ */
+export function repairMisplacedLocaleHook(code: string): string {
+  const declRe = /\n[ \t]*const __activeLocale = useLocale\(\);/;
+  const decl = code.match(declRe);
+  if (!decl || decl.index === undefined) return code;
+  const comp = code.search(/export default function\s+\w+/);
+  if (comp === -1 || decl.index > comp) return code;   // correctly placed
+  trace.action('scoped-expr:repair-misplaced-locale-hook', { declAt: decl.index, componentAt: comp });
+  return code.slice(0, decl.index) + code.slice(decl.index + decl[0].length);
 }
 
 /** Resolve a ternary TEST string back to a serializable scope (the inverse of

@@ -20,7 +20,7 @@
 // is added later. Three copies of this rule would be three things to keep in
 // step.
 
-import { ensureLocaleHook } from './scoped-expr';
+import { ensureLocaleHook, repairMisplacedLocaleHook } from './scoped-expr';
 import { findCollectionChainHead } from './cms-gen';
 import { trace } from '@/shared/debug-trace';
 
@@ -70,6 +70,19 @@ function cmsImportNames(code: string): Set<string> {
  * to come.
  */
 export function localizeCollectionListsInCode(code: string): string {
+  // REPAIR FIRST, unconditionally. A file already wrapped by an earlier (broken)
+  // heal takes the `wrapped.length === 0` early return below and would never be
+  // fixed — but it is exactly the file that is throwing "__activeLocale is not
+  // defined" on every render. The repair is identity-preserving when the hook is
+  // correctly placed, so an untouched project still comes back unchanged.
+  const repaired = repairMisplacedLocaleHook(code);
+  if (repaired !== code) {
+    // The declaration was stripped from a helper; ensureLocaleHook re-anchors it
+    // inside the component. Do this even when there is nothing new to wrap.
+    const healed = ensureLocaleHook(repaired);
+    trace.action('cms-locale-gen:repaired-locale-hook', {});
+    code = healed;
+  }
   const cmsNames = cmsImportNames(code);
   if (cmsNames.size === 0) return code;
   const mapDots: number[] = [];
