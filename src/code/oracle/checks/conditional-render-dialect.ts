@@ -38,6 +38,7 @@
 import * as t from '@babel/types';
 import { traverse, jsxTagName, jsxAttrs, stringAttr, hasAttr } from './shared';
 import { MOTION_ONLY_PROPS } from './motion-tag';
+import { isCodeComponentSource } from './shared';
 import type { OracleViolation, FileKind } from './shared';
 
 /** Identifiers the builder's own variant gating uses. */
@@ -111,7 +112,7 @@ export function checkHandWrittenMediaQuery(
   kind: FileKind,
 ): void {
   if (kind !== 'page' && kind !== 'component' && kind !== 'template') return;
-  if (/@controls\s*\{/.test(code)) return;                 // code component — black box
+  if (isCodeComponentSource(code)) return;                 // code component — black box
   const exempt = injectedHelperRanges(code);
   const inHelper = (idx: number) => exempt.some(([s, e]) => idx >= s && idx < e);
 
@@ -178,7 +179,7 @@ export function checkUnreadableHandlers(
   kind: FileKind,
 ): void {
   if (kind !== 'page' && kind !== 'component' && kind !== 'template') return;
-  if (/@controls\s*\{/.test(code)) return;
+  if (isCodeComponentSource(code)) return;
   const seen = new Set<string>();
 
   traverse(ast, {
@@ -200,6 +201,193 @@ export function checkUnreadableHandlers(
           message: `[interaction] <${tag}>${id ? ` (data-id="${id}")` : ''} carries \`${name}\`, which no control in the editor can read back — the page behaves one way and every panel shows nothing, so the user cannot see, change or remove it. The builder authors exactly these handlers: onClick / onMouseEnter / onMouseLeave (the Interactions panel, incl. Set Variable and Close Overlay), onSubmit + onChange (forms), onTap / onTapStart / onHoverStart / onHoverEnd (framer connections between variants on a component master), and onLoadMore / onTrigger (instance props). Express the behaviour with one of those — a tap is \`onClick\`, and if you added ${name} for touch responsiveness note that \`touchAction: 'manipulation'\` is what actually removes the tap delay.`,
         });
       }
+    },
+  });
+}
+
+/**
+ * THE FREE-JAVASCRIPT FENCE — hooks the builder did not inject.
+ *
+ * Pages and design components carry hooks ONLY as generator output: overlay
+ * state + positioner effects, the variant `useState(initialVariant)` pair,
+ * pagination `vis*` counters and their IntersectionObserver, form lifecycle
+ * state, scroll refs/values (their SHAPE is scroll-dialect's business), the
+ * injected `useMediaQuery`/`useResponsiveText` helpers, and composed-motion
+ * `animate()` effects. Everything else — `setInterval` countdowns, hand-rolled
+ * scroll/resize listeners, IntersectionObservers driving custom state,
+ * localStorage, client `fetch()` — renders fine and is invisible to every
+ * panel forever (verified passing the gate with zero violations, 2026-08-11).
+ *
+ * Detection is DANGER-first, then a positive allowlist of generator shapes,
+ * then default-flag: an unknown effect is not benefit-of-the-doubt material,
+ * because the whole class exists to hold behaviour no control can read.
+ */
+// Derived from `grep -rhoE "use[A-Z][A-Za-z]+\(" src/code/generation/*.ts` —
+// every hook name a generator actually emits (minus useState/useEffect/
+// useLayoutEffect, whose SHAPES are validated below). Hand-curating this set
+// is how the first draft flagged `useMotionValueEvent` on the builder's own
+// composed-fx conformance fixture; keep it in sync with the grep.
+const ALLOWED_HOOK_CALLEES = new Set([
+  // Scroll/motion dialect owns the shape of these (scroll-dialect.ts).
+  'useScroll', 'useTransform', 'useSpring', 'useMotionValue', 'useMotionTemplate',
+  'useMotionValueEvent', 'useInView', 'useRef',
+  // Builder-injected / runtime helpers.
+  'useMediaQuery', 'useResponsiveText', 'useResponsiveListConfig', 'useOverlayPos',
+  // Localization + routing reads the generators emit.
+  'useLocale', 'useTranslations', 'useParams', 'usePathname', 'useRouter',
+]);
+
+/** Effect bodies that ALWAYS mean hand-rolled behaviour, whatever else is in them. */
+const EFFECT_DANGER = /setInterval\s*\(|addEventListener\s*\(\s*['"](scroll|resize|keydown|keyup|wheel|touchmove|mousemove)['"]|localStorage|sessionStorage|\bfetch\s*\(|new\s+WebSocket|requestAnimationFrame\s*\(/;
+
+/** Effect bodies the generators emit (any one marker qualifies). */
+const EFFECT_ALLOWED: RegExp[] = [
+  /setVariant\s*\(\s*initialVariant\s*\)/,           // variant sync (connections)
+  /setTimeout\s*\([\s\S]*setVariant\s*\(/,           // afterDelay chain
+  /prevOverflow/,                                    // fixed-overlay body lock
+  /getBoundingClientRect|\[data-id=/,                // overlay positioner
+  /new\s+IntersectionObserver[\s\S]*set[A-Z_$]/,     // pagination sentinel
+  /\banimate\s*\([\s\S]*\.stop\s*\(\s*\)/,           // composed appear/loop
+  /document\.getElementById\s*\([\s\S]*\.current\s*=/, // scroll section ref resolve
+];
+
+export function checkPageHooks(
+  code: string,
+  ast: t.File,
+  v: OracleViolation[],
+  kind: FileKind,
+): void {
+  if (kind !== 'page' && kind !== 'component' && kind !== 'template') return;
+  if (isCodeComponentSource(code)) return;                 // code component — black box
+  const exempt = injectedHelperRanges(code);
+  const inHelper = (idx: number) => exempt.some(([s, e]) => idx >= s && idx < e);
+  const seen = new Set<number>();
+
+  const flag = (line: number | undefined | null, what: string, teach: string) => {
+    if (line != null && seen.has(line)) return;
+    if (line != null) seen.add(line);
+    v.push({
+      code: 'PAGE_HOOK_UNRESOLVED', tier: 2, line: line ?? undefined,
+      message: `[hooks] Line ${line} — ${what}. Pages and design components carry hooks ONLY as the builder's own generated shapes (overlay state + positioner, \`useState(initialVariant)\`, pagination \`vis*\` counters, form lifecycle, scroll refs/values, injected responsive helpers). A hand-written hook renders on the live site but is invisible to every panel in the editor — nobody can see, edit or remove the behaviour. ${teach}`,
+    });
+  };
+
+  const TEACH =
+    `Express the intent natively instead: an ANIMATION over time is the Animation panel (Appear / Loop / Scroll effects); RESPONSIVE behaviour is @media rules in the page's <style> block; SHOW/HIDE state is a design-component variant driven by a connection; DYNAMIC DATA from an API belongs in a CODE COMPONENT (a black box where free React is legitimate) — not in a page. If none of those fit, the behaviour is not supported on pages.`;
+
+  traverse(ast, {
+    CallExpression(path) {
+      const callee = path.node.callee;
+      if (!t.isIdentifier(callee) || !/^use[A-Z]/.test(callee.name)) return;
+      const at = path.node.start ?? -1;
+      if (at >= 0 && inHelper(at)) return;
+      const line = path.node.loc?.start.line;
+
+      if (ALLOWED_HOOK_CALLEES.has(callee.name)) return;
+
+      if (callee.name === 'useState') {
+        // Generated form: `const [x, setX] = useState(<literal | initialVariant>)`.
+        const parent = path.parentPath?.node;
+        const destructured = t.isVariableDeclarator(parent) && t.isArrayPattern(parent.id);
+        const arg = path.node.arguments[0];
+        const literalArg = arg === undefined
+          || t.isStringLiteral(arg) || t.isNumericLiteral(arg) || t.isBooleanLiteral(arg)
+          || (t.isUnaryExpression(arg) && t.isNumericLiteral(arg.argument))
+          || (t.isIdentifier(arg) && arg.name === 'initialVariant');
+        if (destructured && literalArg) return;
+        flag(line, `\`useState(${literalArg ? '…' : 'non-literal initializer'})\` outside the generated \`const [x, setX] = useState(<literal>)\` shape`, TEACH);
+        return;
+      }
+
+      if (callee.name === 'useEffect' || callee.name === 'useLayoutEffect') {
+        const body = code.slice(path.node.start ?? 0, path.node.end ?? 0);
+        if (EFFECT_DANGER.test(body)) {
+          flag(line, `a hand-written \`${callee.name}\` (timer / event listener / storage / fetch)`, TEACH);
+          return;
+        }
+        if (EFFECT_ALLOWED.some((re) => re.test(body))) return;
+        flag(line, `a \`${callee.name}\` that matches none of the builder's generated effect shapes`, TEACH);
+        return;
+      }
+
+      // useCallback / useMemo / useReducer / useContext / any custom hook.
+      flag(line, `\`${callee.name}()\` — a hook no generator emits`, TEACH);
+    },
+  });
+}
+
+/**
+ * HANDLER BODIES — a readable NAME is not enough.
+ *
+ * `checkUnreadableHandlers` polices which handler PROPS may exist; this one
+ * polices what may be INSIDE them. `onClick` is a readable name, but a body
+ * doing `navigator.clipboard.writeText(...)` or `classList.toggle(...)` is
+ * still invisible to every panel (verified passing with zero violations,
+ * 2026-08-11). The generators emit handler bodies built EXCLUSIVELY from:
+ * bare event-prop identifiers, calls to `set*` state setters, `setTimeout` /
+ * `clearTimeout` wrapping those, and composed-motion `animate()` — nothing
+ * else. `onSubmit` is exempt here: the FORM_* rules own its exact shape.
+ */
+export function checkHandlerBodies(
+  code: string,
+  ast: t.File,
+  v: OracleViolation[],
+  kind: FileKind,
+): void {
+  if (kind !== 'page' && kind !== 'component' && kind !== 'template') return;
+  if (isCodeComponentSource(code)) return;
+  const seen = new Set<string>();
+  const ALLOWED_CALLEES = /^(set[A-Z_$]|setTimeout$|clearTimeout$|animate$)/;
+
+  traverse(ast, {
+    JSXAttribute(path) {
+      const name = typeof path.node.name.name === 'string' ? path.node.name.name : '';
+      if (!/^on[A-Z]/.test(name) || name === 'onSubmit') return;
+      if (!READABLE_HANDLERS.has(name)) return;              // other rule's business
+      const opening = path.parentPath?.node;
+      if (!t.isJSXOpeningElement(opening)) return;
+      const tag = jsxTagName(opening.name);
+      const base = tag.startsWith('motion.') ? tag.slice(7) : tag;
+      if (!base || base[0] !== base[0].toLowerCase()) return; // instance props — component's business
+
+      const val = path.node.value;
+      if (!t.isJSXExpressionContainer(val)) return;
+      const expr = val.expression;
+      if (t.isIdentifier(expr)) return;                      // bare event-prop fire
+      if (!t.isArrowFunctionExpression(expr) && !t.isFunctionExpression(expr)) return;
+
+      let offender: string | null = null;
+      let offenderLine: number | undefined;
+      path.get('value').traverse({
+        CallExpression(inner) {
+          if (offender) return;
+          const c = inner.node.callee;
+          const ok = (t.isIdentifier(c) && ALLOWED_CALLEES.test(c.name));
+          if (!ok) {
+            offender = code.slice(inner.node.start ?? 0, Math.min((inner.node.start ?? 0) + 60, inner.node.end ?? 0));
+            offenderLine = inner.node.loc?.start.line;
+          }
+        },
+        AssignmentExpression(inner) {
+          if (offender) return;
+          if (t.isMemberExpression(inner.node.left)) {
+            offender = code.slice(inner.node.start ?? 0, Math.min((inner.node.start ?? 0) + 60, inner.node.end ?? 0));
+            offenderLine = inner.node.loc?.start.line;
+          }
+        },
+      });
+      if (!offender) return;
+
+      const attrs = jsxAttrs(opening);
+      const id = stringAttr(attrs, 'data-id');
+      const key = `${id ?? ''}:${name}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      v.push({
+        code: 'INTERACTION_HANDLER_BODY_UNREADABLE', tier: 2,
+        line: offenderLine ?? path.node.loc?.start.line, elementId: id ?? undefined,
+        message: `[interaction] <${tag}>${id ? ` (data-id="${id}")` : ''} — the \`${name}\` body contains \`${offender}…\`, which no panel can read back. Handler bodies the builder can resolve are built ONLY from: a bare event-prop identifier, calls to \`set*\` state setters (Set Variable, overlay open/close, pagination, search), \`setTimeout\`/\`clearTimeout\` wrapping those, and composed-motion \`animate()\`. Anything else (clipboard, classList, scrollIntoView, window.*, router pushes, analytics) behaves on the live site while the editor shows nothing. Express it natively: NAVIGATION is a Link/MotionLink href (incl. \`#section\` smooth-scroll); STATE is a variant connection or Set Variable; anything genuinely needing free JS belongs in a CODE COMPONENT.`,
+      });
     },
   });
 }
@@ -241,6 +429,36 @@ export function checkConditionalRenderDialect(
 
   const seen = new Set<number>();
   traverse(ast, {
+    // The TERNARY spelling of the same defect. Bouncing `{cond && <X/>}` while
+    // accepting `{cond ? <X/> : null}` doesn't close the gap — it TEACHES the
+    // rewrite: the model's natural "fix" for a bounced && gate is the ternary
+    // (verified live: the ternary form passed the gate with zero violations,
+    // 2026-08-11). Both branches parse into permanent, always-visible nodes;
+    // the live site mounts one. Text/attr ternaries (string branches) are a
+    // different, supported dialect and are untouched here — this fires only
+    // when a BRANCH IS JSX.
+    ConditionalExpression(path) {
+      // Only ternaries used AS JSX content — a ternary inside a style value or
+      // attr belongs to other rules.
+      if (!path.parentPath?.isJSXExpressionContainer()) return;
+      const branches = [gatedElement(path.node.consequent), gatedElement(path.node.alternate)]
+        .filter((b): b is t.JSXElement => b !== null);
+      if (branches.length === 0) return;                // not a conditional RENDER
+      if (branches.every(isBuilderGatedElement)) return;
+
+      const first = branches[0];
+      const attrs = jsxAttrs(first.openingElement);
+      const id = stringAttr(attrs, 'data-id');
+      const tag = jsxTagName(first.openingElement.name);
+      const line = path.node.loc?.start.line;
+      if (line != null && seen.has(line)) return;
+      if (line != null) seen.add(line);
+
+      v.push({
+        code: 'CONDITIONAL_RENDER_UNSUPPORTED', tier: 2, line, elementId: id ?? undefined,
+        message: `[conditional render] Line ${line} mounts <${tag}>${id ? ` (data-id="${id}")` : ''} behind a ternary (\`cond ? <jsx/> : …\`). This is the same unsupported shape as \`{cond && <jsx/>}\` in different spelling: the builder renders from the PARSED source and cannot evaluate the condition, so every JSX branch becomes a permanent always-visible node on the canvas while the live site mounts only one — editor and published page disagree and no control can repair it. Ternaries are supported for TEXT and ATTRIBUTE values (string branches), never for mounting elements. Express the intent a supported way: HIDE ON A VIEWPORT is \`display: none\` inside that viewport's @media rule (element stays mounted everywhere); state-driven show/hide is a design-component VARIANT (the Hide control per variant) driven by a connection; an OVERLAY is the data-overlay dialect. If both branches exist as designs, mount BOTH elements and control visibility per variant/viewport instead of swapping mounts.`,
+      });
+    },
     JSXExpressionContainer(path) {
       const expr = path.node.expression;
       if (!t.isLogicalExpression(expr) || expr.operator !== '&&') return;

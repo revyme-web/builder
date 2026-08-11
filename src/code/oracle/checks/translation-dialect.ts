@@ -82,7 +82,7 @@ export function checkTranslationDialect(
         const line = child.loc?.start.line;
         if (hookVars.size > 0 && !hookVars.has(call.hook)) {
           v.push({
-            code: 'TRANSLATION_HOOK_MISSING', tier: 1, line, elementId: id,
+            code: 'TRANSLATION_HOOK_MISSING', tier: 2, line, elementId: id,
             message: `<${tag}> at line ${line} calls {${call.hook}('${call.key}')} but no \`const ${call.hook} = useTranslations(...)\` exists — the live site crashes with "${call.hook} is not defined". Declare exactly \`const t = useTranslations('<page-slug>')\` at the top of the component and call {t('<data-id>')}.`,
           });
         }
@@ -105,7 +105,7 @@ export function checkTranslationDialect(
         const line = a.loc?.start.line;
         if (hookVars.size > 0 && !hookVars.has(call.hook)) {
           v.push({
-            code: 'TRANSLATION_HOOK_MISSING', tier: 1, line, elementId: id,
+            code: 'TRANSLATION_HOOK_MISSING', tier: 2, line, elementId: id,
             message: `<${tag}> at line ${line} sets ${attrName}={${call.hook}('${call.key}')} but no \`const ${call.hook} = useTranslations(...)\` exists — live crash. Declare \`const t = useTranslations('<page-slug>')\` and reference it.`,
           });
         }
@@ -123,13 +123,13 @@ export function checkTranslationDialect(
   // ── Hook present but unused / import missing / namespace mismatch ────────
   if (sawCall && !hasImport) {
     v.push({
-      code: 'TRANSLATION_HOOK_MISSING', tier: 1, line: 1,
+      code: 'TRANSLATION_HOOK_MISSING', tier: 2, line: 1,
       message: `The file calls t('…') but never imports useTranslations — add \`import { useTranslations } from 'next-intl';\` and \`const t = useTranslations('<page-slug>');\` in the component body, or the live build fails.`,
     });
   }
   if (sawCall && hookVars.size === 0) {
     v.push({
-      code: 'TRANSLATION_HOOK_MISSING', tier: 1, line: 1,
+      code: 'TRANSLATION_HOOK_MISSING', tier: 2, line: 1,
       message: `The file calls t('…') in JSX but never declares \`const t = useTranslations('<page-slug>')\` inside the component — the live site crashes with "t is not defined".`,
     });
   }

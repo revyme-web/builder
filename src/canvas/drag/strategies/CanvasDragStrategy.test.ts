@@ -463,16 +463,18 @@ describe('CanvasDragStrategy', () => {
       const updates = strategy.onEnd(ctx);
 
       expect(updates).toHaveLength(1);
-      // transform is committed too (cleared to the node's original) so the
-      // drop can skip the redundant sandbox re-render — the imperative bridge
-      // patch clears the per-frame drag translate.
+      // The node here had NO pre-drag transform, so the commit carries none:
+      // an empty `transform` is not a no-op downstream — the style writer
+      // reads it as "reset the transform", which also clears a framer-motion
+      // `rotate` prop and stripped the rotation off rotated masters on every
+      // drop (2026-08-11). The per-frame drag translate is still cleared, but
+      // through the imperative bridge patch, which is where it belongs.
       expect(updates[0]).toEqual({
         nodeId: 'node-1',
         type: 'style',
         styles: {
           left: '140px',
           top: '260px',
-          transform: '',
         },
       });
     });

@@ -12,6 +12,7 @@
 import { projectFS } from '@/code/project/project-fs';
 import { pushHistory } from '@/code/mutation/history';
 import { modifyProjectFile } from '@/code/project/modify-file';
+import { checkFile } from '@/code/oracle/check-file';
 import { filePathToSlug } from '@/code/project/active-file-store';
 import {
   transformTextToTranslation,
@@ -337,6 +338,26 @@ function commitTranslationTextInner(opts: {
   // message is seeded, then write the translation.
   modifyProjectFile(filePath, (currentCode) => {
     const result = transformTextToTranslation(currentCode, nodeId, key, namespace);
+    // ORACLE RE-CHECK (2026-08-11): this is one of the few paths that rewrites
+    // page JSX OUTSIDE the submit gate. The transform is builder-owned and
+    // dialect-shaped, so a clean input stays clean — but if the rewrite ever
+    // INTRODUCES a violation (an edge shape the transformer mangles), keep the
+    // file untouched instead of committing un-gated damage. Judged as a DIFF
+    // (new violations only) so pre-existing quirks never block a translation.
+    if (result.changed) {
+      try {
+        const kind = /LayoutClient\.tsx$/.test(filePath) ? 'template' as const : 'page' as const;
+        const before = new Set(checkFile(currentCode, { kind, path: filePath }).map((x) => `${x.code}::${x.elementId ?? ''}`));
+        const introduced = checkFile(result.code, { kind, path: filePath })
+          .filter((x) => !before.has(`${x.code}::${x.elementId ?? ''}`));
+        if (introduced.length > 0) {
+          trace.error('commitTranslationText:transform-blocked-by-oracle', {
+            nodeId, filePath, codes: introduced.map((x) => x.code).slice(0, 6),
+          });
+          return currentCode;
+        }
+      } catch { /* checker diagnostics must never take the translation down */ }
+    }
     const seedText = (result.changed && result.originalText)
       ? result.originalText
       : (opts.fallbackDefaultText ?? '');

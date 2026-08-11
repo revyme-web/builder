@@ -12,6 +12,7 @@ import { activeFilePathAtom, getFileDisplayName } from '@/code/project/active-fi
 import { getChatHistory, saveChatHistory } from '@/code/stores/chat-history-store';
 import { projectFS } from '@/code/project/project-fs';
 import { modifyProjectFile } from '@/code/project/modify-file';
+import { checkFile } from '@/code/oracle/check-file';
 import { iconSetChatStream } from '@/ai/icon-set-chat-client';
 import { refreshCredits } from '@/code/stores/credits-store';
 import {
@@ -161,6 +162,23 @@ export default function IconSetChat() {
         onDone: (result) => {
           const finalCode = streamedCodeRef.current;
           if (finalCode && finalCode !== code) {
+            // SYNTAX FENCE (2026-08-11): this is a whole-file replace of AI
+            // output with no gate at all — a truncated/unparseable stream
+            // blanked the whole icon set (the parser returns an empty node map
+            // on syntax errors, silently). Icon masters have their own dialect
+            // so the full oracle doesn't apply, but the file must at least
+            // PARSE before it may land.
+            const syntaxError = checkFile(finalCode, { kind: 'component', path: activeFilePath })
+              .find((v) => v.code === 'SYNTAX_ERROR');
+            if (syntaxError) {
+              trace.error('icon-set-chat:apply-blocked-syntax', { filePath: activeFilePath });
+              setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: `The generated code has a syntax error and was NOT applied: ${syntaxError.message.slice(0, 200)}`,
+              }]);
+              setLoading(false);
+              return;
+            }
             trace.action('icon-set-chat:apply-code', {
               filePath: activeFilePath,
               codeLen: finalCode.length,

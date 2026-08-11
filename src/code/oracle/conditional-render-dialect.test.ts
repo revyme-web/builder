@@ -373,3 +373,111 @@ export default function Page() {
     expect(rejected, `generators emit these but the rule rejects them: ${rejected.join(', ')}`).toEqual([]);
   });
 });
+
+// ─── Ternary render — the missing twin (2026-08-11) ─────────────────────────
+// Bouncing `{cond && <X/>}` while accepting `{cond ? <X/> : null}` TEACHES the
+// rewrite; both branches parse into permanent always-visible nodes.
+describe('CONDITIONAL_RENDER_UNSUPPORTED — ternary spelling', () => {
+  it('rejects the null-branch ternary mount', () => {
+    const code = page(`  const [mounted] = useState(true);
+${ROOT_OPEN}
+      {mounted ? <div data-id="popup" style={{ position: 'relative', width: '100%', height: 'auto' }}>hi</div> : null}
+${ROOT_CLOSE}`);
+    expect(codesOf(code)).toContain('CONDITIONAL_RENDER_UNSUPPORTED');
+  });
+
+  it('rejects the two-branch swap', () => {
+    const code = page(`  const [dark] = useState(false);
+${ROOT_OPEN}
+      {dark ? <div data-id="moon" style={{ width: '10px', height: '10px' }} /> : <div data-id="sun" style={{ width: '10px', height: '10px' }} />}
+${ROOT_CLOSE}`);
+    expect(codesOf(code)).toContain('CONDITIONAL_RENDER_UNSUPPORTED');
+  });
+
+  it('leaves TEXT ternaries alone — a supported dialect', () => {
+    const code = page(`${ROOT_OPEN}
+      <p data-id="price" style={{ position: 'relative', width: '100%', height: 'auto' }}>{initialVariant === 'annual' ? '$470' : '$49'}</p>
+${ROOT_CLOSE}`, '');
+    expect(codesOf(code, 'component')).not.toContain('CONDITIONAL_RENDER_UNSUPPORTED');
+  });
+});
+
+// ─── PAGE_HOOK_UNRESOLVED — the free-JS fence (2026-08-11) ──────────────────
+describe('PAGE_HOOK_UNRESOLVED', () => {
+  it('rejects a setInterval countdown effect', () => {
+    const code = page(`  const [secs, setSecs] = useState(60);
+  useEffect(() => { const t = setInterval(() => setSecs((s) => s - 1), 1000); return () => clearInterval(t); }, []);
+${ROOT_OPEN}
+      <p data-id="cd" style={{ position: 'relative', width: '100%', height: 'auto' }}>{secs}</p>
+${ROOT_CLOSE}`);
+    expect(codesOf(code)).toContain('PAGE_HOOK_UNRESOLVED');
+  });
+
+  it('rejects a hand-rolled scroll listener', () => {
+    const code = page(`  useEffect(() => { const on = () => document.body.classList.toggle('scrolled', window.scrollY > 40); window.addEventListener('scroll', on); return () => window.removeEventListener('scroll', on); }, []);
+${ROOT_OPEN}
+      <div data-id="nav" style={{ position: 'relative', width: '100%', height: '96px' }}>nav</div>
+${ROOT_CLOSE}`);
+    expect(codesOf(code)).toContain('PAGE_HOOK_UNRESOLVED');
+  });
+
+  it('rejects a custom hook call', () => {
+    const code = page(`  const size = useWindowSize();
+${ROOT_OPEN}
+      <div data-id="a" style={{ position: 'relative', width: '100%', height: 'auto' }}>x</div>
+${ROOT_CLOSE}`, 'function useWindowSize() { return { w: 0 }; }');
+    expect(codesOf(code)).toContain('PAGE_HOOK_UNRESOLVED');
+  });
+
+  it('accepts the generated variant-sync effect and literal useState', () => {
+    const code = page(`  const [variant, setVariant] = useState(initialVariant);
+  useEffect(() => { setVariant(initialVariant); }, [initialVariant]);
+${ROOT_OPEN}
+      <div data-id="a" style={{ position: 'relative', width: '100%', height: 'auto' }}>x</div>
+${ROOT_CLOSE}`);
+    expect(codesOf(code)).not.toContain('PAGE_HOOK_UNRESOLVED');
+  });
+
+  it('accepts the pagination IntersectionObserver sentinel effect', () => {
+    const code = page(`  const [visGrid, setVisGrid] = useState(6);
+  const sentinelRef = useRef(null);
+  useEffect(() => {
+    const el = sentinelRef.current; if (!el) return;
+    const io = new IntersectionObserver((es) => { if (es[0].isIntersecting) setVisGrid((c) => c + 6); });
+    io.observe(el); return () => io.disconnect();
+  }, []);
+${ROOT_OPEN}
+      <div data-id="a" style={{ position: 'relative', width: '100%', height: 'auto' }}>x</div>
+${ROOT_CLOSE}`, "import { useRef } from 'react';");
+    expect(codesOf(code)).not.toContain('PAGE_HOOK_UNRESOLVED');
+  });
+});
+
+// ─── INTERACTION_HANDLER_BODY_UNREADABLE (2026-08-11) ───────────────────────
+describe('INTERACTION_HANDLER_BODY_UNREADABLE', () => {
+  it('rejects a clipboard/classList onClick body', () => {
+    const code = page(`${ROOT_OPEN}
+      <div data-id="copy" onClick={() => { navigator.clipboard.writeText('hi'); document.documentElement.classList.toggle('copied'); }} style={{ width: '120px', height: '40px' }}>Copy</div>
+${ROOT_CLOSE}`);
+    expect(codesOf(code)).toContain('INTERACTION_HANDLER_BODY_UNREADABLE');
+  });
+
+  it('accepts Set Variable multi-setter bodies', () => {
+    const code = page(`  const [fade, setFade] = useState(1);
+  const [brand, setBrand] = useState('#fff');
+${ROOT_OPEN}
+      <div data-id="b" onClick={() => { setFade(0.5); setBrand('#ff0'); }} style={{ width: '10px', height: '10px' }}>x</div>
+${ROOT_CLOSE}`);
+    expect(codesOf(code)).not.toContain('INTERACTION_HANDLER_BODY_UNREADABLE');
+  });
+
+  it('accepts the connection chain and delayed overlay close', () => {
+    const code = page(`  const [variant, setVariant] = useState('default');
+  const [overlayXOpen, setOverlayXOpen] = useState(false);
+${ROOT_OPEN}
+      <motion.div data-id="t" onTap={() => { const _n = variant === 'default' ? 'open' : null; if (_n) setVariant(_n); }} style={{ width: '10px', height: '10px' }} />
+      <div data-id="c" onClick={() => setTimeout(() => setOverlayXOpen(false), 300)} style={{ width: '10px', height: '10px' }}>x</div>
+${ROOT_CLOSE}`);
+    expect(codesOf(code)).not.toContain('INTERACTION_HANDLER_BODY_UNREADABLE');
+  });
+});

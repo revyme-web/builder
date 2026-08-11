@@ -17,6 +17,7 @@ import { getActiveRulerGuideSnapLines } from '@/code/stores/ruler-guides-store';
 import { SNAP_THRESHOLD, nodeAcceptsChildren } from '@/shared/constants';
 import { updateNodeStyles, isPrimaryViewport, vpIdFromPrefix, getActiveFilePath, patchNodeStyles, findNodeRect, findNodeComputedStyle, findNodeComputedStyles, findChildRects, getNodeHitsAtPoint, findRootHitAtPoint, forceCanvasRender, getViewportPrefix, parseRectCacheKey, forceCanvasRenderDeferredDuringDrag } from '@/canvas/node-ops';
 import { isFullyInsideQuad, cornersFromRect, pointInQuad , matrixHasRotationSkewOrFlip } from '@/canvas/resize/geometry-utils';
+import { repositionSignalOps } from '../reposition-signal';
 import { dropLineOps } from '@/canvas/selection/drop-line-store';
 import { parentHighlightOps } from '@/canvas/selection/parent-highlight-store';
 import { trace } from '@/shared/debug-trace';
@@ -280,6 +281,79 @@ export class CanvasDragStrategy implements DragStrategy {
    *  its rotation / scale / etc. Empty string for nodes with no original
    *  transform. */
   private originalTransforms: Map<string, string> = new Map();
+  /** Per-gesture visual-only transform suffix (motion rotate/scale re-expressed
+   *  as CSS). Cleared with `originalTransforms` in resetState. */
+  private motionTransformPreviews: Map<string, string> = new Map();
+
+  /**
+   * The node's pre-drag transform as a CODE-commit entry — or NOTHING when it
+   * had none.
+   *
+   * An empty `transform` is not a no-op downstream: the style writer reads
+   * `transform: ''` as "reset the transform", and that reset also clears a
+   * framer-motion `rotate` prop (both the inline one and the variant entry).
+   * A component master whose rotation lives in `rotate: '14.4'` rather than a
+   * `transform: rotate(...)` string therefore lost its rotation on every drop
+   * (user report 2026-08-11) — the drag was "restoring" an empty snapshot over
+   * a rotation it never owned.
+   *
+   * The DOM patches keep writing `transform: orig` unconditionally: clearing
+   * the per-frame drag translate off the element is exactly their job. Only
+   * the CODE commit has to stay silent when there is nothing to restore.
+   */
+  /**
+   * VISUAL-ONLY transform for the per-frame drag write, when the node's
+   * rotation/scale lives in framer-motion STYLE PROPS (`rotate: '14.4'`)
+   * rather than a CSS `transform` string.
+   *
+   * Motion owns `style.transform` on such an element and composes those props
+   * into it. Our per-frame `transform: translate(dx, dy)` overwrites that
+   * composed string, so the element rendered UNROTATED for the whole gesture
+   * and snapped back to its rotation on mouse-up (user report 2026-08-11).
+   * Re-expressing the props as CSS functions and appending them keeps the
+   * drag looking like the thing being dragged.
+   *
+   * Deliberately NOT stored in `originalTransforms`: that map feeds the CODE
+   * commit, and writing `transform: rotate(14.4deg)` into source next to the
+   * motion `rotate` prop would apply the rotation TWICE. Preview here, source
+   * untouched.
+   */
+  private buildMotionTransformPreview(
+    styles: Record<string, string> | undefined,
+    motionVariants?: Record<string, Record<string, string>> | null,
+    variantName?: string,
+  ): string {
+    // Resolve the way motion does for `animate={['default', variant]}`: the
+    // base entry first, then the dragged variant on top. The INLINE style is
+    // only the baked default — a variant tile whose rotation lives solely in
+    // `variants['variant-1']` would otherwise preview the default's rotation
+    // (or none at all), and the tile flattened out mid-drag while the primary
+    // behaved (user report 2026-08-11).
+    const resolved: Record<string, string> = {
+      ...(styles ?? {}),
+      ...(motionVariants?.default ?? {}),
+      ...(variantName && variantName !== 'default' ? motionVariants?.[variantName] ?? {} : {}),
+    };
+    if (Object.keys(resolved).length === 0) return '';
+    const parts: string[] = [];
+    // Unitless motion values: `rotate: '14.4'` means degrees, `scale: '1.2'`
+    // is a ratio. A value that already carries a unit is passed through.
+    const deg = (v: string) => (/[a-z%]/i.test(v.trim()) ? v.trim() : `${v.trim()}deg`);
+    for (const [key, fn] of [['rotate', 'rotate'], ['rotateX', 'rotateX'], ['rotateY', 'rotateY'], ['rotateZ', 'rotateZ']] as const) {
+      const v = resolved[key];
+      if (v != null && String(v).trim() !== '' && parseFloat(String(v)) !== 0) parts.push(`${fn}(${deg(String(v))})`);
+    }
+    for (const key of ['scale', 'scaleX', 'scaleY'] as const) {
+      const v = resolved[key];
+      if (v != null && String(v).trim() !== '' && parseFloat(String(v)) !== 1) parts.push(`${key}(${String(v).trim()})`);
+    }
+    return parts.join(' ');
+  }
+
+  private commitTransform(nodeId: string): Record<string, string> {
+    const orig = this.originalTransforms.get(nodeId) ?? '';
+    return orig ? { transform: orig } : {};
+  }
 
   /** Per-node "committed" inline left/top — the position the element's
    *  CSS `left` / `top` actually has in the DOM/JSX. Set at lift to the
@@ -338,6 +412,7 @@ export class CanvasDragStrategy implements DragStrategy {
     );
     this.nodeReparentStates.clear();
     this.originalTransforms.clear();
+    this.motionTransformPreviews.clear();
     this.committedPos.clear();
     for (const node of context.draggedNodes) {
       this.nodeReparentStates.set(node.id, { reparented: false, confirmedParentId: null, confirmedParentEl: null });
@@ -357,6 +432,20 @@ export class CanvasDragStrategy implements DragStrategy {
         ? node.transformOverride
         : (nodeData?.styles?.transform || '').trim();
       this.originalTransforms.set(node.id, t === 'none' ? '' : t);
+      // No CSS transform to carry? The rotation may still exist as motion
+      // style props — keep it on screen for the drag (preview only).
+      this.motionTransformPreviews.set(
+        node.id,
+        t && t !== 'none'
+          ? ''
+          : this.buildMotionTransformPreview(
+              nodeData?.styles,
+              nodeData?.motionVariants,
+              // On a component master the viewport id IS the variant name
+              // ('default' for the primary tile, 'variant-1', …).
+              vpIdFromPrefix(context.viewportPrefix),
+            ),
+      );
       // Commit baseline: at lift, the inline left/top equals startLeft/Top.
       this.committedPos.set(node.id, { left: node.startLeft, top: node.startTop });
       // PAINT-PERF: promote each dragged node to its own compositor layer for the duration of the drag.
@@ -737,7 +826,10 @@ export class CanvasDragStrategy implements DragStrategy {
       const tx = nodeLeft - committed.left;
       const ty = nodeTop - committed.top;
       const orig = this.originalTransforms.get(node.id) ?? '';
-      const transform = `translate(${tx}px, ${ty}px)${orig ? ' ' + orig : ''}`;
+      // `orig` first (an authored CSS transform), else the motion-prop preview
+      // — otherwise motion's composed rotation is overwritten by this write.
+      const keep = orig || (this.motionTransformPreviews.get(node.id) ?? '');
+      const transform = `translate(${tx}px, ${ty}px)${keep ? ' ' + keep : ''}`;
 
       if (!this.firstWriteTraced) {
         this.firstWriteTraced = true;
@@ -973,7 +1065,7 @@ export class CanvasDragStrategy implements DragStrategy {
             // reparent commit. Without this, the element's inline transform
             // would still hold the cumulative drag offset for one frame
             // after JSX flushes, producing a visible double-apply jump.
-            transform: orig,
+            ...this.commitTransform(node.id),
           };
           // On component master files startVpId IS the source variant
           // name (e.g., 'desktop' for default, 'variant-1'). The strip
@@ -1157,7 +1249,7 @@ export class CanvasDragStrategy implements DragStrategy {
         // Clear the per-frame drag translate atomically with the reparent
         // commit so the inline transform doesn't carry the cumulative
         // lift→entry translate forward into the new parent.
-        transform: orig,
+        ...this.commitTransform(node.id),
       };
       // `canvasNode: false` — this is a canvas-node ENTERING a viewport
       // tree, not a canvas exit. Without the explicit false, the move
@@ -1829,7 +1921,7 @@ export class CanvasDragStrategy implements DragStrategy {
             position: 'absolute',
             left: `${cssLeft}px`,
             top: `${cssTop}px`,
-            transform: orig,
+            ...this.commitTransform(node.id),
           };
           // Non-primary entry: write display:none to the inline base so the
           // primary/desktop viewport (which has no @container override) hides
@@ -2262,7 +2354,7 @@ export class CanvasDragStrategy implements DragStrategy {
           height: `${Math.round(liftHeight)}px`,
           // Clear the per-frame drag translate atomically with the exit
           // commit (matches the per-node and entry paths above).
-          transform: orig,
+          ...this.commitTransform(node.id),
         };
         // Shared choreography: wipe stale @media rules (so the canvas
         // clone doesn't inherit display:none) + move to canvas root +
@@ -2484,10 +2576,7 @@ export class CanvasDragStrategy implements DragStrategy {
         });
         // Skip the rest of onEnd for this drag — we've fully driven
         // the commit via the extraction mutations.
-        dropLineOps.hide();
-        parentHighlightOps.hide();
-        this.resetState();
-        return updates;
+        return this.finishOnEnd(context, updates);
       }
     }
 
@@ -2659,10 +2748,7 @@ export class CanvasDragStrategy implements DragStrategy {
         clearConsolidationClone(cloneId);
 
         // Skip the rest of the normal onEnd path.
-        dropLineOps.hide();
-        parentHighlightOps.hide();
-        this.resetState();
-        return updates;
+        return this.finishOnEnd(context, updates);
       }
     }
 
@@ -3053,17 +3139,44 @@ export class CanvasDragStrategy implements DragStrategy {
         updates.push({
           nodeId: node.id,
           type: 'style',
-          styles: { left: `${pos.left}px`, top: `${pos.top}px`, transform: orig },
+          styles: { left: `${pos.left}px`, top: `${pos.top}px`, ...this.commitTransform(node.id) },
         });
       }
     }
 
     // Replica visibility is handled during drag via flushNow() in entry/reparent paths.
 
-    // Clear visual stores
+    return this.finishOnEnd(context, updates);
+  }
+
+  /**
+   * The one exit for `onEnd` — pulse the selection fade, clear the drag
+   * chrome, reset per-gesture state.
+   *
+   * The fade matters on EVERY committing path: the selection overlay unmounts
+   * during a drag and remounts on drop, before the node's rect has been
+   * remeasured (async bridge round-trip), so it paints one frame at the stale
+   * drag position and visibly jumps. Layout reorders, grid swaps and
+   * exit-to-canvas already pulsed; plain canvas→canvas moves produced only a
+   * position `style` update and never did — a glitch on every canvas drag, and
+   * worst on a rotated node whose corners move too (user report 2026-08-11).
+   * `signal()` latches a one-shot the freshly-mounted overlay consumes, which
+   * is what makes pulsing before the remount work.
+   *
+   * Routing all three returns (normal drop, variant extraction, consolidation
+   * clone) through here is deliberate: the early ones used to duplicate this
+   * tail and would have silently missed the fade.
+   */
+  private finishOnEnd(context: DragContext, updates: PendingUpdate[]): PendingUpdate[] {
+    if (updates.length > 0) {
+      repositionSignalOps.signal();
+      trace.action('canvas-drag:reposition-signal', {
+        draggedIds: context.draggedNodes.map(n => n.id),
+        updateCount: updates.length,
+      });
+    }
     dropLineOps.hide();
     parentHighlightOps.hide();
-
     this.resetState();
     return updates;
   }
@@ -3147,6 +3260,7 @@ export class CanvasDragStrategy implements DragStrategy {
     // loop that reads them (never mid-onEnd; see the premature-clear bug note
     // in the atomic final-patch section).
     this.originalTransforms.clear();
+    this.motionTransformPreviews.clear();
     this.committedPos.clear();
     // Bookkeeping only — the DOM restore, when one is owed, already ran in
     // `onCancel`. See `mirrorVariantSoloHideLive`.

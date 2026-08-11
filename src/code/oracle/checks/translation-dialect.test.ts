@@ -23,7 +23,10 @@ describe('translation dialect', () => {
     expect(codes(code)).not.toContain('TRANSLATION_NAMESPACE_MISMATCH');
   });
 
-  it('t() without import/hook is tier 1', () => {
+  // Tier 2, not 1 (demoted 2026-08-11): as tier 1 this rule silently disabled
+  // the ENTIRE tier-3 resolve phase + the code-component compile gate for the
+  // file — a missing hook suppressed every fidelity/CMS-resolve check.
+  it('t() without import/hook blocks', () => {
     const code = `'use client';
 export default function Page() {
   return (<div data-id="root" style={{ width: '100%', position: 'relative' }}><p data-id="intro" style={{ position: 'relative' }}>{t('intro')}</p></div>);

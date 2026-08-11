@@ -9,6 +9,8 @@ import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { componentEditorFileAtom, componentEditorPropsAtom, componentEditorStreamingAtom } from '@/code/stores/component-editor-store';
 import { projectFS, projectVersionAtom } from '@/code/project/project-fs';
 import { parseComponentControlsMeta } from '@/code/components/controls-parser';
+import { checkFile } from '@/code/oracle/check-file';
+import { isCodeComponentSource } from '@/code/oracle/checks/shared';
 import ComponentCodePane from './ComponentCodePane';
 import ComponentPreviewPane from './ComponentPreviewPane';
 import ComponentPropsPanel from './ComponentPropsPanel';
@@ -97,16 +99,45 @@ export default function ComponentEditorOverlay() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [filePath]);
 
-  // Auto-save when AI streaming finishes so preview recompiles
+  // Auto-save when AI streaming finishes so preview recompiles.
+  //
+  // ORACLE-GATED (2026-08-11): this used to write the streamed buffer to disk
+  // VERBATIM — the single largest ungated door in the app (any model output,
+  // any file the overlay was pointed at, zero checks — not even syntax). The
+  // AI path now runs the same checkFile the MCP gate uses; a violating stream
+  // stays IN THE BUFFER (visible, editable) and is not committed. The user's
+  // OWN typing is never gated: manual Save and close-with-changes below stay
+  // as they were — sovereignty over one's own keyboard.
   const streaming = useAtomValue(componentEditorStreamingAtom);
   const prevStreamingRef = useRef(false);
   useEffect(() => {
     // Detect transition from streaming=true → false
     if (prevStreamingRef.current && !streaming && filePath) {
-      projectFS.writeFile(filePath, codeRef.current);
-      bumpVersion(v => v + 1);
-      setSavedCode(codeRef.current);
-      trace.action('component-editor:auto-save-after-stream', { filePath });
+      const streamed = codeRef.current;
+      const kind = filePath.startsWith('components/')
+        ? (isCodeComponentSource(streamed) ? 'code-component' : 'component')
+        : /LayoutClient\.tsx$/.test(filePath) ? 'template' : 'page';
+      let violations: Array<{ code: string; message: string }> = [];
+      try {
+        violations = checkFile(streamed, { kind, path: filePath });
+      } catch (err) {
+        violations = [{ code: 'ORACLE_THREW', message: String(err) }];
+      }
+      if (violations.length > 0) {
+        trace.error('component-editor:auto-save-blocked-by-oracle', {
+          filePath, codes: violations.map((x) => x.code).slice(0, 10),
+        });
+        console.warn(
+          `[Revyme] The AI's code for ${filePath} was NOT saved — it fails ${violations.length} oracle check(s) ` +
+          `(${[...new Set(violations.map((x) => x.code))].slice(0, 5).join(', ')}). ` +
+          `The code stays in the editor; fix it or ask the AI again. First issue: ${violations[0].message.slice(0, 300)}`,
+        );
+      } else {
+        projectFS.writeFile(filePath, streamed);
+        bumpVersion(v => v + 1);
+        setSavedCode(streamed);
+        trace.action('component-editor:auto-save-after-stream', { filePath });
+      }
     }
     prevStreamingRef.current = streaming;
   }, [streaming, filePath, bumpVersion]);

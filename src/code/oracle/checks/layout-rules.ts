@@ -4,7 +4,7 @@
 // All code moved VERBATIM from check-file.ts (Phase 7.1 god-file split).
 
 import * as t from '@babel/types';
-import { traverse, jsxTagName, jsxAttrs, stringAttr, hasAttr } from './shared';
+import { traverse, jsxTagName, jsxAttrs, stringAttr, hasAttr, isCodeComponentSource } from './shared';
 import type { OracleViolation } from './shared';
 
 /** FLEX/GRID CHILD ORDER — a direct, in-flow child of a flex/grid container
@@ -227,7 +227,7 @@ function checkGridChildSpan(ast: t.File, v: OracleViolation[], existingDataIds?:
  * so it can't feed its own height back. Code components only.
  */
 function checkCanvasFillFeedback(code: string, ast: t.File, v: OracleViolation[]): void {
-  if (!/@controls\s*\{/.test(code)) return; // code components only
+  if (!isCodeComponentSource(code)) return; // code components only
   const styleObjectOf = (el: t.JSXElement): t.ObjectExpression | null => {
     const a = jsxAttrs(el.openingElement).find((x) => x.name.name === 'style');
     if (a?.value?.type === 'JSXExpressionContainer' && t.isObjectExpression(a.value.expression)) return a.value.expression;

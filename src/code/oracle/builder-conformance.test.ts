@@ -65,7 +65,7 @@ const KNOWN_DIVERGENCES: Record<string, { codes: string[]; why: string }> = {
   // identifier — an artifact of testing one step of a two-step drop.
   __embedsAndCodeComponents: { codes: ['WOULD_CRASH'], why: 'harness: instance import added by the drop path, not by addNodeInCode' },
   'text-link': { codes: ['PAGE_LINK_NOT_NEXTLINK', 'NEXTLINK_IMPORT_MISSING'], why: 'harness: the drop path adds the next/link import via syncImports' },
-  'custom-form': { codes: ['FORM_MISSING_ONSUBMIT', 'FORM_NO_DESTINATION'], why: 'harness: the form drop wires onSubmit/endpoint in a follow-up mutation' },
+  'custom-form': { codes: ['FORM_MISSING_ONSUBMIT', 'FORM_NO_DESTINATION', 'TEXT_STYLE_ON_FRAME'], why: 'harness: the form drop wires onSubmit/endpoint in a follow-up mutation; open: the form title wrapper styles text via inheritance (fontSize on a div) — move onto the text child' },
 
   // ── DIVERGENCE (open) ──
   // The shape items insert native <rect>/<polygon>; the oracle wants geometry on
@@ -80,6 +80,12 @@ const KNOWN_DIVERGENCES: Record<string, { codes: string[]; why: string }> = {
   image: { codes: ['IMAGE_USE_BACKGROUND_FRAME', 'MINMAX_SIZE_UNIT'], why: 'open: <img> + maxWidth:none' },
   video: { codes: ['MINMAX_SIZE_UNIT'], why: "open: maxWidth: 'none'" },
   audio: { codes: ['MINMAX_SIZE_UNIT'], why: "open: maxWidth: 'none'" },
+  // Card templates style text through WRAPPER inheritance (textAlign /
+  // fontSize / fontWeight / color on a div with no direct text). The dialect
+  // puts text styles ON the text node (TEXT_STYLE_ON_FRAME, 2026-08-11);
+  // the catalogue content needs the styles moved onto each text child.
+  'card-profile': { codes: ['TEXT_STYLE_ON_FRAME'], why: 'open: card template styles text via wrapper inheritance' },
+  'card-pricing': { codes: ['TEXT_STYLE_ON_FRAME'], why: 'open: card template styles text via wrapper inheritance' },
 };
 
 /** Items whose only failure is the embed/code-component import artifact. */

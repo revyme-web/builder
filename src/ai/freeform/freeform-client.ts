@@ -22,6 +22,7 @@ import { ensureLayoutFile } from '@/code/generation/metadata-gen';
 import { ensureLayoutRootOnComponentRoot } from '@/code/components/component-ops';
 import { getPresetTokens } from '@/code/project/preset-ops';
 import { checkFile, ensureNodeDimensions, type FileKind, type OracleViolation } from '@/code/oracle/check-file';
+import { isCodeComponentSource } from '@/code/oracle/checks/shared';
 import { checkSubmitPath, checkPreservation, checkComponentCompat, checkTokenRefs, type SurfaceFile } from './turn-guards';
 import { compileCodeComponent } from '@/canvas/code-component-runtime';
 import { createElement } from 'react';
@@ -126,7 +127,7 @@ export function gateTurnFiles(
     // JS edited via controls, judged by the code component rules (no per-element
     // data-id requirement inside).
     const kind: FileKind = f.kind === 'component'
-      ? (/@controls\s*\{/.test(f.code) ? 'code-component' : 'component')
+      ? (isCodeComponentSource(f.code) ? 'code-component' : 'component')
       : isLayoutFile(f.path) ? 'template' : 'page';
     // Data-ids already present in the LIVE (pre-submit) version of this file.
     // New-node-only rules (PIN_ABSOLUTE_NODE) use this to flag ONLY nodes the
@@ -135,8 +136,47 @@ export function gateTurnFiles(
     // so the set is empty and every node counts as new (all MCP-authored).
     const prevCode = projectFS.readFile(f.path);
     const existingDataIds = new Set<string>();
-    if (prevCode) for (const m of prevCode.matchAll(/data-id="([^"]+)"/g)) existingDataIds.add(m[1]);
-    const vs = [...checkFile(f.code, { kind, path: f.path, existingDataIds })];
+    // JSX attributes only — the negative lookbehind excludes `[data-id="…"]`
+    // CSS selectors in the <style> block, which used to mark ids as
+    // "pre-existing" even when the ELEMENT never existed (an id that only
+    // ever appeared in a stale band rule exempted the model's brand-new node
+    // from every new-node rule, 2026-08-11).
+    if (prevCode) for (const m of prevCode.matchAll(/(?<!\[)data-id="([^"]+)"/g)) existingDataIds.add(m[1]);
+    let vs = [...checkFile(f.code, { kind, path: f.path, existingDataIds })];
+    // ── GRANDFATHERING ────────────────────────────────────────────────────
+    // The oracle grows rules; legacy files carry violations they were built
+    // with. Judging an EDIT by the whole file would brick AI editing on any
+    // page with pre-existing quirks ("fix all history before touching
+    // anything"). So the gate blocks only what this edit ADDS: a violation
+    // that already existed in the previous on-disk version — same rule code
+    // on the same element (or, for element-less rules, up to the same count)
+    // — passes through. A brand-new file has no previous version and is
+    // judged in full.
+    if (prevCode) {
+      const prevKind: FileKind = f.kind === 'component'
+        ? (isCodeComponentSource(prevCode) ? 'code-component' : 'component')
+        : isLayoutFile(f.path) ? 'template' : 'page';
+      const oldVs = checkFile(prevCode, { kind: prevKind, path: f.path });
+      const oldKeyed = new Set(oldVs.filter((o) => o.elementId).map((o) => `${o.code}::${o.elementId}`));
+      const oldCounts = new Map<string, number>();
+      for (const o of oldVs) if (!o.elementId) oldCounts.set(o.code, (oldCounts.get(o.code) ?? 0) + 1);
+      const kept: typeof vs = [];
+      const used = new Map<string, number>();
+      let grandfathered = 0;
+      for (const cur of vs) {
+        if (cur.elementId && oldKeyed.has(`${cur.code}::${cur.elementId}`)) { grandfathered++; continue; }
+        if (!cur.elementId) {
+          const allowance = oldCounts.get(cur.code) ?? 0;
+          const usedSoFar = used.get(cur.code) ?? 0;
+          if (usedSoFar < allowance) { used.set(cur.code, usedSoFar + 1); grandfathered++; continue; }
+        }
+        kept.push(cur);
+      }
+      if (grandfathered > 0) {
+        trace.action('oracle:grandfathered-violations', { path: f.path, grandfathered, enforced: kept.length });
+      }
+      vs = kept;
+    }
     if (f.code.includes('var(')) vs.push(...checkTokenRefs(f.code, knownTokens));
 
     // CODE COMPONENT COMPILE GATE — checkFile validates dialect/syntax, but a code
@@ -226,7 +266,7 @@ export function commitTurnFiles(files: TurnFile[]): string[] {
     // leaving the source sizeless. A builder-owned side-effect at commit, exactly like
     // syncImports. Code components (black-box JS, no per-element nodes) are skipped.
     const k: FileKind = f.kind === 'component'
-      ? (/@controls\s*\{/.test(f.code) ? 'code-component' : 'component')
+      ? (isCodeComponentSource(f.code) ? 'code-component' : 'component')
       : isLayoutFile(f.path) ? 'template' : 'page';
     let code = k === 'code-component' ? f.code : ensureNodeDimensions(f.code);
     if (code !== f.code) trace.action('freeform:inject-node-dimensions', { path: f.path });
@@ -239,6 +279,24 @@ export function commitTurnFiles(files: TurnFile[]): string[] {
     if (k === 'component') {
       const fixed = ensureLayoutRootOnComponentRoot(code);
       if (fixed !== code) { code = fixed; trace.action('freeform:inject-fixed-header-layoutscroll', { path: f.path }); }
+    }
+    // VALIDATED-BYTES check: the two mutators above run AFTER the gate, so the
+    // committed source is not byte-identical to what was validated. Re-check
+    // the final form and trace any drift loudly — a violation here means OUR
+    // mutator (not the model) produced off-dialect output, which is a bug to
+    // fix in the mutator, never something to silently ship dark.
+    if (code !== f.code) {
+      try {
+        const driftVs = checkFile(code, { kind: k, path: f.path });
+        const beforeVs = checkFile(f.code, { kind: k, path: f.path });
+        const beforeKeys = new Set(beforeVs.map((x) => `${x.code}::${x.elementId ?? ''}`));
+        const introduced = driftVs.filter((x) => !beforeKeys.has(`${x.code}::${x.elementId ?? ''}`));
+        if (introduced.length > 0) {
+          trace.error('oracle:post-mutation-drift', {
+            path: f.path, codes: introduced.map((x) => x.code),
+          });
+        }
+      } catch { /* diagnostics only — never block the commit on the checker */ }
     }
     if (projectFS.readFile(f.path) != null) modifyProjectFile(f.path, () => code);
     else projectFS.writeFile(f.path, code);

@@ -95,6 +95,27 @@ function elementRetained(code: string, id: string): boolean {
 export function checkPreservation(oldCode: string, newCode: string): OracleViolation[] {
   const v: OracleViolation[] = [];
 
+  // ── COMPONENT KIND is immutable in an edit ────────────────────────────────
+  // The `/** @controls { … } */` block is what routes a components/ file to the
+  // code-component rule set (black box: free React, no data-id discipline) and
+  // makes the parser treat every instance as opaque. Adding it to an existing
+  // DESIGN component silently flips the whole rule set AND removes the
+  // component's nodes from the editable tree; removing it from a code
+  // component subjects free React to design rules it can never pass. Either
+  // direction is a different FILE, not an edit (2026-08-11).
+  {
+    const wasCode = /\/\*\*?\s*@controls\s*\{/.test(oldCode);
+    const isCode = /\/\*\*?\s*@controls\s*\{/.test(newCode);
+    if (wasCode !== isCode) {
+      v.push({
+        code: 'COMPONENT_KIND_CHANGED', tier: 2,
+        message: wasCode
+          ? `This edit REMOVES the /** @controls { … } */ block — that converts a CODE component into a design component, subjecting its free React internals to the design-dialect rules and breaking every existing instance's props panel. Keep the @controls block (edit its entries if needed). If a design version is truly wanted, create a NEW component file instead.`
+          : `This edit ADDS a /** @controls { … } */ block to a DESIGN component — that flips the file to the code-component rule set and makes the canvas treat every instance as an opaque black box: the component's elements disappear from the editable tree. Design components expose props via /** @propMeta { … } */, not @controls. If a code component is truly wanted, create a NEW component file instead.`,
+      });
+    }
+  }
+
   // @canvas — viewport config + canvas positions. ADDITIVE edits are the one
   // legitimate change (the seed teaches adding tablet/mobile breakpoints):
   // new viewport entries + their positions may APPEAR, but every EXISTING

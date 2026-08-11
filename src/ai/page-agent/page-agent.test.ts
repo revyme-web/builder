@@ -279,17 +279,21 @@ describe('mutation executors produce correct Mutation objects', () => {
     expect(queued[0]).toMatchObject({ type: 'addPresetToken', token: { name: 'brand-primary', value: '#000' } });
   });
 
-  it('edit_file → writeFile', () => {
-    executeTool('edit_file', { path: 'components/Hero.tsx', content: 'export default () => null;' });
-    expect(queued).toEqual([{ type: 'writeFile', filePath: 'components/Hero.tsx', content: 'export default () => null;' }]);
+  // Oracle fence (2026-08-11): edit_file is a dormant whole-file escape hatch
+  // — builder-dialect paths must now pass checkFile like every gated door.
+  it('edit_file REFUSES builder-dialect content that fails the oracle', () => {
+    const r = executeTool('edit_file', { path: 'components/Hero.tsx', content: 'export default () => null;' });
+    expect(r.isError).toBe(true);
+    expect(queued).toEqual([]);
   });
 
-  it('edit_file rewrites a div-of-spans into a <p> before writing', () => {
-    executeTool('edit_file', {
+  it('edit_file REFUSES a div-of-spans page that fails the oracle', () => {
+    const r = executeTool('edit_file', {
       path: 'app/page.tsx',
       content: 'export default () => (<div><span>A</span><span>B</span></div>);',
     });
-    expect(queued[0].content).toBe('export default () => (<p><span>A</span><span>B</span></p>);');
+    expect(r.isError).toBe(true);
+    expect(queued).toEqual([]);
   });
 
   it('edit_file leaves non-JSX files untouched', () => {

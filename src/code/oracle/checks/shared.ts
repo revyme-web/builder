@@ -172,3 +172,15 @@ function rendersJSX(expr: t.Expression): boolean {
 }
 
 export { traverse, TRANSPARENT_TAGS, findSetVariantArg, endsWithVariantFallthrough, isRootCandidate, unwrapSpring, containsIdentifierFrom, jsxTagName, jsxAttrs, stringAttr, hasAttr, needsDataId, isAllowedTextExpression };
+
+/** STRICT code-component detection — the same JSDoc form the controls parser,
+ *  library, canvas and publish flow key on (`/** @controls { … } *​/`, see
+ *  CONTROLS_REGEX in code/components/controls-parser.ts). The old loose
+ *  substring test (`@controls {` ANYWHERE) let a comment or a string literal
+ *  flip a page/design component into the lax code-component rule set —
+ *  silently dropping the style-object rules, the free-JS fence and the
+ *  surface rules — while the parser, the library and publish still treated
+ *  the file as a design component (kind split-brain, 2026-08-11). */
+export function isCodeComponentSource(code: string): boolean {
+  return /\/\*\*?\s*@controls\s*\{/.test(code);
+}

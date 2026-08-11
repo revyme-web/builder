@@ -35,6 +35,9 @@ import { triggerAutosave, flushSaveNow } from '@/backend/autosave';
 import { backend } from '@/backend';
 import { getProjectId } from '@/backend/project-id';
 import { getPresetTokens } from '@/code/project/preset-ops';
+import { modifyProjectFile } from '@/code/project/modify-file';
+import { checkFile } from '@/code/oracle/check-file';
+import { isCodeComponentSource } from '@/code/oracle/checks/shared';
 import { getI18nConfig, addLocale } from '@/code/project/locale-ops';
 import { listTranslatableTexts, readTranslationText, commitTranslationText, ensureIntlScaffold } from '@/code/project/translation-ops';
 import { scanPresetUsage } from '@/code/stores/preset-store';
@@ -693,6 +696,15 @@ export const bridgeHandlers: Record<string, BridgeHandler> = {
     if (!isComponentUrl(url)) {
       throw new Error('Not a component/vector share URL — expected https://assets.revyme.app/components|vectors/<name>@<hash>.js (find free ones via the marketplace browse tool).');
     }
+    // ADMIN-ONLY (2026-08-11): this one-shot insert is an internal/admin tool,
+    // not a user-facing capability. `isAdmin` mirrors the server's
+    // ADMIN_EMAILS allowlist via the session (same gate the code editor's
+    // write mode uses). Non-admin sessions get the supported path instead.
+    const me = await Promise.resolve(backend.getUser?.()).catch(() => null);
+    if (!me?.isAdmin) {
+      trace.action('mcp-bridge:insert-marketplace-denied', { url });
+      throw new Error('insertMarketplaceComponent is an admin-only tool. To use a FREE marketplace component, import it directly in the page via revyme_submit_files / revyme_edit_file: `import Name from "<componentUrl>"` plus an instance tag with explicit px width+height (see revyme_browse_marketplace).');
+    }
     if (isViewerMode()) {
       throw new Error('This editor session is view-only — inserting is disabled.');
     }
@@ -703,8 +715,39 @@ export const bridgeHandlers: Record<string, BridgeHandler> = {
     if (store.get(isTextEditingAtom)) {
       throw new Error('A text-editing session is active in the editor. Retry when it ends.');
     }
+    // ORACLE DIFF-GUARD (2026-08-11): this tool rewrites the ACTIVE page
+    // outside the submit gate. The injected import + instance tag are
+    // builder-generated (the AI only picks WHICH component), so the shapes
+    // are canonical by construction — this guard exists for the day the
+    // paste engine or a marketplace component's metadata produces something
+    // the parser can't resolve. Judged as a DIFF (violations the insert
+    // INTRODUCES), so a legit insert onto a page with pre-existing quirks can
+    // never bounce; on a bad insert the page is ROLLED BACK byte-for-byte.
+    const targetFile = store.get(activeFilePathAtom);
+    const pageBefore = targetFile ? projectFS.readFile(targetFile) : null;
     const ok = await importComponentFromUrl(url);
     if (!ok) throw new Error('Insert failed — the URL did not import (see the editor console).');
+    if (targetFile && pageBefore != null) {
+      const pageAfter = projectFS.readFile(targetFile);
+      if (pageAfter != null && pageAfter !== pageBefore) {
+        let introducedCodes: string[] | null = null;
+        try {
+          const kind = /LayoutClient\.tsx$/.test(targetFile) ? 'template' as const
+            : targetFile.startsWith('components/')
+              ? (isCodeComponentSource(pageAfter) ? 'code-component' as const : 'component' as const)
+              : 'page' as const;
+          const before = new Set(checkFile(pageBefore, { kind, path: targetFile }).map((x) => `${x.code}::${x.elementId ?? ''}`));
+          introducedCodes = checkFile(pageAfter, { kind, path: targetFile })
+            .filter((x) => !before.has(`${x.code}::${x.elementId ?? ''}`))
+            .map((x) => x.code);
+        } catch { /* checker diagnostics must never take the insert down */ }
+        if (introducedCodes && introducedCodes.length > 0) {
+          modifyProjectFile(targetFile, () => pageBefore);
+          trace.error('mcp-bridge:insert-marketplace-rolled-back', { url, codes: introducedCodes.slice(0, 6) });
+          throw new Error(`Insert rolled back — it introduced ${introducedCodes.length} builder check failure(s) (${[...new Set(introducedCodes)].slice(0, 4).join(', ')}). The page was restored; this marketplace item does not resolve in the builder.`);
+        }
+      }
+    }
     triggerAutosave();
     const activeFile = store.get(activeFilePathAtom);
     trace.action('mcp-bridge:insert-marketplace', { url, activeFile });
@@ -809,6 +852,26 @@ export const bridgeHandlers: Record<string, BridgeHandler> = {
         violations: formatBounce(violations),
         instruction: `${violations.length} check(s) failed. Fix ALL of them and resubmit the complete corrected file(s).`,
       };
+    }
+
+    // STALE RE-CHECK on the FINAL paths (2026-08-11). gateTurnFiles silently
+    // remaps a nonexistent page path onto the ACTIVE page — the stale guard
+    // above ran on the SUBMITTED paths, so a hallucinated path was judged
+    // "brand-new file → exempt" and then overwrote the active page the client
+    // never read, clobbering live user edits without a STALE_FILE bounce.
+    {
+      const remapped = gatedFiles.filter((g, i) => g.path !== files[i]?.path);
+      if (remapped.length > 0) {
+        const stale2 = checkStaleWrites(remapped, (p) => projectFS.readFile(p));
+        if (stale2.length > 0) {
+          trace.action('mcp-bridge:submit-stale-after-remap', { count: stale2.length });
+          return {
+            committed: false,
+            violations: formatBounce(stale2),
+            instruction: `Your submitted path did not exist and resolves to the ACTIVE page, which you have not read (or which changed since). Call revyme_read_file on the active page, reapply your change to the fresh text, and resubmit with the exact path.`,
+          };
+        }
+      }
     }
 
     const written = commitTurnFiles(gatedFiles);

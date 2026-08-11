@@ -13,6 +13,8 @@ import { trace } from '@/shared/debug-trace';
 import { projectFS } from '@/code/project/project-fs';
 import { modifyProjectFile } from '@/code/project/modify-file';
 import { setForceRender, flushNow } from '@/code/mutation/mutation-queue';
+import { checkFile } from '@/code/oracle/check-file';
+import { isCodeComponentSource } from '@/code/oracle/checks/shared';
 import { buildComponentRegistry } from '@/code/components/component-registry';
 import { parseComponentSpec } from '@/code/components/component-spec/parse';
 import { validateBundle } from '@/code/components/component-spec/validate';
@@ -98,13 +100,28 @@ export async function runDesignSpecEdit(req: DesignSpecEditRequest): Promise<Des
       continue;
     }
 
-    // commit — atomic-ish: write every file, then one render
+    // commit — atomic-ish: write every file, then one render.
+    // ORACLE FENCE (2026-08-11): this client is dormant (no UI caller) but the
+    // commit is one rewiring away from being an ungated writer. Every file
+    // must pass the same checkFile the submit gate runs before it lands.
     const written: string[] = [];
+    const oracleBlocked: string[] = [];
     for (const f of files) {
       const path = resolveWritePath(f.specName, f.internalName, registry);
+      const kind = isCodeComponentSource(f.code) ? 'code-component' as const : 'component' as const;
+      const vs = checkFile(f.code, { kind, path });
+      if (vs.length > 0) {
+        oracleBlocked.push(`${path}: ${vs.slice(0, 2).map((x) => x.code).join(', ')}`);
+        continue;
+      }
       if (projectFS.readFile(path) != null) modifyProjectFile(path, () => f.code);
       else projectFS.writeFile(path, f.code);
       written.push(path);
+    }
+    if (oracleBlocked.length > 0) {
+      trace.error('design-spec:oracle-blocked', { blocked: oracleBlocked });
+      violations = oracleBlocked.map((b) => ({ code: 'ORACLE_BLOCKED', message: b } as (typeof violations)[number]));
+      continue;
     }
     setForceRender();
     flushNow();

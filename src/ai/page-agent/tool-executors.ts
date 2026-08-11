@@ -16,6 +16,8 @@ import { activeFilePathAtom, isComponentFilePath } from '@/code/project/active-f
 import { queueMutation, flushNow, type Mutation } from '@/code/mutation/mutation-queue';
 import { projectFS } from '@/code/project/project-fs';
 import { getPresetTokens } from '@/code/project/preset-ops';
+import { checkFile } from '@/code/oracle/check-file';
+import { isCodeComponentSource } from '@/code/oracle/checks/shared';
 import { generateNodeId } from '@/shared/id-utils';
 import type { CanvasNode } from '@/code/parsing/parser';
 import { addVariant, removeVariant } from '@/code/variants/variant-ops';
@@ -676,6 +678,26 @@ const EXECUTORS: Record<string, Executor> = {
     // Guard: AI sometimes builds multi-styled text as <div><span>…</span></div>.
     // Only JSX files can carry it — .css / .ts skip the parse.
     const content = /\.(tsx|jsx)$/.test(args.path) ? normalizeTextContainers(raw) : raw;
+    // ORACLE FENCE (2026-08-11): this executor is a dormant whole-file escape
+    // hatch with no UI caller — but it stays exported and one rewiring away
+    // from being an ungated writer again. Builder-dialect files (pages,
+    // templates, components) must pass the same checkFile the submit gate
+    // runs; everything else (css, config, plugin scratch) stays free.
+    const isPage = /(^|\/)page(\.client)?\.tsx$/.test(args.path);
+    const isTemplate = /LayoutClient\.tsx$/.test(args.path);
+    const isComponent = /^components\/[A-Za-z0-9_]+\.tsx$/.test(args.path);
+    if (isPage || isTemplate || isComponent) {
+      const kind = isTemplate ? 'template' as const
+        : isComponent ? (isCodeComponentSource(content) ? 'code-component' as const : 'component' as const)
+        : 'page' as const;
+      const vs = checkFile(content, { kind, path: args.path });
+      if (vs.length > 0) {
+        throw new Error(
+          `edit_file: ${args.path} fails ${vs.length} builder check(s) — the content would not resolve in the editor. ` +
+          vs.slice(0, 3).map((x) => `[${x.code}] ${x.message.slice(0, 160)}`).join(' | '),
+        );
+      }
+    }
     applyMutation({ type: 'writeFile', filePath: args.path, content });
     return { success: true, path: args.path, bytes: content.length };
   },

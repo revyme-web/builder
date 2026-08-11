@@ -22,7 +22,7 @@ import { parseJSXToNodes } from '@/code/parsing/parser';
 import { parseComponentCursorCalls } from '@/code/parsing/cursor-parser';
 import { parseCodeComponentDefaultSize } from '@/code/components/controls-parser';
 import { validateGeneratedCode } from '@/code/mutation/mutation-queue';
-import { traverse, TRANSPARENT_TAGS, jsxTagName, jsxAttrs, stringAttr, hasAttr, needsDataId, isAllowedTextExpression } from './checks/shared';
+import { traverse, TRANSPARENT_TAGS, jsxTagName, jsxAttrs, stringAttr, hasAttr, needsDataId, isAllowedTextExpression, isCodeComponentSource } from './checks/shared';
 import type { FileKind, OracleViolation } from './checks/shared';
 import { checkStyleObject, styleValueIncludes } from './checks/style-object';
 import { checkVariantDialect, checkVariantTernaryPrimary } from './checks/variant-dialect';
@@ -39,7 +39,9 @@ import { checkMediaBandDialect, checkDuplicateBreakpointStack } from './checks/m
 import { checkComponentLinks, checkPageLinks } from './checks/link-rules';
 import { checkCmsRowNavMarker, checkCmsCollectionDialect, checkCmsNavDialect } from './checks/cms-dialect';
 import { checkCmsLocaleFilter, checkCmsI18nDirectAccess, checkCmsMapResolves, checkCmsStyleBindingsResolve } from './checks/cms-locale-dialect';
-import { checkConditionalRenderDialect, checkHandWrittenMediaQuery, checkUnreadableHandlers } from './checks/conditional-render-dialect';
+import { checkResolutionFidelity } from './checks/fidelity';
+import { checkStyleSurface, checkTextStyleOnFrame, checkElementSurface, checkLoopCarrier, checkPageExports, checkExpressionDataAttrs } from './checks/surface-dialect';
+import { checkConditionalRenderDialect, checkHandWrittenMediaQuery, checkUnreadableHandlers, checkPageHooks, checkHandlerBodies } from './checks/conditional-render-dialect';
 
 // Re-exports — the oracle's public surface stays on check-file.ts (external
 // importers and the test suites are unchanged by the split).
@@ -127,21 +129,25 @@ function isEditorMediaStyleBlock(el: t.JSXElement): boolean {
     if (css.startsWith('@media', i)) {
       const j = skipBlock(open);
       if (j === -1) return false;
-      // Every selector inside the @media block must be a [data-id="…"] selector.
+      // Every selector inside the @media block must be a [data-id="…"] selector
+      // (optionally :lang()-prefixed — banded locale overrides are generator
+      // output too).
       const inner = css.slice(open + 1, j - 1);
       const selectors = inner
         .split('{')
         .slice(0, -1)
         .map((s) => s.split('}').pop()!.trim())
         .filter(Boolean);
-      if (selectors.length === 0 || selectors.some((sel) => !/^\[data-id=/.test(sel))) return false;
+      if (selectors.length === 0 || selectors.some((sel) => !/^(:lang\([^)]+\)\s*)?\[data-id=/.test(sel))) return false;
       sawEditorRule = true;
       i = j;
     } else {
       // Top-level rule: allowed ONLY as a data-id + pseudo selector (the
-      // border-overlay / pseudo-element / hover codegen shapes).
+      // border-overlay / pseudo-element / hover codegen shapes) or a
+      // `:lang(xx) [data-id="…"]` locale override (i18n-gen).
       const sel = css.slice(i, open).trim();
-      if (!/^\[data-id="[^"]+"\](?:::?[a-z-]+(?:\([^)]*\))?)+$/.test(sel)) return false;
+      if (!/^\[data-id="[^"]+"\](?:::?[a-z-]+(?:\([^)]*\))?)+$/.test(sel)
+        && !/^:lang\([^)]+\)\s*\[data-id="[^"]+"\]$/.test(sel)) return false;
       const j = skipBlock(open);
       if (j === -1) return false;
       sawEditorRule = true;
@@ -193,7 +199,7 @@ export function checkFile(
   // documentation comments. Exempt it entirely; everywhere else, parser-annotation
   // comments (ANNOTATION_RE — @propMeta/@pageVariables/@canvas/etc.) stay allowed and
   // only prose is rejected.
-  const isCodeComponent = kind === 'code-component' || /@controls\s*\{/.test(code);
+  const isCodeComponent = kind === 'code-component' || isCodeComponentSource(code);
   if (!isCodeComponent) {
     // EDITOR-INJECTED RUNTIME HELPERS are builder output, not model prose — they
     // ship with their own documentation comments and the generators never
@@ -366,7 +372,7 @@ export function checkFile(
 
   // Code-component-only annotations + static-canvas fallback
   if (kind === 'code-component') {
-    if (!/@controls\s*\{/.test(code)) {
+    if (!isCodeComponentSource(code)) {
       v.push({
         code: 'CODE_COMPONENT_ANNOTATIONS_REQUIRED', tier: 2,
         message: `Missing /** @controls {…} */ annotation. Code components declare their editable props as a @controls JSON block (types: slider, color, text, number, toggle, select) plus /** @label "…" */.`,
@@ -465,6 +471,19 @@ export function checkFile(
         return;
       }
       if (tag === 'style') {
+        // PAGES get the same discipline (2026-08-11): the parser reads ONLY
+        // banded `[data-id]` rules + `:lang()` locale rules + the pseudo/hover
+        // codegen shapes from a page's block. Anything else — `@keyframes`,
+        // class/element selectors, top-level un-banded `[data-id]` rules —
+        // renders (the CSS is injected wholesale) but is invisible to every
+        // control, and later responsive writes collide with it. Verified
+        // passing with zero violations before this branch existed.
+        if (!isEditorMediaStyleBlock(path.node)) {
+          v.push({
+            code: 'RAW_STYLE_TAG', tier: 2, line,
+            message: `The page's <style> block contains CSS the editor cannot read back. A page block may contain ONLY: \`@media (max-width: …px) …\` rules whose selectors are all \`[data-id="…"]\` (the responsive overrides), top-level \`:lang(xx) [data-id="…"]\` locale rules, and the editor's own \`[data-id="…"]::before/::after/:hover\` rules. No @keyframes, no classes, no element selectors, no un-banded data-id rules — that CSS renders but no panel can see, edit or remove it. Express the styling as inline style objects + banded overrides instead.`,
+          });
+        }
         // page style block: the pin-unit law applies to responsive overrides too
         for (const child of path.node.children) {
           if (!t.isJSXExpressionContainer(child) || !t.isTemplateLiteral(child.expression)) continue;
@@ -1154,6 +1173,28 @@ export function checkFile(
   checkHandWrittenMediaQuery(code, ast, v, opts.kind);
   // …and handlers no panel can read back.
   checkUnreadableHandlers(code, ast, v, opts.kind);
+  // …and hooks no generator emitted (the free-JS fence: timers, listeners,
+  // observers, storage, fetch — behaviour every panel is blind to).
+  checkPageHooks(code, ast, v, opts.kind);
+  // …and readable handler NAMES whose BODIES no panel can read.
+  checkHandlerBodies(code, ast, v, opts.kind);
+
+  // ── The EDITABLE SURFACE fence (2026-08-11): everything below renders fine
+  //    and is permanently uneditable — verified passing with zero violations
+  //    before these rules existed. ────────────────────────────────────────────
+  // Style keys no panel reads (touchAction/scroll-snap cluster, --vars, …).
+  checkStyleSurface(code, ast, v, opts.kind);
+  // Typography on frames — text styles live ON the text node, never a parent.
+  checkTextStyleOnFrame(code, ast, v, opts.kind);
+  // Tags no tool manages (ul/table/details/iframe/checkbox…).
+  checkElementSurface(code, ast, v, opts.kind);
+  // A repeating animation without its data-loop carrier.
+  checkLoopCarrier(code, ast, v, opts.kind);
+  // A page exports exactly its default component (the refused-API workaround).
+  checkPageExports(code, ast, v, opts.kind);
+  // Builder data-* attributes must be string literals (every reader is
+  // regex/stringAttr-based; expressions are invisible to all of them).
+  checkExpressionDataAttrs(code, ast, v, opts.kind);
 
   // ── tier 3 — RESOLVE ───────────────────────────────────────────────────────
   if (v.every((x) => x.tier !== 1)) {
@@ -1168,6 +1209,10 @@ export function checkFile(
       // A CMS field inside a style value must come back as a styleBinding, or
       // the CMS panel shows no binding and the value becomes uneditable.
       checkCmsStyleBindingsResolve(code, ast, nodes, v, kind);
+      // FULL-FIDELITY RESOLVE — did the parser confess anything it couldn't
+      // read? (auto ids, style sentinels, dropped keys, empty text). This is
+      // the catch-all for shapes no named rule predicted.
+      checkResolutionFidelity(code, ast, nodes, v, kind);
 
       if (nodes.size === 0) {
         v.push({
