@@ -567,6 +567,43 @@ export async function shareAsTemplate(args: {
  * Sending the workspace it is already in is a no-op server-side, so the picker
  * can always send its selection.
  */
+/**
+ * Create a fresh empty website row (`POST /websites`) and return its id.
+ * The backend stamps `user_id` ownership, so the builder opens the new site
+ * with full edit rights.
+ *
+ * `workspaceId` is the requested target — pass the CURRENT website's
+ * workspace so the new project lands next to the one being edited. The
+ * backend validates it (owner/admin/editor member may create there; anyone
+ * else falls back to their PERSONAL workspace). `null` = personal
+ * explicitly; omit the argument entirely for the dashboard's
+ * cookie-resolved default.
+ *
+ * File → New project MUST go through this: opening `/builder/<random-uuid>`
+ * without a backend row leaves the ACL with no membership to resolve, and
+ * the builder boots in view-only mode ("you don't have edit access",
+ * 2026-08-11) with every save rejected.
+ */
+export async function createWebsite(name?: string, workspaceId?: string | null): Promise<string> {
+  const res = await fetch(url('/api/websites'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: name ?? 'Untitled',
+      ...(workspaceId !== undefined ? { workspace_id: workspaceId } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    trace.error('website:create-failed', { status: res.status, body: text });
+    throw new Error('Could not create a new project.');
+  }
+  const created = (await res.json()) as { id: string };
+  trace.action('website:created', { websiteId: created.id });
+  return created.id;
+}
+
 export async function setWebsiteWorkspace(
   websiteId: string,
   workspaceId: string,

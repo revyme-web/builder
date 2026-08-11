@@ -30,7 +30,9 @@ import { selectedIdsAtom, selectedNodeAtom, nodesAtom } from '@/code/stores/stor
 import { toolModeAtom } from '@/code/stores/tool-store';
 import { activeFilePathAtom, createPageFile } from '@/code/project/active-file-store';
 import { projectVersionAtom, projectFS } from '@/code/project/project-fs';
-import { shareAsTemplate } from '@/backend/revyme-backend';
+import { shareAsTemplate, createWebsite } from '@/backend/revyme-backend';
+import { backend } from '@/backend/index';
+import { getProjectId } from '@/backend/project-id';
 import { toast } from 'sonner';
 import type { AutoPanSpeed } from '@/code/stores/user-preferences-store';
 import { previewModeAtom, shortcutsModalOpenAtom, exportDropdownOpenAtom } from '@/code/stores/editor-store';
@@ -73,36 +75,64 @@ export function createAndOpenProject(): void {
   // the "open new tab" gesture identical to the prior in-place swap
   // for users who muscle-memory expect everything to be persisted.
   flushNow();
-  // crypto.randomUUID is available in modern browsers + jsdom test
-  // env. Falls back to a timestamped id if the runtime doesn't expose
-  // it (e.g. very old Safari).
-  const id =
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `proj-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  trace.action('menu:file-new-project:navigate', { id });
-  // Open in a NEW tab so the current project stays editable. We
-  // intentionally do NOT pass `noopener` here: with `noopener`,
-  // `window.open` ALWAYS returns `null` (security feature — the parent
-  // can't reach back into the child). Earlier this tripped a "fallback
-  // to in-place nav" branch that fired on every successful open,
-  // navigating the current tab to the new project AND opening a
-  // second tab. Without `noopener` we get a real Window-or-null
-  // return, so the popup-blocker fallback only fires when the popup
-  // actually got blocked.
+
+  // Open the tab SYNCHRONOUSLY, inside the user gesture — an async
+  // `window.open` after the create round-trip is popup-blocked by every
+  // browser. The blank tab is pointed at the builder once the id exists.
   //
-  // The new tab boots a fresh `ProjectLoader` against `getProjectId()`
-  // (URL-derived). Since `id` is brand new and not in localStorage /
-  // backend, `ProjectLoader` seeds `createEmptyProject()` and the user
-  // sees a blank single-viewport page. Current tab is untouched.
-  const opened = window.open(`/builder/${id}`, '_blank');
-  if (!opened) {
+  // We intentionally do NOT pass `noopener` here: with `noopener`,
+  // `window.open` ALWAYS returns `null` (security feature — the parent
+  // can't reach back into the child), and we need the Window handle to
+  // navigate it after the backend round-trip. Without `noopener` we get
+  // a real Window-or-null return, so the popup-blocker fallback only
+  // fires when the popup actually got blocked.
+  const tab = window.open('', '_blank');
+  if (!tab) {
     // Truly blocked (no Window object). Browser will normally show its
     // popup-blocker indicator; surface a console hint too so dev users
     // can debug headless setups where the indicator isn't visible.
     trace.action('menu:file-new-project:popup-blocked');
     console.warn('[Revyme] New project popup was blocked. Allow popups for this site to open new projects in a new tab.');
+    return;
   }
+
+  if (!CLOUD_ENABLED) {
+    // Local mode: no backend rows, no ACL — a fresh client-side id IS the
+    // create. The new tab boots `ProjectLoader`, finds nothing under the id,
+    // and seeds `createEmptyProject()`; the first autosave lands it in
+    // localStorage.
+    const id =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `proj-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    trace.action('menu:file-new-project:navigate', { id, mode: 'local' });
+    tab.location.href = `/builder/${id}`;
+    return;
+  }
+
+  // Cloud mode: the website row MUST exist before the builder opens —
+  // `ProjectLoader` resolves the caller's role from the backend, and an
+  // unknown id has no membership → the builder boots in VIEW-ONLY mode
+  // with every save rejected ("you don't have edit access", 2026-08-11).
+  //
+  // Target workspace = the CURRENT website's workspace, so a new project
+  // started while working in a team stays in that team — IF the caller may
+  // create websites there (owner/admin/editor member; the backend enforces
+  // it and falls back to the personal workspace otherwise). A site with no
+  // workspace resolves to `null` → personal explicitly, NOT the dashboard's
+  // cookie-remembered workspace, which may be unrelated to what's on screen.
+  void (async () => {
+    try {
+      const currentWorkspaceId = await backend.getWebsiteWorkspaceId(getProjectId());
+      const id = await createWebsite(undefined, currentWorkspaceId ?? null);
+      trace.action('menu:file-new-project:navigate', { id, mode: 'cloud', requestedWorkspaceId: currentWorkspaceId });
+      tab.location.href = `/builder/${id}`;
+    } catch (err) {
+      trace.error('menu:file-new-project:create-failed', { error: String(err) });
+      tab.close();
+      console.warn('[Revyme] Could not create a new project:', err);
+    }
+  })();
 }
 
 // ─── Selection / clipboard / nav helpers ───────────────────────────────────
