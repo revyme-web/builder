@@ -489,6 +489,76 @@ function PreviewProviders({ children }: { children: React.ReactNode }) {
   }
 }
 
+/**
+ * Wrapper chrome for component-isolation mode. Two jobs, both about making the
+ * MASTER ROOT behave inside a plain document:
+ *
+ * 1. Neutralize the canvas-space coords baked into the root's inline style
+ *    (`position: 'absolute'`, sometimes left/top). The CSS rule can't be a
+ *    child selector — the project's generated `Providers` renders a real DOM
+ *    node around the component (`<div lang style="display:contents">`), and
+ *    `withResponsiveProps` adds a socket wrapper when a ref/motion style is
+ *    passed — so the root's depth is arbitrary. A `useLayoutEffect` tags the
+ *    first `[data-id]` descendant (wrappers carry none) with
+ *    `data-preview-master-root` before first paint; the `>` rule stays as
+ *    same-frame cover for the bare case. Without this the root stayed
+ *    `absolute`, contributed no height, and Chromium painted it CENTERED on
+ *    the 100vh box — a tall variant overflowed both ways and everything above
+ *    the scroll origin was unreachable ("top cut off", 2026-08-11).
+ *
+ * 2. Center with AUTO MARGINS on the root, not align/justify on the flex
+ *    wrapper. `minHeight` lets the wrapper grow vertically, but its WIDTH is
+ *    fixed — a component wider than the window would overflow a centered
+ *    main axis on both sides with the left edge unreachable. Auto margins
+ *    center identically and collapse to 0 under overflow, so the whole
+ *    component scrolls on both axes.
+ */
+function ComponentPreviewShell({ bg, children }: { bg: string; children: React.ReactNode }) {
+  const hostRef = React.useRef<HTMLDivElement | null>(null);
+  React.useLayoutEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const tag = () => {
+      const root = host.querySelector('[data-id]');
+      if (root && !root.hasAttribute('data-preview-master-root')) {
+        root.setAttribute('data-preview-master-root', '');
+      }
+    };
+    tag();
+    // Providers/framer can remount the subtree (locale change, variant swap) —
+    // re-tag whenever children churn so the rule never silently dies.
+    const mo = new MutationObserver(tag);
+    mo.observe(host, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, []);
+  return (
+    <div
+      ref={hostRef}
+      data-preview-component-root
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        padding: 40,
+        background: bg,
+      }}
+    >
+      <style>{`
+        [data-preview-component-root] > [data-id],
+        [data-preview-component-root] [data-id][data-preview-master-root] {
+          position: relative !important;
+          left: auto !important;
+          top: auto !important;
+          right: auto !important;
+          bottom: auto !important;
+          margin: auto !important;
+          flex-shrink: 0;
+        }
+      `}</style>
+      {children}
+    </div>
+  );
+}
+
 function PreviewApp() {
   const [url, setUrl] = React.useState(() => location.pathname + location.search);
   React.useEffect(() => {
@@ -545,33 +615,15 @@ function PreviewApp() {
       // instead of being centered. Passing `style` overrides via the
       // component prop doesn't work because framer-motion's `motion.div`
       // + `layout={true}` re-emits the original inline coords to the DOM.
-      // Use a scoped CSS rule with `!important` to override the inline
-      // positioning on the immediate `[data-id]` child of the wrapper.
+      // ComponentPreviewShell neutralizes the inline positioning with scoped
+      // `!important` CSS that reaches the master root through any wrapper
+      // DOM (providers, runtime socket) — see its comment.
       return (
-        <div
-          data-preview-component-root
-          style={{
-            minHeight: '100vh',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 40,
-            background: bgCanvas,
-          }}
-        >
-          <style>{`
-            [data-preview-component-root] > [data-id] {
-              position: relative !important;
-              left: auto !important;
-              top: auto !important;
-              right: auto !important;
-              bottom: auto !important;
-            }
-          `}</style>
+        <ComponentPreviewShell bg={bgCanvas}>
           <PreviewProviders>
             <Component {...variantProp} />
           </PreviewProviders>
-        </div>
+        </ComponentPreviewShell>
       );
     } catch (err) {
       return (

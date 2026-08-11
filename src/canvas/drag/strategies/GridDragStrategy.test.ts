@@ -27,9 +27,9 @@ vi.mock('@/canvas/node-ops', () => ({
   vpIdFromPrefix: (p: string) => !p ? 'desktop' : p.endsWith('-') ? p.slice(0, -1) : p,
   // commitOrderAssignments (the onEnd order re-stamp) reads these:
   isPrimaryViewport: (vpId: string) => vpId === 'desktop' || vpId === 'default',
-  getActiveFilePath: () => 'app/page.client.tsx',
+  getActiveFilePath: () => (globalThis as any).__gridTestActiveFile ?? 'app/page.client.tsx',
 }));
-vi.mock('@/code/stores/viewport-store', () => ({ getViewportWidths: () => ({ desktop: 1440 }) }));
+vi.mock('@/code/stores/viewport-store', () => ({ getViewportWidths: () => ({ desktop: 1440, tablet: 768 }) }));
 vi.mock('@/code/stores/store', () => ({ getNodeFromCache: vi.fn(() => undefined) }));
 // Delegates through a global holder so the order-mode harness can install a
 // full fake bridge (vi.mock factories are hoisted — they can't be reassigned).
@@ -227,5 +227,65 @@ describe('GridDragStrategy — order-style grids', () => {
     strategy.onMove(h.context, { x: 180, y: 180 });
     expect(h.swapTwoElementsCalls.length).toBe(1);      // DOM swap used
     expect(h.placeholderPatches.length).toBe(0);        // no order juggling
+  });
+
+  test('primary commit stays STRUCTURAL (JSX reorders emitted)', async () => {
+    const h = await onePassMocks({ withOrders: false });
+    const strategy = new GridDragStrategy();
+    strategy.onStart(h.context);
+    strategy.onMove(h.context, { x: 180, y: 180 });
+    const updates = strategy.onEnd(h.context);
+    expect(updates.some(u => u.type === 'reorder')).toBe(true);
+    expect(updates.some(u => u.type === 'setConditionalOrder')).toBe(false);
+  });
+});
+
+// ─── Tile-scoped commits — the 2026-08-11 "reorders ALL variants" bug ───────
+//
+// JSX is shared by every variant/replica. The grid commit always JSX-reordered,
+// so a reorder performed ON a master's variant tile moved the cards on every
+// variant (the flex path was already correct: LayoutLiftedStrategy never
+// JSX-reorders — it routes CSS `order` through commitOrderAssignments). On a
+// non-primary tile the grid must do the same: order TERNARY on a master
+// variant, @container band on a page replica, and NO structural mutation.
+describe('GridDragStrategy — non-primary tiles commit CSS order, not JSX', () => {
+  test('master variant tile: order ternary scoped to the variant, primary pinned in default branch', async () => {
+    const h = await onePassMocks({
+      withOrders: false,                       // the reported case: cards carry NO order
+      viewportPrefix: 'variant-2-',
+      activeFile: 'components/TaMaNe.tsx',
+    });
+    const strategy = new GridDragStrategy();
+    strategy.onStart(h.context);
+    strategy.onMove(h.context, { x: 180, y: 180 });   // swap dragged (slot 2) ↔ c-5
+    const updates = strategy.onEnd(h.context);
+
+    // NO structural JSX change — other variants keep their sequence.
+    expect(updates.some(u => u.type === 'reorder')).toBe(false);
+    expect(updates.some(u => u.type === 'move')).toBe(false);
+
+    // Every child gets a variant ternary; the moved pair carries the swap on
+    // the variant branch while the default branch pins the PRIMARY sequence.
+    const cond = updates.filter(u => u.type === 'setConditionalOrder') as Array<{ nodeId: string; orderMap: Record<string, number> }>;
+    const byId = Object.fromEntries(cond.map(u => [u.nodeId, u.orderMap]));
+    expect(byId['dragged']).toEqual({ default: 2, 'variant-2': 5 });
+    expect(byId['c-5']).toEqual({ default: 5, 'variant-2': 2 });
+    expect(byId['c-0']).toEqual({ default: 0, 'variant-2': 0 });
+  });
+
+  test('page replica tile: @container order for that band only, no JSX change', async () => {
+    const h = await onePassMocks({ withOrders: false, viewportPrefix: 'tablet-' });
+    const strategy = new GridDragStrategy();
+    strategy.onStart(h.context);
+    strategy.onMove(h.context, { x: 180, y: 180 });
+    const updates = strategy.onEnd(h.context);
+
+    expect(updates.some(u => u.type === 'reorder')).toBe(false);
+    const band = updates.filter(u => u.type === 'updateContainerStyle') as Array<{ nodeId: string; maxWidth: number; styles: Record<string, string> }>;
+    expect(band.length).toBeGreaterThan(0);
+    expect(band.every(u => u.maxWidth === 768)).toBe(true);
+    const byId = Object.fromEntries(band.map(u => [u.nodeId, u.styles.order]));
+    expect(byId['dragged']).toBe('5');
+    expect(byId['c-5']).toBe('2');
   });
 });

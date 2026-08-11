@@ -14,8 +14,19 @@ export interface GridHarness {
   patchedStyles: Array<{ nodeId: string; styles: Record<string, string> }>;
 }
 
-export async function onePassMocks(opts: { withOrders?: boolean; childSize?: { width: string; height: string } } = {}): Promise<GridHarness> {
+export async function onePassMocks(opts: {
+  withOrders?: boolean;
+  childSize?: { width: string; height: string };
+  /** Tile the drag runs on — '' (primary desktop) by default; e.g.
+   *  'variant-2-' for a component-master variant, 'tablet-' for a page
+   *  replica. */
+  viewportPrefix?: string;
+  /** Active file for commitOrderAssignments' master/page routing — the test
+   *  file's node-ops mock reads this via a global holder. */
+  activeFile?: string;
+} = {}): Promise<GridHarness> {
   const withOrders = opts.withOrders !== false;
+  (globalThis as any).__gridTestActiveFile = opts.activeFile;
   const nodeOps = await import('@/canvas/node-ops');
   const bridgeMod = await import('@/canvas/canvas-bridge');
   const resolver = await import('./grid-cell-resolver');
@@ -92,7 +103,7 @@ export async function onePassMocks(opts: { withOrders?: boolean; childSize?: { w
     contentEl: document.createElement('div'),
     code: '', nodes, selectedIds: ['dragged'],
     modifiers: { alt: false, shift: false, ctrl: false },
-    viewportPrefix: '',
+    viewportPrefix: opts.viewportPrefix ?? '',
   };
 
   return { context, createdPlaceholders, placeholderPatches, swapTwoElementsCalls, patchedStyles };

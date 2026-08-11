@@ -2,7 +2,7 @@
 // Compiles the component (and any nested @/components imports) in-process via
 // compileCodeComponent. No iframe, no preview server — just React.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { projectFS } from '@/code/project/project-fs';
 import { compileCodeComponent } from '@/canvas/code-component-runtime';
 import { trace } from '@/shared/debug-trace';
@@ -104,22 +104,57 @@ export default function ComponentLivePreview({ componentFilePath }: Props) {
     [componentFilePath],
   );
 
+  // Centering is done with AUTO MARGINS on the child, NOT with
+  // `align-items/justify-content: center` on this scroll container. Flex
+  // container centering distributes overflow to BOTH sides, and the part
+  // above/left of the scroll origin is unreachable — a component variant
+  // taller than the window had its top cut off with no way to scroll to it
+  // (tall single-column pricing variant, 2026-08-11). Auto margins center a
+  // smaller-than-viewport component identically, but collapse to 0 once the
+  // component overflows, so it starts at the padding edge and the whole
+  // thing scrolls.
+  //
+  // The `>` child selector alone is fragile: any wrapper DOM between the
+  // container and the master root (a providers element, the runtime's
+  // ref socket) silently kills the rule and the root's baked
+  // `position: absolute` comes back — the preview-sandbox hit exactly that
+  // through the generated locale providers. Tag the first `[data-id]`
+  // descendant before paint and target the tag as well.
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const tag = () => {
+      const root = host.querySelector('[data-id]');
+      if (root && !root.hasAttribute('data-preview-master-root')) {
+        root.setAttribute('data-preview-master-root', '');
+      }
+    };
+    tag();
+    const mo = new MutationObserver(tag);
+    mo.observe(host, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, []);
+
   return (
     <div
+      ref={hostRef}
       id={previewScopeId}
       style={{
-        width: '100%', height: '100%',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: '100%', height: '100%', display: 'flex',
         background: 'var(--bg-canvas, #1a1a2e)', overflow: 'auto', padding: 40,
       }}
     >
       <style>{`
-        #${previewScopeId} > [data-id] {
+        #${previewScopeId} > [data-id],
+        #${previewScopeId} [data-id][data-preview-master-root] {
           position: relative !important;
           left: auto !important;
           top: auto !important;
           right: auto !important;
           bottom: auto !important;
+          margin: auto !important;
+          flex-shrink: 0;
         }
       `}</style>
       {Compiled ? (
@@ -127,7 +162,7 @@ export default function ComponentLivePreview({ componentFilePath }: Props) {
           <Compiled />
         </ErrorBoundary>
       ) : (
-        <div style={{ color: '#888', fontFamily: 'monospace', fontSize: 12 }}>
+        <div style={{ color: '#888', fontFamily: 'monospace', fontSize: 12, margin: 'auto' }}>
           Failed to compile {componentFilePath}
         </div>
       )}
@@ -148,7 +183,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { err
           maxWidth: 480, padding: 16, borderRadius: 8,
           background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
           color: '#fca5a5', fontFamily: 'monospace', fontSize: 11,
-          whiteSpace: 'pre-wrap',
+          whiteSpace: 'pre-wrap', margin: 'auto',
         }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Render Error</div>
           {this.state.error}

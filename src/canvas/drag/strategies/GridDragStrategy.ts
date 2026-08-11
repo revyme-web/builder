@@ -35,7 +35,7 @@ import { repositionSignalOps } from '../reposition-signal';
 import { computeReorderAssignments } from '../reparent-utils';
 import {
   findNodeRect, findNodeComputedStyles, findChildRects, patchNodeStyles,
-  getViewportPrefix, vpIdFromPrefix, getNodeHitsAtPoint, forceCanvasRender, parseRectCacheKey, forceCanvasRenderDeferredDuringDrag } from '@/canvas/node-ops';
+  getViewportPrefix, vpIdFromPrefix, getNodeHitsAtPoint, forceCanvasRender, parseRectCacheKey, forceCanvasRenderDeferredDuringDrag, isPrimaryViewport, getActiveFilePath } from '@/canvas/node-ops';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { getIframeOffset } from '../helpers/coords';
 import type { PostMessageBridge } from '@/canvas-sandbox/bridge-host';
@@ -710,20 +710,51 @@ export class GridDragStrategy implements DragStrategy {
     this.unliftAndRestore(finalIdx >= 0 ? finalIdx : this.startIndex);
     parentHighlightOps.hide();
 
-    // Always commit via DOM reorder (works for all grid types: auto-
-    // flow, span-based explicit, true explicit). Walk the desired
-    // `finalOrder` left-to-right; for each position that's wrong,
-    // emit a reorder to move the right child into place. The local
-    // `current` array tracks source state as each prior mutation
-    // lands, so each `newIndex` is correct for `reorderNodeInCode`
-    // (which removes then re-inserts at the given index in the
-    // post-removal list).
-    //
-    // Per-child reorders (not a single "set order" mutation) so the
-    // commit reproduces the SWAP semantics the user saw mid-drag —
-    // a one-shot reorder of the lifted node alone would "insert and
-    // shift", displacing the wrong siblings.
-    {
+    // NON-PRIMARY tile (page replica / component-master variant): the
+    // structural JSX reorder below is WRONG here — JSX is shared by every
+    // tile, so a reorder performed on one variant moved the cards on ALL
+    // of them ("reorders everything on all the variants", 2026-08-11; the
+    // flex reorder was already correct because LayoutLiftedStrategy never
+    // JSX-reorders — it only writes CSS `order`). Mirror the flex commit:
+    // route CSS order through the shared router — @container band on a page
+    // replica, order TERNARY on a master variant — and leave the JSX alone
+    // so every other tile keeps painting its own sequence. Runs regardless
+    // of `hasOrderStyles`: children with no `order` at all get the initial
+    // sequential stamp exactly like the flex path's no-early-out rule.
+    if (!isPrimaryViewport(this.vpId) && this.contentEl) {
+      // Master variant: the ternary's `default` branch must pin the PRIMARY
+      // tile's CURRENT visual sequence (row-major) — same authoritative
+      // source the Layers-panel reorder passes. Without it, children that
+      // carry no `order` anywhere collapse to model-default 0 and the
+      // primary's sequence rests on DOM-order tie-breaks alone. Page
+      // replicas don't consume it (their branch writes @container).
+      let defaultOrders: Map<string, number> | undefined;
+      if (getActiveFilePath().startsWith('components/')) {
+        const primaryVisual = findChildRects(this.parentId, 'default')
+          .slice()
+          .sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left)
+          .map((c) => c.id);
+        if (primaryVisual.length > 0) {
+          defaultOrders = new Map(primaryVisual.map((id, i) => [id, i] as const));
+        }
+      }
+      updates.push(...commitOrderAssignments(
+        computeReorderAssignments(this.finalOrder), this.contentEl, this.vpId, defaultOrders,
+      ));
+    } else {
+      // PRIMARY tile: commit via DOM reorder (works for all grid types:
+      // auto-flow, span-based explicit, true explicit). Walk the desired
+      // `finalOrder` left-to-right; for each position that's wrong,
+      // emit a reorder to move the right child into place. The local
+      // `current` array tracks source state as each prior mutation
+      // lands, so each `newIndex` is correct for `reorderNodeInCode`
+      // (which removes then re-inserts at the given index in the
+      // post-removal list).
+      //
+      // Per-child reorders (not a single "set order" mutation) so the
+      // commit reproduces the SWAP semantics the user saw mid-drag —
+      // a one-shot reorder of the lifted node alone would "insert and
+      // shift", displacing the wrong siblings.
       const current = [...this.originalChildOrder];
       for (let i = 0; i < this.finalOrder.length; i++) {
         const desired = this.finalOrder[i];
@@ -739,21 +770,19 @@ export class GridDragStrategy implements DragStrategy {
           newIndex: i,
         });
       }
-    }
 
-    // ORDER-STYLE grids: the JSX reorder above fixes SOURCE order, but the
-    // children's inline `order` styles are what actually paint the grid —
-    // left untouched, they snap the visual straight back to the pre-drag
-    // sequence the moment the re-render lands (the "mouseup doesn't
-    // reorder" report, 2026-07-27). Re-stamp sequential orders over the
-    // final VISUAL order through the shared router: anchor-aware
-    // (children-slot pinned, never written) and replica/master-aware
-    // (@container CSS on page replicas, variant ternary on masters) —
-    // identical semantics to the flex reorder commit.
-    if (this.hasOrderStyles && this.contentEl) {
-      updates.push(...commitOrderAssignments(
-        computeReorderAssignments(this.finalOrder), this.contentEl, this.vpId,
-      ));
+      // ORDER-STYLE grids: the JSX reorder above fixes SOURCE order, but the
+      // children's inline `order` styles are what actually paint the grid —
+      // left untouched, they snap the visual straight back to the pre-drag
+      // sequence the moment the re-render lands (the "mouseup doesn't
+      // reorder" report, 2026-07-27). Re-stamp sequential orders over the
+      // final VISUAL order through the shared router — identical semantics
+      // to the flex reorder commit.
+      if (this.hasOrderStyles && this.contentEl) {
+        updates.push(...commitOrderAssignments(
+          computeReorderAssignments(this.finalOrder), this.contentEl, this.vpId,
+        ));
+      }
     }
 
     trace.action('grid-drag:end', {
