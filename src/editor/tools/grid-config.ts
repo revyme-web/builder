@@ -202,6 +202,43 @@ export function parseGridConfig(styles: Record<string, string>): GridConfig {
   };
 }
 
+/** Implicit row count of an auto-flowing grid (fit-content rows): the number
+ *  of rows the browser actually creates for `childCount` items across
+ *  `columnsCount` columns. What the Rows field should DISPLAY in fit mode —
+ *  the config's `rowsCount` there is just a parse default the browser never
+ *  reads (the panel showed "2" over a visibly 3-row grid, 2026-08-11). */
+export function implicitRowCount(childCount: number, columnsCount: number): number {
+  return Math.max(1, Math.ceil(Math.max(0, childCount) / Math.max(1, columnsCount)));
+}
+
+/**
+ * Apply a ROWS-COUNT change so it actually takes effect — the rows twin of the
+ * columns handler's auto→fixed flip (2026-08-11).
+ *
+ * In `fit` height mode the serializer emits NO row template (rows are
+ * implicit), so a rows change was silently ignored: the stepper updated state
+ * that `formatGridConfig` never wrote ("Rows +/- does nothing" — verified in
+ * the trace: every press emitted `gridTemplateRows: ""`). Touching the count
+ * means the user wants EXPLICIT row tracks, so fit promotes to:
+ *   - `fill` when the container's own height is definite (px/%/vh/vw) — rows
+ *     share that height, visible immediately;
+ *   - `fixed` otherwise — `fill` against an indefinite height collapses every
+ *     row to ~0 (the exact trap the flex→grid defaults below document), so an
+ *     auto-height container gets px rows at the config's current row height.
+ * Non-fit modes just take the new count.
+ */
+export function withRowsCount(
+  c: GridConfig,
+  count: number,
+  /** The container's own `height` style value (SizeTool-owned). */
+  containerHeight: string | undefined,
+): GridConfig {
+  const rowsCount = Math.max(1, Math.min(20, count));
+  if (c.heightMode !== 'fit') return { ...c, rowsCount };
+  const definite = !!containerHeight && /^\d+(\.\d+)?(px|%|vh|vw)$/.test(containerHeight.trim());
+  return { ...c, rowsCount, heightMode: definite ? 'fill' : 'fixed' };
+}
+
 /** Build the inline-style record from a structured config. Empty string
  *  values mean "remove this property" per the empty-string-removes rule. */
 export function formatGridConfig(c: GridConfig): Record<string, string> {

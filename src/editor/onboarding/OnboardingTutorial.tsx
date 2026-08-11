@@ -194,22 +194,16 @@ const DEFAULT_STEPS: TutorialStep[] = [
     onLeave: () => openPanel('pages-layers'),
   },
   {
-    id: 'pages',
-    title: 'Pages',
-    description: 'Manage your website pages — add, rename, reorder, and navigate between every page of your site from one place.',
-    target: 'left-panel',
-    secondaryTarget: 'pages-layers-button',
-    position: 'right',
-    onEnter: () => openPanel('pages-layers'),
-  },
-  {
+    // Layers and Pages share one panel now, so they share one step — two
+    // steps pointing at the same button and the same panel would have read
+    // like the tour was stuck.
     id: 'layers',
-    title: 'Layers',
-    description: 'View the layer hierarchy of the current page. Select, rename, and reorder every element on your canvas straight from the tree.',
+    title: 'Layers & Pages',
+    description: 'Two tabs, one panel. Layers is the hierarchy of the current page — select, rename and reorder any element from the tree. Pages lists every page of your site to add, rename and navigate between.',
     target: 'left-panel',
     secondaryTarget: 'layers-button',
     position: 'right',
-    onEnter: () => openPanel('layers'),
+    onEnter: () => openPanel('pages-layers'),
   },
   {
     id: 'library',

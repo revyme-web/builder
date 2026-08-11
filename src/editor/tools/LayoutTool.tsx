@@ -17,7 +17,7 @@ import { injectFlexLayoutOnFrame, resolveLayoutInjectionTargets, rebaseChildrenF
 import { flushNow } from '@/code/mutation/mutation-queue';
 import { transformManager } from '@/canvas/transform';
 import { useAtomValue } from 'jotai';
-import { getNodesSnapshot, selectedIdsAtom } from '@/code/stores/store';
+import { getNodesSnapshot, selectedIdsAtom, nodesAtom, selectedNodeAtom } from '@/code/stores/store';
 import { interactingViewportIdAtom, getViewportWidths } from '@/code/stores/viewport-store';
 import { activeFilePathAtom, isComponentFilePath } from '@/code/project/active-file-store';
 import { containerOverridesAtom } from '@/code/stores/container-query-store';
@@ -33,6 +33,7 @@ import { parseAutoTrack, formatAutoTrack,
 import {
   parseGridConfig, formatGridConfig,
   flexToGridParentStyles, gridChildFillStyles,
+  implicitRowCount, withRowsCount,
   type GridConfig, type GridAlign,
 } from './grid-config';
 
@@ -205,26 +206,47 @@ function GridLayoutControls({
     onUpdateMultiple(formatGridConfig(next));
   }, [onUpdateMultiple]);
 
+  // Child count of the selected grid — what the Rows field DISPLAYS in
+  // fit-content mode, where the browser derives rows implicitly and the
+  // config's rowsCount is just a parse default (it showed "2" over a
+  // visibly 3-row grid, 2026-08-11).
+  const gcNodes = useAtomValue(nodesAtom);
+  const gcSelectedId = useAtomValue(selectedNodeAtom);
+  const gridChildCount = gcSelectedId ? (gcNodes.get(gcSelectedId)?.children.length ?? 0) : 0;
+  // The HARD FLOOR for the rows count: fewer template rows than the content
+  // needs is not a real state — the overflow children land in IMPLICIT rows
+  // that gridAutoRows sizes identically to the template rows, so "Rows: 2"
+  // over 15 items × 5 columns renders pixel-identical to 3 ("stepping down
+  // does nothing", 2026-08-11). The minus stops at the floor instead of
+  // silently no-oping; fewer rows = more columns or fewer children.
+  const rowsMin = config.masonry ? 1 : implicitRowCount(gridChildCount, config.columnsCount);
+  const displayRows = config.heightMode === 'fit' && !config.masonry
+    ? rowsMin
+    : Math.max(rowsMin, config.rowsCount);
+
   // Number-input helper for Columns / Rows counts: floors at 1.
   // Changing columns count when `columnsMode === 'auto'` would be a
   // no-op — auto-fill derives count from container width and ignores
   // our count field on serialization. Flip to Fixed automatically so
-  // the user's count actually takes effect.
+  // the user's count actually takes effect. Rows have the SAME trap in
+  // `fit` height mode (no row template is emitted at all) — a rows
+  // change promotes the height mode via withRowsCount so the count
+  // actually produces tracks (2026-08-11).
   const onCountChange = (key: 'columnsCount' | 'rowsCount') => (v: string) => {
     const n = Math.max(1, Math.min(20, parseInt(v) || 1));
     if (key === 'columnsCount') {
       apply({ ...config, columnsCount: n, columnsMode: 'fixed' });
     } else {
-      apply({ ...config, [key]: n });
+      apply(withRowsCount(config, Math.max(rowsMin, n), styles.height));
     }
   };
-  // Same flip for the ± stepper.
+  // Same flips for the ± stepper.
   const onCountStep = (key: 'columnsCount' | 'rowsCount') => (v: number) => {
     const n = Math.max(1, Math.min(20, v));
     if (key === 'columnsCount') {
       apply({ ...config, columnsCount: n, columnsMode: 'fixed' });
     } else {
-      apply({ ...config, [key]: n });
+      apply(withRowsCount(config, Math.max(rowsMin, n), styles.height));
     }
   };
 
@@ -267,14 +289,14 @@ function GridLayoutControls({
           <span className="w-3/4 text-xs font-bold text-[var(--text-secondary)] pl-[18px] -ml-[18px]">Rows</span>
           <div className="flex items-center gap-1 w-full">
             <ToolInput
-              value={String(config.rowsCount)}
+              value={String(displayRows)}
               onChange={onCountChange('rowsCount')}
               step={1}
             />
             <ToolPlusMinus
-              value={config.rowsCount}
+              value={displayRows}
               onChange={onCountStep('rowsCount')}
-              min={1} max={20} step={1}
+              min={rowsMin} max={20} step={1}
             />
           </div>
         </div>

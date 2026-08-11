@@ -4,8 +4,7 @@
 import React from 'react';
 import { useAtomValue } from 'jotai';
 import { leftPanelAtom } from '@/code/stores/left-panel-store';
-import PagesPanel from './panels/PagesPanel';
-import LayersOnlyPanel from './panels/LayersOnlyPanel';
+import PagesLayersPanel from './panels/PagesLayersPanel';
 import InsertPanel from './panels/insert';
 import LibraryPanel from './panels/LibraryPanel';
 import MediaGalleryPanel from './panels/MediaGalleryPanel';
@@ -23,10 +22,12 @@ function LibraryOnlyPanel() {
 
 const PANEL_MAP: Record<string, React.ComponentType> = {
   'insert': InsertPanel,
-  // 'pages-layers' is the legacy ID kept for back-compat; it now resolves to
-  // the Pages-only view. The Layers tree gets its own tab below.
-  'pages-layers': PagesPanel,
-  'layers': LayersOnlyPanel,
+  // Layers and Pages are ONE panel with a segmented control (Layers first).
+  // Both ids map to it: 'pages-layers' is the canonical one, and 'layers' is
+  // kept so existing shortcuts, saved panel state and deep links from before
+  // the merge still open something instead of rendering nothing.
+  'pages-layers': PagesLayersPanel,
+  'layers': PagesLayersPanel,
   'library': LibraryOnlyPanel,
   'presets': PresetsPanel,
   'media': MediaGalleryPanel,

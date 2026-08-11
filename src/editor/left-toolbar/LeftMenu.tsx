@@ -12,11 +12,10 @@ import { pluginEditorFileAtom } from '@/editor/plugin-editor/plugin-editor-store
 import { cmsEditorOpenAtom } from '@/code/stores/cms-editor-store';
 import {
   InsertPlusIcon,
-  PagesLayersIcon,
-  LibraryStackIcon,
   GlobeInternationalIcon,
   ChatImageIcon,
   CmsIcon,
+  LibraryStackIcon,
 } from '@/shared/icons';
 import CollaboratorsModal from '@/editor/collab/CollaboratorsModal';
 import CollaboratorsSection from '@/editor/collab/CollaboratorsSection';
@@ -272,28 +271,30 @@ export default function LeftMenu() {
           <InsertPlusIcon className="w-[18px] h-[18px] text-white" />
         </button>
 
-        {/* Layers — FIRST, directly under the insert button, and the panel the
-            builder opens on. It is what you reach for on almost every edit;
-            Pages is a navigation action you take once per session. Split out
-            from the old combined Pages+Layers panel into its own tab. Enabled
-            for viewers too: navigating the layer tree to inspect / comment is
-            read-only. */}
-        <MenuButton panelId="layers" isActive={activePanel === 'layers'} onToggle={togglePanel} title="Layers" tooltip={tooltipHandlers} dataTutorial="layers-button">
+        {/* Layers & Pages — ONE entry, two tabs. Both answer "where am I in
+            this document?", you never need them side by side, and the Layers
+            view already carried the page switcher at its top, so a separate
+            Pages icon was half-redundant. FIRST in the rail (directly under
+            insert): it is what you reach for on almost every edit. Enabled for
+            viewers too — navigating the tree to inspect / comment is
+            read-only. The button opens the LAYERS tab — the tab IS the panel
+            id, so pointing it at `pages-layers` opened the panel on Pages,
+            which is the visit, not the default. `isActive` covers both ids so
+            the rail stays lit on either tab, and `togglePanel` sends a second
+            click back to `layers` (it returns to the default rather than
+            closing). `layers-button` stays as the tutorial hook. */}
+        <MenuButton panelId="layers" isActive={activePanel === 'pages-layers' || activePanel === 'layers'} onToggle={togglePanel} title="Layers & Pages" tooltip={tooltipHandlers} dataTutorial="layers-button">
           <LayersIcon className="w-[18px] h-[18px]" />
         </MenuButton>
 
-        {/* Pages */}
-        <MenuButton panelId="pages-layers" isActive={activePanel === 'pages-layers'} onToggle={togglePanel} title="Pages" tooltip={tooltipHandlers} dataTutorial="pages-layers-button">
-          <PagesLayersIcon className="w-[18px] h-[18px]" size={18} />
-        </MenuButton>
-
-        {/* Library — enabled for viewers. The panel itself gates which
-            sections a viewer can click into (design components
-            / vector sets / templates are navigable; code components are
-            inert — see LibraryPanel). */}
+        {/* Library — its own entry, NOT a tab of the panel above: it is an
+            insert surface (pick a thing, drop it on the canvas) rather than a
+            way of navigating the current document. Enabled for viewers; the
+            panel itself gates which sections they can click into. */}
         <MenuButton panelId="library" isActive={activePanel === 'library'} onToggle={togglePanel} title="Library" tooltip={tooltipHandlers} dataTutorial="library-button">
           <LibraryStackIcon className="w-[18px] h-[18px]" size={18} />
         </MenuButton>
+
 
         {/* Presets */}
         <MenuButton panelId="presets" isActive={activePanel === 'presets'} onToggle={togglePanel} title="Presets" tooltip={tooltipHandlers} disabled={isViewer} dataTutorial="presets-button">

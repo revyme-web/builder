@@ -1,6 +1,6 @@
 // ToolSegmentedControl.tsx — Button group with animated highlight.
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState } from 'react';
 import { trace } from '@/shared/debug-trace';
 
 interface Option {
@@ -21,21 +21,41 @@ export default function ToolSegmentedControl({ value, onChange, options, size = 
   const [highlight, setHighlight] = useState({ left: 0, width: 0 });
   const hasMounted = useRef(false);
 
-  // Animate highlight to active button position (skip transition on first mount)
-  useEffect(() => {
+  // Measure the active button and move the highlight onto it.
+  //
+  // LAYOUT effect, not a passive one: `useEffect` runs AFTER paint, so the
+  // browser painted one frame with the highlight still at its initial
+  // `{left: 0, width: 0}` and only then jumped it into place. On a panel that
+  // mounts fresh every time it opens (the Layers/Pages switcher) that read as
+  // the thumb sliding/growing onto the active tab on every open. Measuring
+  // before paint means the first frame is already correct.
+  useLayoutEffect(() => {
     if (!containerRef.current) return;
     const idx = options.findIndex(o => o.value === value);
     if (idx === -1) return;
     const buttons = containerRef.current.querySelectorAll('button');
     const btn = buttons[idx] as HTMLElement;
     if (btn) {
+      // ANIMATE ONLY WHEN MOVING FROM A REAL POSITION.
+      //
+      // Timing-based gating ("skip the transition on first mount") did not
+      // hold: measured on a fresh panel mount, the first pass reports
+      // `offsetWidth: 0` and the real width lands on a LATER commit, by which
+      // point transitions were long enabled — so the thumb animated 0 → full
+      // width every time the panel opened. Whether that first measurement is
+      // zero depends on layout/StrictMode/font timing, so don't reason about
+      // when it happens: reason about whether there is anything to move FROM.
+      // Width 0 means "no position yet" → place it silently. Non-zero means a
+      // real user switch → animate.
+      //
+      // Set BEFORE `setHighlight` so the re-render it triggers reads the value
+      // meant for that commit.
+      hasMounted.current = highlight.width > 0;
       setHighlight({ left: btn.offsetLeft, width: btn.offsetWidth });
     }
-    // Enable transition only after first position is set
-    if (!hasMounted.current) {
-      requestAnimationFrame(() => { hasMounted.current = true; });
-    }
-  }, [value, options]);
+  }, [value, options, highlight.width]);
+
+
 
   const py = size === 'compact' ? 'py-1' : size === 'sm' ? 'py-1.5' : 'py-2';
   const px = size === 'compact' ? 'px-1' : 'px-3';

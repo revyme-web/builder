@@ -4,6 +4,7 @@ import { describe, test, expect } from 'vitest';
 import {
   parseGridConfig, formatGridConfig, defaultGridConfig,
   flexToGridParentStyles, gridChildFillStyles,
+  withRowsCount, implicitRowCount,
   type GridConfig,
 } from './grid-config';
 
@@ -221,5 +222,65 @@ describe('gridChildFillStyles', () => {
   test('tolerates a child with no styles', () => {
     const s = gridChildFillStyles(undefined);
     expect(s).toEqual({ width: '100%' });
+  });
+});
+
+// ─── Rows in fit-content mode — the "Rows +/- does nothing" bug (2026-08-11) ─
+//
+// In `fit` height mode the serializer emits NO row template (rows are
+// implicit), so a rows-count change updated state that formatGridConfig never
+// wrote — verified in the trace: every press emitted `gridTemplateRows: ""`.
+// `withRowsCount` is the rows twin of the columns auto→fixed flip: touching
+// the count promotes fit → explicit tracks. `implicitRowCount` is what the
+// Rows field DISPLAYS in fit mode (it showed the parse default "2" over a
+// visibly 3-row grid).
+describe('withRowsCount — a rows change must produce visible tracks', () => {
+  const fitConfig = (): GridConfig => ({
+    ...defaultGridConfig(),
+    heightMode: 'fit',
+    columnsCount: 5,
+  });
+
+  test('fit + definite container height promotes to FILL and the template appears', () => {
+    const next = withRowsCount(fitConfig(), 3, '720px');
+    expect(next.heightMode).toBe('fill');
+    expect(next.rowsCount).toBe(3);
+    expect(formatGridConfig(next).gridTemplateRows).toBe('repeat(3, minmax(0px, 1fr))');
+  });
+
+  test('fit + auto/min-content height promotes to FIXED (fill would collapse rows to 0)', () => {
+    for (const h of [undefined, '', 'auto', 'min-content']) {
+      const next = withRowsCount(fitConfig(), 4, h);
+      expect(next.heightMode).toBe('fixed');
+      expect(formatGridConfig(next).gridTemplateRows).toMatch(/^repeat\(4, \d+px\)$/);
+    }
+  });
+
+  test('percent and vh container heights count as definite → fill', () => {
+    expect(withRowsCount(fitConfig(), 2, '100%').heightMode).toBe('fill');
+    expect(withRowsCount(fitConfig(), 2, '50vh').heightMode).toBe('fill');
+  });
+
+  test('non-fit modes just take the count', () => {
+    const c = { ...defaultGridConfig(), heightMode: 'fill' as const, rowsCount: 2 };
+    const next = withRowsCount(c, 5, undefined);
+    expect(next.heightMode).toBe('fill');
+    expect(next.rowsCount).toBe(5);
+  });
+
+  test('count clamps to [1, 20]', () => {
+    expect(withRowsCount(fitConfig(), 0, '720px').rowsCount).toBe(1);
+    expect(withRowsCount(fitConfig(), 99, '720px').rowsCount).toBe(20);
+  });
+});
+
+describe('implicitRowCount — what the Rows field shows in fit mode', () => {
+  test('15 items across 5 columns = 3 rows (the reported grid)', () => {
+    expect(implicitRowCount(15, 5)).toBe(3);
+  });
+  test('partial last row rounds up; empty grid shows 1', () => {
+    expect(implicitRowCount(11, 5)).toBe(3);
+    expect(implicitRowCount(0, 5)).toBe(1);
+    expect(implicitRowCount(7, 0)).toBe(7);
   });
 });
