@@ -68,6 +68,7 @@ import {
 import {
   startTextEdit, commitTextEdit, cancelTextEdit, editorCommand,
   startShapeEdit, commitShapeEdit, cancelShapeEdit, setShapeEditHandleMode, setShapeEditAnchorPosition,
+  undoShapeEdit, redoShapeEdit,
 } from './sandbox/text-shape-hosts';
 
 // `@revyme/canvas-dnd` is no longer in active use — see sandbox-dnd-host
@@ -526,6 +527,8 @@ const api: SandboxApi = {
   cancelShapeEdit,
   setShapeEditHandleMode,
   setShapeEditAnchorPosition,
+  undoShapeEdit,
+  redoShapeEdit,
 
   // ─── Element capture — sandbox/read-handlers.ts ────────────────────────
   captureElement,

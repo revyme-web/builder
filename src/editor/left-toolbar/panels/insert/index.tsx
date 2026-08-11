@@ -574,7 +574,9 @@ export default function InsertOverlay() {
             Theme-mirrored bg / hover / focus tints match the
             PageSelector search styling so the two read as the same
             tier of input. ESC clears + closes. */}
-        <div className="p-2">
+        {/* `pt-[12px]` matches the rail's top padding so the input sits on the
+            same line as the Vibe icon beside it. */}
+        <div className="px-2 pb-2 pt-[12px]">
           <div className="relative">
             <svg
               className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none"

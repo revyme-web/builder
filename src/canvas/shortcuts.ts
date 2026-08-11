@@ -15,6 +15,7 @@ import {
   duplicateSelection,
 } from './commands';
 import { getContentRoot } from './node-ops';
+import { getCanvasBridge } from './canvas-bridge';
 import { undo, redo } from '../code/mutation/history';
 import { copyNodes } from '../code/features/paste-engine';
 import { executePaste } from '../code/features/paste-engine/execute-from-ui';
@@ -216,9 +217,35 @@ export function registerShortcuts(refs: ShortcutRefs): () => void {
   // source is current — otherwise an undo within the 200ms nudge window
   // would target the pre-nudge history entry while the nudge's queued
   // mutations land afterward, desyncing the visible DOM from the source.
-  cleanups.push(keyboard.register({ key: 'z', ctrl: true, label: 'Undo', category: 'general', handler: () => { flushPendingNudge(); undo(); } }));
-  cleanups.push(keyboard.register({ key: 'z', ctrl: true, shift: true, label: 'Redo', category: 'general', handler: () => { flushPendingNudge(); redo(); } }));
-  cleanups.push(keyboard.register({ key: 'y', ctrl: true, label: 'Redo', category: 'general', handler: () => { flushPendingNudge(); redo(); } }));
+  //
+  // SHAPE-EDIT session: while shapeEditingIdAtom is set, Cmd+Z/Shift+Z route
+  // to the sandbox's IN-SESSION stack (per-gesture vertex undo, Framer-style)
+  // instead of the global history. The session's edits are live-DOM only —
+  // the source still holds the PRE-session state, so a global undo here
+  // would rip the page out from under the live editor. Never fall through,
+  // even when the session stack is empty. The iframe-focused twin of this
+  // routing lives in shape-edit-host's own capture keydown listener (after
+  // an anchor click, keys land in the iframe and this handler never fires).
+  const shapeEditHistoryCmd = (cmd: 'undo' | 'redo'): boolean => {
+    if (!getDefaultStore().get(shapeEditingIdAtom)) return false;
+    const bridge = getCanvasBridge() as { undoShapeEdit?: () => unknown; redoShapeEdit?: () => unknown } | null;
+    trace.action('canvas:shape-edit-history', { cmd });
+    if (cmd === 'undo') void bridge?.undoShapeEdit?.();
+    else void bridge?.redoShapeEdit?.();
+    return true;
+  };
+  cleanups.push(keyboard.register({ key: 'z', ctrl: true, label: 'Undo', category: 'general', handler: () => {
+    if (shapeEditHistoryCmd('undo')) return;
+    flushPendingNudge(); undo();
+  } }));
+  cleanups.push(keyboard.register({ key: 'z', ctrl: true, shift: true, label: 'Redo', category: 'general', handler: () => {
+    if (shapeEditHistoryCmd('redo')) return;
+    flushPendingNudge(); redo();
+  } }));
+  cleanups.push(keyboard.register({ key: 'y', ctrl: true, label: 'Redo', category: 'general', handler: () => {
+    if (shapeEditHistoryCmd('redo')) return;
+    flushPendingNudge(); redo();
+  } }));
 
   // ─── Delete ──────────────────────────────────────────────────────
   cleanups.push(keyboard.register({ key: ['backspace', 'delete'], label: 'Delete', category: 'general', handler: () => {

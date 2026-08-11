@@ -205,10 +205,10 @@ export default function LeftMenu() {
 
   return (
     <div
-      className="left-0 w-[52px] bg-[var(--bg-surface)] fixed z-[5000] flex flex-col justify-between items-center px-[10px] py-4"
+      className="left-0 w-[52px] bg-[var(--bg-surface)] fixed z-[5000] flex flex-col justify-between items-center px-[10px] pb-4"
       // willChange/isolation: own compositor layer — see LeftPanel (grey
       // checkerboard under the zoom-out re-raster burst).
-      style={{ top: 52, height: 'calc(100vh - 52px)', willChange: 'transform', isolation: 'isolate' }}
+      style={{ top: 52, height: 'calc(100vh - 52px)', willChange: 'transform', isolation: 'isolate', paddingTop: 12 }}
     >
       {/* Right border */}
       <div className="absolute right-0 top-4 bottom-0 w-px bg-[var(--border-light)]" />

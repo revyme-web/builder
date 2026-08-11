@@ -28,6 +28,7 @@ import {
 import { geometryVertices } from '@/shared/svg-geometry';
 import { parseRotateTransform, r3 } from '@/code/svg/group-resize-bake';
 import { findElByNodeId } from './sandbox-dom-utils';
+import { ShapeEditHistory, shapeEditKeyCommand } from './shape-edit-history';
 
 // `emit` only needed for the cancel event (Escape from inside iframe);
 // commit is a synchronous return value via Comlink, no event needed.
@@ -57,6 +58,30 @@ let currentMarkupRef: string = '';
 let isDragging = false;
 let pendingInnerJSX: string | null = null;
 let contentRoot: HTMLElement | null = null;
+
+// ─── In-session undo/redo (Cmd+Z inside shape-edit mode) ────────────────
+// Vertex edits are live-DOM only until commit, so the GLOBAL history can't
+// see them. This session stack snapshots the edited SVG per user gesture
+// (see ShapeEditHistory for the coalescing rules) and restores in place.
+/** One restorable state of the edited SVG: content + wrapper geometry. The
+ *  pair must travel together — vertex-release normalize rewrites viewBox and
+ *  the CSS box, so restoring inner markup against the wrong viewBox would
+ *  repaint the path at the wrong scale. */
+interface ShapeEditSnapshot {
+  inner: string;
+  viewBox: string | null;
+  width: string; height: string; left: string; top: string;
+}
+const sessionHistory = new ShapeEditHistory<ShapeEditSnapshot>();
+/** True while an INTERNAL editor re-sync rewrites the model — snapshot
+ *  restore (applySnapshot), the post-drag-release reload/re-handleMode fixup,
+ *  and the panel-sync reload. Their setSvgContent round-trips are not user
+ *  gestures and must not record history entries (the re-applied handleMode
+ *  after a drag would otherwise make one drag cost two undos). */
+let suppressHistoryRecord = false;
+/** True while a Path-tool RPC (Position x/y scrub) drives the editor — those
+ *  changes coalesce per scrub instead of one entry per pixel tick. */
+let panelOpActive = false;
 
 /** Style element that paints the edit-time outline / hides hover overlays. */
 let editStyleEl: HTMLStyleElement | null = null;
@@ -1053,7 +1078,103 @@ function removeEditStyles(): void {
   }
 }
 
+// ─── In-session undo/redo internals ──────────────────────────────────────
+
+/** Snapshot the edited SVG's current restorable state. Raw innerHTML on
+ *  purpose — it round-trips renderer artifacts (data-id, clip-path, the
+ *  data-rev-defs block) verbatim, so a restore needs none of the
+ *  save/reapply dance setSvgContent does for library-serialized markup. */
+function takeSnapshot(): ShapeEditSnapshot | null {
+  if (!activeSvg) return null;
+  return {
+    inner: activeSvg.innerHTML,
+    viewBox: activeSvg.getAttribute('viewBox'),
+    width: activeSvg.style.width,
+    height: activeSvg.style.height,
+    left: activeSvg.style.left,
+    top: activeSvg.style.top,
+  };
+}
+
+/** Restore a snapshot into the live SVG and re-sync the editor library.
+ *  Wrapper first, then content — both from the same moment, so no
+ *  normalize pass is needed afterwards. */
+function applySnapshot(s: ShapeEditSnapshot): void {
+  if (!activeSvg) return;
+  suppressHistoryRecord = true;
+  try {
+    if (s.viewBox != null) activeSvg.setAttribute('viewBox', s.viewBox);
+    else activeSvg.removeAttribute('viewBox');
+    activeSvg.style.width = s.width;
+    activeSvg.style.height = s.height;
+    activeSvg.style.left = s.left;
+    activeSvg.style.top = s.top;
+    activeSvg.innerHTML = s.inner;
+    currentMarkupRef = svgElementToMarkup(activeSvg);
+    pendingInnerJSX = s.inner;
+    // Ancestor SVG groups were live-refit against the pre-undo geometry;
+    // re-fit them to the restored bounds (idempotent, measures the painted
+    // content — same call the forward edit path makes per frame).
+    const p = activeSvg.parentNode as Element | null;
+    if (p && p.tagName && p.tagName.toLowerCase() === 'svg') {
+      liveRefitGroupChainEl(p as SVGSVGElement);
+    }
+    // Re-sync the library's parsed model from the restored DOM. NOT
+    // syncEditorFromLiveSvg — that path re-applies the selected anchor's
+    // pre-reload handleMode, which would MUTATE the just-restored geometry
+    // (converting segments to curves). Here the snapshot is the truth:
+    // plain reload + best-effort reselect only.
+    if (activeEditor) {
+      const priorSel = activeEditor.currentSelection;
+      const restoreTarget = priorSel.anchorRefs.length === 1
+        ? { shapeIndex: priorSel.anchorRefs[0].shapeIndex, anchorIndex: priorSel.anchorRefs[0].anchorIndex }
+        : null;
+      try { activeEditor.reload(); } catch (err) { trace.error('shape-edit-host:undo-reload-failed', String(err)); }
+      if (restoreTarget) {
+        try { activeEditor.selectAnchor(restoreTarget); } catch { /* anchor gone after undo — selection stays empty */ }
+      }
+    }
+  } finally {
+    suppressHistoryRecord = false;
+  }
+}
+
 // ─── Public API (called by bridge-sandbox.ts) ────────────────────────────
+
+/** Undo the previous in-session gesture (vertex drag, point add/delete,
+ *  curve change) WITHOUT leaving shape-edit mode. Returns false when the
+ *  session has nothing to undo — deliberately NOT falling through to the
+ *  global history: mid-session, the source still holds the pre-session
+ *  state, so a global undo would pull the page out from under the live
+ *  editor. No-op during an active drag. */
+export function undoShapeEdit(): boolean {
+  if (!activeEditor || !activeSvg || isDragging) return false;
+  const current = takeSnapshot();
+  if (!current) return false;
+  const prev = sessionHistory.undo(current);
+  if (!prev) {
+    trace.action('shape-edit-host:undo-empty', { nodeId: activeNodeId });
+    return false;
+  }
+  applySnapshot(prev);
+  trace.action('shape-edit-host:undo', { nodeId: activeNodeId, depth: sessionHistory.depth });
+  return true;
+}
+
+/** Redo the previously-undone in-session gesture. See undoShapeEdit. */
+export function redoShapeEdit(): boolean {
+  if (!activeEditor || !activeSvg || isDragging) return false;
+  const current = takeSnapshot();
+  if (!current) return false;
+  const next = sessionHistory.redo(current);
+  if (!next) {
+    trace.action('shape-edit-host:redo-empty', { nodeId: activeNodeId });
+    return false;
+  }
+  applySnapshot(next);
+  trace.action('shape-edit-host:redo', { nodeId: activeNodeId, depth: sessionHistory.depth });
+  return true;
+}
 
 export function startShapeEdit(nodeId: string, vpPrefix: string, pen: boolean = false): void {
   // Internal double-start guard: tear down the previous editor without
@@ -1263,6 +1384,9 @@ export function startShapeEdit(nodeId: string, vpPrefix: string, pen: boolean = 
   const onContainerPointerDown = () => {
     isDragging = true;
     pendingInnerJSX = null;
+    // New gesture: the first model change of this drag pushes ONE undo
+    // entry; every later pointermove tick of the same drag coalesces.
+    sessionHistory.beginDrag();
   };
   const onWindowPointerUp = () => {
     if (!isDragging) return;
@@ -1334,12 +1458,20 @@ export function startShapeEdit(nodeId: string, vpPrefix: string, pen: boolean = 
             const a = activeEditor.shapes[restoreTarget.shapeIndex]?.path.anchors[restoreTarget.anchorIndex];
             if (a) priorHandleMode = a.handleMode;
           }
-          try { activeEditor.reload(); } catch (err) { trace.error('shape-edit-host:reload-failed', String(err)); }
-          if (restoreTarget) {
-            try { activeEditor.selectAnchor(restoreTarget); } catch (err) { trace.error('shape-edit-host:reselect-failed', String(err)); }
-            if (priorHandleMode && priorHandleMode !== 'straight') {
-              try { activeEditor.setHandleMode(priorHandleMode); } catch (err) { trace.error('shape-edit-host:rehandlemode-failed', String(err)); }
+          // This whole block is release FIXUP of the drag that just ended —
+          // the re-applied handleMode below re-enters setSvgContent and must
+          // not record a second history entry on top of the drag's own.
+          suppressHistoryRecord = true;
+          try {
+            try { activeEditor.reload(); } catch (err) { trace.error('shape-edit-host:reload-failed', String(err)); }
+            if (restoreTarget) {
+              try { activeEditor.selectAnchor(restoreTarget); } catch (err) { trace.error('shape-edit-host:reselect-failed', String(err)); }
+              if (priorHandleMode && priorHandleMode !== 'straight') {
+                try { activeEditor.setHandleMode(priorHandleMode); } catch (err) { trace.error('shape-edit-host:rehandlemode-failed', String(err)); }
+              }
             }
+          } finally {
+            suppressHistoryRecord = false;
           }
         }
       }
@@ -1380,10 +1512,27 @@ export function startShapeEdit(nodeId: string, vpPrefix: string, pen: boolean = 
   };
   document.addEventListener('mousedown', onDocumentMouseDownCapture, true);
 
+  // Cmd+Z / Cmd+Shift+Z / Cmd+Y INSIDE the iframe → in-session undo/redo.
+  // After any anchor click the iframe document holds keyboard focus, so the
+  // parent's global shortcuts never fire — without this listener Cmd+Z is
+  // simply dead during shape edit. Capture phase so it runs ahead of the
+  // editor library's own window keydown handler. The parent-focused twin
+  // lives in canvas/shortcuts.ts (routes to the bridge while shape-editing).
+  const onKeyDownCapture = (e: KeyboardEvent) => {
+    const cmd = shapeEditKeyCommand(e);
+    if (!cmd) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (cmd === 'undo') undoShapeEdit();
+    else redoShapeEdit();
+  };
+  window.addEventListener('keydown', onKeyDownCapture, true);
+
   (activeOverlayContainer as any).__cleanupListeners = () => {
     activeOverlayContainer?.removeEventListener('pointerdown', onContainerPointerDown);
     window.removeEventListener('pointerup', onWindowPointerUp);
     document.removeEventListener('mousedown', onDocumentMouseDownCapture, true);
+    window.removeEventListener('keydown', onKeyDownCapture, true);
   };
 
   // Adapter: library reads/writes through this. All synchronous DOM
@@ -1400,6 +1549,18 @@ export function startShapeEdit(nodeId: string, vpPrefix: string, pen: boolean = 
     setPathData: () => { /* unused in multi-shape mode */ },
     getSvgContent: () => activeSvg ? svgElementToMarkup(activeSvg) : currentMarkupRef,
     setSvgContent: (newSvg: string) => {
+      // Record the PRE-change state for in-session undo — before any DOM
+      // write below. Every model mutation (anchor drag tick, point
+      // add/delete, curve change, Path-tool scrub) funnels through here,
+      // so this one site sees them all. Skipped while an internal re-sync
+      // (snapshot restore / post-release fixup / panel sync) re-enters.
+      if (!suppressHistoryRecord && activeSvg) {
+        const before = takeSnapshot();
+        if (before) {
+          const kind = isDragging ? 'drag' : panelOpActive ? 'panel' : 'discrete';
+          sessionHistory.recordChange(before, kind, Date.now());
+        }
+      }
       currentMarkupRef = newSvg;
       const innerJSX = extractInnerSvg(newSvg);
       pendingInnerJSX = innerJSX;
@@ -1668,6 +1829,18 @@ export function commitShapeEdit(): {
     return null;
   }
 
+  // FULL-UNDO no-op: the user edited, then Cmd+Z'd every gesture back to the
+  // session's initial state. `activeEditDirty` is latched true by the first
+  // onChange, but the geometry is byte-identical to session start — same
+  // serializer on both sides — so committing would only re-serialize the
+  // shape (<polygon> → <path>, id stamping) for nothing, with the same
+  // variant-resize breakage the plain no-op guard exists to prevent.
+  if (svgElementToMarkup(activeSvg) === initialMarkupRef) {
+    trace.action('shape-edit-host:committed-full-undo-noop', { nodeId: activeNodeId });
+    cleanup();
+    return null;
+  }
+
   // Final state. The library's setSvgContent during drag has already
   // populated activeSvg.innerHTML directly, so reading from the live
   // element gives us the canonical post-drag geometry.
@@ -1757,10 +1930,16 @@ export function setShapeEditAnchorPosition(x: number, y: number): void {
   const sel = activeEditor.currentSelection;
   if (sel.anchorRefs.length !== 1) return;
   const ref = sel.anchorRefs[0];
+  // Mark this change as panel-driven for the session history: the Position
+  // chevrons scrub 1 unit per pixel, so without coalescing a single scrub
+  // would litter the undo stack with one entry per tick.
+  panelOpActive = true;
   try {
     activeEditor.setAnchorPosition({ shapeIndex: ref.shapeIndex, anchorIndex: ref.anchorIndex }, x, y);
   } catch (err) {
     trace.error('shape-edit-host:setAnchorPosition-failed', String(err));
+  } finally {
+    panelOpActive = false;
   }
 }
 
@@ -1796,20 +1975,28 @@ export function syncEditorFromLiveSvg(): void {
     const a = activeEditor.shapes[restoreTarget.shapeIndex]?.path.anchors[restoreTarget.anchorIndex];
     if (a) priorHandleMode = a.handleMode;
   }
+  // Internal re-sync, not a user gesture — the re-applied handleMode below
+  // re-enters setSvgContent and must not record a session-history entry
+  // (the panel's own style write already lives in the GLOBAL history).
+  suppressHistoryRecord = true;
   try {
-    activeEditor.reload();
-  } catch (err) {
-    trace.error('shape-edit-host:reload-from-panel-failed', String(err));
-  }
-  if (restoreTarget) {
-    try { activeEditor.selectAnchor(restoreTarget); } catch (err) {
-      trace.error('shape-edit-host:reselect-after-panel-failed', String(err));
+    try {
+      activeEditor.reload();
+    } catch (err) {
+      trace.error('shape-edit-host:reload-from-panel-failed', String(err));
     }
-    if (priorHandleMode && priorHandleMode !== 'straight') {
-      try { activeEditor.setHandleMode(priorHandleMode); } catch (err) {
-        trace.error('shape-edit-host:rehandlemode-after-panel-failed', String(err));
+    if (restoreTarget) {
+      try { activeEditor.selectAnchor(restoreTarget); } catch (err) {
+        trace.error('shape-edit-host:reselect-after-panel-failed', String(err));
+      }
+      if (priorHandleMode && priorHandleMode !== 'straight') {
+        try { activeEditor.setHandleMode(priorHandleMode); } catch (err) {
+          trace.error('shape-edit-host:rehandlemode-after-panel-failed', String(err));
+        }
       }
     }
+  } finally {
+    suppressHistoryRecord = false;
   }
 }
 
@@ -1842,4 +2029,7 @@ function cleanup(): void {
   activePenMode = false;
   activeEditDirty = false;
   _startShapeEditRetries = 0;
+  sessionHistory.clear();
+  suppressHistoryRecord = false;
+  panelOpActive = false;
 }

@@ -14,6 +14,8 @@ import {
   cancelShapeEdit as cancelShapeEditImpl,
   setShapeEditHandleMode as setShapeEditHandleModeImpl,
   setShapeEditAnchorPosition as setShapeEditAnchorPositionImpl,
+  undoShapeEdit as undoShapeEditImpl,
+  redoShapeEdit as redoShapeEditImpl,
 } from '../shape-edit-host';
 
   // ─── Text editing — TipTap mounts directly on the canvas element ───────
@@ -50,4 +52,10 @@ export function setShapeEditHandleMode(mode: 'straight' | 'mirrored' | 'disconne
 }
 export function setShapeEditAnchorPosition(x: number, y: number): void {
     setShapeEditAnchorPositionImpl(x, y);
+}
+export function undoShapeEdit(): boolean {
+    return undoShapeEditImpl();
+}
+export function redoShapeEdit(): boolean {
+    return redoShapeEditImpl();
 }

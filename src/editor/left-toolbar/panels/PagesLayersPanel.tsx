@@ -51,8 +51,10 @@ export default function PagesLayersPanel() {
   return (
     <div className="flex flex-col h-full bg-[var(--bg-surface)] overflow-hidden min-h-0">
       {/* `shrink-0` so the content below owns every remaining pixel — the
-          switcher must never be squeezed by a long tree or asset list. */}
-      <div className="shrink-0 px-2 pt-2 pb-1">
+          switcher must never be squeezed by a long tree or asset list.
+          `pt-[12px]` matches the rail's top padding so the switcher sits on
+          the same line as the Vibe icon next to it. */}
+      <div className="shrink-0 px-2 pt-[12px] pb-1">
         <ToolSegmentedControl value={tab} onChange={select} options={TABS} size="compact" />
       </div>
 

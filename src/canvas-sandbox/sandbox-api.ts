@@ -447,6 +447,13 @@ export interface SandboxApi {
   /** Move the currently-selected anchor to absolute (x, y) in SVG user-space.
    *  Drives the editor's Path-tool Position x/y inputs. */
   setShapeEditAnchorPosition(x: number, y: number): void | Promise<void>;
+  /** In-session undo of the previous shape-edit gesture (vertex drag, point
+   *  add/delete, curve change) without leaving edit mode. Returns false when
+   *  the session stack is empty — the parent must NOT fall through to the
+   *  global history while a shape-edit session is live. */
+  undoShapeEdit(): boolean | Promise<boolean>;
+  /** In-session redo — inverse of undoShapeEdit. */
+  redoShapeEdit(): boolean | Promise<boolean>;
 
 
   // ─── Export ────────────────────────────────────────────────────────────
