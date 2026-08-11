@@ -7,7 +7,9 @@ import type { MouseEvent as ReactMouseEvent, MutableRefObject } from 'react';
 import type { CanvasNode } from '@/code/parsing/parser';
 import { flushNow, queueMutation } from '@/code/mutation/mutation-queue';
 import { getContentRoot, isPrimaryViewport, findChildRects, findNodeComputedStyle, findNodeComputedStyles, forceRenderAfterExternalEdit } from '@/canvas/node-ops';
-import { computeReorderAssignments, flexForFlowChildEnteringFlex } from '@/canvas/drag/reparent-utils';
+import { computeReorderAssignments, computeReplicaOrderMirrorUpdates, flexForFlowChildEnteringFlex } from '@/canvas/drag/reparent-utils';
+import { containerOverridesAtom } from '@/code/stores/container-query-store';
+import { getDefaultStore } from 'jotai';
 import { commitOrderAssignments } from '@/canvas/drag/strategies/order-commit';
 import { getReplicaContext } from '@/canvas/drag/replica-context';
 import { queueReplicaCreationUnhide } from '@/canvas/creators/creator-utils';
@@ -43,6 +45,53 @@ export function computeEdgeAutoScrollDelta(
   if (topDist < zone) return -maxSpeed * Math.min(1, Math.max(0.2, (zone - topDist) / zone));
   if (botDist < zone) return maxSpeed * Math.min(1, Math.max(0.2, (zone - botDist) / zone));
   return 0;
+}
+
+/** Resolve a drop indicator into the STRUCTURAL insert the mutation queue
+ *  needs. Pure — unit-tested.
+ *
+ *  The panel's `nodes` map is the MERGED tree: on a templated page the root's
+ *  children lead with `layout::` chrome that does not exist in the page FILE,
+ *  so a raw `parent.children.indexOf(target)` is off by the chrome count when
+ *  fed to the generators ("dropped before the hero, landed after it" —
+ *  templated page, 2026-08-11). Both generators also splice in a child space
+ *  WITHOUT the dragged node (moveNodeInCode removes it in step 1;
+ *  reorderNodeInCode filters it from its content slots), so the dragged id is
+ *  excluded from the index space too. `children-slot` stays IN the count —
+ *  the generators count `{children}` as a slot — but can never be the anchor
+ *  (it's a JSX expression; the anchor lookup only matches data-id elements).
+ *
+ *  `insertBeforeId` mirrors the canvas drag's anchor
+ *  (computeLayoutInsertAnchorId): the sibling the node must land BEFORE, or
+ *  undefined to append / defer to the index. */
+export function resolveLayerDropStructure(
+  nodes: Map<string, CanvasNode>,
+  indicator: { nodeId: string; position: 'before' | 'after' | 'inside' },
+  draggedId: string,
+): { finalParentId: string; structuralInsertIndex: number; insertBeforeId?: string } | null {
+  const fileSiblingsOf = (parent: CanvasNode): string[] =>
+    parent.children.filter((id) => !id.startsWith('layout::') && id !== draggedId);
+
+  if (indicator.position === 'inside') {
+    const parent = nodes.get(indicator.nodeId);
+    if (!parent) return null;
+    return { finalParentId: indicator.nodeId, structuralInsertIndex: fileSiblingsOf(parent).length };
+  }
+  const targetNode = nodes.get(indicator.nodeId);
+  const finalParentId = targetNode?.parentId;
+  if (!finalParentId) return null;
+  const parent = nodes.get(finalParentId);
+  if (!parent) return null;
+  const fileSiblings = fileSiblingsOf(parent);
+  const siblingIndex = fileSiblings.indexOf(indicator.nodeId);
+  if (siblingIndex === -1) return null;
+  const structuralInsertIndex = indicator.position === 'after' ? siblingIndex + 1 : siblingIndex;
+  const anchor = fileSiblings[structuralInsertIndex];
+  return {
+    finalParentId,
+    structuralInsertIndex,
+    insertBeforeId: anchor && anchor !== 'children-slot' ? anchor : undefined,
+  };
 }
 
 /** Everything the drag handler reads from the LayersPanel component: parsed nodes,
@@ -245,29 +294,19 @@ export function startLayerDrag(ctx: LayerDragContext, e: ReactMouseEvent, layerI
       // the next render cycle. flushNow() ensures any pending writes commit
       // before our structural change so the queue is consistent.
       //
-      // Resolve {finalParentId, structuralInsertIndex, visualInsertIndex}:
+      // Resolve {finalParentId, structuralInsertIndex, insertBeforeId}:
       //   - `inside`        → new parent = drop target, insert at end
       //   - `before`/`after`→ new parent = drop target's parent, position
       //                       computed from sibling index
-      // structuralInsertIndex is in JSX-children space (for `move`/`reorder`
-      // mutations). visualInsertIndex is in CSS-order space (for the
-      // order-commit pipeline below); under explicit `order` styles those
-      // two diverge — we have to renumber based on what the user SAW.
-      let finalParentId: string | null;
-      let structuralInsertIndex: number;
-      if (indicator.position === 'inside') {
-        finalParentId = indicator.nodeId;
-        const parent = nodes.get(finalParentId);
-        structuralInsertIndex = parent ? parent.children.length : 0;
-      } else {
-        finalParentId = targetNode.parentId;
-        if (!finalParentId) return;
-        const parent = nodes.get(finalParentId);
-        if (!parent) return;
-        const siblingIndex = parent.children.indexOf(indicator.nodeId);
-        if (siblingIndex === -1) return;
-        structuralInsertIndex = indicator.position === 'after' ? siblingIndex + 1 : siblingIndex;
-      }
+      // structuralInsertIndex is FILE-space (template chrome + dragged node
+      // excluded — see resolveLayerDropStructure). visualInsertIndex further
+      // below is CSS-order space (for the order-commit pipeline); under
+      // explicit `order` styles those two diverge — we renumber based on what
+      // the user SAW, and anchor the JSX splice by sibling id so both truths
+      // encode the same slot.
+      const resolved = resolveLayerDropStructure(nodes, { nodeId: indicator.nodeId, position: indicator.position }, draggedId);
+      if (!resolved) return;
+      const { finalParentId, structuralInsertIndex, insertBeforeId } = resolved;
 
       // Viewport id for this drop = the row's vp prefix (one layer row is
       // bound to one viewport; the user dragged within that viewport's tree).
@@ -407,6 +446,10 @@ export function startLayerDrag(ctx: LayerDragContext, e: ReactMouseEvent, layerI
       const moveExtras = {
         ...(Object.keys(moveStyles).length > 0 ? { styles: moveStyles } : {}),
         ...(canvasNodeFlag !== undefined ? { canvasNode: canvasNodeFlag } : {}),
+        // Anchor the JSX splice by sibling id — immune to every index-space
+        // divergence (CSS `order`, `<style>` children). Same contract the
+        // canvas drag uses (CanvasDragStrategy → moveNodeInCode).
+        ...(insertBeforeId ? { insertBeforeId } : {}),
       };
 
       // Structural mutation always runs — keeps JSX coherent for the parser,
@@ -521,11 +564,25 @@ export function startLayerDrag(ctx: LayerDragContext, e: ReactMouseEvent, layerI
           }
         }
         const updates = commitOrderAssignments(assignments, contentEl, dropVpId, defaultOrders);
+        // Viewports with an INDEPENDENT @media order map for this parent need
+        // their own band write for the inserted node, or its base order is
+        // evaluated inside a foreign numbering and it lands anywhere — the
+        // same "tablet jumped way above" class the canvas drag fixed via
+        // computeReplicaOrderMirrorUpdates. Page files only: a component
+        // master's per-variant order lives in variant ternaries, not bands.
+        const mirrorUpdates = isCompMode ? [] : computeReplicaOrderMirrorUpdates({
+          draggedIds: [draggedId],
+          desiredVisualOrder: desired,
+          getNodeStyles: (id) => nodes.get(id)?.styles,
+          overrides: getDefaultStore().get(containerOverridesAtom),
+          vpWidths,
+          dropVpId,
+        });
         trace.action('layers:drop-order-commit', {
           finalParentId, dropVpId, flexDir, visualInsertIndex, desired,
-          updateCount: updates.length,
+          updateCount: updates.length, mirrorCount: mirrorUpdates.length,
         });
-        queuePendingUpdates(updates);
+        queuePendingUpdates([...updates, ...mirrorUpdates]);
       }
 
       // FORCE THE RENDER. A Layers-panel drop only queues mutations — unlike a

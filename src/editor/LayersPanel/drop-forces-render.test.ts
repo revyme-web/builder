@@ -35,6 +35,7 @@ vi.mock('@/canvas/node-ops', () => ({
 }));
 vi.mock('@/canvas/drag/reparent-utils', () => ({
   computeReorderAssignments: () => [],
+  computeReplicaOrderMirrorUpdates: () => [],
   flexForFlowChildEnteringFlex: () => ({}),
 }));
 vi.mock('@/canvas/drag/strategies/order-commit', () => ({ commitOrderAssignments: () => [] }));

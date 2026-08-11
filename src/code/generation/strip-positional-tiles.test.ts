@@ -93,6 +93,19 @@ describe('stripPositionalContainerStyles — page @media bands', () => {
   it('the result still parses', () => {
     expect(parseJSX(stripPositionalContainerStyles(PAGE, 'p-msjdasrf-5'))).toBeTruthy();
   });
+
+  it('a band holding ONLY :lang rules survives the re-serialize', () => {
+    // The serializer walked `rules.keys()` only — a band whose every regular
+    // rule was stripped (or that never had one) lost its locale rules
+    // wholesale. Same union updateContainerQueryStyle's serializer does.
+    const src = PAGE.replace(
+      '[data-id="p-msjdasrf-5"] { width: 318px !important; left: 12.5px !important; top: 0px !important; }',
+      ':lang(fr) [data-id="p-msjdasrf-5"] { opacity: 1 !important; }',
+    );
+    const out = stripPositionalContainerStyles(src, 'p-msjdasrf-5');
+    expect(out).toContain(':lang(fr) [data-id="p-msjdasrf-5"] { opacity: 1 !important; }');
+    expect(out).toContain('@media (max-width: 375px)');
+  });
 });
 
 // ─── Component files: replicas are variant artboards, not @media bands ──────

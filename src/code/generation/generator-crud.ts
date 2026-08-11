@@ -13,7 +13,7 @@ import { cssTransformToMotionProps } from '@/shared/motion-transform';
 import { trace } from '@/shared/debug-trace';
 import { generate, findTagClose, findJSXDataIdIndex, quoteStyleValue, serializeJSXAttr, findMatchingCloseTagIndex, findStyleObjectEnd } from './generator-utils';
 import { moveNodeIntoParentFast } from './move-fast';
-import { clearContainerStylesForNode, removeHoverStyleInCode, removeBorderOverlayStyle } from './generator-styles';
+import { clearContainerStylesForNode, removeHoverStyleInCode, removeBorderOverlayStyle, findBandedOrderWidths, stripBandedOrderForNode } from './generator-styles';
 import { clearNodeScrollFx, ensureTransformTemplateInCode } from './generator-motion';
 import { stripScrollTextHooks } from './text-anim-gen';
 import { parseVariantConfig } from '../variants/variant-config';
@@ -2005,6 +2005,31 @@ function cheapOutermostDataId(code: string): string | null {
   return m ? m[1] : null;
 }
 
+/** data-id of the nearest JSXElement ancestor of `nodeId`, or null when the
+ *  node has no data-id'd element ancestor (a `canvasNodes`-fragment child, or
+ *  the page root itself). Wrapper elements without a data-id (glide
+ *  `<motion.div>` shells, `.map()` callbacks) are walked THROUGH — the logical
+ *  parent is the enclosing tracked node, same as the parser's parentId. */
+function findParentDataIdInCode(code: string, nodeId: string): string | null {
+  const ast = parseJSX(code);
+  if (!ast) return null;
+  let parentId: string | null = null;
+  findFirstElementByDataId(ast, nodeId, (path) => {
+    let p = path.parentPath;
+    while (p) {
+      if (p.node?.type === 'JSXElement') {
+        const idAttr = findAttribute((p.node as t.JSXElement).openingElement, 'data-id');
+        if (idAttr?.value?.type === 'StringLiteral') {
+          parentId = idAttr.value.value;
+          return;
+        }
+      }
+      p = p.parentPath;
+    }
+  });
+  return parentId;
+}
+
 export function moveNodeInCode(
   code: string,
   nodeId: string,
@@ -2025,6 +2050,29 @@ export function moveNodeInCode(
   let result = code;
   if (styleChanges) {
     result = updateNodeInCode(result, nodeId, styleChanges);
+  }
+
+  // ── Reparent invalidates the node's per-viewport banded `order` ──────────
+  // A band's `order: N !important` numbers this node within its CURRENT
+  // parent's sibling space (written when the user reordered siblings on that
+  // replica). After a real parent change those values are a foreign numbering
+  // in the new parent — on a templated page (whose canvas merge strips the
+  // sections' inline `order` and stacks by DOM order) one stale banded order
+  // sorts the node below EVERY sibling, so it "disappears" to the bottom of
+  // the tablet/mobile tiles (layers-drag out of the hero, 2026-08-11). Strip
+  // them here, at the one choke point every reparent flows through — layers
+  // drag, canvas drag, plugin SDK, AI moves. Same-parent moves keep their
+  // bands (per-viewport section order divergence is a feature); callers that
+  // want per-viewport placement in the NEW parent re-write fresh band entries
+  // after the move (computeReplicaOrderMirrorUpdates). The banded-order check
+  // is a cheap `<style>`-block scan, so the JSX parse for the old parent only
+  // runs when there is actually something to strip.
+  if (findBandedOrderWidths(result, nodeId).length > 0) {
+    const oldParentId = findParentDataIdInCode(result, nodeId);
+    if (oldParentId !== newParentId) {
+      trace.action('generator:moveNodeInCode-strip-banded-order', { nodeId, oldParentId, newParentId });
+      result = stripBandedOrderForNode(result, nodeId);
+    }
   }
 
   // ── FAST PATH: plain reparent INTO a real, non-root parent ──────────────

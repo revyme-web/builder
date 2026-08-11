@@ -434,7 +434,10 @@ export function stripPositionalContainerStyles(code: string, nodeId: string): st
   seedBandLosingImplicitCoverage(code, rules, vpWidths);
   let newCss = '\n';
   for (const rule of lang.topLevel) newCss += `    ${rule}\n`;
-  const sortedWidths = [...rules.keys()].sort((a, b) => b - a);
+  // Union with the :lang-only widths (same as updateContainerQueryStyle's
+  // serializer) — a band whose regular rules all vanished must still carry
+  // its locale rules instead of being dropped wholesale.
+  const sortedWidths = [...new Set([...rules.keys(), ...lang.banded.keys()])].sort((a, b) => b - a);
   for (const width of sortedWidths) {
     const selectors = rules.get(width) ?? new Map<string, Map<string, string>>();
     const langRules = lang.banded.get(width) ?? [];
@@ -532,6 +535,47 @@ export function stripPositionalVariantStyles(code: string, nodeId: string): stri
 
   trace.action('generator.stripPositionalVariantStyles', { nodeId, varName });
   return code.slice(0, objOpen + 1) + nextBody + code.slice(objEnd);
+}
+
+/** Band widths whose @media rule carries an `order` declaration for `nodeId`.
+ *  Cheap pre-check for `stripBandedOrderForNode` — parses only the `<style>`
+ *  block, never the JSX, so callers can gate an expensive AST parse on it. */
+export function findBandedOrderWidths(code: string, nodeId: string): number[] {
+  const blockMatch = /(<style>\s*\{[`'])([\s\S]*?)([`']\}\s*<\/style>)/s.exec(code);
+  if (!blockMatch || !blockMatch[2].includes(`[data-id="${nodeId}"]`)) return [];
+  const rules = parseContainerRules(extractLangRules(blockMatch[2]).css);
+  const widths: number[] = [];
+  for (const [width, selectorMap] of rules) {
+    if (selectorMap.get(nodeId)?.has('order')) widths.push(width);
+  }
+  return widths;
+}
+
+/**
+ * Delete the `order` declaration from EVERY @media band rule targeting
+ * `nodeId`, keeping all its other banded props. A banded `order: N !important`
+ * numbers the node within its CURRENT parent's sibling space (written by a
+ * replica reorder); after a REPARENT those values are a foreign numbering in
+ * the new parent. On a templated page — where the canvas merge strips the
+ * sections' inline `order` and stacks them by DOM order — a single stale
+ * banded order sorts the node BELOW every sibling, parking it at the bottom
+ * of the page ("Social Proof vanishes on tablet + mobile after a layers-drag
+ * out of the hero", 2026-08-11). Width / padding / font-size overrides are
+ * node-local and survive the move — only `order` is sibling-space-relative.
+ *
+ * Routed through `updateContainerQueryStyle` per width (`''` = delete-key)
+ * so empty-rule/band cleanup, `:lang()` preservation and open-band seeding
+ * behave exactly like any panel write.
+ */
+export function stripBandedOrderForNode(code: string, nodeId: string): string {
+  const widths = findBandedOrderWidths(code, nodeId);
+  if (widths.length === 0) return code;
+  trace.action('generator.stripBandedOrderForNode', { nodeId, widths });
+  let result = code;
+  for (const width of widths) {
+    result = updateContainerQueryStyle(result, nodeId, width, { order: '' });
+  }
+  return result;
 }
 
 /**
