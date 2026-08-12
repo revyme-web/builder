@@ -24,6 +24,11 @@ import React from 'react';
 import type { CanvasNode } from '@/code/parsing/parser';
 import type { PresetToken } from '@/shared/types';
 import { resolvePresetColor } from '@/shared/css-utils';
+import { edgeResizeUrl } from '@/canvas/renderer/canvas-image-preview';
+
+/** Edge-resize bounding box for row thumbnails: the swatch is ~18 CSS px, so
+ *  64 covers any retina density with margin while staying a few KB. */
+const LAYER_THUMB_EDGE = 64;
 
 export type SvgPart = { tag: string; attrs: Record<string, string> };
 
@@ -225,17 +230,30 @@ export default function LayerPreview({ spec, size, onError }: Props) {
     );
   }
 
+  return <LayerImageThumb src={spec.src} frame={frame} onError={onError} />;
+}
+
+/** The image swatch. Zone-hosted images load as a TINY edge-resized variant
+ *  (~64px, a few KB) instead of the full original — the panel is the parent
+ *  frame, so the canvas iframe's preview cache can't help it here. Two-stage
+ *  fallback keeps it safe: edge thumb fails (transformations off / quota) →
+ *  retry with the original; original fails → caller's glyph fallback. */
+function LayerImageThumb({ src, frame, onError }: {
+  src: string; frame: React.CSSProperties; onError?: () => void;
+}) {
+  const [edgeFailedFor, setEdgeFailedFor] = React.useState<string | null>(null);
+  const edge = edgeFailedFor === src ? null : edgeResizeUrl(src, LAYER_THUMB_EDGE);
   return (
     <div style={frame}>
       <img
-        src={spec.src}
+        src={edge ?? src}
         alt=""
         draggable={false}
         // The panel renders EVERY row (no virtualisation), so a deep tree would
         // otherwise fetch every image at once. Lazy defers to scroll position.
         loading="lazy"
         decoding="async"
-        onError={onError}
+        onError={edge ? () => setEdgeFailedFor(src) : onError}
         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
       />
     </div>

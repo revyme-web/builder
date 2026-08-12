@@ -4,6 +4,7 @@
 
 import { coerceCssNumberToPx } from '@/shared/css-utils';
 import { injectCanvasCSS, removeCanvasCSS } from '../node-ops';
+import { isPreviewAppliedBg } from './canvas-image-preview';
 
 /**
  * Apply Inside/Outside stroke alignment via a per-shape CSS rule (NOT
@@ -149,6 +150,11 @@ export function resolveInstanceWrapperOverflow(
  * keep using property assignment (the existing fast path).
  */
 export function setElStyle(el: HTMLElement, key: string, v: string): void {
+  // Canvas image previews swap backgroundImage for a downscaled blob URL —
+  // when this element already paints the preview OF exactly this value, the
+  // write must be skipped or every patch cycle would restore the original and
+  // re-decode the full bitmap (see canvas-image-preview.ts).
+  if (key === 'backgroundImage' && isPreviewAppliedBg(el, v)) return;
   if (key.startsWith('--')) {
     try { el.style.setProperty(key, v); } catch { /* skip invalid */ }
   } else {

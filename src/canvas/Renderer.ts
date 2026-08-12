@@ -29,6 +29,7 @@ import {
 } from './renderer/responsive';
 import { positionOverlayInPortal, positionCanvasNodeOverlays, collectOverlayElsForRoot, rememberOverlayPlacements, classifyPortalChild, type OverlayPlacement } from './renderer/overlay-portals';
 import { applyStrokeAlignment, setElStyle, clearElStyle, resolveInstanceWrapperOverflow } from './renderer/style-apply';
+import { initCanvasImagePreview, isPreviewAppliedSrc } from './renderer/canvas-image-preview';
 import { applyNodeCmsBindings, applyBindingDataToTree, applyLocaleOverrides, clearLocaleStyleResidue } from './renderer/bindings';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -851,6 +852,13 @@ export function renderNodes(
     obs.observe(container, { childList: true, subtree: true });
     (container as any).__videoFreeze = obs;
   }
+
+  // Downscale big raster images to canvas-only previews (same canvas-only
+  // philosophy as the video freeze above — source keeps the original URL, the
+  // live site is untouched). Catches <img> AND inline backgroundImage however
+  // they enter the DOM: node render, code component, CMS binding, culling
+  // re-add. See canvas-image-preview.ts for the full story.
+  initCanvasImagePreview(container);
 
   // Partition root nodes
   const viewportRoots: CanvasNode[] = [];
@@ -2397,6 +2405,10 @@ function patchElement(
       // Responsive raw-element attr (input type/name/placeholder) → resolve the
       // value for this replica's width / variant so the canvas matches live.
       const safeValue = node.responsiveAttrs ? resolveResponsiveAttr(node, key, value, vpWidth, variantName) : value;
+      // The canvas image-preview swap replaces src with a downscaled blob —
+      // treat "element paints the preview OF this src" as applied, or this
+      // diff restores the original and re-decodes the full bitmap every patch.
+      if (key === 'src' && isPreviewAppliedSrc(el, safeValue)) continue;
       if (el.getAttribute(key) !== safeValue) el.setAttribute(key, safeValue);
     }
     // Mark overlay nodes for CSS-based visibility control (hidden by the base

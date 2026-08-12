@@ -339,84 +339,31 @@ describe('CullingController — SVG roots', () => {
   });
 });
 
-describe('CullingController — inside a live artboard', () => {
+describe('CullingController — granularity deliberately stops at the tile', () => {
   let container: HTMLElement;
   beforeEach(() => {
     container = document.createElement('div');
     document.body.appendChild(container);
   });
 
-  /** An artboard wide enough to stay on screen across these camera moves,
-   *  holding one node at `box`. (A tile whose OWN box leaves the screen is
-   *  culled as a root — that path is covered above and would mask the
-   *  granularity these tests are about.) */
-  function artboardWith(box: { left: number; top: number; width: number; height: number }, position: string) {
+  it('never culls nodes INSIDE a live artboard (in-viewport culling removed 2026-08-12)', () => {
+    // The old "in-viewport" mode display:none'd absolutely-positioned nodes
+    // whose own box left the screen — with NO placeholder, restored only on
+    // camera idle. Gallery images visibly vanished during pans, and the perf
+    // win evaporated once canvas-image-preview made big images cheap. Pins
+    // the removal: an offscreen absolute child of an on-screen tile stays live.
+    const c = new CullingController(container);
     const vp = makeRoot(container, 'desktop', { left: 0, top: 0, width: 20000, height: 600 }, true);
-    const node = withBox(document.createElement('div'), box);
+    const node = withBox(document.createElement('div'), { left: 14000, top: 0, width: 40, height: 40 });
     node.setAttribute('data-node-id', 'rect-1');
-    node.style.position = position;
+    node.style.position = 'absolute';
     vp.appendChild(node);
-    return { vp, node };
-  }
-
-  it('culls an absolutely-positioned node that is offscreen, though its artboard is not', () => {
-    const c = new CullingController(container);
-    const { vp, node } = artboardWith({ left: 14000, top: 0, width: 40, height: 40 }, 'absolute');
 
     c.onTransform(0, 0, 1);
     c.evaluate();
 
-    expect(vp.style.display).not.toBe('none'); // tile is on screen — stays
-    expect(node.style.display).toBe('none');   // its content need not be
-  });
-
-  it('leaves IN-FLOW children alone — hiding one would collapse the layout', () => {
-    const c = new CullingController(container);
-    const { node } = artboardWith({ left: 14000, top: 0, width: 40, height: 40 }, 'relative');
-
-    c.onTransform(0, 0, 1);
-    c.evaluate();
-
-    expect(node.style.display).not.toBe('none');
-  });
-
-  it('spends no placeholder on an in-viewport cull', () => {
-    const c = new CullingController(container);
-    artboardWith({ left: 14000, top: 0, width: 40, height: 40 }, 'absolute');
-
-    c.onTransform(0, 0, 1);
-    c.evaluate();
-
-    // One div per hidden shape would spend back what culling just saved — and
-    // it would sit offscreen where nobody can see it anyway.
-    expect(container.querySelector('[data-culling-placeholder="rect-1"]')).toBeNull();
-  });
-
-  it('survives the per-render prune — its parent is the artboard, not the container', () => {
-    const c = new CullingController(container);
-    const { node } = artboardWith({ left: 14000, top: 0, width: 40, height: 40 }, 'absolute');
-
-    c.onTransform(0, 0, 1);
-    c.evaluate();
-    expect(node.style.display).toBe('none');
-
-    // `restoreReNested` used to compare against the container, which every
-    // in-viewport entry fails — culling would undo itself each render cycle.
-    c.pruneStale();
-    expect(node.style.display).toBe('none');
-  });
-
-  it('restores it when the camera brings it back', () => {
-    const c = new CullingController(container);
-    const { node } = artboardWith({ left: 14000, top: 0, width: 40, height: 40 }, 'absolute');
-
-    c.onTransform(0, 0, 1);
-    c.evaluate();
-    expect(node.style.display).toBe('none');
-
-    c.onTransform(-13800, 0, 1); // 14000 → x=200 on screen
-    c.evaluate();
-    expect(node.style.display).not.toBe('none');
+    expect(vp.style.display).not.toBe('none');   // tile on screen — live
+    expect(node.style.display).not.toBe('none'); // far-offscreen child: ALSO live
     expect(node.hasAttribute('data-culled')).toBe(false);
   });
 });

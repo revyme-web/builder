@@ -21,6 +21,14 @@
 //     drag strategy's feet. The gesture-end reconcile re-schedules us.
 //
 // CANVAS-ONLY by construction: this module renders nothing on the live site.
+//
+// REMOVED (2026-08-12): "in-viewport culling" — individually display:none-ing
+// absolutely-positioned nodes INSIDE a live artboard once their own box left
+// the screen. Granularity now deliberately stops at the tile. It hid gallery/
+// collage images with NO placeholder until the camera idled (they visibly
+// vanished during pans and popped back ~140ms after settling), and the perf it
+// bought disappeared once canvas-image-preview.ts made big images cheap. If
+// "why aren't nodes inside a tile culled?" comes up again, that UX is why.
 
 import { trace } from '@/shared/debug-trace';
 
@@ -34,11 +42,9 @@ const RESTORE_MARGIN_SCREEN_PX = 100;
 interface Box { left: number; top: number; width: number; height: number }
 
 /** A culled entry knows the parent it is expected to hang off, because
- *  `restoreReNested` treats "moved elsewhere" as staleness. Root entries expect
- *  the container; IN-VIEWPORT entries expect whatever held them when culled. */
+ *  `restoreReNested` treats "moved elsewhere" as staleness. */
 interface CullMeta {
-  /** Null for in-viewport culls — see `cullInViewport` in evaluate(). */
-  placeholder: HTMLElement | null;
+  placeholder: HTMLElement;
   prevDisplay: string;
   box: Box;
   parent: HTMLElement;
@@ -169,10 +175,6 @@ export class CullingController {
     if (this.culled.size === 0) return 0;
     let restored = 0;
     for (const [el, meta] of this.culled) {
-      // `meta.parent`, NOT the container: an in-viewport entry legitimately
-      // hangs off its artboard, and comparing against the container would
-      // restore every one of them on every render cycle — culling that undoes
-      // itself before it can save anything.
       if (el.isConnected && el.parentElement !== meta.parent) {
         this.restore(el);
         restored++;
@@ -229,46 +231,6 @@ export class CullingController {
       // small elements and no layout of its own.
       if (el.hasAttribute('data-overlay-portal')) continue;
       if (el.hasAttribute('data-viewport') || el.hasAttribute('data-node-id')) out.push(el);
-    }
-    return out;
-  }
-
-  /** Cullable nodes INSIDE a live viewport artboard.
-   *
-   *  `roots()` is root-level only, so an artboard is one all-or-nothing unit:
-   *  a page whose content is 900 shapes spread across 20,000px pays for every
-   *  one of them as long as any sliver of the artboard is on screen. That is
-   *  the "why aren't these culled?" case — nothing was broken, the granularity
-   *  simply stopped at the tile.
-   *
-   *  ABSOLUTELY-POSITIONED ONLY, and read from the INLINE style:
-   *   · `display:none` on an in-flow child would collapse the layout and shove
-   *     every sibling — catastrophic, and invisible until the user pans back.
-   *     An out-of-flow child affects nobody else's geometry, which is the same
-   *     property that makes root-level culling safe.
-   *   · inline (not computed) because this runs over every node on the page:
-   *     `getComputedStyle` here would be a forced-layout storm at exactly the
-   *     moment we're trying to save work. A replica whose `position` comes from
-   *     an `@container` rule just isn't a candidate — it stays alive, which is
-   *     the safe direction to be wrong in.
-   *
-   *  Descendants of an already-culled candidate are skipped: their ancestor is
-   *  `display:none`, so culling them buys nothing and doubles the bookkeeping. */
-  private inViewportCandidates(liveRoots: HTMLElement[]): HTMLElement[] {
-    const out: HTMLElement[] = [];
-    for (const root of liveRoots) {
-      if (!root.hasAttribute('data-viewport')) continue;   // canvas-node roots union their subtree already
-      for (const raw of Array.from(root.querySelectorAll('[data-node-id]'))) {
-        if (!isCullable(raw)) continue;
-        const pos = raw.style.position;
-        if (pos !== 'absolute' && pos !== 'fixed') continue;
-        if (raw.hasAttribute('data-culling-placeholder')) continue;
-        // An overlay lives in the portal, whose own box doesn't bound it —
-        // same reasoning as the portal exemption in roots().
-        if (raw.hasAttribute('data-overlay-node')) continue;
-        if (raw.parentElement?.closest('[data-culled]')) continue;
-        out.push(raw);
-      }
     }
     return out;
   }
@@ -354,11 +316,8 @@ export class CullingController {
     };
     let culledN = 0;
     const toRestore: HTMLElement[] = [];
-    /** Shared cull/restore decision. `placeholder` distinguishes a root (grey
-     *  box marks where the artboard is) from an in-viewport node (no marker —
-     *  it is offscreen by definition, and one div per hidden shape would spend
-     *  back exactly what culling just saved). */
-    const consider = (el: HTMLElement, placeholder: boolean): void => {
+    /** Cull/restore decision for one root. */
+    const consider = (el: HTMLElement): void => {
       const isCulled = this.culled.has(el);
       const b = this.boxOf(el);
       if (b.width === 0 && b.height === 0) return; // unmeasurable — never touch
@@ -367,25 +326,12 @@ export class CullingController {
         b.left + b.width < vis.left - pad || b.left > vis.right + pad ||
         b.top + b.height < vis.top - pad || b.top > vis.bottom + pad;
       if (outside && !isCulled) {
-        this.cull(el, b, placeholder);
+        this.cull(el, b);
         culledN++;
-        // INVARIANT: a culled entry is either a root, or a node inside a LIVE
-        // root. When a whole artboard goes, its in-viewport entries are
-        // redundant (an ancestor is display:none) — and worse, stranded: the
-        // candidate sweep only walks live roots, so nothing would ever restore
-        // them. Drop them now and let the next evaluate re-cull whatever is
-        // still offscreen once the artboard is back.
-        if (placeholder) this.releaseCulledInside(el);
       } else if (!outside && isCulled) toRestore.push(el);
     };
 
-    const roots = this.roots();
-    for (const el of roots) consider(el, true);
-    // Then INSIDE the artboards that survived — a live tile is one cullable
-    // unit at root level, but its own contents can still be mostly offscreen.
-    for (const el of this.inViewportCandidates(roots.filter(r => !this.culled.has(r)))) {
-      consider(el, false);
-    }
+    for (const el of this.roots()) consider(el);
     // SMALL restore sets materialise synchronously (the common pan case).
     // BIG sets — a large zoom-out bringing dozens of culled tiles back into
     // view at once — are STAGGERED across frames: restoring everything in
@@ -422,34 +368,21 @@ export class CullingController {
     }
   }
 
-  /** Restore every culled entry nested inside `root` — see the invariant note
-   *  at the cull site. Skips `root` itself. */
-  private releaseCulledInside(root: HTMLElement): void {
-    let released = 0;
-    for (const [el] of this.culled) {
-      if (el !== root && root.contains(el)) { this.restore(el); released++; }
-    }
-    if (released > 0) trace.dom('culling.releaseCulledInside', { released, remaining: this.culled.size });
-  }
-
-  private cull(el: HTMLElement, b: Box, placeholder = true): void {
-    let ph: HTMLElement | null = null;
-    if (placeholder) {
-      ph = document.createElement('div');
-      ph.setAttribute('data-culling-placeholder',
-        el.getAttribute('data-viewport') || el.getAttribute('data-node-id') || 'root');
-      ph.style.cssText =
-        `position:absolute;left:${b.left}px;top:${b.top}px;width:${b.width}px;height:${b.height}px;` +
-        'background:rgba(128, 128, 140, 0.10);border:1px solid rgba(128, 128, 140, 0.25);' +
-        'border-radius:6px;pointer-events:none;box-sizing:border-box;';
-      this.container.insertBefore(ph, el);
-    }
+  private cull(el: HTMLElement, b: Box): void {
+    const ph = document.createElement('div');
+    ph.setAttribute('data-culling-placeholder',
+      el.getAttribute('data-viewport') || el.getAttribute('data-node-id') || 'root');
+    ph.style.cssText =
+      `position:absolute;left:${b.left}px;top:${b.top}px;width:${b.width}px;height:${b.height}px;` +
+      'background:rgba(128, 128, 140, 0.10);border:1px solid rgba(128, 128, 140, 0.25);' +
+      'border-radius:6px;pointer-events:none;box-sizing:border-box;';
+    this.container.insertBefore(ph, el);
     this.culled.set(el, {
       placeholder: ph,
       prevDisplay: el.style.display,
       box: b,
-      // Where this element belongs. `restoreReNested` reads it rather than
-      // assuming the container, which every in-viewport entry would fail.
+      // Where this element belongs. `restoreReNested` compares against this
+      // rather than assuming the container.
       parent: el.parentElement ?? this.container,
     });
     el.style.display = 'none';
@@ -459,7 +392,7 @@ export class CullingController {
   private restore(el: HTMLElement): void {
     const meta = this.culled.get(el);
     if (!meta) return;
-    meta.placeholder?.remove();
+    meta.placeholder.remove();
     el.style.display = meta.prevDisplay;
     el.removeAttribute('data-culled');
     this.culled.delete(el);
