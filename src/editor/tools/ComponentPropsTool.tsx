@@ -18,6 +18,7 @@ import { isReplicaViewportAtom, interactingViewportWidthAtom, isComponentVariant
 import { buildComponentRegistry, parseComponentInfoFromSource } from '@/code/components/component-registry';
 import { resolveVariableCssProp, isVariableAppliedInCode, type ResolveChildCode } from '@/code/components/prop-css-mapping';
 import { useCdnSource } from '@/cloud/components/cdn-source-hook';
+import { useCdnMetadataCache, useEnsureCdnMetadata } from '@/cloud/components/cdn-metadata-hook';
 import { linkedComponentModalUrlAtom } from '@/cloud/components/linked-component-modal-store';
 import { parseComponentName } from '@/code/components/component-ops';
 import type { ComponentControlDef } from '@/code/components/controls-parser';
@@ -210,6 +211,30 @@ export default function ComponentPropsTool() {
   const isCdnContainerSet = isCdnVector;
   const { source: cdnSource } = useCdnSource(isCdnLinked && !isCdnContainerSet ? componentFile : null);
 
+  // CLOSED-SOURCE FALLBACK. `/source` answers 403 for a closed-source listing
+  // — correctly, since that endpoint is the Unlink/import-to-local unlock. But
+  // a component you cannot pass props to is not a usable component, and
+  // closed source is meant to stop people COPYING the code, not USING it. So
+  // when the real source is withheld we parse the public INTERFACE instead:
+  // signature + `@propMeta` / `@pageVariables` / `variantConfig`, function
+  // bodies stripped server-side (see backend `component-interface.ts`). It is
+  // deliberately parsed by the SAME parsers below — one code path, whether we
+  // hold the master, the fetched source, or just the interface.
+  const cdnMetadataCache = useCdnMetadataCache();
+  const ensureCdnMetadata = useEnsureCdnMetadata();
+  useEffect(() => {
+    if (isCdnLinked && !isCdnContainerSet && componentFile) ensureCdnMetadata(componentFile);
+  }, [isCdnLinked, isCdnContainerSet, componentFile, ensureCdnMetadata]);
+  const cdnInterface = useMemo(() => {
+    if (!isCdnLinked || !componentFile) return null;
+    const entry = cdnMetadataCache.get(componentFile);
+    if (!entry || entry === 'missing' || entry === 'error') return null;
+    return entry.interfaceSource ?? null;
+  }, [isCdnLinked, componentFile, cdnMetadataCache]);
+  // Real source wins when we're entitled to it (richer: full bodies let
+  // prop→CSS mapping resolve); the interface carries the panel otherwise.
+  const cdnCode = cdnSource ?? cdnInterface;
+
   // Build registry and find this component's info.
   // Adding `projectVersion` as a dep ensures we re-read the registry when
   // the master file changes (e.g. user creates a new variable on the master,
@@ -219,41 +244,44 @@ export default function ComponentPropsTool() {
   const componentInfo = useMemo(() => {
     if (!componentFile) return null;
     if (isCdnLinked) {
-      if (!cdnSource) return null; // still loading
+      // Null = still loading AND no interface cached yet. Once either
+      // resolves the panel populates; a closed-source component lands here
+      // with the interface skeleton rather than hanging forever.
+      if (!cdnCode) return null;
       // Use the URL as the cache hash key — content-addressed already.
       const hashMatch = componentFile.match(/@([a-f0-9]+)\./);
       const hash = hashMatch?.[1] ?? componentFile;
-      return parseComponentInfoFromSource(componentFile, cdnSource, hash);
+      return parseComponentInfoFromSource(componentFile, cdnCode, hash);
     }
     const registry = buildComponentRegistry(projectFS);
     for (const info of registry.values()) {
       if (info.filePath === componentFile) return info;
     }
     return null;
-  }, [componentFile, projectVersion, isCdnLinked, cdnSource]);
+  }, [componentFile, projectVersion, isCdnLinked, cdnCode]);
 
   // Get display name from @name annotation. For CDN-linked components
   // parse the cached source directly.
   const displayName = useMemo(() => {
     if (!componentFile) return null;
     if (isCdnLinked) {
-      return cdnSource ? parseComponentName(cdnSource) : null;
+      return cdnCode ? parseComponentName(cdnCode) : null;
     }
     return getComponentDisplayName(componentFile);
-  }, [componentFile, projectVersion, isCdnLinked, cdnSource]);
+  }, [componentFile, projectVersion, isCdnLinked, cdnCode]);
 
   // Parse variant config from the component file (or fetched CDN source)
   const variantConfig = useMemo(() => {
     if (!componentFile) return [];
     let compCode: string | null = null;
     if (isCdnLinked) {
-      compCode = cdnSource;
+      compCode = cdnCode;
     } else {
       compCode = projectFS.readFile(componentFile);
     }
     if (!compCode) return [];
     return parseVariantConfig(compCode);
-  }, [componentFile, projectVersion, isCdnLinked, cdnSource]);
+  }, [componentFile, projectVersion, isCdnLinked, cdnCode]);
 
   // handleEditComponent is defined below after currentVariant
 

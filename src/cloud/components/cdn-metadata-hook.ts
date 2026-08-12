@@ -39,6 +39,14 @@ export interface CdnComponentMetadata {
    *  axis when the component doesn't declare one. */
   defaultWidth?: number | null;
   defaultHeight?: number | null;
+  /** The component's PUBLIC INTERFACE — its signature plus `@propMeta` /
+   *  `@pageVariables` / `variantConfig` blocks, with every function body
+   *  stripped server-side. Parseable by the SAME parsers as a real master
+   *  file, which is what lets ComponentPropsTool configure a CLOSED-SOURCE
+   *  component: withholding the implementation must not make the component
+   *  impossible to pass props to. Null when the server couldn't identify a
+   *  component signature. */
+  interfaceSource?: string | null;
 }
 
 /** Cache entry: metadata, `'missing'` (404 — orphan URL) or `'error'`

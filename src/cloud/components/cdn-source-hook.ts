@@ -12,17 +12,53 @@
 // Loading state is tracked separately so concurrent calls for the same
 // URL coalesce into one network request, and the hook can return the
 // cached value AND a "loading" flag without thrashing.
+//
+// FAILURES ARE CACHED TOO, and that is load-bearing (mirrors
+// `cdn-metadata-hook.ts`). `/source` answers 403 for a CLOSED-SOURCE
+// marketplace listing — a permanent, correct "no" that no amount of
+// retrying will turn into a yes. Caching only successes meant
+// `cache.has(url)` stayed false forever while the effect's own writes to
+// the `loading` atom re-triggered it, so a single closed-source instance
+// on the page re-fetched without bound: hundreds of 403s per second in
+// the console and against production. Two rules keep that shut:
+//   1. Every outcome writes a cache entry — `'forbidden'` / `'missing'`
+//      are terminal, `'error'` retries after a backoff window.
+//   2. The effect depends ONLY on `url` and reads its guards straight
+//      from the store, so mutating cache/loading can't re-enter it.
 
-import { atom, useAtomValue, useSetAtom } from 'jotai';
+import { atom, getDefaultStore, useAtomValue, useSetAtom } from 'jotai';
 import { useEffect } from 'react';
 import { trace } from '@/shared/debug-trace';
 
-const cdnSourceCacheAtom = atom<Map<string, string>>(new Map<string, string>());
+/** Cache entry: the TSX, or why it isn't available.
+ *  - `'forbidden'` — closed-source listing (403). Terminal: the server will
+ *    never hand this caller the code, so it must never be retried.
+ *  - `'missing'`   — no source row for this hash (404). Terminal.
+ *  - `'error'`     — network / 5xx. Transient, retried after the backoff. */
+export type CdnSourceCacheEntry = string | 'forbidden' | 'missing' | 'error';
+
+const cdnSourceCacheAtom = atom<Map<string, CdnSourceCacheEntry>>(
+  new Map<string, CdnSourceCacheEntry>(),
+);
 const cdnSourceLoadingAtom = atom<Set<string>>(new Set<string>());
+
+/** Last transient-failure time per URL — one retry per window, so a flapping
+ *  endpoint can't be hot-looped by a re-rendering panel. */
+const lastErrorAt = new Map<string, number>();
+const ERROR_RETRY_MS = 30_000;
+
+const isTerminal = (e: CdnSourceCacheEntry | undefined): boolean =>
+  e !== undefined && e !== 'error';
 
 export interface CdnSourceState {
   source: string | null;
   loading: boolean;
+  /** True when the source is known to be unavailable — closed source or no
+   *  such hash. Lets consumers render "not available" instead of a spinner
+   *  that would otherwise never resolve. */
+  unavailable: boolean;
+  /** True specifically for a closed-source listing (403). */
+  closedSource: boolean;
 }
 
 /**
@@ -37,8 +73,14 @@ export function useCdnSource(url: string | null | undefined): CdnSourceState {
 
   useEffect(() => {
     if (!url) return;
-    if (cache.has(url)) return;
-    if (loading.has(url)) return;
+    // Guards read from the STORE, not from the subscribed values above: the
+    // effect writes both atoms, and depending on them here is what turned a
+    // permanent 403 into an unbounded refetch loop.
+    const store = getDefaultStore();
+    const cached = store.get(cdnSourceCacheAtom).get(url);
+    if (isTerminal(cached)) return;
+    if (cached === 'error' && Date.now() - (lastErrorAt.get(url) ?? 0) < ERROR_RETRY_MS) return;
+    if (store.get(cdnSourceLoadingAtom).has(url)) return;
 
     const hashMatch = url.match(/@([a-f0-9]+)\.(?:js|tsx)$/);
     if (!hashMatch) {
@@ -54,36 +96,53 @@ export function useCdnSource(url: string | null | undefined): CdnSourceState {
     });
     trace.action('cdn-source-hook:fetch-start', { url, hash });
 
-    fetch(`/api/components/source?hash=${encodeURIComponent(hash)}`, {
-      credentials: 'include',
-    })
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.text();
-      })
-      .then(text => {
-        setCache((prev: Map<string, string>) => {
-          const next = new Map(prev);
-          next.set(url, text);
-          return next;
+    (async () => {
+      let result: CdnSourceCacheEntry;
+      try {
+        const r = await fetch(`/api/components/source?hash=${encodeURIComponent(hash)}`, {
+          credentials: 'include',
         });
-        trace.action('cdn-source-hook:fetched', { url, size: text.length });
-      })
-      .catch(err => {
-        trace.error('cdn-source-hook:fetch-failed', { url, error: err instanceof Error ? err.message : String(err) });
-      })
-      .finally(() => {
-        setLoading((prev: Set<string>) => {
-          const next = new Set(prev);
-          next.delete(url);
-          return next;
+        if (r.status === 403) {
+          // Closed source — the intended answer, not a fault. Cache and stop.
+          result = 'forbidden';
+          trace.action('cdn-source-hook:closed-source', { url });
+        } else if (r.status === 404) {
+          result = 'missing';
+          trace.action('cdn-source-hook:missing', { url });
+        } else if (!r.ok) {
+          throw new Error(`HTTP ${r.status}`);
+        } else {
+          result = await r.text();
+          trace.action('cdn-source-hook:fetched', { url, size: result.length });
+        }
+      } catch (err) {
+        result = 'error';
+        lastErrorAt.set(url, Date.now());
+        trace.error('cdn-source-hook:fetch-failed', {
+          url,
+          error: err instanceof Error ? err.message : String(err),
         });
+      }
+      setCache((prev: Map<string, CdnSourceCacheEntry>) => {
+        const next = new Map(prev);
+        next.set(url, result);
+        return next;
       });
-  }, [url, cache, loading, setCache, setLoading]);
+      setLoading((prev: Set<string>) => {
+        const next = new Set(prev);
+        next.delete(url);
+        return next;
+      });
+    })();
+  }, [url, setCache, setLoading]);
 
-  if (!url) return { source: null, loading: false };
+  if (!url) return { source: null, loading: false, unavailable: false, closedSource: false };
+  const entry = cache.get(url);
+  const resolved = typeof entry === 'string' && entry !== 'forbidden' && entry !== 'missing' && entry !== 'error';
   return {
-    source: cache.get(url) ?? null,
+    source: resolved ? (entry as string) : null,
     loading: loading.has(url),
+    unavailable: entry === 'forbidden' || entry === 'missing',
+    closedSource: entry === 'forbidden',
   };
 }
