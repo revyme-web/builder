@@ -70,6 +70,48 @@ describe('makeComponent', () => {
     vi.clearAllMocks();
   });
 
+  test('POSITION GUARANTEE: a source node with NO position yields an instance with position: relative', () => {
+    // The collapsed-footer chain (2026-08-12; first seen 2026-07-06): the
+    // master root gets `position: 'absolute'` (canvas tiling) and the
+    // instance style spreads last — with nothing to transfer, the absolute
+    // leaked on live and repeated instances stacked on one static position.
+    const PAGE = `import React from 'react';
+export default function Page() {
+  return (
+    <div data-id="root" style={{ display: 'flex' }}>
+      <div data-id="footer-link" data-name="Footer Link" style={{ order: '0', flex: '0 0 auto', width: '82px', height: '33px' }}>
+        <p data-id="txt">Privacy</p>
+      </div>
+    </div>
+  );
+}`;
+    mockFS.readFile.mockReturnValue(PAGE);
+    mockFS.exists.mockReturnValue(false);
+    const result = makeComponent('app/page.tsx', 'footer-link', 'FooterLink') as { updatedPageCode: string } | null;
+    const inst = result!.updatedPageCode.split('\n').find(l => /<\w+\s[^>]*data-id="footer-link"/.test(l)) || '';
+    expect(inst).toContain("position: 'relative'");
+  });
+
+  test('POSITION GUARANTEE: an explicit source position transfers, never clobbered', () => {
+    const PAGE = `import React from 'react';
+export default function Page() {
+  return (
+    <div data-id="root" style={{ position: 'relative' }}>
+      <div data-id="badge" data-name="Badge" style={{ position: 'absolute', left: '10px', top: '20px', width: '40px', height: '40px' }}>
+        <p data-id="txt">Hi</p>
+      </div>
+    </div>
+  );
+}`;
+    mockFS.readFile.mockReturnValue(PAGE);
+    mockFS.exists.mockReturnValue(false);
+    const result = makeComponent('app/page.tsx', 'badge', 'Badge') as { updatedPageCode: string } | null;
+    const inst = result!.updatedPageCode.split('\n').find(l => /<\w+\s[^>]*data-id="badge"/.test(l)) || '';
+    expect(inst).toContain("position: 'absolute'");
+    expect(inst).not.toContain("position: 'relative'");
+  });
+
+
   test('converts inline transform: rotate() → motion rotate prop on componentized elements', () => {
     const ROT_PAGE = `import React from 'react';
 export default function Page() {
@@ -538,8 +580,12 @@ export default function Page() {
     expect(rootStyle).not.toMatch(/translateX/);
   });
 
-  test('emits no `style={{}}` on the instance when the original had no wrapper-only props', () => {
-    // Visual-only styles → instance stays clean, the master holds them.
+  test('an instance with no wrapper-only props still carries the position guarantee', () => {
+    // Visual-only styles stay on the master — but the instance is NEVER
+    // style-less: the hard rule (2026-07-06) says every instance carries an
+    // explicit position, and since 2026-08-12 makeComponent GUARANTEES it
+    // (a bare instance let the master root's absolute leak on live — the
+    // collapsed-footer bug).
     const cleanPage = `import React from 'react';
 export default function Page() {
   return (
@@ -555,9 +601,11 @@ export default function Page() {
 
     const result = makeComponent('app/page.tsx', 'card', 'Card');
     expect(result).not.toBeNull();
-    // The instance tag should NOT carry a style={{}} attribute at all
     const cardLine = result!.updatedPageCode.split('\n').find(l => /<\w+\s+data-id="card"/.test(l)) || '';
-    expect(cardLine).not.toMatch(/style=\{\{/);
+    expect(cardLine).toContain("position: 'relative'");
+    // …and nothing else leaks onto it (the visual styles live on the master).
+    expect(cardLine).not.toContain('backgroundColor');
+    expect(cardLine).not.toContain('padding');
   });
 
   test('generates random PascalCase internal name for React component', () => {
@@ -1354,6 +1402,48 @@ export default function Page() {
     // The `...style` spread is resolved away.
     expect(out).not.toContain('...style');
   });
+
+  test('stamps position: relative on a nested instance whose master style had none', () => {
+    // Detach copies nested-instance styles VERBATIM from the master — which
+    // faithfully laundered a master-authored violation onto pages (the
+    // collapsed-footer chain, 2026-08-12). A nested instance without a
+    // position key now gets `relative`; one with no style attr gets a style.
+    const MASTER = `'use client';
+import React from 'react';
+import { motion, LayoutGroup } from 'framer-motion';
+import { withResponsiveProps } from '@revyme/runtime';
+import Lnk from '@/components/Lnk';
+function Footer({ style }) {
+  return (
+    <LayoutGroup>
+    <motion.div data-id="f-root" layout={true} data-name="Footer" style={{ position: 'relative', width: '600px', ...style }}>
+      <Lnk data-id="f-a" data-name="Footer Link" content="Privacy" style={{ width: '82px', height: '33px' }} />
+      <Lnk data-id="f-b" data-name="Footer Link" content="Terms" />
+      <Lnk data-id="f-c" data-name="Footer Link" content="Pinned" style={{ position: 'absolute', left: '4px', top: '8px' }} />
+    </motion.div>
+    </LayoutGroup>
+  );
+}
+export default withResponsiveProps(Footer);`;
+    const FPAGE = `import React from 'react';
+import Footer from '@/components/Footer';
+export default function Page() {
+  return (<div data-id="page-root"><Footer data-id="finst" data-name="Footer" style={{ position: 'relative', width: '100%' }} /></div>);
+}`;
+    mockFS.readFile.mockImplementation((p: string) =>
+      p === 'app/page.tsx' ? FPAGE : p === 'components/Footer.tsx' ? MASTER : null);
+    const out = detachInstance('app/page.tsx', 'finst', 'components/Footer.tsx', 'default')!;
+    expect(parseJSX(out)).not.toBeNull();
+    // width/height-only style → position stamped alongside.
+    const a = out.match(/<Lnk[^>]*content="Privacy"[^>]*>|<Lnk[^>]*content="Privacy"[^>]*\/>/s) ?? out.match(/<Lnk[\s\S]*?content="Privacy"[\s\S]*?\/>/);
+    expect(out).toMatch(/content="Privacy"[\s\S]{0,400}?position: ['"]relative['"]|position: ['"]relative['"][\s\S]{0,400}?content="Privacy"/);
+    // NO style attr → a style with position: relative is added.
+    expect(out).toMatch(/content="Terms"[\s\S]{0,200}?position: ['"]relative['"]|position: ['"]relative['"][\s\S]{0,200}?content="Terms"/);
+    // Intentionally absolute nested instance keeps its own position.
+    expect(out).toMatch(/content="Pinned"[\s\S]{0,300}?position: ['"]absolute['"]|position: ['"]absolute['"][\s\S]{0,300}?content="Pinned"/);
+    void a;
+  });
+
 
   test('keeps a NESTED component instance as an instance (not inlined/expanded)', () => {
     setupFS();

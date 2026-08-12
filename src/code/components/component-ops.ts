@@ -645,6 +645,20 @@ export function makeComponent(
       wrapperStyleEntries.push({ key: 'width', jsx: "width: '100%'" });
     }
 
+    // POSITION GUARANTEE, not just a transfer. The master's ROOT is stamped
+    // `position: 'absolute'` (canvas master tiling) and relies on the
+    // instance style overriding it via the trailing `...style` spread. When
+    // the SOURCE node had no `position` key (pre-oracle AI writes, code-
+    // editor authoring), there was nothing to transfer — the instance
+    // rendered `absolute` with no offsets on the live site, so repeated
+    // instances collapsed onto one static position while the canvas (which
+    // neutralizes master absolutes) looked fine (the collapsed-footer bug,
+    // 2026-08-12; same chain first seen 2026-07-06). Default the instance to
+    // flow.
+    if (!wrapperStyleEntries.some((e) => e.key === 'position')) {
+      wrapperStyleEntries.push({ key: 'position', jsx: "position: 'relative'" });
+    }
+
     // A node made into a component from the FREE CANVAS (not inside a
     // viewport) carries `data-canvas-node` and page-canvas left/top on its
     // root. A component-master ROOT must be neither — left in, the parser
@@ -1571,6 +1585,34 @@ export function detachInstance(
       for (const a of op.attributes) {
         if (t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && a.name.name === 'data-id'
             && t.isStringLiteral(a.value)) a.value = t.stringLiteral(freshId(a.value.value));
+      }
+
+      if (isNestedInstance) {
+        // POSITION STAMP for nested instances. Their style passes through
+        // VERBATIM from the master (the merge below is skipped — their
+        // content belongs to their own master), which also faithfully copies
+        // a master-authored violation: an instance without a `position` key
+        // lets ITS master's root `position: 'absolute'` leak on the live
+        // site (static-position stacking — the collapsed-footer bug,
+        // 2026-08-12). Detach must not launder that shape onto pages: when
+        // the copied style has no `position`, stamp `relative` (an
+        // intentionally absolute instance carries its own position +
+        // offsets and is untouched). No style attr at all gets one.
+        const nStyle = op.attributes.find((a): a is t.JSXAttribute =>
+          t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && a.name.name === 'style');
+        const relProp = t.objectProperty(t.identifier('position'), t.stringLiteral('relative'));
+        if (!nStyle) {
+          op.attributes.push(t.jsxAttribute(
+            t.jsxIdentifier('style'),
+            t.jsxExpressionContainer(t.objectExpression([relProp])),
+          ));
+        } else if (nStyle.value?.type === 'JSXExpressionContainer' && t.isObjectExpression(nStyle.value.expression)) {
+          const obj = nStyle.value.expression;
+          const hasPosition = obj.properties.some((p) => t.isObjectProperty(p)
+            && ((t.isIdentifier(p.key) && p.key.name === 'position')
+              || (t.isStringLiteral(p.key) && p.key.value === 'position')));
+          if (!hasPosition) obj.properties.push(relProp);
+        }
       }
 
       if (!isNestedInstance) {

@@ -233,3 +233,34 @@ describe('withResponsiveProps — per-viewport overrides reach the placement box
     }
   });
 });
+
+describe('withResponsiveProps — flow-position safety net (collapsed-footer class, 2026-08-12)', () => {
+  // Design masters bake `position: 'absolute'` on their root and rely on the
+  // instance style overriding it via the trailing `...style` spread. An
+  // instance authored with NO position key let the absolute leak on live:
+  // every such sibling took the same static position and stacked. The
+  // runtime now defaults a missing position to 'relative'.
+  it('injects position: relative when the instance style has no position', () => {
+    const { container } = render(
+      <Wrapped data-id="net-1" label="hi" style={{ width: '82px', height: '33px' }} />,
+    );
+    const root = container.querySelector('[data-probe="root"]') as HTMLElement;
+    expect(root.style.position).toBe('relative');
+    expect(root.style.width).toBe('82px'); // rest of the style untouched
+  });
+
+  it('injects position: relative when there is NO style prop at all', () => {
+    const { container } = render(<Wrapped data-id="net-2" label="hi" />);
+    const root = container.querySelector('[data-probe="root"]') as HTMLElement;
+    expect(root.style.position).toBe('relative');
+  });
+
+  it('an explicit position is never overridden', () => {
+    const { container } = render(
+      <Wrapped data-id="net-3" label="hi" style={{ position: 'absolute', left: '4px', top: '8px' }} />,
+    );
+    const root = container.querySelector('[data-probe="root"]') as HTMLElement;
+    expect(root.style.position).toBe('absolute');
+    expect(root.style.left).toBe('4px');
+  });
+});

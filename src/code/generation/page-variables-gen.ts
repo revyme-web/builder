@@ -464,6 +464,20 @@ export function dormantizePageVarBindingsInCanvas(code: string): string {
     frag = frag.replace(re, def);
   }
   if (frag === before) return code;
+  // EMPTY-STRING BAKE CLEANUP — the '' = remove-property convention must hold
+  // here too. A TEXT variable with an empty default baked `key: ""` into an
+  // object literal (e.g. a bound `padding: padding` → `padding: ""`), and a
+  // PERSISTED empty style value is a renderer-divergence bomb: client-side
+  // React assigns style keys in object order, and assigning '' to a SHORTHAND
+  // (padding/margin/background/…) removes all its longhands via CSSOM — so
+  // the editor PREVIEW (client-render) lost the padding while SSR (published
+  // site, which skips empty values when serializing) and the canvas (clear-
+  // then-set order) kept it (the Wisp footer, 2026-08-12). Strip the pair:
+  //   { padding: "", flex: … } → { flex: … }     (leading comma form too)
+  frag = frag
+    .replace(/([{,]\s*)([a-zA-Z_$][\w$]*)\s*:\s*""\s*,/g, '$1')
+    .replace(/,\s*([a-zA-Z_$][\w$]*)\s*:\s*""(\s*[},])/g, '$2')
+    .replace(/([{]\s*)([a-zA-Z_$][\w$]*)\s*:\s*""(\s*})/g, '$1$3');
   trace.action('page-vars-gen:dormantize-canvas', { names: names.size });
   return code.slice(0, open + 2) + frag + code.slice(close);
 }

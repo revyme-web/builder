@@ -50,6 +50,8 @@ const MUST_BOUNCE: Array<{ id: string; code: string; kind?: 'page' | 'component'
     fixture: page(`    <div data-id="brand" style={{ position: 'relative', width: '100%', height: 'auto', '--brand': '#ff4524' }}>x</div>`) },
   { id: 'S11 overflow auto (blank select)', code: 'STYLE_PROP_NO_CONTROL',
     fixture: page(`    <div data-id="s" style={{ position: 'relative', width: '100%', height: '400px', overflow: 'auto' }}>x</div>`) },
+  { id: 'S11a empty style value (CSR/SSR divergence)', code: 'EMPTY_STYLE_VALUE',
+    fixture: page(`    <div data-id="pad" style={{ position: 'relative', width: '100%', height: 'auto', paddingTop: '80px', padding: "" }}>x</div>`) },
   { id: 'S11b rem padding (px-only spacing)', code: 'SPACING_UNIT_NOT_PX',
     fixture: page(`    <div data-id="card" style={{ position: 'relative', width: '100%', height: 'auto', padding: '2rem' }}>x</div>`) },
   { id: 'S11c percent radius (px-only spacing)', code: 'SPACING_UNIT_NOT_PX',

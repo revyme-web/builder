@@ -157,6 +157,23 @@ function checkStyleObject(
       }
       continue;
     }
+    // EMPTY_STYLE_VALUE — a PERSISTED `key: ""` is a renderer-divergence bomb,
+    // not a no-op. Client-side React assigns style keys in object order and
+    // assigning '' to a SHORTHAND removes all its longhands via CSSOM — so
+    // `paddingTop: '80px', …, padding: ""` kept its padding on the published
+    // site (SSR skips empty values when serializing) and on the canvas
+    // (clear-then-set order) but LOST it in the client-rendered preview (the
+    // Wisp footer, 2026-08-12). '' means "delete the property" in the
+    // mutation layer only — in source, omit the key. `transform: ''` is the
+    // one builder-written exception (Detach's cleared-transform, see
+    // isCanonicalTransformString).
+    if (key !== 'transform' && t.isStringLiteral(prop.value) && prop.value.value === '') {
+      v.push({
+        code: 'EMPTY_STYLE_VALUE', tier: 2, line, elementId: dataId,
+        message: `${key}: "" (line ${line}) — an empty style value must not be written into source: on a client render, assigning '' to a shorthand key wipes its longhands (padding: "" after paddingTop/… deletes them), so the page renders differently in the preview than on the published site. To clear a property, OMIT the key entirely.`,
+      });
+      continue;
+    }
     if (SPACING_PX_KEYS.has(key)) {
       const bad = badSpacingUnit(prop.value, key.startsWith('margin'));
       if (bad) {

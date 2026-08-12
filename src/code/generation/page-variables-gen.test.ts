@@ -58,6 +58,33 @@ const canvasNodes = (<>
     expect(() => transform(out, { presets: ['react', 'typescript'], filename: 'f.tsx' })).not.toThrow();
   });
 
+  test('an empty-default TEXT var bound to a STYLE key is REMOVED, never baked as `key: ""`', () => {
+    // The Wisp footer bug (2026-08-12): `padding: padding` with a text var
+    // defaulting to "" baked `padding: ""` into source. A persisted empty
+    // shorthand nukes its longhands on client renders (preview) while SSR
+    // (published) skips it — same file, divergent paddings. '' = remove.
+    const CODE2 = `'use client';
+/** @pageVariables {"variables":[{"name":"padding","type":"text","default":""},{"name":"accent","type":"color","default":"#ff0000"}]} */
+import React, { useState } from 'react';
+export default function Page() {
+  const [padding, setPadding] = useState("");
+  const [accent, setAccent] = useState("#ff0000");
+  return <div data-id="root" />;
+}
+const canvasNodes = (<>
+  <div data-id="cn" style={{ paddingTop: '80px', padding: padding, backgroundColor: accent, flex: '0 0 auto' }} />
+</>);`;
+    const out2 = dormantizePageVarBindingsInCanvas(CODE2);
+    // Empty text default → property GONE (not `padding: ""`).
+    expect(out2).not.toContain('padding: ""');
+    expect(out2).not.toContain('padding: padding');
+    expect(out2).toContain("paddingTop: '80px'");
+    // Non-empty default still bakes its literal.
+    expect(out2).toContain('backgroundColor: "#ff0000"');
+    expect(out2).toContain("flex: '0 0 auto'");
+    expect(() => transform(out2, { presets: ['react', 'typescript'], filename: 'f.tsx' })).not.toThrow();
+  });
+
   test('idempotent', () => {
     expect(dormantizePageVarBindingsInCanvas(out)).toBe(out);
   });
