@@ -285,17 +285,24 @@ describe('deleteTemplate', () => {
     expect(projectFS.exists('app/about/page.tsx')).toBe(true);
   });
 
-  test('drops a templated page when its bare slug already exists', () => {
-    // Pre-create a bare page with the same slug as a templated one.
+  test('a conflicted templated page is LEFT IN PLACE — never deleted', () => {
+    // Contract change (2026-08-12): the old behavior DELETED the templated
+    // copy on a slug conflict "to avoid clobbering" — but when the templated
+    // copy is the one with the user's latest work, that delete IS the
+    // clobber. Now nothing is deleted: the page stays inside the (now
+    // chrome-less) group, still renders at its URL-invisible route-group
+    // path, and the conflict is traced for the caller to surface.
     createTemplate('marketing');
-    projectFS.writeFile('app/(marketing)/contact/page.tsx', '/* templated contact */');
-    projectFS.writeFile('app/contact/page.tsx', '/* my bare contact */');
+    projectFS.writeFile('app/(marketing)/contact/page.client.tsx', '/* templated contact */');
+    projectFS.writeFile('app/(marketing)/contact/page.tsx', '/* templated wrapper */');
+    projectFS.writeFile('app/contact/page.client.tsx', '/* my bare contact */');
     deleteTemplate('marketing');
-    // The bare page survives; the templated one was dropped to avoid
-    // clobbering. Layout files still removed.
-    expect(projectFS.readFile('app/contact/page.tsx')).toBe('/* my bare contact */');
-    expect(projectFS.exists('app/(marketing)/contact/page.tsx')).toBe(false);
+    // The bare page is untouched AND the templated copy still exists.
+    expect(projectFS.readFile('app/contact/page.client.tsx')).toBe('/* my bare contact */');
+    expect(projectFS.readFile('app/(marketing)/contact/page.client.tsx')).toBe('/* templated contact */');
+    // Chrome still removed.
     expect(projectFS.exists('app/(marketing)/LayoutClient.tsx')).toBe(false);
+    expect(projectFS.exists('app/(marketing)/layout.tsx')).toBe(false);
   });
 
   test('listTemplates no longer shows a deleted template', () => {
@@ -303,6 +310,71 @@ describe('deleteTemplate', () => {
     deleteTemplate('marketing');
     const names = listTemplates().map(t => t.name);
     expect(names).not.toContain('marketing');
+  });
+
+  // ─── The Wisp data loss (2026-08-12) ──────────────────────────────────
+  // The old implementation rescued only files matching `endsWith('page.tsx')`
+  // with raw single-file moves — `page.client.tsx` doesn't match — and then
+  // DELETED "anything left in the group folder". That was every page's entire
+  // content: one Delete Template erased a 47KB home page, unrecoverable.
+  test('page pairs move out as PAIRS — the client half (page content) survives', () => {
+    createTemplate('site');
+    assignTemplate('app/about/page.tsx', 'site');
+    // The pair really is inside the group before the delete.
+    expect(projectFS.exists('app/(site)/about/page.client.tsx')).toBe(true);
+    expect(projectFS.exists('app/(site)/about/page.tsx')).toBe(true);
+
+    deleteTemplate('site');
+
+    // BOTH halves back at the bare path; the page's actual content intact.
+    expect(projectFS.exists('app/about/page.tsx')).toBe(true);
+    const client = projectFS.readFile('app/about/page.client.tsx');
+    expect(client).toBeTruthy();
+    expect(client).toContain('data-id="about-hero"'); // seed page body marker
+    // Chrome gone; NOTHING left behind in the group.
+    expect(projectFS.listFiles('app/(site)/')).toEqual([]);
+  });
+
+  test('WISP REPLAY: templated home + fr/es locale wrappers — content survives, wrappers follow', () => {
+    // The incident's exact file layout: home pair inside (Layout), generated
+    // locale wrappers beside it. The old delete left es/fr wrappers moved
+    // verbatim (still pointing at the group) next to a husk of a home page.
+    projectFS.writeFile('i18n/config.json', JSON.stringify({
+      defaultLocale: 'en',
+      locales: [
+        { code: 'en', label: 'English' },
+        { code: 'fr', label: 'Français' },
+        { code: 'es', label: 'Español' },
+      ],
+    }));
+    createTemplate('Layout');
+    assignTemplate('app/page.tsx', 'Layout'); // pair moves in; sync regenerates wrappers in-group
+    expect(projectFS.exists('app/(Layout)/page.client.tsx')).toBe(true);
+    expect(projectFS.exists('app/(Layout)/es/page.tsx')).toBe(true);
+    expect(projectFS.readFile('app/(Layout)/es/page.tsx')).toContain('@/app/(Layout)/page');
+
+    deleteTemplate('Layout');
+
+    // Home pair back at the root with its content.
+    expect(projectFS.exists('app/page.tsx')).toBe(true);
+    expect(projectFS.readFile('app/page.client.tsx')).toContain('data-id=');
+    // Wrappers REGENERATED at the bare paths, pointing at the bare page —
+    // not moved verbatim with stale (Layout) exports.
+    expect(projectFS.readFile('app/es/page.tsx')).toContain("from '@/app/page'");
+    expect(projectFS.readFile('app/fr/page.tsx')).toContain("from '@/app/page'");
+    // Group folder completely settled — no zombie files.
+    expect(projectFS.listFiles('app/(Layout)/')).toEqual([]);
+  });
+
+  test('a client half without its wrapper (orphaned pair) still survives', () => {
+    // Half-broken projects exist in the wild (this is exactly what the Wisp
+    // project looked like mid-cascade). The rescue keys on the CLIENT half,
+    // so an orphaned page.client.tsx moves out rather than being swept.
+    createTemplate('site');
+    projectFS.writeFile('app/(site)/lonely/page.client.tsx', '/* my orphaned page */');
+    deleteTemplate('site');
+    expect(projectFS.readFile('app/lonely/page.client.tsx')).toBe('/* my orphaned page */');
+    expect(projectFS.listFiles('app/(site)/')).toEqual([]);
   });
 });
 

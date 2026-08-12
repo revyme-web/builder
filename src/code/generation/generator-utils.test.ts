@@ -12,6 +12,7 @@ import {
   insertAfterLastImportLine,
   ensureNamedImport,
   stripTagAttrBalanced,
+  extractObjectEntryBalanced,
   setTagAttr,
   getJsonAttr,
   setJsonAttr,
@@ -207,5 +208,51 @@ describe('scanGates', () => {
 
   it('ignores non-max-width queries', () => {
     expect(scanGates(`const __mq1 = useMediaQuery('(orientation: portrait)');`).size).toBe(0);
+  });
+});
+
+// ─── extractObjectEntryBalanced ───────────────────────────────────────────────
+// Read-side twin of removeObjectEntryBalanced (the Wisp Top Nav clone,
+// 2026-08-12): a `\{[^}]*\}` capture stops at the FIRST `}`, so a nested
+// value truncated the copied entry one brace short.
+
+describe('extractObjectEntryBalanced', () => {
+  const obj = `
+  default: {
+    backgroundColor: '#fff',
+    boxShadow: 'none'
+  },
+  'variant-1': {
+    paddingTop: '14px',
+    transition: {
+      ease: 'easeIn'
+    }
+  },`;
+
+  it('captures a NESTED value whole — braces balanced', () => {
+    const out = extractObjectEntryBalanced(obj, 'variant-1');
+    expect(out).toContain("transition: {");
+    expect(out).toContain("ease: 'easeIn'");
+    // balanced: as many closes as opens
+    expect((out!.match(/\{/g) ?? []).length).toBe((out!.match(/\}/g) ?? []).length);
+  });
+
+  it('bare keys match without chewing into longer names', () => {
+    const tricky = `mydefault: { a: 1 }, default: { b: 2 }`;
+    expect(extractObjectEntryBalanced(tricky, 'default')).toBe('{ b: 2 }');
+  });
+
+  it('a key that OPENS the source matches too', () => {
+    expect(extractObjectEntryBalanced(`default: { a: 1 }`, 'default')).toBe('{ a: 1 }');
+  });
+
+  it('null when the key is absent or the braces never balance', () => {
+    expect(extractObjectEntryBalanced(obj, 'variant-9')).toBeNull();
+    expect(extractObjectEntryBalanced(`'variant-1': { a: 1`, 'variant-1')).toBeNull();
+  });
+
+  it('a brace inside a STRING value does not skew the walk', () => {
+    expect(extractObjectEntryBalanced(`'variant-1': { content: 'a}b' }`, 'variant-1'))
+      .toBe("{ content: 'a}b' }");
   });
 });

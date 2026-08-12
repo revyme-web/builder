@@ -115,6 +115,28 @@ export function removeObjectEntryBalanced(code: string, key: string): string {
   }
 }
 
+/** READ-side twin of `removeObjectEntryBalanced`: the `key: { … }` entry's
+ *  object text (braces included) from the first object literal in `src` that
+ *  carries it — or null when absent/unbalanced. The brace walk is what a
+ *  `\{[^}]*\}` capture could never do: with a NESTED value the regex stops at
+ *  the first `}`, so Add Variant's source-entry clone copied
+ *  `{ …, transition: { ease: 'easeIn' }` — one brace short — and the inserted
+ *  entry made the whole component unparseable (the Wisp Top Nav data loss,
+ *  2026-08-12; the remove side had been fixed for the same class on
+ *  2026-08-08 but the clone never got the twin treatment). The delimiter
+ *  class keeps a short key from matching inside a longer one (`default` must
+ *  not hit `mydefault:`), while `^` admits a key that opens the source. */
+export function extractObjectEntryBalanced(src: string, key: string): string | null {
+  const esc = escapeRegExp(key);
+  const entryRe = new RegExp(`(?:^|[{,\\s])['"]?${esc}['"]?\\s*:\\s*\\{`);
+  const m = entryRe.exec(src);
+  if (!m || m.index === undefined) return null;
+  const braceIdx = m.index + m[0].length - 1;
+  const end = findBalancedBraceEnd(src, braceIdx);
+  if (end === -1) return null;
+  return src.slice(braceIdx, end);
+}
+
 /** Index just past the `}` matching the `{` at `openIdx`, or -1 when
  *  unbalanced. String-aware so a brace inside a quoted value can't skew the
  *  depth count. */

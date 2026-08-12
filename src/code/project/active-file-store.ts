@@ -166,7 +166,7 @@ export function getPageClientPath(serverPath: string): string {
 }
 
 /** Inverse of `getPageClientPath`. */
-function getPageServerPath(clientPath: string): string {
+export function getPageServerPath(clientPath: string): string {
   if (!isPageClientFile(clientPath)) return clientPath;
   return clientPath.replace(/\/?page\.client\.tsx$/, (m) => m.replace('page.client.tsx', 'page.tsx'));
 }

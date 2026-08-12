@@ -16,7 +16,8 @@ import { getChatHistory, saveChatHistory } from '@/code/stores/chat-history-stor
 // Type-only: old chat histories persist page-agent usage/toolCallLog stamps —
 // the Message shape (and its rendering below) must keep understanding them.
 import type { PageAgentResult } from '@/ai/page-agent/page-agent-client';
-import { refreshCredits, getCreditsState } from '@/code/stores/credits-store';
+import { refreshCredits, getCreditsState, isOutOfCreditsError } from '@/code/stores/credits-store';
+import OutOfCreditsCard from './ui/OutOfCreditsCard';
 import {
   aiChatSheetOpenAtom, aiChatDetachedAtom, detachAiChatAtom, dockAiChatAtom,
   vibeModelAtom, setVibeModelAtom,
@@ -271,6 +272,8 @@ export default function PageChat() {
                   authorName={msg.authorName}
                   authorAvatar={msg.authorAvatar}
                 />
+              ) : msg.error && isOutOfCreditsError(msg.content) ? (
+                <OutOfCreditsCard key={i} />
               ) : (
                 <div key={i} className="flex justify-start">
                   <div className={`max-w-[90%] rounded-lg px-2.5 py-1.5 ${

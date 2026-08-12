@@ -888,3 +888,98 @@ function FeKaWo({ style, initialVariant = 'default', ...rest }) {
     expect(result).toContain("variant === 'variant-3' ? 2 : variant === 'default-hover' ? 2 : 0");
   });
 });
+
+// ─── Add Variant must not emit unparseable source (the clone side) ───────────
+// The REMOVE side was hardened 2026-08-08 (removeObjectEntryBalanced, above);
+// the CLONE side kept a `'x'\s*:\s*(\{[^}]*\})` capture that stops at the
+// FIRST `}`. Duplicating a variant whose entry carries a nested value —
+// `transition: { ease: 'easeIn' }` — copied the entry one brace short, the
+// component stopped parsing, and every page importing it rendered blank
+// (the Wisp Top Nav data loss, 2026-08-12).
+
+describe('addVariant — brace-balanced source clone', () => {
+  const navCode = `const variantConfig = [
+  { name: 'default', label: 'Desktop', x: 0, y: 0, isPrimary: true },
+  { name: 'variant-1', label: 'Mobile - Closed', x: 1640, y: 0 },
+];
+
+const frameVariants = {
+  default: {
+    backgroundColor: 'rgba(255, 255, 255, 0.93)',
+    paddingTop: '14px',
+    boxShadow: 'none'
+  },
+  'variant-1': {
+    paddingTop: '14px',
+    paddingLeft: '16px',
+    transition: {
+      ease: 'easeIn'
+    }
+  },
+};
+
+export default function Nav({ initialVariant = 'default' }: { initialVariant?: string }) {
+  return <motion.div data-id="frame-1" variants={frameVariants} initial={['default', initialVariant]} />;
+}`;
+
+  const parses = (code: string) => {
+    try {
+      babelParse(code, { sourceType: 'module', plugins: ['jsx', 'typescript'] });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  test('duplicating a variant whose entry has a NESTED transition clones it whole', () => {
+    addVariant('test.tsx', 'variant-2', { x: 2202, y: 0 }, 'mobile open', 'variant-1');
+    const result = capturedTransform!(navCode);
+    expect(parses(result)).toBe(true);
+    // The clone carries the COMPLETE nested object, not a truncated prefix.
+    const v2 = result.slice(result.indexOf(`'variant-2':`));
+    expect(v2).toMatch(/transition:\s*\{\s*ease: 'easeIn'\s*\}/);
+  });
+
+  test('interaction-state seed from a nested-transition DEFAULT entry stays balanced', () => {
+    const nestedDefault = navCode.replace("boxShadow: 'none'", 'transition: { duration: 0.3 }');
+    addVariant('test.tsx', 'default-hover', { x: 0, y: 400 }, 'Desktop - Hover', undefined, { type: 'hover', parent: 'default' });
+    const result = capturedTransform!(nestedDefault);
+    expect(parses(result)).toBe(true);
+    expect(result).toMatch(/'default-hover':\s*\{[\s\S]*?transition:\s*\{\s*duration: 0\.3\s*\}/);
+  });
+
+  test('VALIDATE-OR-REVERT: an output that no longer parses returns the input unchanged', () => {
+    // The variants-object matcher is still a lazy `[\s\S]*?\};` — a `};`
+    // INSIDE a string value truncates its extent and the insert lands inside
+    // the string, producing unparseable output. The net must catch anything
+    // in this class and refuse the write rather than persist it.
+    const evil = `const variantConfig = [
+  { name: 'default', label: 'Default', x: 0, y: 0, isPrimary: true },
+  { name: 'variant-1', label: 'One', x: 600, y: 0 },
+];
+
+const xVariants = {
+  'variant-1': { color: '#fff' },
+  default: { content: 'a};b' },
+};
+
+export default function Nav({ initialVariant = 'default' }: { initialVariant?: string }) {
+  return <motion.div data-id="x" variants={xVariants} initial={['default', initialVariant]} />;
+}`;
+    expect(parses(evil)).toBe(true); // sanity: the input itself is valid
+    addVariant('test.tsx', 'variant-2', { x: 1200, y: 0 }, 'Two', 'variant-1');
+    const result = capturedTransform!(evil);
+    expect(result).toBe(evil); // reverted, not corrupted
+  });
+
+  test('already-broken file is NOT blocked (no lock-out), and is traced instead', () => {
+    // Only-block-new-damage: refusing every edit to an already-invalid file
+    // would strand the user with no way to repair it.
+    const broken = navCode.replace('};\n\nexport default', '\n\nexport default'); // drop the const's own close
+    expect(parses(broken)).toBe(false);
+    addVariant('test.tsx', 'variant-2', { x: 2202, y: 0 }, 'mobile open', 'variant-1');
+    const result = capturedTransform!(broken);
+    // The write goes THROUGH (variantConfig row added) — not reverted.
+    expect(result).toContain("name: 'variant-2'");
+  });
+});

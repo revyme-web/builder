@@ -207,4 +207,53 @@ describe('modifyProjectFile — gesture window (dragState active)', () => {
     modifyProjectFile('app/page.client.tsx', (code) => code.replace('a', 'b'));
     expect(mockSyncQueueCode).toHaveBeenCalledWith(fsCode);
   });
+
+  // ─── Parse gate (Wisp data loss, 2026-08-12) ──────────────────────────────
+  // This path is the write door for every op OUTSIDE the mutation queue, and
+  // none of them validated their output: Add Variant's brace-blind clone wrote
+  // an unparseable component and every page importing it rendered blank. A
+  // programmatic transform must never turn a parseable file unparseable.
+
+  describe('parse gate', () => {
+    const VALID = 'export default function P() {\n  return <div data-id="root" />;\n}\n';
+    const BROKEN = 'export default function P() {\n  return <div data-id="root" /;\n}\n';
+
+    test('a transform that breaks the parse is reverted — no write, null return', () => {
+      mockFS.readFile.mockReturnValue(VALID);
+      const result = modifyProjectFile('components/Nav.tsx', () => BROKEN);
+      expect(result).toBeNull();
+      expect(mockFS.writeFile).not.toHaveBeenCalled();
+    });
+
+    test('an ALREADY-broken file passes through (no lock-out)', () => {
+      // Refusing every write to an already-invalid file would strand the user
+      // with no way to repair it — same semantics as the queue's syntax gate.
+      const stillBroken = BROKEN.replace('root', 'root2');
+      mockFS.readFile.mockReturnValue(BROKEN);
+      const result = modifyProjectFile('components/Nav.tsx', () => stillBroken);
+      expect(result).toBe(stillBroken);
+      expect(mockFS.writeFile).toHaveBeenCalledWith('components/Nav.tsx', stillBroken);
+    });
+
+    test('a transform that REPAIRS a broken file writes normally', () => {
+      mockFS.readFile.mockReturnValue(BROKEN);
+      const result = modifyProjectFile('components/Nav.tsx', () => VALID);
+      expect(result).toBe(VALID);
+      expect(mockFS.writeFile).toHaveBeenCalledWith('components/Nav.tsx', VALID);
+    });
+
+    test('skipParseGate lets a deliberate broken save through (code editor only)', () => {
+      mockFS.readFile.mockReturnValue(VALID);
+      const result = modifyProjectFile('components/Nav.tsx', () => BROKEN, { skipParseGate: true });
+      expect(result).toBe(BROKEN);
+      expect(mockFS.writeFile).toHaveBeenCalledWith('components/Nav.tsx', BROKEN);
+    });
+
+    test('non-JSX files are never gated', () => {
+      mockFS.readFile.mockReturnValue('{"a":1}');
+      const result = modifyProjectFile('_meta/comments.json', () => 'not even json {{{');
+      expect(result).toBe('not even json {{{');
+      expect(mockFS.writeFile).toHaveBeenCalled();
+    });
+  });
 });

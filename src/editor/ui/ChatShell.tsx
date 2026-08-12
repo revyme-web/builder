@@ -13,6 +13,8 @@ import { getChatHistory, saveChatHistory } from '@/code/stores/chat-history-stor
 import { userAtom, userToAuthor } from '@/backend/user-store';
 import ChatUserMessage from '@/editor/ChatUserMessage';
 import { trace } from '@/shared/debug-trace';
+import OutOfCreditsCard from './OutOfCreditsCard';
+import { isOutOfCreditsError } from '@/code/stores/credits-store';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -246,6 +248,9 @@ export default function ChatShell({
                   accentClass="bg-[#7C3AED]"
                 />
               ) : (
+                msg.error && isOutOfCreditsError(msg.content) ? (
+                  <OutOfCreditsCard key={i} />
+                ) : (
                 <div key={i} className="flex justify-start">
                   <div className={`max-w-[90%] rounded-lg px-2.5 py-1.5 ${
                     msg.error
@@ -262,6 +267,7 @@ export default function ChatShell({
                     )}
                   </div>
                 </div>
+                )
               )
             ))}
             {loading && (

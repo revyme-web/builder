@@ -9,7 +9,7 @@ import { addConnection, removeConnectionEntry, removeConnectionsForVariantInCode
 import { projectFS } from '../project/project-fs';
 import { parseJSXToNodes } from '../parsing/parser';
 import { setVariantVisibilityInCode } from '../generation/variant-visibility-gen';
-import { removeObjectEntryBalanced } from '../generation/generator-utils';
+import { removeObjectEntryBalanced, extractObjectEntryBalanced } from '../generation/generator-utils';
 import { parseJSX } from '../parsing/ast-utils';
 import { trace } from '@/shared/debug-trace';
 
@@ -99,6 +99,21 @@ export function addVariant(
       const allVariantNames = configs.map(v => v.name);
       updated = cascadeVisibilityForNewVariant(updated, name, effectiveSource, allVariantNames);
       updated = cascadeConditionalTernariesForNewVariant(updated, name, effectiveSource);
+
+      // VALIDATE-OR-REVERT — Add Variant is a rare, single-shot action where
+      // one extra parse is imperceptible and a broken write is catastrophic
+      // (it lands in a COMPONENT file, so every page importing it goes blank).
+      // Same only-block-new-damage semantics as the mutation queue's syntax
+      // gate: a file that was ALREADY unparseable passes through (reverting
+      // would refuse every subsequent action with no way out) and is traced.
+      if (updated !== code && !parseJSX(updated)) {
+        if (parseJSX(code)) {
+          trace.error('variant-ops:addVariant-parse-revert', { filePath, name });
+          configs = null; // caller must see failure — no phantom variant in the UI
+          return code;
+        }
+        trace.error('variant-ops:addVariant-preexisting-invalid', { filePath, name });
+      }
       return updated;
     });
 
@@ -399,7 +414,9 @@ const TRANSFORM_NEUTRAL: Record<string, string> = { scale: '1', scaleX: '1', sca
 function transformRestEntry(objContent: string): string | null {
   const used = TRANSFORM_KEYS.filter((k) => new RegExp(`(?:^|[{,\\s])${k}\\s*:`).test(objContent));
   if (used.length === 0) return null;
-  const def = objContent.match(/default\s*:\s*\{([^}]*)\}/)?.[1] ?? '';
+  // Balanced read (see the clone sites): a flat capture truncated at the first
+  // `}` inside a nested default value and missed rest values declared after it.
+  const def = extractObjectEntryBalanced(objContent, 'default')?.slice(1, -1) ?? '';
   const parts = used.map((k) => {
     const own = def.match(new RegExp(`(?:^|[{,\\s])${k}\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`))?.[1];
     return `${k}: ${own ?? TRANSFORM_NEUTRAL[k] ?? '0'}`;
@@ -418,10 +435,16 @@ function addVariantKeyToAllObjects(code: string, newName: string, sourceVariant?
     const objContent = match[2];
 
     // Copy the SOURCE variant's explicit override (if any) into the new variant.
+    // BALANCED extraction — the `'x'\s*:\s*(\{[^}]*\})` capture this replaces
+    // stopped at the FIRST `}`, so a source entry carrying a nested value
+    // (`transition: { ease: 'easeIn' }`) cloned one brace short and the
+    // inserted entry broke the file's parse: every page importing the
+    // component went blank, which the user read as total project corruption
+    // (the Wisp Top Nav, 2026-08-12). Same class the REMOVE side was fixed
+    // for on 2026-08-08 (removeVariantKeyFromAllObjects).
     let sourceContent: string | null = null;
     if (sourceVariant && sourceVariant !== 'default') {
-      const sourceMatch = objContent.match(new RegExp(`'${sourceVariant}'\\s*:\\s*(\\{[^}]*\\})`));
-      if (sourceMatch) sourceContent = sourceMatch[1];
+      sourceContent = extractObjectEntryBalanced(objContent, sourceVariant);
     }
     // The source variant has NO explicit entry here → it INHERITS the default.
     // A regular NEW VARIANT must inherit too (sparse model — animate={['default',
@@ -456,9 +479,11 @@ function addVariantKeyToAllObjects(code: string, newName: string, sourceVariant?
         sourceContent = transformRest;
       } else {
         if (!seedResolvedDefault) continue;
-        const defaultMatch = objContent.match(/default\s*:\s*(\{[^}]*\})/);
-        if (!defaultMatch) continue;
-        sourceContent = defaultMatch[1];
+        // Balanced for the same reason as the source clone above — a default
+        // entry can carry a nested transition too.
+        const defaultContent = extractObjectEntryBalanced(objContent, 'default');
+        if (!defaultContent) continue;
+        sourceContent = defaultContent;
       }
     }
 

@@ -8,6 +8,7 @@ import { getDefaultStore } from 'jotai';
 import { projectFS } from './project-fs';
 import { activeFilePathAtom } from './active-file-store';
 import { syncQueueCode, flushNow, syncImports, getCurrentCode, refreshDeferredFlushWithExternalWrite } from '../mutation/mutation-queue';
+import { parseJSX } from '../parsing/ast-utils';
 import { dragStateOps } from '@/canvas/drag/drag-state-store';
 import { trace } from '@/shared/debug-trace';
 
@@ -53,6 +54,12 @@ export function bumpProjectVersion(): void { _bumpVersion?.(); }
 export function modifyProjectFile(
   filePath: string,
   transform: (code: string) => string,
+  opts?: {
+    /** Bypass the parse gate. ONLY for the in-app code editor (admin tool),
+     *  where a human deliberately saves work-in-progress code — a GENERATOR
+     *  must never pass this. */
+    skipParseGate?: boolean;
+  },
 ): string | null {
   // The mutation queue's `currentCode` represents the ACTIVE PAGE's
   // source — it's the in-memory base that pending JSX mutations
@@ -128,6 +135,28 @@ export function modifyProjectFile(
   let finalResult = result;
   if (isJsxFile && finalResult !== code) {
     finalResult = syncImports(finalResult);
+  }
+
+  // 4b. PARSE GATE — a programmatic transform must never turn a parseable
+  //     file unparseable. This path is the write door for every op OUTSIDE
+  //     the mutation queue (variant ops, template ops, panel features), and
+  //     none of them validated: Add Variant's brace-blind entry clone wrote
+  //     an unparseable Top Nav component, every templated page rendered
+  //     blank, and the user's attempts to dig out destroyed the project
+  //     (Wisp, 2026-08-12). One parse on a changed file is imperceptible
+  //     here — these are one-shot user actions, not the gesture-hot queue
+  //     path (which has its own gates).
+  //
+  //     Same only-block-new-damage semantics as the queue's flushNow syntax
+  //     gate: a file that was ALREADY broken passes through — reverting
+  //     would refuse every subsequent action and lock the user out of
+  //     repairing it — and is traced loudly instead.
+  if (isJsxFile && finalResult !== code && !opts?.skipParseGate && !parseJSX(finalResult)) {
+    if (parseJSX(code)) {
+      trace.error('modify-file:parse-gate-revert', { filePath });
+      return null;
+    }
+    trace.error('modify-file:parse-gate-preexisting-invalid', { filePath });
   }
 
   // 5. Write back + bump version so codeAtom re-reads from ProjectFS

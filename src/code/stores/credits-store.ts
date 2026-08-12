@@ -56,6 +56,21 @@ export function openWorkspaceCreditsPage(): void {
   openWorkspaceSettingsPage('credits');
 }
 
+/**
+ * Does this AI error mean "the workspace pool is empty"?
+ *
+ * The AI service answers 402 with one fixed sentence from a single shared
+ * helper (`refuseIfOutOfCredits` in ai-generator/src/server.ts), so every
+ * endpoint phrases it identically. The clients rethrow only `err.message` —
+ * the status code is lost on the way to the chat panel — so the text is what
+ * we have to match on. Kept HERE, in one place, rather than as a regex copied
+ * into each panel: if the server wording ever changes, this is the only line
+ * that has to follow it.
+ */
+export function isOutOfCreditsError(text: string | null | undefined): boolean {
+  return !!text && /out of credits/i.test(text);
+}
+
 /** Open ANY workspace dashboard settings tab in a new tab (credits,
  *  api-tokens, …). No-op when there's no workspace (local mode). */
 export function openWorkspaceSettingsPage(tab: string): void {

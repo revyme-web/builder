@@ -533,8 +533,10 @@ export default function CodeEditor() {
               // Viewing a NON-active file (view decoupled from canvas):
               // admin Write edits land on THAT file via the safe
               // read-modify-write path — never through codeAtom, which
-              // belongs to the canvas's active file.
-              modifyProjectFile(viewPath, () => value);
+              // belongs to the canvas's active file. skipParseGate: a human
+              // deliberately saving WIP code is the one legitimate way a
+              // broken file may be written; generator writes stay gated.
+              modifyProjectFile(viewPath, () => value, { skipParseGate: true });
             }
           }}
           options={{

@@ -25,6 +25,8 @@ import CreditsIndicator from './CreditsIndicator';
 import AIChatSheet from './AIChatSheet';
 import VibeDockShell from './VibeDockShell';
 import ChatUserMessage from './ChatUserMessage';
+import OutOfCreditsCard from './ui/OutOfCreditsCard';
+import { isOutOfCreditsError } from '@/code/stores/credits-store';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -245,6 +247,9 @@ export default function IconSetChat() {
                   authorAvatar={msg.authorAvatar}
                 />
               ) : (
+                msg.error && isOutOfCreditsError(msg.content) ? (
+                  <OutOfCreditsCard key={i} />
+                ) : (
                 <div key={i} className="flex justify-start">
                   <div className={`max-w-[90%] rounded-lg px-2.5 py-1.5 ${
                     msg.error
@@ -261,6 +266,7 @@ export default function IconSetChat() {
                     )}
                   </div>
                 </div>
+                )
               )
             ))}
             {loading && (

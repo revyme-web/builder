@@ -24,6 +24,7 @@ import { projectFS } from './project-fs';
 import {
   createRouteGroup as createRouteGroupRaw,
   getRouteGroup,
+  getPageServerPath,
   movePageFile,
 } from './active-file-store';
 import { trace } from '@/shared/debug-trace';
@@ -221,32 +222,43 @@ export function renameTemplate(oldName: string, newName: string): boolean {
 }
 
 /**
- * Delete a template. Pages inside the group are first moved out to
- * `app/<slug>/page.tsx` (= unassigned), then the group's layout files
- * are removed. So deleting a template never deletes user pages.
+ * Delete a template. Pages inside the group are moved out to their
+ * un-grouped paths FIRST — as page PAIRS via `movePageFile` (both halves,
+ * comment retargeting, root-shell re-normalization, locale-route sync) —
+ * and then ONLY the template's own chrome (`layout.tsx` + `LayoutClient.tsx`)
+ * is removed. There is deliberately no bulk "delete whatever's left" sweep:
+ * the old one deleted `page.client.tsx` — the pages' entire content — because
+ * the rescue loop matched `endsWith('page.tsx')` (which the client half
+ * doesn't) and moved the wrappers with raw single-file moves, orphaning them
+ * (the Wisp project data loss, 2026-08-12: one Delete Template erased a
+ * 47KB home page that was never recoverable).
+ *
+ * A page whose destination already exists outside the group stays where it
+ * is — the group survives as an organisational route group (URL-invisible,
+ * still renders) and the conflict is traced. A conflict must surface as
+ * "nothing happened to this page", never as a silent delete.
+ *
+ * Locale-route wrappers (`app/(g)/es/page.tsx`) are GENERATED files keyed to
+ * their page's client path; `movePageFile`'s locale sync re-creates them at
+ * the new location and sweeps the stale in-group ones. Anything else in the
+ * folder that isn't the chrome is left untouched.
  */
 export function deleteTemplate(name: string): void {
   const dir = `app/(${name})/`;
-  const filesInGroup = projectFS.listFiles(dir);
 
-  // Move pages out first so they survive the delete.
-  for (const file of filesInGroup) {
-    if (!file.endsWith('page.tsx')) continue;
-    const dest = file.replace(`/(${name})/`, '/');
-    if (!projectFS.exists(dest)) {
-      projectFS.moveFile(file, dest);
-    } else {
-      // Conflict: a page with the same slug already exists outside the
-      // group. Drop the templated copy — it would overwrite real work.
-      // The caller can re-assign it manually if needed.
-      projectFS.deleteFile(file);
-      trace.error('template-ops:delete-page-conflict', { from: file, to: dest });
+  for (const file of projectFS.listFiles(dir)) {
+    if (!file.endsWith('page.client.tsx')) continue; // the client half IS the page; its wrapper rides along
+    const destClient = file.replace(`/(${name})/`, '/');
+    const destServer = getPageServerPath(destClient);
+    if (projectFS.exists(destClient) || projectFS.exists(destServer)) {
+      trace.error('template-ops:delete-page-conflict', { from: file, to: destClient });
+      continue;
     }
+    movePageFile(file, destClient);
   }
 
-  // Remove anything left in the group folder (the layout files).
-  for (const file of projectFS.listFiles(dir)) {
-    projectFS.deleteFile(file);
+  for (const chrome of [`${dir}layout.tsx`, `${dir}LayoutClient.tsx`]) {
+    if (projectFS.exists(chrome)) projectFS.deleteFile(chrome);
   }
   trace.action('template-ops:delete', { name });
 }
