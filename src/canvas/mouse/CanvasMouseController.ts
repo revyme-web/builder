@@ -75,11 +75,6 @@ import {
 import {
   componentEditorFileAtom,
 } from '@/code/stores/component-editor-store';
-import {
-  linkedComponentModalUrlAtom,
-} from '@/cloud/components/linked-component-modal-store';
-
-
 import { leftPanelAtom } from '@/code/stores/left-panel-store';
 import { isDefaultLocaleAtom } from '@/code/stores/locale-store';
 import {
@@ -963,12 +958,23 @@ export class CanvasMouseController {
         return;
       }
 
-      // CDN-linked component: double-click opens the Linked Component modal.
+      // CDN-linked component: double-click guides the user to the Component
+      // tool in the properties panel (scroll + flash) — the SAME affordance a
+      // local code-component instance gets via `revealComponentTool` further
+      // down. Configuring the instance is what double-click is for.
+      //
+      // It deliberately does NOT open the Linked Component modal any more.
+      // That modal is the UNLINK surface, it already has an explicit entry
+      // point (the tool's "Edit Code" button → `handleEditComponent`), and on
+      // a CLOSED-SOURCE component the only thing it can say is "this can't be
+      // unlinked" — so double-click was firing a dead-end dialog on exactly
+      // the components whose props panel the user was trying to reach.
       if (redirectedNode2?.componentFile && redirectedNode2.componentFile.startsWith('http')) {
-        const cdnUrl = redirectedNode2.componentFile;
         this.lastClick = null;
-        trace.action('canvas:dblclick-cdn-component', { nodeId, cdnUrl });
-        this.store.set(linkedComponentModalUrlAtom, { url: cdnUrl, nodeId });
+        trace.action('canvas:dblclick-cdn-component', {
+          nodeId, cdnUrl: redirectedNode2.componentFile, action: 'reveal-component-tool',
+        });
+        this.store.set(componentToolRevealAtom, (n) => n + 1);
         return;
       }
 

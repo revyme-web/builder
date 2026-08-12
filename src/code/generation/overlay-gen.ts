@@ -2146,9 +2146,13 @@ export function rehydrateOverlayFromCanvasInCode(code: string, triggerId: string
   result = insertOverlayContentAsRootLastChild(result, overlayContent, fallbackInsert);
 
   // 5b. Trigger handler at the trigger tag close (data-overlay-trigger pairing
-  //     is already present from the round-trip).
+  //     is already present from the round-trip). Through the `/`-aware helper:
+  //     a component-INSTANCE trigger (`<TaJiVi … />`) is self-closing, and a
+  //     raw splice at tClose landed the handler between the `/` and the `>`
+  //     (`… / onClick={…}>`) — unparseable JSX, blank page on drag-in.
   if (tClose >= 0) {
-    result = result.slice(0, tClose) + buildOverlayHandlerAttr(triggerConfig, overlayId) + result.slice(tClose);
+    const attrPos = attrInsertPosBeforeClose(result, tClose);
+    result = result.slice(0, attrPos) + buildOverlayHandlerAttr(triggerConfig, overlayId) + result.slice(attrPos);
   }
 
   // 5c. useState + positioning useLayoutEffect at the top of the component.

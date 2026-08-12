@@ -1207,6 +1207,39 @@ const canvasNodes = (<>
     expect(rehydrated).toContain('exit={{ opacity: 0, y: 20 }}');
   });
 
+  test('rehydrate onto a SELF-CLOSING component-instance trigger keeps the JSX valid', () => {
+    // Regression: a component instance (`<TaJiVi … />`) has no closing tag, and
+    // the rehydrate handler-insert spliced at the tag's `>` — landing the
+    // onClick BETWEEN the `/` and the `>` (`… / onClick={…}>`): unparseable
+    // file, page went blank when dragging an instance-with-overlay into the
+    // viewport. Must go through the `/`-aware insert like the create path.
+    const code = `'use client';
+import React from 'react';
+import { motion } from 'framer-motion';
+import TaJiVi from '@/components/TaJiVi';
+export default function Page() {
+  return (
+    <div data-id="root" style={{ position: 'relative' }}>
+      <div data-id="content" style={{ display: 'flex' }}>
+        <TaJiVi data-id="inst1" data-name="Frame" style={{ position: 'relative', width: '1101px', height: '392px', transform: 'rotate(-7deg)' }} data-overlay-trigger='{"targetId":"dropdown1","trigger":"click","dismiss":"outside"}' />
+      </div>
+    </div>
+  );
+}
+
+const canvasNodes = (<>
+  <motion.div key="dropdown1" data-id="dropdown1" data-canvas-node="true" data-overlay='{"type":"relative","triggerId":"inst1","side":"bottom","align":"center","offsetX":0,"offsetY":10}' style={{ position: 'absolute', left: '-533px', top: '-424px', zIndex: '50', width: '200px', height: '100px' }}></motion.div>
+</>);`;
+    const rehydrated = rehydrateOverlayFromCanvasInCode(code, 'inst1');
+    expectParses(rehydrated);
+    // Handler landed BEFORE the self-close, never between `/` and `>`.
+    expect(rehydrated).not.toMatch(/\/\s+onClick/);
+    expect(rehydrated).toMatch(/onClick=\{\(\) => setDropdown1Open\(!dropdown1Open\)\}\s*\/>/);
+    // Full runtime restored: state + conditional overlay as a live node.
+    expect(rehydrated).toContain('const [dropdown1Open, setDropdown1Open] = useState(false);');
+    expect(rehydrated).toContain('<AnimatePresence>');
+  });
+
   test('initial position is computed below the trigger (bottom/center, +10 Y)', () => {
     const result = createCanvasOverlayInCode(CANVAS_CODE, 'box1', 'dropdown1', cfg, trig);
     const cn = result.slice(result.indexOf('const canvasNodes'));
