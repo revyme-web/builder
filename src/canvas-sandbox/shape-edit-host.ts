@@ -867,11 +867,19 @@ function svgElementToMarkup(svg: SVGSVGElement): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBoxAttr}" preserveAspectRatio="${par}" width="${Math.round(wrapperW)}" height="${Math.round(wrapperH)}">${childMarkup.join('')}</svg>`;
 }
 
-function serializeShape(el: SVGElement): string {
+export function serializeShape(el: SVGElement): string {
   const tag = el.tagName.toLowerCase();
   const attrs: string[] = [];
   for (const a of Array.from(el.attributes)) {
     if (a.name.startsWith('data-')) continue;
+    // NEVER round-trip the inline `style` attribute: it's a LIVE-FEEDBACK
+    // artifact, not source truth — setChildShapeAttribute mirrors fill/
+    // stroke into el.style so picker drags beat variant inline styles, and
+    // the browser serializes that as `style="fill: rgb(…)"`. Baked into
+    // JSX it's a STRING style prop, which real React (preview + published
+    // site) throws on — the whole page white-screens while the canvas
+    // (innerHTML rendering) looks fine (live user find, 2026-08-13).
+    if (a.name === 'style') continue;
     attrs.push(`${a.name}="${escapeXml(a.value)}"`);
   }
   return `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''} />`;
@@ -896,7 +904,7 @@ function escapeXml(s: string): string {
  *    `clip-path`, `-webkit-clip-path`, `paint-order`. New code routes these
  *    through CSS rules / SVG attrs instead, but cleanup is kept so existing
  *    polluted source self-heals on the next shape-edit. */
-function stripRendererArtifacts(markup: string): string {
+export function stripRendererArtifacts(markup: string): string {
   return markup
     // Drop the entire renderer-injected defs block (and everything inside it).
     .replace(/<defs\b[^>]*\bdata-rev-defs="1"[^>]*>[\s\S]*?<\/defs>/gi, '')
@@ -907,15 +915,15 @@ function stripRendererArtifacts(markup: string): string {
     .replace(/\s+clip-path="url\(#rev-stroke-clip-[^"]*"\)/g, '')
     // Tolerant variant (in case quoting differs).
     .replace(/\s+clip-path="url\(#rev-stroke-clip-[^)]*\)"/g, '')
-    .replace(/\s+style="[^"]*"/g, (m) => {
-      const inner = m.slice(8, -1); // strip ` style="' ... '"'
-      const cleaned = inner
-        .split(';')
-        .map(d => d.trim())
-        .filter(d => d && !/^(-webkit-)?clip-path\s*:/i.test(d) && !/^paint-order\s*:/i.test(d))
-        .join('; ');
-      return cleaned ? ` style="${cleaned}"` : '';
-    });
+    // Drop string `style="…"` attributes ENTIRELY — every declaration in one
+    // is a live-DOM artifact (the clip-path/paint-order legacy paints, and the
+    // setChildShapeAttribute fill/stroke mirror that serialized as
+    // `style="fill: rgb(…)"`). Baked into JSX, a STRING style prop crashes
+    // real React (preview + published site) while the canvas renders fine —
+    // the 2026-08-13 live user white-screen. Keeping a "cleaned" remainder
+    // preserved exactly that hazard for any declaration not on the filter
+    // list, so: no remainder, ever. Shape paint belongs in ATTRIBUTES.
+    .replace(/\s+style="[^"]*"/g, '');
 }
 
 // Per-tile geometry: each drawable shape's `d`, addressed by a deterministic id

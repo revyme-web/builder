@@ -136,3 +136,33 @@ describe('firstSvgShapeChild', () => {
     expect(firstSvgShapeChild(svgWith())).toBeNull();
   });
 });
+
+// ─── serializeShape / stripRendererArtifacts — string style must never
+// round-trip into source (live user white-screen, 2026-08-13) ────────────────
+import { serializeShape, stripRendererArtifacts } from './shape-edit-host';
+
+describe('shape serialization never round-trips the inline style mirror', () => {
+  it('serializeShape skips the style attribute (the live fill/stroke mirror)', () => {
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', 'M0 0L10 10');
+    path.setAttribute('fill', '#bb9224');
+    path.setAttribute('stroke-linecap', 'butt');
+    path.setAttribute('data-id', 'shape-x-g0');
+    // What setChildShapeAttribute's live mirror leaves on the DOM element —
+    // the browser serializes el.style.fill = '#bb9224' as rgb().
+    path.setAttribute('style', 'fill: rgb(187, 146, 36)');
+    const out = serializeShape(path as unknown as SVGElement);
+    expect(out).toContain('d="M0 0L10 10"');
+    expect(out).toContain('fill="#bb9224"');
+    expect(out).not.toContain('style=');
+    expect(out).not.toContain('data-id');
+  });
+
+  it('stripRendererArtifacts drops string style attrs ENTIRELY (no cleaned remainder)', () => {
+    const markup = '<path d="M0 0" fill="#bb9224" style="fill: rgb(187, 146, 36); clip-path: url(#x)" stroke-linecap="butt" />';
+    const out = stripRendererArtifacts(markup);
+    expect(out).not.toContain('style=');
+    expect(out).toContain('fill="#bb9224"');
+    expect(out).toContain('stroke-linecap="butt"');
+  });
+});

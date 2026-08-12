@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from 'vitest';
-import { updateNodeInCode, updateNodeTextInCode, updateNodeChildrenFromHTML, reorderNodeInCode, moveNodeInCode, addNodeInCode } from './generator-crud';
-import { copyContainerRulesToNewWidth, updateHoverStyleInCode, removeHoverStyleInCode, updatePseudoStyleInCode, removePseudoStyleInCode } from './generator-styles';
+import { updateNodeInCode, updateNodeTextInCode, updateNodeChildrenFromHTML, reorderNodeInCode, moveNodeInCode, addNodeInCode, removeNodeInCode } from './generator-crud';
+import { copyContainerRulesToNewWidth, updateHoverStyleInCode, removeHoverStyleInCode, updatePseudoStyleInCode, removePseudoStyleInCode, healShapeStringStyleAttrsInCode, updateSelectCaretRuleInCode, removeSelectCaretRuleInCode } from './generator-styles';
 import { parseJSXToNodes } from '../parsing/parser';
 import { syncViewportWidths } from '../stores/viewport-store';
 
@@ -1116,5 +1116,75 @@ describe('updateNodeChildrenFromHTML — plain text fully replaces a <span> wrap
     const out = updateNodeChildrenFromHTML(CODE, 't', 'Time - ');
     // The generator writes it inline so the trailing space isn't stripped at a line edge.
     expect(out).toMatch(/Time - /);
+  });
+});
+
+
+// ─── healShapeStringStyleAttrsInCode ─────────────────────────────────────────
+
+describe('healShapeStringStyleAttrsInCode', () => {
+  test('strips the shape-edit style mirror from shape tags (live user white-screen, 2026-08-13)', () => {
+    const CODE = `<div data-id="root" style={{ position: 'relative' }}>
+  <svg data-id="shape-1" viewBox="0 0 125 45" style={{ position: 'relative', width: '125px' }}>
+    <path data-id="shape-1-g0" d="M0 0L125 0z" fill="#bb9224" strokeWidth="0" style="fill: rgb(187, 146, 36)" stroke-linecap="butt"></path>
+    <rect data-id="shape-1-r0" width="100%" height="100%" fill="#122c24" style="paint-order: stroke"></rect>
+  </svg>
+</div>`;
+    const out = healShapeStringStyleAttrsInCode(CODE);
+    expect(out).not.toContain('style="');
+    // Everything else survives untouched — attrs are the paint truth.
+    expect(out).toContain('fill="#bb9224"');
+    expect(out).toContain('stroke-linecap="butt"');
+    expect(out).toContain('strokeWidth="0"');
+  });
+
+  test('never touches OBJECT styles or non-shape string props', () => {
+    const CODE = `<div data-id="root" style={{ position: 'relative' }}>
+  <img data-id="i1" alt='style="x"' src="/a.png" style={{ width: '10px' }} />
+  <svg data-id="s1" viewBox="0 0 10 10" style={{ position: 'relative' }}><path d="M0 0" fill="#000" /></svg>
+</div>`;
+    expect(healShapeStringStyleAttrsInCode(CODE)).toBe(CODE);
+  });
+});
+
+
+// ─── updateSelectCaretRuleInCode ─────────────────────────────────────────────
+
+describe('updateSelectCaretRuleInCode', () => {
+  const PAGE = `<div data-id="root" style={{ position: 'relative', width: '100%' }}>
+  <select data-id="sel-1" name="type" style={{ position: 'relative', width: '100%', backgroundColor: '#1a1a1a' }}></select>
+</div>`;
+  const BODY = `      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg%3E%3C/svg%3E");
+      background-position: right center;`;
+
+  test('writes the tag-qualified rule — the node inline style (Fill channel) stays untouched', () => {
+    const out = updateSelectCaretRuleInCode(PAGE, 'sel-1', BODY);
+    expect(out).toContain('select[data-id="sel-1"] {');
+    expect(out).toContain('appearance: none;');
+    // Inline style unchanged — Fill keeps owning backgroundColor/backgroundImage.
+    expect(out).toContain("backgroundColor: '#1a1a1a'");
+    expect(out).not.toMatch(/<select[^>]*backgroundImage/);
+  });
+
+  test('replaces an existing rule in place and removes on null', () => {
+    const step1 = updateSelectCaretRuleInCode(PAGE, 'sel-1', BODY);
+    const step2 = updateSelectCaretRuleInCode(step1, 'sel-1', BODY.replace('right center', 'right top'));
+    expect(step2.match(/select\[data-id="sel-1"\]/g)).toHaveLength(1);
+    expect(step2).toContain('right top');
+    expect(step2).not.toContain('right center');
+    const removed = updateSelectCaretRuleInCode(step2, 'sel-1', null);
+    expect(removed).not.toContain('select[data-id=');
+  });
+
+  test('removeNodeInCode reaps the caret rule with the node', () => {
+    const withRule = updateSelectCaretRuleInCode(PAGE, 'sel-1', BODY);
+    const out = removeNodeInCode(withRule, 'sel-1');
+    expect(out).not.toContain('data-id="sel-1"');
+    expect(out).not.toContain('select[data-id=');
+  });
+
+  test('removeSelectCaretRuleInCode is a no-op without a style block', () => {
+    expect(removeSelectCaretRuleInCode(PAGE, 'sel-1')).toBe(PAGE);
   });
 });

@@ -49,14 +49,16 @@ export function reinjectPlaceholderStyles(
   idMapper: IdMapper,
 ): void {
   for (const cn of clipboardNodes) {
-    if (!cn.placeholderStyles || Object.keys(cn.placeholderStyles).length === 0) continue;
+    const hasPlaceholder = cn.placeholderStyles && Object.keys(cn.placeholderStyles).length > 0;
+    if (!hasPlaceholder && !cn.selectCaretCSS) continue;
     const newIds = idMapper.getNewIdsForClipboard(cn.id);
     if (newIds.length === 0) continue;
     for (const newId of newIds) {
-      queueMutation({ type: 'updatePseudoStyle', nodeId: newId, pseudo: 'placeholder', styles: cn.placeholderStyles });
+      if (hasPlaceholder) queueMutation({ type: 'updatePseudoStyle', nodeId: newId, pseudo: 'placeholder', styles: cn.placeholderStyles! });
+      if (cn.selectCaretCSS) queueMutation({ type: 'updateSelectCaretRule', nodeId: newId, cssBody: cn.selectCaretCSS });
     }
     trace.action('paste:placeholder-styles-reinjected', {
-      clipboardId: cn.id, copies: newIds.length,
+      clipboardId: cn.id, copies: newIds.length, caret: !!cn.selectCaretCSS,
     });
   }
 }

@@ -216,6 +216,20 @@ describe('checkFile — tier 2 dialect', () => {
     expect(codes(checkFile(master, { kind: 'component' }))).not.toContain('RAW_STYLE_TAG');
   });
 
+  it('exempts the Input tool\'s select CARET rule (tag-qualified data-id form)', () => {
+    const master = CLEAN_COMPONENT.replace(
+      '>Pro Plan<',
+      '><style>{`\n    select[data-id="sel-1"] {\n      appearance: none;\n      background-position: right center;\n    }\n  `}</style>Pro Plan<',
+    );
+    expect(codes(checkFile(master, { kind: 'component' }))).not.toContain('RAW_STYLE_TAG');
+    // Bare un-qualified data-id rules stay forbidden.
+    const bare = CLEAN_COMPONENT.replace(
+      '>Pro Plan<',
+      '><style>{`\n    [data-id="sel-1"] {\n      color: red;\n    }\n  `}</style>Pro Plan<',
+    );
+    expect(codes(checkFile(bare, { kind: 'component' }))).toContain('RAW_STYLE_TAG');
+  });
+
   it('exempts the Input tool\'s ::placeholder rule (editor-owned, round-trips via pseudo-parser)', () => {
     const master = CLEAN_COMPONENT.replace(
       '>Pro Plan<',

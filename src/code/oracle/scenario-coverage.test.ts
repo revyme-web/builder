@@ -50,6 +50,8 @@ const MUST_BOUNCE: Array<{ id: string; code: string; kind?: 'page' | 'component'
     fixture: page(`    <div data-id="brand" style={{ position: 'relative', width: '100%', height: 'auto', '--brand': '#ff4524' }}>x</div>`) },
   { id: 'S11 overflow auto (blank select)', code: 'STYLE_PROP_NO_CONTROL',
     fixture: page(`    <div data-id="s" style={{ position: 'relative', width: '100%', height: '400px', overflow: 'auto' }}>x</div>`) },
+  { id: 'S11d string style attr (React render crash)', code: 'STRING_STYLE_ATTR',
+    fixture: page(`    <svg data-id="badge" data-name="Badge" viewBox="0 0 125 45" preserveAspectRatio="none" style={{ position: 'relative', width: '125px', height: '45px' }}><path d="M0 0L125 0L125 45L0 45z" fill="#bb9224" style="fill: rgb(187, 146, 36)" /></svg>`) },
   { id: 'S11a empty style value (CSR/SSR divergence)', code: 'EMPTY_STYLE_VALUE',
     fixture: page(`    <div data-id="pad" style={{ position: 'relative', width: '100%', height: 'auto', paddingTop: '80px', padding: "" }}>x</div>`) },
   { id: 'S11b rem padding (px-only spacing)', code: 'SPACING_UNIT_NOT_PX',

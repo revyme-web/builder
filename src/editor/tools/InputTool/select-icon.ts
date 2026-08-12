@@ -3,9 +3,13 @@
 // A native select's chevron isn't styleable, so the Icon control REPLACES it:
 // `appearance: none` plus a color-baked `background-image` SVG data URI —
 // self-contained, so the published site never depends on the iconify CDN at
-// runtime (the editor fetches once at pick time). The chosen icon name +
-// color live in a `data-select-icon` JSON attr; the panel reads that back
-// for the row chip and re-bakes the URI on a color change.
+// runtime (the editor fetches once at pick time). The bake lands in a
+// `select[data-id="…"]` RULE in the page's <style> block — NOT the node's
+// inline style: inline `backgroundImage` is the Fill control's channel, and
+// baking there made Fill read the caret as an "Image" fill (user report
+// 2026-08-13). Rule has no !important, so a user-set inline Fill image wins.
+// The chosen icon name + color live in a `data-select-icon` JSON attr; the
+// panel reads that back for the row chip and re-bakes on a color change.
 
 import { trace } from '@/shared/debug-trace';
 
@@ -50,26 +54,29 @@ export function bakeSelectIconDataUri(rawSvg: string, color: string): string {
   return `url("data:image/svg+xml,${encodeURIComponent(colored)}")`;
 }
 
-export function bakeSelectIconStyles(rawSvg: string, color: string): Record<string, string> {
-  return {
-    appearance: 'none',
-    WebkitAppearance: 'none',
-    backgroundImage: bakeSelectIconDataUri(rawSvg, color),
-    backgroundRepeat: 'no-repeat',
-    // content-box origin: the position resolves against the CONTENT box, so
-    // the caret tracks the select's own paddingRight — increase the padding
-    // and the icon moves inward with the text (a fixed `right 12px` offset
-    // ignored padding: the text moved, the icon stayed glued to the border —
-    // user report 2026-08-12).
-    backgroundOrigin: 'content-box',
-    backgroundPosition: 'right center',
-    backgroundSize: '16px 16px',
-  };
+/** The caret rule's raw declaration body (for `updateSelectCaretRule`).
+ *  content-box origin: the position resolves against the CONTENT box, so the
+ *  caret tracks the select's own paddingRight — increase the padding and the
+ *  icon moves inward with the text (a fixed `right 12px` offset ignored
+ *  padding — user report 2026-08-12). */
+export function bakeSelectCaretCssBody(rawSvg: string, color: string): string {
+  return [
+    'appearance: none;',
+    '-webkit-appearance: none;',
+    `background-image: ${bakeSelectIconDataUri(rawSvg, color)};`,
+    'background-repeat: no-repeat;',
+    'background-origin: content-box;',
+    'background-position: right center;',
+    'background-size: 16px 16px;',
+  ].map((l) => `      ${l}`).join('\n');
 }
 
-/** `''`-valued twin — clears every style the bake set, restoring the
- *  native chevron ('' = delete the property, the mutation-layer convention). */
-export function clearSelectIconStyles(): Record<string, string> {
+/** `''`-valued INLINE clears — restores the native chevron on selects that
+ *  got the pre-rule bake (the caret used to live in the node's inline style,
+ *  colliding with the Fill control's backgroundImage channel). Applying or
+ *  removing an icon always queues these too, so old bakes migrate to the
+ *  rule form on the next touch. No-op on clean nodes. */
+export function clearSelectIconInlineStyles(): Record<string, string> {
   return {
     appearance: '',
     WebkitAppearance: '',

@@ -65,6 +65,13 @@ export interface ClipboardNode {
    * Paste re-injects under the NEW id via `updatePseudoStyle`.
    */
   placeholderStyles?: Record<string, string>;
+
+  /**
+   * The select CARET rule's raw body (`select[data-id="…"] { <body> }` —
+   * the Input tool's Icon). Same carry mechanics; paste re-injects under
+   * the NEW id via `updateSelectCaretRule`.
+   */
+  selectCaretCSS?: string;
 }
 
 /**

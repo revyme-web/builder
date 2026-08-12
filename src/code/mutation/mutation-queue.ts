@@ -67,6 +67,7 @@ import {
   removeBorderOverlayStyle,
   healSparseVariantDefaults,
   healStrandedVariantShorthands,
+  healShapeStringStyleAttrsInCode,
   normalizeResponsiveBandKeys,
 } from '../generation/generator-styles';
 import { setVariantVisibilityInCode } from '../generation/variant-visibility-gen';
@@ -135,6 +136,7 @@ import {
   setSmoothScrollInCode,
   syncLinkHandlerInCode,
   updatePseudoStyleInCode,
+  updateSelectCaretRuleInCode,
   removePseudoStyleInCode,
 } from '../generation/generator-styles';
 import { createVariableInCode, createConditionalVariableInCode, removeVariableInCode, createTextVariableInCode, removeTextVariableInCode, bindTextNodeAsPageVarInCode, bindTextVariableForVariantInCode, createLinkAttrVariableInCode, removeLinkAttrVariableInCode, setBorderOverlayVariableForVariant, setInlineVariableForVariant, removeVariantStyleVariableInCode, setComponentPropDefaultInCode, createTypedVariableInCode, addBarePropToFunctionInCode, deleteComponentVariableInCode, renameComponentVariableInCode } from '../features/variable-ops';
@@ -597,6 +599,11 @@ export type Mutation =
   | { type: 'updatePseudoStyle'; nodeId: string; pseudo: 'before' | 'after' | 'placeholder'; styles: Record<string, string> }
   /** Remove a ::before/::after/::placeholder rule from the <style> block */
   | { type: 'removePseudo'; nodeId: string; pseudo: 'before' | 'after' | 'placeholder' }
+  /** Write (raw declaration body) or remove (null) the select caret rule
+   *  `select[data-id="…"] { … }` — the Input tool's Icon control. Lives in
+   *  the <style> block so the node's inline backgroundImage stays the Fill
+   *  control's channel. */
+  | { type: 'updateSelectCaretRule'; nodeId: string; cssBody: string | null }
   ;
 
 // ─── Queue State ───────────────────────────────────────────────────────────
@@ -1138,6 +1145,11 @@ export function flushNow(): void {
     // Drop a variant-entry SHORTHAND stranded behind its own longhands — applied
     // in key order it nullifies every side, so the entry paints as zero.
     code = healStrandedVariantShorthands(code);
+    // Strip string style="…" attrs the old shape-edit round-trip baked onto
+    // svg shape children — a string style prop crashes real React (preview +
+    // published site) while the canvas renders fine. Cheap indexOf no-op gate
+    // inside; removal-only.
+    code = healShapeStringStyleAttrsInCode(code);
     // Converge drift-era stray @media bands onto the page's own @canvas
     // viewport keys (config-revert-era pages carry bands keyed at widths no
     // viewport has — panel override lookups miss, resizes strand them).
@@ -3185,6 +3197,8 @@ function applyMutationCore(code: string, mutation: Mutation): string {
 
       case 'updatePseudoStyle':
         return updatePseudoStyleInCode(code, mutation.nodeId, mutation.pseudo, mutation.styles);
+      case 'updateSelectCaretRule':
+        return updateSelectCaretRuleInCode(code, mutation.nodeId, mutation.cssBody);
       case 'removePseudo':
         return removePseudoStyleInCode(code, mutation.nodeId, mutation.pseudo);
 

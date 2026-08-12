@@ -229,6 +229,12 @@ function capturePlaceholderRules(
       cn.placeholderStyles = placeholder;
       count++;
     }
+    // Select caret rule (Input tool Icon) — same channel, same carry.
+    const caret = css.match(new RegExp(`select\\[data-id="${cn.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\]\\s*\\{([^}]*)\\}`));
+    if (caret && caret[1].trim()) {
+      cn.selectCaretCSS = caret[1].replace(/^\n+|\s+$/g, '');
+      count++;
+    }
   }
   if (count > 0) trace.action('copy:placeholder-rules-captured', { count });
 }

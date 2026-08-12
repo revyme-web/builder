@@ -537,14 +537,14 @@ function VideoFillTab({ node }: { node: CanvasNode | null }) {
   );
 }
 
-function SingleModeFillContent({ styles, onUpdate, onLivePreview }: { styles: Record<string, string>; onUpdate: (k: string, v: string) => void; onLivePreview?: (color: string | null) => void }) {
+function SingleModeFillContent({ styles, onUpdate, onLivePreview, solidOnly }: { styles: Record<string, string>; onUpdate: (k: string, v: string) => void; onLivePreview?: (color: string | null) => void; solidOnly?: boolean }) {
   const ctx = useControlContextOptional();
   // Legacy control ctx exposes `updateStyleLive` — the fast canvas-only DOM
   // patch used for smooth drags (commit via onUpdate on release).
   const legacyCtl = useControlOptional();
   const nodeId = ctx?.nodeId ?? null;
   const node = ctx?.node ?? null;
-  const [tab, setTab] = useState<FillTab>(() => detectFillTab(styles, node));
+  const [tab, setTab] = useState<FillTab>(() => (solidOnly ? 'color' : detectFillTab(styles, node)));
   const { pushPanel, popPanel } = useToolPopup();
   const allTokens = useAtomValue(presetTokensAtom);
   const colorPresets = allTokens.filter(t => t.category === 'color');
@@ -558,13 +558,14 @@ function SingleModeFillContent({ styles, onUpdate, onLivePreview }: { styles: Re
 
   // Re-detect tab ONLY when selected node changes (not during editing)
   useEffect(() => {
-    setTab(detectFillTab(styles, node));
-  }, [nodeId]);
+    setTab(solidOnly ? 'color' : detectFillTab(styles, node));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeId, solidOnly]);
 
   return (
     <>
-      {/* Tabs at top of popup */}
-      <ToolSegmentedControl
+      {/* Tabs at top of popup — hidden for form controls (solid color only). */}
+      {!solidOnly && <ToolSegmentedControl
         value={tab}
         onChange={(v) => {
           const newTab = v as FillTab;
@@ -590,10 +591,21 @@ function SingleModeFillContent({ styles, onUpdate, onLivePreview }: { styles: Re
           { value: 'video', label: 'Video' },
         ]}
         size="sm"
-      />
+      />}
 
       {/* Tab content */}
       {tab === 'color' && (() => {
+        // solidOnly: a color COMMIT also clears any lingering image/gradient
+        // channels — there are no tabs to clear them from, and a stale
+        // `backgroundImage` (e.g. the pre-rule select-caret bake) would keep
+        // painting over the picked color forever.
+        const commitColor = (c: string) => {
+          onUpdate('backgroundColor', c);
+          if (solidOnly) {
+            if (styles.backgroundImage) onUpdate('backgroundImage', '');
+            if (styles.background) onUpdate('background', '');
+          }
+        };
         const bgVal = styles.backgroundColor || '';
         const currentPresetName = bgVal.startsWith('var(--') ? parseVarRef(bgVal) || '' : '';
         const resolvedBg = currentPresetName
@@ -608,12 +620,12 @@ function SingleModeFillContent({ styles, onUpdate, onLivePreview }: { styles: Re
             // to a per-frame code write when there's no live ctx.
             onChange={legacyCtl
               ? (c) => { legacyCtl.updateStyleLive('backgroundColor', c); onLivePreview?.(c); }
-              : (c) => { trace.action('fill:color', { value: c }); onUpdate('backgroundColor', c); }}
-            onChangeEnd={legacyCtl ? (c) => { trace.action('fill:color', { value: c }); onLivePreview?.(c); onUpdate('backgroundColor', c); } : undefined}
+              : (c) => { trace.action('fill:color', { value: c }); commitColor(c); }}
+            onChangeEnd={legacyCtl ? (c) => { trace.action('fill:color', { value: c }); onLivePreview?.(c); commitColor(c); } : undefined}
             showAlpha
             onCreatePreset={handleCreatePreset}
             colorPresets={colorPresets}
-            onApplyPreset={(varVal) => { onUpdate('backgroundColor', varVal); }}
+            onApplyPreset={(varVal) => { commitColor(varVal); }}
             activePresetName={currentPresetName || undefined}
             onEditPreset={(name) => {
               const token = colorPresets.find(t => t.name === name);
@@ -1041,6 +1053,16 @@ function LayerEditorPanelConnected({ layerId, layersRef, onFlush }: {
 
 type FillMode = 'single' | 'multiple';
 
+/** Form controls get a SOLID-COLOR-ONLY Fill: no Single/Multiple, no
+ *  Gradient/Image/Video tabs. A background-image fill on a <select> occupies
+ *  the same CSS channel as the Input tool's caret icon (`select[data-id]`
+ *  rule) — inline wins and the chevron silently vanishes. Solid color is the
+ *  only conflict-free fill for inputs, so the picker offers exactly that
+ *  (user decision 2026-08-13). */
+function isFormControlNode(node: { type?: string } | null | undefined): boolean {
+  return node?.type === 'input' || node?.type === 'textarea' || node?.type === 'select';
+}
+
 function FillPopupContent({ styles, onUpdate, onChangeMultiple, nodeId: nodeIdProp, onLivePreview }: {
   styles: Record<string, string>;
   onUpdate: (k: string, v: string) => void;
@@ -1051,6 +1073,7 @@ function FillPopupContent({ styles, onUpdate, onChangeMultiple, nodeId: nodeIdPr
 }) {
   const ctx = useControlContextOptional();
   const nodeId = ctx?.nodeId ?? nodeIdProp ?? null;
+  const solidOnly = isFormControlNode(ctx?.node);
   const [mode, setMode] = useState<FillMode>(() =>
     isMultiLayerBackground(styles) ? 'multiple' : 'single'
   );
@@ -1112,8 +1135,8 @@ function FillPopupContent({ styles, onUpdate, onChangeMultiple, nodeId: nodeIdPr
     // Force the image sub-field labels (Size / Position / Repeat / Attachment / Blend) visible inside the
     // popup even when the atom carries `hideLabel` from the Variable modal's Default row.
     <ShowControlLabels>
-      {/* Mode toggle */}
-      <ToolSegmentedControl
+      {/* Mode toggle — hidden for form controls (solid color only). */}
+      {!solidOnly && <ToolSegmentedControl
         value={mode}
         onChange={handleModeChange}
         options={[
@@ -1121,10 +1144,10 @@ function FillPopupContent({ styles, onUpdate, onChangeMultiple, nodeId: nodeIdPr
           { value: 'multiple', label: 'Multiple' },
         ]}
         size="sm"
-      />
+      />}
 
-      {mode === 'single' ? (
-        <SingleModeFillContent styles={styles} onUpdate={onUpdate} onLivePreview={onLivePreview} />
+      {solidOnly || mode === 'single' ? (
+        <SingleModeFillContent styles={styles} onUpdate={onUpdate} onLivePreview={onLivePreview} solidOnly={solidOnly} />
       ) : (
         <MultiModeFillContent styles={styles} onUpdate={onUpdate} onChangeMultiple={onChangeMultiple} />
       )}

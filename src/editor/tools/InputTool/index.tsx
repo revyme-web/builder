@@ -13,7 +13,7 @@ import { ToolSection, ToolRow, ToolSelect, ToolInput, ToolSegmentedControl, Remo
 import ColorInput from '../../controls/ColorInput';
 import { ImageIcon } from '@/design-system/PropertyIcons';
 import SelectIconPopup from './SelectIconPopup';
-import { SELECT_ICON_ATTR, DEFAULT_SELECT_ICON_COLOR, parseSelectIconSpec, bakeSelectIconStyles, bakeSelectIconDataUri, clearSelectIconStyles, fetchRawIconSvg, getRawIconSvgSync, type SelectIconSpec } from './select-icon';
+import { SELECT_ICON_ATTR, DEFAULT_SELECT_ICON_COLOR, parseSelectIconSpec, bakeSelectCaretCssBody, bakeSelectIconDataUri, clearSelectIconInlineStyles, fetchRawIconSvg, getRawIconSvgSync, type SelectIconSpec } from './select-icon';
 import { resolveSpacingSides } from '@/shared/css-utils';
 import ToolPopup from '../../ui/ToolPopup';
 import PageVariableChip from '../../controls/PageVariableChip';
@@ -281,7 +281,13 @@ export default function InputTool() {
     const c = color ?? iconSpec?.color ?? DEFAULT_SELECT_ICON_COLOR;
     const raw = await fetchRawIconSvg(iconName);
     if (!raw) { trace.error('input-tool:select-icon-fetch-failed', { iconName }); return; }
-    queueMutation({ type: 'updateStyles', nodeId, styles: bakeSelectIconStyles(raw, c) });
+    // The caret lives in a select[data-id] RULE — never the inline style,
+    // which is the Fill control's backgroundImage channel (baking inline made
+    // Fill read the caret as an "Image" fill — user report 2026-08-13). The
+    // inline clear migrates selects baked by the pre-rule version (no-op
+    // otherwise).
+    queueMutation({ type: 'updateSelectCaretRule', nodeId, cssBody: bakeSelectCaretCssBody(raw, c) });
+    queueMutation({ type: 'updateStyles', nodeId, styles: clearSelectIconInlineStyles() });
     queueMutation({ type: 'updateHtmlAttrs', nodeId, attrs: { [SELECT_ICON_ATTR]: JSON.stringify({ icon: iconName, color: c }) } });
     commitNow();
     trace.action('input-tool:select-icon', { nodeId, iconName, color: c });
@@ -303,7 +309,8 @@ export default function InputTool() {
 
   const removeSelectIcon = () => {
     if (!nodeId) return;
-    queueMutation({ type: 'updateStyles', nodeId, styles: clearSelectIconStyles() });
+    queueMutation({ type: 'updateSelectCaretRule', nodeId, cssBody: null });
+    queueMutation({ type: 'updateStyles', nodeId, styles: clearSelectIconInlineStyles() });
     queueMutation({ type: 'updateHtmlAttrs', nodeId, attrs: { [SELECT_ICON_ATTR]: '' } });
     commitNow();
     setIconPopupOpen(false);

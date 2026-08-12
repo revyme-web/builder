@@ -147,7 +147,12 @@ function isEditorMediaStyleBlock(el: t.JSXElement): boolean {
       // `:lang(xx) [data-id="…"]` locale override (i18n-gen).
       const sel = css.slice(i, open).trim();
       if (!/^\[data-id="[^"]+"\](?:::?[a-z-]+(?:\([^)]*\))?)+$/.test(sel)
-        && !/^:lang\([^)]+\)\s*\[data-id="[^"]+"\]$/.test(sel)) return false;
+        && !/^:lang\([^)]+\)\s*\[data-id="[^"]+"\]$/.test(sel)
+        // The Input tool's select CARET rule — the ONE tag-qualified data-id
+        // form the editor owns (updateSelectCaretRuleInCode; read back via the
+        // data-select-icon attr). Bare un-qualified `[data-id] { }` rules stay
+        // forbidden — no panel can see those.
+        && !/^select\[data-id="[^"]+"\]$/.test(sel)) return false;
       const j = skipBlock(open);
       if (j === -1) return false;
       sawEditorRule = true;
@@ -604,6 +609,23 @@ export function checkFile(
           v.push({
             code: 'ATTR_ORDER_DATA_ID_FIRST', tier: 2, line, elementId: dataId,
             message: `<${dataId}> (line ${line}) declares style BEFORE data-id — the editor's scanners read attributes in order, so style edits and motion-value bindings on this element won't resolve. Put data-id and data-name FIRST on every tag, before style and motion props.`,
+          });
+        }
+      }
+
+      // STRING style attribute — `style="fill: rgb(…)"`. Syntactically valid
+      // JSX, and the canvas even renders it (svg children go through
+      // innerHTML, where real DOM accepts string styles) — but the preview
+      // and the PUBLISHED site are real React renders, and React THROWS on a
+      // string style prop: the whole page white-screens. Tier 3: the file
+      // crashes at render (the 2026-08-13 live user find — a shape-edit
+      // round-trip had baked the live fill mirror into source).
+      {
+        const styleAttr = attrs.find((a) => a.name.name === 'style');
+        if (styleAttr && styleAttr.value && t.isStringLiteral(styleAttr.value)) {
+          v.push({
+            code: 'STRING_STYLE_ATTR', tier: 3, line, elementId: dataId,
+            message: `style="${styleAttr.value.value.slice(0, 40)}…" (line ${line}) is a STRING style attribute — React throws "The style prop expects a mapping" and the page white-screens on the preview and the published site (the canvas alone tolerates it). Write a style OBJECT instead: style={{ ${styleAttr.value.value.split(';')[0].trim() || 'fill: …'} }} — for svg shapes, put paint in ATTRIBUTES (fill="…" stroke="…").`,
           });
         }
       }

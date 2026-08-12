@@ -1379,6 +1379,55 @@ export function updatePseudoStyleInCode(
   }
 }
 
+// ─── Select caret rule (`select[data-id="…"]`) ──────────────────────────────
+
+/**
+ * Write/replace the select CARET rule — the Input tool's Icon control.
+ * A `<select>` is a replaced element (no children, no ::after), so the only
+ * way to draw a custom chevron is a background-image — but the node's INLINE
+ * `backgroundImage` is the Fill control's channel, and baking the caret there
+ * made Fill read the caret as an "Image" fill (user report 2026-08-13). The
+ * caret therefore lives in its own channel: a tag-qualified rule in the
+ * page's <style> block. Deliberately NO !important — an inline Fill image
+ * set by the user beats the rule, so Fill and Icon never fight.
+ * `cssBody` is the raw declaration block (the caller bakes it); null removes.
+ */
+export function updateSelectCaretRuleInCode(code: string, nodeId: string, cssBody: string | null): string {
+  trace.fn('generator.updateSelectCaretRuleInCode', { nodeId, remove: cssBody == null });
+  if (cssBody == null) return removeSelectCaretRuleInCode(code, nodeId);
+
+  const styleBlockRegex = /(<style>\s*\{[`'])([\s\S]*?)([`']\}\s*<\/style>)/s;
+  const blockMatch = styleBlockRegex.exec(code);
+  const selector = `select[data-id="${nodeId}"]`;
+  const selectorEsc = escapeRegExp(selector);
+
+  let existingCSS = blockMatch ? blockMatch[2] : '';
+  const ruleRegex = new RegExp(`\\s*${selectorEsc}\\s*\\{[^}]*\\}`, 's');
+  if (ruleRegex.test(existingCSS)) {
+    existingCSS = existingCSS.replace(ruleRegex, `\n    ${selector} {\n${cssBody}\n    }`);
+  } else {
+    existingCSS += `\n    ${selector} {\n${cssBody}\n    }\n  `;
+  }
+
+  if (blockMatch) {
+    const [fullMatch, prefix, , suffix] = blockMatch;
+    return code.slice(0, blockMatch.index!) + prefix + existingCSS + suffix + code.slice(blockMatch.index! + fullMatch.length);
+  }
+  return createStyleBlockInCode(code, existingCSS);
+}
+
+/** Remove the select caret rule for a node from the <style> block. */
+export function removeSelectCaretRuleInCode(code: string, nodeId: string): string {
+  const styleBlockRegex = /(<style>\s*\{[`'])([\s\S]*?)([`']\}\s*<\/style>)/s;
+  const blockMatch = styleBlockRegex.exec(code);
+  if (!blockMatch) return code;
+  const selectorEsc = escapeRegExp(`select[data-id="${nodeId}"]`);
+  const ruleRegex = new RegExp(`\\s*${selectorEsc}\\s*\\{[^}]*\\}`, 's');
+  const newCSS = blockMatch[2].replace(ruleRegex, '');
+  const [fullMatch, prefix, , suffix] = blockMatch;
+  return code.slice(0, blockMatch.index!) + prefix + newCSS + suffix + code.slice(blockMatch.index! + fullMatch.length);
+}
+
 /**
  * Remove a ::before / ::after / ::placeholder rule from the <style> block.
  */
@@ -1967,6 +2016,26 @@ export function healStrandedVariantShorthands(code: string): string {
     trace.error('generator:heal-stranded-variant-shorthand:revert', { count: cuts.length });
     return code;
   }
+  return healed;
+}
+
+/** FILE-WIDE repair for STRING `style="…"` attributes on svg shape children —
+ *  the shape-edit DOM round-trip used to bake the live fill/stroke style
+ *  mirror into source (`style="fill: rgb(…)"`). Syntactically valid JSX, so
+ *  no parse gate catches it; the canvas renders svg children via innerHTML
+ *  where real DOM accepts string styles — but the PREVIEW and the PUBLISHED
+ *  site are real React renders, which throw on a string style prop: the
+ *  whole page white-screens while the canvas looks perfect (live user find,
+ *  2026-08-13). The serializer no longer emits it; this repairs the files it
+ *  already polluted, on any edit. Removal-only, shape tags only — a shape's
+ *  paint belongs in attributes; there is no legitimate string style there. */
+export function healShapeStringStyleAttrsInCode(code: string): string {
+  if (!code.includes('style="')) return code;
+  const healed = code.replace(
+    /(<(?:path|rect|circle|ellipse|line|polyline|polygon)\b[^>]*?)\s+style="[^"]*"/g,
+    '$1',
+  );
+  if (healed !== code) trace.action('generator:heal-shape-string-style', {});
   return healed;
 }
 
