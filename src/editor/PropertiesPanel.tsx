@@ -738,15 +738,20 @@ function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boole
             file (`Edit Component` button in the right panel jumps there). */}
         {/* Layout tool: single-select as before, OR multi-select when every
             selected node shares the same layout type (multiSelectLayoutType) —
-            edits fan out to all via ControlProvider. */}
-        {!isContainerSetInstance && !isComponentInstance && !isCodeComponentInstance && !isTemplatedViewport
+            edits fan out to all via ControlProvider.
+
+            NEVER for text elements: layout is a frame concept. The text
+            multi-column "Block" mode was removed (2026-08-12) — see
+            detectLayoutFlags in LayoutTool for the full rationale — so a
+            text node has no layout to show, and the Adjust control's
+            display:flex plumbing must not surface the frame controls. */}
+        {!isText && !isContainerSetInstance && !isComponentInstance && !isCodeComponentInstance && !isTemplatedViewport
           && (!isMultiSelect || multiSelectLayoutType !== null) && (
           <LayoutTool
             styles={s}
             nodeId={node.id}
             onUpdate={updateStyle}
             onUpdateMultiple={updateMultipleStyles}
-            isTextNode={isText}
             templateRoot={isTemplateRootEdit}
           />
         )}

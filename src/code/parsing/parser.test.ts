@@ -205,6 +205,38 @@ export default Card;`;
     expect(nodes.get('text')!.children).toEqual([]);
   });
 
+  test('U+2028 in earlier text does NOT desync the mixed-content slice', () => {
+    // Regression (2026-08-12): pasted text (Figma-style soft line break)
+    // carries U+2028 LINE SEPARATOR characters. Babel counts those as line
+    // terminators per the JS spec; the old (line, column)→offset walk over
+    // code.split('\n') did not — so every raw-source slice BELOW the
+    // separator started one line too deep. On a rich-text heading it began
+    // inside the nested span's style object and swallowed the following
+    // element's opening tag, and the next text commit baked that garbage
+    // into the source as literal content ("fontWeight: '200' }}>Get in
+    // touch" injected into the heading). Slices must use Babel's absolute
+    // node offsets, which no line-terminator exotica can shift.
+    const code = [
+      `<div data-id="root" style={{}}>`,
+      `  <p data-id="pasted" style={{}}>remembered,${'\u2028'}Since day one${'\u2028'}we blend</p>`,
+      `  <h3 data-id="heading" style={{ fontWeight: '900' }}>`,
+      `    <span style={{`,
+      `      fontWeight: '200'`,
+      `    }}>Get in touch</span>`,
+      `  </h3>`,
+      `  <input data-id="field" type="text" style={{}} />`,
+      `</div>`,
+    ].join('\n');
+    const nodes = parseJSXToNodes(code);
+    const heading = nodes.get('heading')!;
+    expect(heading.hasMixedContent).toBe(true);
+    // The slice is exactly the span markup — starts at '<span', ends at '</span>'.
+    expect(heading.textContent!.startsWith('<span')).toBe(true);
+    expect(heading.textContent!.endsWith('</span>')).toBe(true);
+    // And never leaks the neighbouring input's tag.
+    expect(heading.textContent!).not.toContain('input');
+  });
+
   test('motion.span runs collapse into one rich-text node, not separate selectable nodes', () => {
     // Component-master files convert every element to motion.* — the inline
     // text runs become <motion.span>. They must still register as inline

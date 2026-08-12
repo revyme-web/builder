@@ -256,7 +256,6 @@ export function pageVariableTypeForProperty(property: string): PageVariableType 
   if (property === 'lineHeight') return 'number';
   if (property === 'zIndex') return 'number';
   if (property === 'order') return 'number';
-  if (property === 'columnCount') return 'number';
   if (property === 'flexGrow' || property === 'flexShrink') return 'number';
   if (property === 'rotate' || property === 'scale') return 'number';
   // Layout gap is a single number (px auto-applied). Padding/margin/radius stay their own multi-value

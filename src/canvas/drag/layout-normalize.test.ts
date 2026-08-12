@@ -284,8 +284,10 @@ describe('svg drop decomposition into shape grammar', () => {
     } as NewNodeDescriptor);
     expect(r.children!.length).toBe(2);
     const s1 = r.children![1];
-    expect(s1.attrs!.x).toBe('60');
-    expect(s1.attrs!.y).toBe('5');
+    // Shrink-wrap (2026-08-12) rebases everything to the union bbox origin
+    // (10, 5) — the child's declared box follows: 60−10 / 5−5.
+    expect(s1.attrs!.x).toBe('50');
+    expect(s1.attrs!.y).toBe('0');
     // Local space: the first moveto lands at 0 0 inside the child's own box.
     expect(s1.children![0].attrs!.d.startsWith('m 0 0')).toBe(true);
   });

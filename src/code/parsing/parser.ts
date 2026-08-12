@@ -2150,16 +2150,15 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
         // to the mixed-content path below, which preserves real `<br />` and never strips.
         const hasTextAnim = getAttr(opening.attributes, 'data-text-anim');
         if (hasTextAnim && !splitWrapper) {
-          const openingEnd = path.node.openingElement.loc?.end;
-          const closingStart = path.node.closingElement?.loc?.start;
-          if (openingEnd && closingStart) {
-            const lines = code.split('\n');
-            let startIdx = 0;
-            for (let i = 0; i < openingEnd.line - 1; i++) startIdx += lines[i].length + 1;
-            startIdx += openingEnd.column;
-            let endIdx = 0;
-            for (let i = 0; i < closingStart.line - 1; i++) endIdx += lines[i].length + 1;
-            endIdx += closingStart.column;
+          // Babel ABSOLUTE offsets, never a (line, column) walk over
+          // code.split('\n'): Babel counts U+2028/U+2029 (and \r) as line
+          // terminators per the JS spec, so pasted text containing a LINE
+          // SEPARATOR desynced every loc-based walk below it — the slice
+          // started mid-attribute and leaked raw JSX into textContent (the
+          // "fontWeight: '200' }}> injected into my text" corruption).
+          const startIdx = path.node.openingElement.end;
+          const endIdx = path.node.closingElement?.start;
+          if (startIdx != null && endIdx != null) {
             const rawInner = code.slice(startIdx, endIdx);
             // Strip all JSX tags to get just the visible characters — but
             // PRESERVE <br/> line breaks (sentinel through the tag-strip +
@@ -2237,19 +2236,17 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
         // textContent becomes a genuine string instead of a tag-strip of N spans.
         if ((!hasTextAnim || splitWrapper) && !isTextOverridesContainer && isAllInlineMixedContent(contentEl)) {
           hasMixedContent = true;
-          // Extract full inner content from source code using Babel locations
-          const openingEnd = (splitWrapper ?? path.node).openingElement.loc?.end;
-          const closingStart = (splitWrapper ?? path.node).closingElement?.loc?.start;
-          if (openingEnd && closingStart) {
-            const lines = code.split('\n');
-            let startIdx = 0;
-            for (let i = 0; i < openingEnd.line - 1; i++) startIdx += lines[i].length + 1;
-            startIdx += openingEnd.column;
-
-            let endIdx = 0;
-            for (let i = 0; i < closingStart.line - 1; i++) endIdx += lines[i].length + 1;
-            endIdx += closingStart.column;
-
+          // Extract full inner content via Babel's ABSOLUTE node offsets —
+          // never a (line, column) walk over code.split('\n'). Babel counts
+          // U+2028/U+2029 (and \r) as line terminators per the JS spec, so
+          // pasted text containing a LINE SEPARATOR anywhere above desynced
+          // the walk by one line per occurrence: the slice started inside a
+          // nested span's style object and swallowed the next element's tag,
+          // and the next text commit baked that garbage into the source as
+          // literal content ("fontWeight: '200' }}>Get in touch", 2026-08-12).
+          const startIdx = (splitWrapper ?? path.node).openingElement.end;
+          const endIdx = (splitWrapper ?? path.node).closingElement?.start;
+          if (startIdx != null && endIdx != null) {
             textContent = code.slice(startIdx, endIdx).trim();
           }
           trace.fn('parser:mixed-content-detected', { nodeId: id, childCount: el.children.length });
@@ -2829,16 +2826,11 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
       // had `<span style={{color:…}}>Fraud protection, zero liability</span>`).
       const hasMixedContent = isAllInlineMixedContent(el);
       if (hasMixedContent) {
-        const openingEnd = opening.loc?.end;
-        const closingStart = (el as any).closingElement?.loc?.start;
-        if (openingEnd && closingStart) {
-          const lines = code.split('\n');
-          let startIdx = 0;
-          for (let i = 0; i < openingEnd.line - 1; i++) startIdx += lines[i].length + 1;
-          startIdx += openingEnd.column;
-          let endIdx = 0;
-          for (let i = 0; i < closingStart.line - 1; i++) endIdx += lines[i].length + 1;
-          endIdx += closingStart.column;
+        // Babel ABSOLUTE offsets — see the main walker's mixed-content note
+        // (U+2028/U+2029 desync the (line, column) walk).
+        const startIdx = (opening as any).end;
+        const endIdx = (el as any).closingElement?.start;
+        if (startIdx != null && endIdx != null) {
           textContent = code.slice(startIdx, endIdx).trim();
           trace.fn('parser:canvasNodes-mixed-content', { nodeId: id, length: textContent.length });
         }

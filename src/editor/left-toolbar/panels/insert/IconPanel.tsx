@@ -196,6 +196,12 @@ function buildIconDragItem(
   iconName: string,
   parsed: ParsedSvg | null,
 ): import('@/canvas/drag/toolbar-item-config').ToolbarItem {
+  // NOTE: no pre-conversion here. The drop pipeline itself decomposes svg
+  // drops into the native shape grammar (normalizeLayoutDescriptor →
+  // decomposeSvgDropToShapes): shrink-wrapped wrapper, merged subpaths
+  // split, multi-shape icons as nested groups. A converter pass HERE would
+  // run the markup through TWO decompositions — the drop landed with all
+  // its group children collapsed onto each other (live find 2026-08-12).
   if (parsed) {
     // Shapes are 1:1 — one viewBox unit == one CSS pixel — because every gesture
     // (resize, shape edit, per-variant geometry) measures in pixels against the

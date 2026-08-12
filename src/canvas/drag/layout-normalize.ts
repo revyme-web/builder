@@ -112,7 +112,13 @@ export function normalizeLayoutDescriptor(node: NewNodeDescriptor, insideSvg = f
         node.attrs = { ...(node.attrs ?? {}), ...dec.attrs };
         node.children = dec.children;
         styles.overflow = 'visible';
-        trace.action('layout-normalize:svg-decomposed', { baseId: node.id, shapes: dec.children.length });
+        // Adopt the shrink-wrapped box: the decompose rebases geometry to
+        // the painted bbox, dropping icon-pack padding — the wrapper's CSS
+        // box must follow or the shape paints stretched into the old
+        // padded dimensions (viewBox is 1:1 with the TIGHT box now).
+        styles.width = `${dec.box.w}px`;
+        styles.height = `${dec.box.h}px`;
+        trace.action('layout-normalize:svg-decomposed', { baseId: node.id, shapes: dec.children.length, w: dec.box.w, h: dec.box.h });
       } else {
         const oneToOne = normalizeSvgGeometryToBox(vb, node.textContent, w, h);
         if (oneToOne) {

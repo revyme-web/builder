@@ -587,7 +587,76 @@ function walkElement(el: Element, ctm: Affine6, paint: Presentation): ImportedIt
   if ((tag === 'line' || tag === 'polyline') && presValue(el, 'fill') === null) {
     shapePaint.fill = 'none';
   }
-  return [{ kind: 'shape', name: SHAPE_NAME_BY_TAG[tag] ?? 'Path', cmds, paint: shapePaint, bbox }];
+  // Icon packs (iconify et al.) merge whole glyphs into ONE <path> with N
+  // `M…Z` subpaths — a burger menu is one element carrying three bars. The
+  // shape editor works on one geometry per wrapper, so DISJOINT subpaths
+  // split into separate shapes (the callers group multiples). Splitting is
+  // gated on pairwise-disjoint bboxes: an overlapping/nested subpath is a
+  // HOLE or counter (donut, letter "o") whose evenodd/nonzero rendering
+  // only exists while both rings live in the SAME path — those stay merged.
+  const baseName = SHAPE_NAME_BY_TAG[tag] ?? 'Path';
+  const parts = splitDisjointSubpaths(cmds);
+  if (parts) {
+    return parts.map((subCmds, i) => {
+      const subBox = cmdsBBox(subCmds)!;
+      return {
+        kind: 'shape' as const,
+        name: `${baseName} ${i + 1}`,
+        cmds: subCmds,
+        paint: { ...shapePaint },
+        bbox: subBox,
+      };
+    });
+  }
+  return [{ kind: 'shape', name: baseName, cmds, paint: shapePaint, bbox }];
+}
+
+/** Max subpaths one path may split into — past this it's an illustration or
+ *  a text logo, where one editable path beats forty layer entries (and the
+ *  post-split count would trip MAX_IMPORT_SHAPES into the graphic fallback,
+ *  losing editability entirely). */
+const MAX_SUBPATH_SPLIT = 12;
+
+/** `d`-string front door for `splitDisjointSubpaths` — the drag-drop
+ *  decomposer (svg-drop-shapes.ts) works on raw `d` attributes rather than
+ *  parsed command lists. Null = keep merged (single subpath, holes, or an
+ *  unparseable d). */
+export function splitDisjointSubpathsD(d: string): string[] | null {
+  try {
+    const parts = splitDisjointSubpaths(normalizePathD(d));
+    return parts ? parts.map(p => serializeCmds(p, 0, 0)) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Partition a normalized command list into its `M…` subpaths and return
+ *  them ONLY when they are safe to split into independent shapes: at least
+ *  two drawable subpaths, every pair's bbox disjoint (strict overlap test —
+ *  touching edges count as disjoint), and a sane count. Null = keep merged. */
+export function splitDisjointSubpaths(cmds: Cmd[]): Cmd[][] | null {
+  const parts: Cmd[][] = [];
+  let cur: Cmd[] | null = null;
+  for (const c of cmds) {
+    if (c[0] === 'M') {
+      if (cur && cur.length > 1) parts.push(cur);
+      cur = [c];
+    } else if (cur) {
+      cur.push(c);
+    }
+  }
+  if (cur && cur.length > 1) parts.push(cur);
+  if (parts.length < 2 || parts.length > MAX_SUBPATH_SPLIT) return null;
+  const boxes = parts.map(p => cmdsBBox(p));
+  if (boxes.some(b => !b)) return null;
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i]!, b = boxes[j]!;
+      const overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+      if (overlap) return null;
+    }
+  }
+  return parts;
 }
 
 // ─── JSX emission (canonical shape/group markup) ───────────────────────────

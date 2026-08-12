@@ -39,7 +39,6 @@ const REGISTRY = new Map<string, ControlDef>();
 REGISTRY.set('gap',           { type: 'numeric', min: 0,   max: 200, step: 1 });
 REGISTRY.set('rowGap',        { type: 'numeric', min: 0,   max: 200, step: 1 });
 REGISTRY.set('columnGap',     { type: 'numeric', min: 0,   max: 200, step: 1 });
-REGISTRY.set('columnCount',   { type: 'numeric', min: 1,   max: 12,  step: 1 });
 REGISTRY.set('opacity',       { type: 'numeric', min: 0,   max: 1,   step: 0.01 });
 REGISTRY.set('fontSize',      { type: 'numeric', min: 0,   max: 200, step: 1 });
 REGISTRY.set('lineHeight',    { type: 'numeric', min: 0,   max: 5,   step: 0.1 });

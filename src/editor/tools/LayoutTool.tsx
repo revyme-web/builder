@@ -45,7 +45,6 @@ interface Props {
   onUpdate: (key: string, value: string) => void;
   onUpdateMultiple: (styles: Record<string, string>) => void;
   /** When true, only Block (columns) layout is available (text elements can't be flex/grid) */
-  isTextNode?: boolean;
   /** Template root: a Template is ALWAYS a flex column — its layout can't be
    *  changed or removed (design-tool parity). Renders a simplified panel:
    *  Align (cross-axis) + Gap + Padding only — no Type/Direction/Wrap/Justify
@@ -774,158 +773,49 @@ function GridAutoTrackControl({ label, property, config, onUpdate }: {
 
 // ─── Component ─────────────────────────────────────────────────────────────
 
-// ─── Column Rule Control (popup with style/color/width like border) ────────
-
-const COLUMN_RULE_STYLE_OPTIONS = [
-  { value: '', label: 'None' },
-  { value: 'solid', label: 'Solid' },
-  { value: 'dashed', label: 'Dashed' },
-  { value: 'dotted', label: 'Dotted' },
-];
-
 /**
- * Read the rule's three pieces from longhand columnRule* properties.
+ * Which layout mode (if any) the Layout panel should surface for a node.
  *
- * We use longhand properties (columnRuleStyle / columnRuleWidth /
- * columnRuleColor) instead of the shorthand `columnRule` because the
- * shorthand round-trip is fragile: writing `columnRule: '1px solid rgba(0,
- * 0, 0, 0.5)'` and parsing it back via whitespace-split breaks on the
- * spaces inside `rgba(...)`. Longhands store each piece independently so
- * the read is just a property lookup — no parser to drift out of sync
- * with the writer.
+ * Detects from the actual layout PROPS, not just `display` — a hidden node
+ * (`display: 'none'`) with flex/grid props still has an authored layout;
+ * Hide and Layout are independent concerns (reference parity: Visible
+ * YES/NO doesn't blank the Stack/Grid configuration). Grid takes precedence
+ * when both prop families coexist, matching the Type toggle's
+ * `hasGrid ? 'grid' : 'flex'`.
+ *
+ * TEXT leaf elements never mount this tool at all (gated in
+ * PropertiesPanel) — layouts are a frame concept. The text multi-column
+ * "Block" mode that used to live here was removed (2026-08-12): CSS
+ * multicol can't coexist with the text tool's Adjust control (`display:
+ * flex` disables multicol on the same element), behaves erratically with
+ * auto width / fixed height (overflow spawns columns HORIZONTALLY past the
+ * box, per spec), and designers wanting a magazine spread use two text
+ * frames in a flex row instead. Legacy `columnCount` in user source still
+ * parses and renders — it just has no control, and here it never counts as
+ * a layout.
  */
-function readColumnRule(styles: Record<string, string>): { width: string; style: string; color: string } {
-  const widthRaw = styles.columnRuleWidth || '';
-  const widthNum = widthRaw.replace(/px$/, '') || '1';
-  return {
-    width: widthNum,
-    style: styles.columnRuleStyle || '',
-    color: styles.columnRuleColor || '#cccccc',
-  };
+export function detectLayoutFlags(
+  styles: Record<string, string>,
+): { hasFlex: boolean; hasGrid: boolean; hasLayout: boolean } {
+  const display = styles.display || '';
+  const hasFlexDisplay = display === 'flex' || display === 'inline-flex';
+  const hasGridDisplay = display === 'grid' || display === 'inline-grid';
+  const hasFlexProps = !!styles.flexDirection
+    || !!styles.alignItems
+    || !!styles.justifyContent
+    || !!styles.flexWrap
+    || (styles.gap !== undefined && styles.gap !== '');
+  const hasGridProps = !!styles.gridTemplateColumns
+    || !!styles.gridTemplateRows
+    || !!styles.gridAutoFlow
+    || !!styles.gridAutoColumns
+    || !!styles.gridAutoRows;
+  const hasFlex = hasFlexDisplay || (!hasGridProps && hasFlexProps);
+  const hasGrid = hasGridDisplay || hasGridProps;
+  return { hasFlex, hasGrid, hasLayout: hasFlex || hasGrid };
 }
 
-function ColumnRuleControl({ styles, onUpdate, onUpdateMultiple, onUpdateLive }: {
-  styles: Record<string, string>;
-  onUpdate: (k: string, v: string) => void;
-  onUpdateMultiple: (styles: Record<string, string>) => void;
-  onUpdateLive?: (k: string, v: string) => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const btnRef = useRef<HTMLDivElement>(null);
-  const parsed = readColumnRule(styles);
-  const hasRule = !!parsed.style;
-
-  // Resolve `var(--color-...)` to its actual hex/rgb so the preview swatch
-  // renders the correct paint. The parent (PropertiesPanel) doesn't define
-  // the canvas's CSS variables — they live inside the iframe — so a raw
-  // `backgroundColor: 'var(--color-brand)'` paints transparent here. Use
-  // the preset token table to look up the live value.
-  const presetTokens = useAtomValue(presetTokensAtom);
-  const swatchColor = (() => {
-    if (!parsed.color.startsWith('var(--color-')) return parsed.color;
-    const presetName = parseVarRef(parsed.color) || '';
-    return presetTokens.find(t => t.name === presetName && t.category === 'color')?.value || '#cccccc';
-  })();
-
-  const updateStyle = (style: string) => {
-    if (!style) {
-      // Clear every longhand together — leaves the JSX clean rather than
-      // keeping orphaned `columnRuleWidth: '1px'` after disabling the rule.
-      onUpdateMultiple({ columnRuleStyle: '', columnRuleWidth: '', columnRuleColor: '' });
-    } else {
-      // Setting the style enables the rule — fill in defaults for width/color
-      // so the popup's sub-controls have something to show.
-      onUpdateMultiple({
-        columnRuleStyle: style,
-        columnRuleWidth: styles.columnRuleWidth || '1px',
-        columnRuleColor: styles.columnRuleColor || '#cccccc',
-      });
-    }
-    // Force the queue to flush in this same frame — without this the popup's
-    // dropdown stays on "None" because the mutation goes through
-    // requestIdleCallback and idle can take seconds to fire while the iframe
-    // is still re-flowing text into 2 columns. Same scheduling fix as the
-    // layout +/- toggle.
-    flushNow();
-  };
-
-  const updateWidth = (width: string) => {
-    onUpdate('columnRuleWidth', width ? `${width}px` : '');
-    flushNow();
-  };
-
-  const updateColor = (color: string) => {
-    onUpdate('columnRuleColor', color);
-    // No flushNow — color picker drag fires onChange every pointermove and a
-    // synchronous flush per frame would tank performance. The default RAF +
-    // idle path is fine for continuous input; only one-shot picks need the
-    // immediate flush.
-  };
-
-  // Live (per-frame) preview — DOM-only patch (no source re-parse), so the
-  // picker drag stays at 60fps. The commit lands once on release via
-  // updateColor's onUpdate. Mirrors the live/commit split used across the
-  // editor's color controls.
-  const updateColorLive = (color: string) => {
-    onUpdateLive?.('columnRuleColor', color);
-  };
-
-  return (
-    <>
-      <div ref={btnRef} className="flex items-center justify-between w-full">
-        <ControlLabel label="Rule" property="columnRuleStyle" />
-        <ControlActionRow onClick={() => setIsOpen(true)}>
-          {hasRule ? (
-            <>
-              <ColorSwatch style={{ backgroundColor: swatchColor }} />
-              <span className="text-xs text-[var(--text-primary)] truncate">{parsed.style} {parsed.width}px</span>
-            </>
-          ) : (
-            <span className="text-xs text-[var(--text-secondary)]">None</span>
-          )}
-        </ControlActionRow>
-      </div>
-      <ToolPopup isOpen={isOpen} onClose={() => setIsOpen(false)} title="Column Rule" anchorRef={btnRef} width={240}>
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between w-full">
-            <span className="text-xs text-[var(--text-secondary)] w-3/4">Style</span>
-            <div className="w-full">
-              <ToolSelect value={parsed.style} onChange={updateStyle} options={COLUMN_RULE_STYLE_OPTIONS} />
-            </div>
-          </div>
-          {hasRule && (
-            <>
-              <div className="flex items-center justify-between w-full">
-                <span className="text-xs text-[var(--text-secondary)] w-3/4">Width</span>
-                <div className="flex items-center gap-1.5 w-full">
-                  <div className="flex-1">
-                    <ToolInput value={parsed.width} onChange={updateWidth} step={1} chevronLabel="px" />
-                  </div>
-                  <button
-                    className="shrink-0 w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded-md border border-[var(--control-border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--control-border-hover)] cursor-pointer text-sm"
-                    onClick={() => updateWidth(String(Math.max(0, parseInt(parsed.width) - 1)))}
-                  >−</button>
-                  <button
-                    className="shrink-0 w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded-md border border-[var(--control-border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--control-border-hover)] cursor-pointer text-sm"
-                    onClick={() => updateWidth(String(parseInt(parsed.width) + 1))}
-                  >+</button>
-                </div>
-              </div>
-              <div className="flex items-center justify-between w-full">
-                <span className="text-xs text-[var(--text-secondary)] w-3/4">Color</span>
-                <div className="w-full">
-                  <ColorInput value={parsed.color} onChange={updateColor} onChangeLive={updateColorLive} />
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </ToolPopup>
-    </>
-  );
-}
-
-export default function LayoutTool({ styles, nodeId, onUpdate, onUpdateMultiple, isTextNode, templateRoot }: Props) {
+export default function LayoutTool({ styles, nodeId, onUpdate, onUpdateMultiple, templateRoot }: Props) {
   // useControl gives us the variable-binding helpers (`getValueSource`,
   // `removeVariable`) the Direction + Wrap rows need to surface the
   // purple variable pill — these rows are rendered as custom segmented
@@ -949,38 +839,7 @@ export default function LayoutTool({ styles, nodeId, onUpdate, onUpdateMultiple,
   // Children's EFFECTIVE sizing for the tile being edited (direction-flip re-base).
   const containerOverrides = useAtomValue(containerOverridesAtom);
   const isComponentFile = isComponentFilePath(activeFile);
-  const display = styles.display || '';
-  // Detect layout type from the actual layout PROPS, not just `display`.
-  // When a node is hidden (`display: 'none'`) but has flex/grid props,
-  // the layout config is still authored — Hide and Layout are
-  // independent concerns. Showing the layout panel as "None" when the
-  // user only flipped visibility off would lose the user's authored
-  // layout config from the UI (the props are still in source). Same
-  // behavior as the reference: Visible YES/NO doesn't blank out the Stack/Grid
-  // configuration.
-  const hasFlexDisplay = display === 'flex' || display === 'inline-flex';
-  const hasGridDisplay = display === 'grid' || display === 'inline-grid';
-  const hasFlexProps = !!styles.flexDirection
-    || !!styles.alignItems
-    || !!styles.justifyContent
-    || !!styles.flexWrap
-    || (styles.gap !== undefined && styles.gap !== '');
-  const hasGridProps = !!styles.gridTemplateColumns
-    || !!styles.gridTemplateRows
-    || !!styles.gridAutoFlow
-    || !!styles.gridAutoColumns
-    || !!styles.gridAutoRows;
-  // Grid takes precedence if both kinds of props somehow coexist —
-  // matches the toggle logic below which picks `currentType = hasGrid
-  // ? 'grid' : 'flex'`.
-  const hasFlex = hasFlexDisplay || (!hasGridProps && hasFlexProps);
-  const hasGrid = hasGridDisplay || hasGridProps;
-  // Block (CSS multi-column) is exclusive to text leaf elements. Non-text
-  // nodes only get Flex / Grid — even if a stale `columnCount` is sitting on
-  // their styles, we don't surface block controls or count it as "has layout"
-  // so the +/- toggle picks Flex by default.
-  const hasBlock = !!isTextNode && !hasFlex && !hasGrid && !!styles.columnCount;
-  const hasLayout = hasFlex || hasGrid || hasBlock;
+  const { hasFlex, hasGrid, hasLayout } = detectLayoutFlags(styles);
 
   const handleToggleLayout = useCallback(() => {
     const contentEl = getContentRoot();
@@ -1141,15 +1000,6 @@ export default function LayoutTool({ styles, nodeId, onUpdate, onUpdateMultiple,
       });
 
       trace.action('layout:remove', { nodeId, childCount: childData.length, parentDims });
-    } else if (isTextNode) {
-      // ── Text leaf: just enable CSS multi-column, no child reflow ──
-      // Block (column-count) flows TEXT into columns; the children of a text
-      // leaf are inline runs, not positioned blocks, so the Flex/Grid
-      // relative-position pass would be both wrong (inline content) and
-      // wasteful. Skipping it AND flushing synchronously below makes Block
-      // toggle feel instant.
-      onUpdateMultiple({ columnCount: '2', columnGap: '2rem' });
-      trace.action('layout:add-block', { nodeId });
     } else {
       // ── Frame container: inject flex column + reflow children to flow.
       // Shared with SizeTool's `auto` width/height path so both entry
@@ -1172,10 +1022,9 @@ export default function LayoutTool({ styles, nodeId, onUpdate, onUpdateMultiple,
     // user reported. Toggle is a single user click; instant feedback wins
     // over the scheduling smoothness idle was buying.
     flushNow();
-  }, [hasLayout, nodeId, onUpdateMultiple, styles, isTextNode, selectedIds, interactingVpId]);
+  }, [hasLayout, nodeId, onUpdateMultiple, styles, selectedIds, interactingVpId]);
 
-  // Type switch is Flex ↔ Grid only. Text leafs use Block exclusively (no
-  // toggle, just +/- on the section title), so this never sees `'block'`.
+  // Type switch is Flex ↔ Grid only.
   const handleTypeChange = useCallback((type: string) => {
     const currentType = hasGrid ? 'grid' : 'flex';
     if (type === currentType) return;
@@ -1410,11 +1259,8 @@ export default function LayoutTool({ styles, nodeId, onUpdate, onUpdateMultiple,
         )}
         {hasLayout && (
           <div className="flex flex-col gap-2">
-            {/* Type selector — only for non-text nodes. Text leafs only ever
-                get Block (CSS multi-column), so the toggle would be a single
-                tab and is hidden. The +/- on the section title creates /
-                removes the Block layout for them. */}
-            {!isTextNode && (
+            {/* Type selector — Flex vs Grid. */}
+            {(
               <div className="flex items-center justify-between w-full">
                 {/* Mimic ControlLabel's `pl-[18px] -ml-[18px]` gutter so
                     the value column gets the same 18 px of width as
@@ -1438,84 +1284,7 @@ export default function LayoutTool({ styles, nodeId, onUpdate, onUpdateMultiple,
               </div>
             )}
 
-            {hasBlock ? (
-              <>
-                {/* Block: Column Count (unitless integer; same +/- pattern as GridTrackControl) */}
-                <div className="flex items-center justify-between w-full">
-                  <ControlLabel label="Columns" property="columnCount" />
-                  <div className="flex items-center gap-1 w-full">
-                    <ToolInput
-                      value={styles.columnCount || '2'}
-                      onChange={v => {
-                        const n = Math.max(1, Math.min(12, parseInt(v) || 1));
-                        onUpdate('columnCount', String(n));
-                        flushNow();
-                      }}
-                      step={1}
-                    />
-                    <ToolPlusMinus
-                      value={parseInt(styles.columnCount) || 2}
-                      onChange={v => {
-                        onUpdate('columnCount', String(v));
-                        flushNow();
-                      }}
-                      min={1}
-                      max={12}
-                      step={1}
-                    />
-                  </div>
-                </div>
-
-                {/* Block: Column Gap — value is rem, displayed as a whole number */}
-                <div className="flex items-center justify-between w-full">
-                  <ControlLabel label="Col Gap" property="columnGap" />
-                  <div className="flex items-center gap-1 w-full">
-                    <ToolInput
-                      value={String(parseFloat(styles.columnGap) || 2)}
-                      onChange={v => {
-                        onUpdate('columnGap', `${parseFloat(v) || 0}rem`);
-                        flushNow();
-                      }}
-                      step={1}
-                    />
-                    <ToolPlusMinus
-                      value={parseFloat(styles.columnGap) || 2}
-                      onChange={v => {
-                        onUpdate('columnGap', `${Math.max(0, v)}rem`);
-                        flushNow();
-                      }}
-                      min={0}
-                      step={1}
-                    />
-                  </div>
-                </div>
-
-                {/* Block: Column Rule (popup with style/color/width like border) */}
-                <ColumnRuleControl styles={styles} onUpdate={onUpdate} onUpdateMultiple={onUpdateMultiple} onUpdateLive={updateStyleLive} />
-
-                {/* Block: Min Width (ToolSlider + ToolInput — same layout as StyleField numeric) */}
-                <div className="flex items-center justify-between w-full">
-                  <ControlLabel label="Min Width" property="columnWidth" />
-                  <div className="flex items-center gap-2 w-full">
-                    <ToolSlider
-                      value={parseInt(styles.columnWidth) || 0}
-                      min={0}
-                      max={600}
-                      step={10}
-                      onChange={v => onUpdate('columnWidth', v > 0 ? `${v}px` : '')}
-                    />
-                    <ToolInput
-                      value={String(parseInt(styles.columnWidth) || 0)}
-                      onChange={v => {
-                        const n = parseInt(v);
-                        onUpdate('columnWidth', n > 0 ? `${n}px` : '');
-                      }}
-                      step={10}
-                    />
-                  </div>
-                </div>
-              </>
-            ) : hasGrid ? (
+            {hasGrid ? (
               <>
                 <GridLayoutControls styles={styles} onUpdateMultiple={onUpdateMultiple} />
                 {/* Padding — same as the flex branch: a grid container has an

@@ -39,7 +39,10 @@ const CONTROLLED_STYLE_PROPS = new Set<string>([
   'gap', 'rowGap', 'columnGap', 'order',
   'gridTemplateColumns', 'gridTemplateRows', 'gridTemplate', 'gridAutoFlow', 'gridAutoRows',
   'gridAutoColumns', 'gridColumn', 'gridRow', 'gridArea', 'justifySelf', 'justifyItems', 'placeSelf',
-  'columnCount', 'columnWidth', 'columnRule', 'columnRuleStyle', 'columnRuleWidth', 'columnRuleColor',
+  // columnCount/columnWidth/columnRule* were the text multi-column "Block"
+  // layout — feature removed 2026-08-12 (no control anymore, so AI must not
+  // emit them; legacy source still renders, and grandfathering keeps old
+  // pages editable).
   'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   // Styles panel atoms

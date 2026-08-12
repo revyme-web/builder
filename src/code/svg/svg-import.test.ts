@@ -127,6 +127,36 @@ describe('convertSvgToEditableShapes', () => {
     expect(res!.jsx).not.toContain('<circle');
   });
 
+  it('splits ONE path with disjoint M…Z subpaths into a group of shapes (iconify burger)', () => {
+    // Icon packs merge whole glyphs into one <path>: a burger menu is a
+    // single element with three bar subpaths. Dropping that verbatim gave
+    // the shape editor all three geometries at once (it handles one per
+    // wrapper) — disjoint subpaths must become separate group children.
+    const res = convertSvgToEditableShapes(
+      '<svg viewBox="0 0 24 24"><path fill="#ABABAB" d="M3 6L21 6L21 8L3 8ZM3 11L21 11L21 13L3 13ZM3 16L21 16L21 18L3 18Z"/></svg>', OPTS);
+    expect(res).not.toBeNull();
+    expect(res!.shapeCount).toBe(3);
+    // groupCount reports SOURCE <g> groups only — the synthetic root group
+    // that wraps multiple top-level items isn't counted (same as three
+    // sibling <path> elements). The emitted markup is what matters:
+    // 1 top-level group wrapper + 3 nested shape children.
+    expect((res!.jsx.match(/<svg /g) ?? []).length).toBe(4);
+    expect((res!.jsx.match(/<svg data-id="shape-/g) ?? []).length).toBe(3);
+  });
+
+  it('does NOT split subpaths that nest — a donut keeps its hole in one path', () => {
+    // Outer ring + inner counter render a hole only while both rings live
+    // in the SAME path (evenodd/nonzero). Their bboxes overlap, so the
+    // split is refused and the donut stays one editable shape.
+    const res = convertSvgToEditableShapes(
+      '<svg viewBox="0 0 24 24"><path fill="#000" fill-rule="evenodd" d="M2 2L22 2L22 22L2 22ZM8 8L16 8L16 16L8 16Z"/></svg>', OPTS);
+    expect(res).not.toBeNull();
+    expect(res!.shapeCount).toBe(1);
+    expect(res!.groupCount).toBe(0);
+    // Just the top-level shape wrapper — no nested group children.
+    expect((res!.jsx.match(/<svg /g) ?? []).length).toBe(1);
+  });
+
   it('turns <g> structure into editor groups — nested svg children with x/y', () => {
     const res = convertSvgToEditableShapes(
       `<svg viewBox="0 0 96 96">

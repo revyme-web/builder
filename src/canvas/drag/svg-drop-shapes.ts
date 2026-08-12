@@ -18,6 +18,7 @@
 
 import { parseFigmaSvg } from '@/code/import/figma/convert';
 import { scalePathD, translatePathD, pathPoints, geometryBBox } from '@/shared/svg-geometry';
+import { splitDisjointSubpathsD } from '@/code/svg/svg-import';
 import type { NewNodeDescriptor } from '@/shared/types';
 import { trace } from '@/shared/debug-trace';
 
@@ -59,9 +60,15 @@ function stripFullCanvasClips(svg: string, vbW: number, vbH: number): string {
 }
 
 export interface DecomposedSvgDrop {
-  /** Wrapper attrs — 1:1 viewBox for the TARGET px box. */
+  /** Wrapper attrs — 1:1 viewBox for the SHRINK-WRAPPED px box. */
   attrs: Record<string, string>;
   children: NewNodeDescriptor[];
+  /** Painted box after shrink-wrapping — the caller must adopt it as the
+   *  wrapper's width/height styles. Icon packs pad their glyphs (a burger
+   *  paints 36×24 inside a 48×48 viewBox); keeping the padded target box
+   *  left an invisible margin around every dropped icon until the first
+   *  shape-edit commit normalized it away. */
+  box: { w: number; h: number };
 }
 
 export function decomposeSvgDropToShapes(
@@ -82,8 +89,6 @@ export function decomposeSvgDropToShapes(
 
   const sx = targetW / parsed.viewBox.w;
   const sy = targetH / parsed.viewBox.h;
-  const W = +targetW.toFixed(2);
-  const H = +targetH.toFixed(2);
   const identity = Math.abs(sx - 1) < 1e-6 && Math.abs(sy - 1) < 1e-6;
 
   const scaleShape = (shape: { d: string; paint: Record<string, string> }) => {
@@ -101,13 +106,56 @@ export function decomposeSvgDropToShapes(
     return { tag: 'path', id: pid, styles: {}, attrs };
   };
 
-  const rootAttrs: Record<string, string> = { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none' };
+  const r2 = (v: number) => +v.toFixed(2);
 
-  if (parsed.shapes.length === 1) {
-    const s = scaleShape(parsed.shapes[0]);
+  // Scale every parsed shape into the target box…
+  const scaled: { d: string; paint: Record<string, string> }[] = [];
+  for (const shape of parsed.shapes) {
+    const s = scaleShape(shape);
     if (!s) return null;
+    scaled.push(s);
+  }
+  // …then SPLIT merged subpaths. Icon packs fold whole glyphs into ONE
+  // <path> with N `M…Z` subpaths (a burger menu is one element carrying
+  // three bars); the shape editor works one geometry per wrapper. Disjoint
+  // subpaths become separate shapes (holes/counters stay merged — the
+  // split refuses overlapping bboxes; see splitDisjointSubpathsD).
+  const shapes: { d: string; paint: Record<string, string> }[] = [];
+  for (const s of scaled) {
+    const parts = splitDisjointSubpathsD(s.d);
+    if (parts) for (const pd of parts) shapes.push({ d: pd, paint: { ...s.paint } });
+    else shapes.push(s);
+  }
+
+  // SHRINK-WRAP: rebase everything to the union of the painted bboxes so the
+  // wrapper hugs the glyph — no pack padding (see DecomposedSvgDrop.box).
+  let ux = Infinity, uy = Infinity, ux1 = -Infinity, uy1 = -Infinity;
+  for (const s of shapes) {
+    const b = geometryBBox('path', { d: s.d });
+    if (!b) return null;
+    if (b.x < ux) ux = b.x;
+    if (b.y < uy) uy = b.y;
+    if (b.x + b.width > ux1) ux1 = b.x + b.width;
+    if (b.y + b.height > uy1) uy1 = b.y + b.height;
+  }
+  if (!Number.isFinite(ux) || !Number.isFinite(uy)) return null;
+  const ox = r2(ux), oy = r2(uy);
+  const W = Math.max(r2(ux1 - ux), 0.01);
+  const H = Math.max(r2(uy1 - uy), 0.01);
+  if (ox !== 0 || oy !== 0) {
+    for (let i = 0; i < shapes.length; i++) {
+      const rebased = translatePathD(shapes[i].d, -ox, -oy);
+      if (!rebased) return null;
+      shapes[i] = { d: rebased, paint: shapes[i].paint };
+    }
+  }
+
+  const rootAttrs: Record<string, string> = { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none' };
+  const box = { w: W, h: H };
+
+  if (shapes.length === 1) {
     trace.action('svg-drop:decompose', { baseId, shapes: 1, W, H });
-    return { attrs: rootAttrs, children: [pathDesc(`${baseId}-g0`, s)] };
+    return { attrs: rootAttrs, children: [pathDesc(`${baseId}-g0`, shapes[0])], box };
   }
 
   // Multi-shape → the EXACT child convention `groupSvgs`/`refitGroupBounds`
@@ -117,11 +165,9 @@ export function decomposeSvgDropToShapes(
   // Full-size children (x=0, width=W) render identically but lie to the
   // group math — moving one letter then scattered the whole mark (live
   // find 2026-07-28: refit unions the DECLARED boxes).
-  const r2 = (v: number) => +v.toFixed(2);
   const children: NewNodeDescriptor[] = [];
-  for (let i = 0; i < parsed.shapes.length; i++) {
-    const s = scaleShape(parsed.shapes[i]);
-    if (!s) return null;
+  for (let i = 0; i < shapes.length; i++) {
+    const s = shapes[i];
     const bbox = geometryBBox('path', { d: s.d });
     if (!bbox) return null;
     const bx = r2(bbox.x);
@@ -144,5 +190,5 @@ export function decomposeSvgDropToShapes(
     });
   }
   trace.action('svg-drop:decompose', { baseId, shapes: children.length, W, H });
-  return { attrs: rootAttrs, children };
+  return { attrs: rootAttrs, children, box };
 }
