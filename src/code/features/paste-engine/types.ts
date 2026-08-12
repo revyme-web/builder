@@ -58,6 +58,13 @@ export interface ClipboardNode {
    * `updateBorderOverlay` mutation (see paste/border-reinject.ts).
    */
   borderAfterCSS?: string;
+
+  /**
+   * `::placeholder` rule styles (the Input tool's Placeholder Color) —
+   * same style-block-keyed-by-data-id failure mode as the border overlay.
+   * Paste re-injects under the NEW id via `updatePseudoStyle`.
+   */
+  placeholderStyles?: Record<string, string>;
 }
 
 /**

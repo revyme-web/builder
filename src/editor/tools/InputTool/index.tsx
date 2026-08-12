@@ -10,14 +10,16 @@ import { useClickOutside } from '../../hooks/useClickOutside';
 import { useAtomValue } from 'jotai';
 import { useControl } from '../../controls/ControlProvider';
 import { ToolSection, ToolRow, ToolSelect, ToolInput, ToolSegmentedControl, RemoveButton, EntryList } from '../../controls';
+import ColorInput from '../../controls/ColorInput';
 import ToolPopup from '../../ui/ToolPopup';
 import PageVariableChip from '../../controls/PageVariableChip';
 import { parsePageVariables } from '@/code/features/page-variables';
 import { codeAtom, getNodesSnapshot } from '@/code/stores/store';
 import { useNodesComputed } from '@/code/stores/node-family';
+import { pseudoStylesAtom } from '@/code/stores/pseudo-store';
 import { isReplicaViewportAtom, interactingViewportWidthAtom, isComponentVariantViewportAtom, activeComponentVariantAtom } from '@/code/stores/viewport-store';
 import { queueMutation, flushNow } from '@/code/mutation/mutation-queue';
-import { forceCanvasRender } from '@/canvas/node-ops';
+import { forceCanvasRender, injectCanvasCSS, removeCanvasCSS } from '@/canvas/node-ops';
 import { parseResponsiveAttr, getResponsiveAttrAtViewport, getResponsiveAttrForVariant } from '@/code/generation/responsive-attrs-gen';
 import type { CanvasNode } from '@/code/parsing/parser';
 import { trace } from '@/shared/debug-trace';
@@ -146,6 +148,39 @@ function newOptionId(): string {
   return `opt-${Math.floor(performance.now()).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/** A color row for the input's own text (`color` inline style) or its
+ *  placeholder text (a `[data-id]::placeholder` rule — inline styles can't
+ *  reach it). Picker drags live-preview via injectCanvasCSS; the commit swaps
+ *  the injected rule for the persisted one.
+ *
+ *  The live rule uses a DOUBLED attribute selector (`[data-id="x"][data-id]`):
+ *  removal is by selector text, so a live rule sharing the committed rule's
+ *  exact selector meant every deselect ALSO stripped the committed rule from
+ *  the canvas style element — the color went gray until the next full style
+ *  rebuild re-read it from code ("placeholder color flashes on canvas",
+ *  2026-08-12). The doubled form can never collide, and its higher
+ *  specificity beats the committed rule while the picker drags. */
+function ColorRow({ label, value, nodeId, pseudo, onCommit }: {
+  label: string; value: string; nodeId: string; pseudo?: string; onCommit: (v: string) => void;
+}) {
+  const liveSelector = `[data-id="${nodeId}"][data-id]${pseudo ?? ''}`;
+  const commit = (v: string) => { removeCanvasCSS(liveSelector); onCommit(v); };
+  // Drop any dangling live rule when the selection moves on mid-drag.
+  useEffect(() => () => removeCanvasCSS(liveSelector), [liveSelector]);
+  return (
+    <ToolRow label={label}>
+      <ColorInput
+        value={value || '#999999'}
+        empty={!value}
+        showAlpha
+        onChangeLive={(c) => injectCanvasCSS(liveSelector, `  color: ${c} !important;`)}
+        onChange={commit}
+        onRemove={value ? () => commit('') : undefined}
+      />
+    </ToolRow>
+  );
+}
+
 export default function InputTool() {
   const { node } = useControl();
   const nodeId = node?.id ?? '';
@@ -158,6 +193,8 @@ export default function InputTool() {
   const vpWidth = useAtomValue(interactingViewportWidthAtom);
   const isComponentVariant = useAtomValue(isComponentVariantViewportAtom);
   const activeVariant = useAtomValue(activeComponentVariantAtom);
+  // ::placeholder rules parsed back from the page's <style> block.
+  const pseudoMap = useAtomValue(pseudoStylesAtom);
   // Extras the user has revealed via "+" but not yet given a value (e.g. an
   // empty "Value" — updateHtmlAttrs can't write an empty attr, so track shown
   // rows here). Seeded from present attrs; re-seeded when a different node is selected.
@@ -178,6 +215,29 @@ export default function InputTool() {
 
   if (!node || (node.type !== 'input' && node.type !== 'textarea' && node.type !== 'select')) return null;
   const attrs = node.attrs ?? {};
+
+  // ─── Text / placeholder color ────────────────────────────────────────────
+  // Text color is the input's own `color` inline style; placeholder color
+  // lives in a `[data-id="…"]::placeholder` rule in the page's <style> block
+  // (parsed back via pseudoStylesAtom). Both are base-level (not per-viewport),
+  // like the other editor-owned pseudo/hover rules.
+  const placeholderStyles = pseudoMap.get(nodeId)?.placeholder ?? {};
+  const textColor = node.styles?.color ?? '';
+  const placeholderColor = placeholderStyles.color ?? '';
+  const commitTextColor = (v: string) => {
+    if (!nodeId) return;
+    queueMutation({ type: 'updateStyles', nodeId, styles: { color: v } }); // '' deletes
+    commitNow();
+    trace.action('input-tool:text-color', { nodeId, set: !!v });
+  };
+  const commitPlaceholderColor = (v: string) => {
+    if (!nodeId) return;
+    // Spread the existing rule so future ::placeholder props survive a color
+    // edit; '' filters out and an empty rule is removed entirely.
+    queueMutation({ type: 'updatePseudoStyle', nodeId, pseudo: 'placeholder', styles: { ...placeholderStyles, color: v } });
+    commitNow();
+    trace.action('input-tool:placeholder-color', { nodeId, set: !!v });
+  };
 
   const setAttrsOf = (id: string, a: Record<string, string>) => {
     if (!id) return;
@@ -340,6 +400,8 @@ export default function InputTool() {
         <ToolRow label="Placeholder" {...ov('placeholder')}>
           <ToolInput value={displayAttr('placeholder')} onChange={(v) => writeAttr('placeholder', v)} placeholder="Search..." />
         </ToolRow>
+        <ColorRow label="Text Color" value={textColor} nodeId={nodeId} onCommit={commitTextColor} />
+        <ColorRow label="Placeholder Color" value={placeholderColor} nodeId={nodeId} pseudo="::placeholder" onCommit={commitPlaceholderColor} />
       </ToolSection>
     );
   }
@@ -364,6 +426,12 @@ export default function InputTool() {
         <ToolSegmentedControl value={isToggleOn('required') ? 'yes' : 'no'} onChange={(v) => setAttrs({ required: v === 'yes' ? 'true' : '' })}
           options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
       </ToolRow>
+
+      <ColorRow label="Text Color" value={textColor} nodeId={nodeId} onCommit={commitTextColor} />
+      {/* <select> has no ::placeholder — its "placeholder" is a disabled <option>. */}
+      {!isSelect && (
+        <ColorRow label="Placeholder Color" value={placeholderColor} nodeId={nodeId} pseudo="::placeholder" onCommit={commitPlaceholderColor} />
+      )}
 
       {/* Extra props (added via the "+") — each removable. */}
       {EXTRA_DEFS.filter((d) => isExtraVisible(d.kind)).map((d) => (

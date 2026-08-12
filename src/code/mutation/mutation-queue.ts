@@ -592,11 +592,11 @@ export type Mutation =
   | { type: 'wrapFitText'; nodeId: string; viewBox: { width: number; height: number; fontSize: number; marginTop?: number } }
   /** Unwrap a text element from its SVG foreignObject FIT wrapper */
   | { type: 'unwrapFitText'; nodeId: string }
-  // ─── Pseudo-element styles (::before / ::after) ───────────────────────
-  /** Write or update a ::before or ::after CSS rule in the <style> block */
-  | { type: 'updatePseudoStyle'; nodeId: string; pseudo: 'before' | 'after'; styles: Record<string, string> }
-  /** Remove a ::before or ::after rule from the <style> block */
-  | { type: 'removePseudo'; nodeId: string; pseudo: 'before' | 'after' }
+  // ─── Pseudo rules (::before / ::after / ::placeholder) ────────────────
+  /** Write or update a ::before/::after/::placeholder CSS rule in the <style> block */
+  | { type: 'updatePseudoStyle'; nodeId: string; pseudo: 'before' | 'after' | 'placeholder'; styles: Record<string, string> }
+  /** Remove a ::before/::after/::placeholder rule from the <style> block */
+  | { type: 'removePseudo'; nodeId: string; pseudo: 'before' | 'after' | 'placeholder' }
   ;
 
 // ─── Queue State ───────────────────────────────────────────────────────────

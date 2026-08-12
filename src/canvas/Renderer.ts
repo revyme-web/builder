@@ -1168,15 +1168,18 @@ export function renderNodes(
     if (css) {
       const el = styleEl || getOrCreateCanvasStyleEl();
       if (el) {
-        // Preserve imperatively-injected ::after rules not yet in code
+        // Preserve imperatively-injected pseudo rules not yet in code —
+        // ::after (border overlay), ::before, and ::placeholder (Input tool),
+        // incl. the doubled-attribute live-preview form `[data-id="x"][data-id]`
+        // (whose selector deliberately never collides with a committed rule).
         const current = el.textContent || '';
         // Border-overlay rules key off `data-id` now (renders in preview/live); legacy `data-node-id`
         // rules are still matched so older files keep working in the canvas.
-        const afterRules = current.match(/\n\[data-(?:node-)?id="[^"]+"\]::after\s*\{[^}]*\}/gs) || [];
+        const afterRules = current.match(/\n\[data-(?:node-)?id="[^"]+"\](?:\[data-id\])?::(?:after|before|placeholder)\s*\{[^}]*\}/gs) || [];
         let merged = css;
         for (const rule of afterRules) {
           // Only preserve if the code doesn't already contain this exact selector
-          const selectorMatch = rule.match(/(\[data-(?:node-)?id="[^"]+"\]::after)/);
+          const selectorMatch = rule.match(/(\[data-(?:node-)?id="[^"]+"\](?:\[data-id\])?::(?:after|before|placeholder))/);
           if (selectorMatch && !css.includes(selectorMatch[1])) {
             merged += rule;
           }
@@ -1187,9 +1190,9 @@ export function renderNodes(
         if (el.textContent !== merged) el.textContent = merged;
       }
     } else if (styleEl) {
-      // No CSS from code — but preserve imperative ::after + persist rules if any
+      // No CSS from code — but preserve imperative pseudo + persist rules if any
       const current = styleEl.textContent || '';
-      const afterRules = current.match(/\n\[data-(?:node-)?id="[^"]+"\]::after\s*\{[^}]*\}/gs) || [];
+      const afterRules = current.match(/\n\[data-(?:node-)?id="[^"]+"\](?:\[data-id\])?::(?:after|before|placeholder)\s*\{[^}]*\}/gs) || [];
       const keep = [...afterRules, ...persistRules(current).map(r => '\n' + r.trim())];
       if (keep.length > 0) {
         const preserved = keep.join('');

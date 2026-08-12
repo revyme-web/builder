@@ -13,7 +13,7 @@ import { cssTransformToMotionProps } from '@/shared/motion-transform';
 import { trace } from '@/shared/debug-trace';
 import { generate, findTagClose, findJSXDataIdIndex, quoteStyleValue, serializeJSXAttr, findMatchingCloseTagIndex, findStyleObjectEnd } from './generator-utils';
 import { moveNodeIntoParentFast } from './move-fast';
-import { clearContainerStylesForNode, removeHoverStyleInCode, removeBorderOverlayStyle, findBandedOrderWidths, stripBandedOrderForNode } from './generator-styles';
+import { clearContainerStylesForNode, removeHoverStyleInCode, removeBorderOverlayStyle, removePseudoStyleInCode, findBandedOrderWidths, stripBandedOrderForNode } from './generator-styles';
 import { clearNodeScrollFx, ensureTransformTemplateInCode } from './generator-motion';
 import { stripScrollTextHooks } from './text-anim-gen';
 import { parseVariantConfig } from '../variants/variant-config';
@@ -3447,6 +3447,8 @@ export function removeNodeInCode(code: string, nodeId: string): string {
           result = clearContainerStylesForNode(result, nodeId);
           result = removeHoverStyleInCode(result, nodeId);
           result = removeBorderOverlayStyle(result, nodeId);
+    result = removePseudoStyleInCode(result, nodeId, 'placeholder');
+    result = removePseudoStyleInCode(result, nodeId, 'before');
           trace.action('generator:removeNode-empty-map-template', { nodeId });
           return removeOrphanedVariantConsts(result);
         } catch (err) {
@@ -3510,6 +3512,8 @@ export function removeNodeInCode(code: string, nodeId: string): string {
     selfClosed = clearContainerStylesForNode(selfClosed, nodeId);
     selfClosed = removeHoverStyleInCode(selfClosed, nodeId);
     selfClosed = removeBorderOverlayStyle(selfClosed, nodeId);
+    selfClosed = removePseudoStyleInCode(selfClosed, nodeId, 'placeholder');
+    selfClosed = removePseudoStyleInCode(selfClosed, nodeId, 'before');
     return removeOrphanedVariantConsts(selfClosed);
   }
 
@@ -3532,6 +3536,8 @@ export function removeNodeInCode(code: string, nodeId: string): string {
     result = clearContainerStylesForNode(result, nodeId);
     result = removeHoverStyleInCode(result, nodeId);
     result = removeBorderOverlayStyle(result, nodeId);
+    result = removePseudoStyleInCode(result, nodeId, 'placeholder');
+    result = removePseudoStyleInCode(result, nodeId, 'before');
     // Garbage-collect the deleted element's now-orphaned variant object(s).
     result = removeOrphanedVariantConsts(result);
     return result;

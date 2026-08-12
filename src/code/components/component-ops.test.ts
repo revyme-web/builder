@@ -1384,6 +1384,44 @@ export default function Page() {
       p === 'app/page.tsx' ? PAGE : p === 'components/Card.tsx' ? COMPONENT : null);
   }
 
+  test('carries the master\'s per-id <style> rules (::placeholder / ::after / :hover) under det- ids', () => {
+    // Style-block rules key off the MASTER's data-ids; detach mints fresh
+    // det- ids, so without the carry every detached copy silently lost its
+    // border overlay / placeholder color on preview+live (Adore, 2026-08-12).
+    const STYLED = COMPONENT.replace(
+      '<motion.div data-id="card-child"',
+      `<style>{\`
+    [data-id="card-child"]::placeholder {
+      color: #94a3b8 !important;
+    }
+    [data-id="card-child"]:hover {
+      opacity: 0.5 !important;
+    }
+    @media (max-width: 768px) {
+      [data-id="card-child"] { width: 40px !important; }
+    }
+  \`}</style><motion.div data-id="card-child"`,
+    );
+    mockFS.readFile.mockImplementation((p: string) =>
+      p === 'app/page.tsx' ? PAGE : p === 'components/Card.tsx' ? STYLED : null);
+    const out = detachInstance('app/page.tsx', 'inst', 'components/Card.tsx', 'default')!;
+    expect(out).not.toBeNull();
+    expect(parseJSX(out)).not.toBeNull();
+    // The detached child got a fresh det- id; its rules follow, rewritten.
+    const phRule = out.match(/\[data-id="(det-[^"]+)"\]::placeholder/);
+    expect(phRule).toBeTruthy();
+    expect(out).toContain(`[data-id="${phRule![1]}"]:hover`);
+    // Responsive @media overrides follow their node too (remapped inside).
+    expect(out).toMatch(/@media \(max-width: 768px\)[\s\S]*?\[data-id="det-[^"]+"\] \{ width: 40px !important; \}/);
+    // No stale master-id selectors leak into the page — they'd style the
+    // master's OTHER live instances from page scope.
+    expect(out).not.toContain('[data-id="card-child"]::placeholder');
+    expect(out).not.toContain('[data-id="card-child"]:hover');
+    // The page keeps a SINGLE <style> block (readers/writers match the first
+    // block only — a second one would hold invisible, unremovable rules).
+    expect(out.match(/<style>/g)).toHaveLength(1);
+  });
+
   test('inlines the master as normal nodes: strips motion/variant props, bakes variant + wrapper styles', () => {
     setupFS();
     const out = detachInstance('app/page.tsx', 'inst', 'components/Card.tsx', 'default')!;

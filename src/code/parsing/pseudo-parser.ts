@@ -1,22 +1,27 @@
-// pseudo-parser.ts — Parse CSS ::before/::after rules from style blocks.
+// pseudo-parser.ts — Parse CSS ::before/::after/::placeholder rules from style blocks.
 
 import { toCamel } from '@/shared/css-utils';
 import { trace } from '@/shared/debug-trace';
 
+/** Pseudo selectors the editor owns. `placeholder` styles a form control's
+ *  placeholder TEXT (Input tool), not a generated box like before/after. */
+export type PseudoKind = 'before' | 'after' | 'placeholder';
+
 export interface PseudoStyles {
   before?: Record<string, string>;
   after?: Record<string, string>;
+  placeholder?: Record<string, string>;
 }
 
 export function parsePseudoRules(css: string): Map<string, PseudoStyles> {
   const result = new Map<string, PseudoStyles>();
   if (!css) return result;
 
-  const ruleRx = /\[data-id="([^"]+)"\]::(before|after)\s*\{([^}]*)\}/g;
+  const ruleRx = /\[data-id="([^"]+)"\]::(before|after|placeholder)\s*\{([^}]*)\}/g;
   let match;
   while ((match = ruleRx.exec(css)) !== null) {
     const nodeId = match[1];
-    const pseudo = match[2] as 'before' | 'after';
+    const pseudo = match[2] as PseudoKind;
     const declBlock = match[3];
     const props: Record<string, string> = {};
 

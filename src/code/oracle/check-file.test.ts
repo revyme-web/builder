@@ -216,6 +216,14 @@ describe('checkFile — tier 2 dialect', () => {
     expect(codes(checkFile(master, { kind: 'component' }))).not.toContain('RAW_STYLE_TAG');
   });
 
+  it('exempts the Input tool\'s ::placeholder rule (editor-owned, round-trips via pseudo-parser)', () => {
+    const master = CLEAN_COMPONENT.replace(
+      '>Pro Plan<',
+      '><style>{`\n    [data-id="email-field"]::placeholder {\n      color: #94a3b8 !important;\n    }\n  `}</style>Pro Plan<',
+    );
+    expect(codes(checkFile(master, { kind: 'component' }))).not.toContain('RAW_STYLE_TAG');
+  });
+
   it('still bounces freeform <style> CSS on components (element/class selectors, non-media)', () => {
     const cls = CLEAN_COMPONENT.replace(
       '>Pro Plan<',

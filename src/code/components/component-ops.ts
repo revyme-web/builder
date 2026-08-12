@@ -16,7 +16,7 @@ import { clearComponentCache } from './component-registry';
 import { WRAPPER_ONLY_STYLE_PROPS, CONDITIONAL_LAYOUT_PROPS } from '@/shared/constants';
 import { cssTransformToMotionProps } from '@/shared/motion-transform';
 import { toCamel } from '@/shared/css-utils';
-import { updateVariantStyleInCode, setConditionalStyleInCode, syncLinkHandlerInCode, clearContainerStylesForNode, updateContainerQueryStyle } from '../generation/generator-styles';
+import { updateVariantStyleInCode, setConditionalStyleInCode, syncLinkHandlerInCode, clearContainerStylesForNode, updateContainerQueryStyle, mergeDetachedStyleCSSIntoPage } from '../generation/generator-styles';
 import { parseContainerRules } from '../stores/container-query-store';
 import { extractStyleCSS } from '../parsing/parser';
 import { rehydrateInstanceFx, setInstanceFxInCode } from '../generation/instance-fx-gen';
@@ -1380,6 +1380,10 @@ export function detachInstance(
       if (!idMap.has(orig)) idMap.set(orig, generateNodeId('det'));
       return idMap.get(orig)!;
     };
+    // CSS collected from the master's <style> element(s), selectors already
+    // remapped to the fresh det- ids — merged into the page's block after the
+    // splice (see resolveDetachedChildren's style interception).
+    const detachedStyleCSS: string[] = [];
 
     // Does an expression reference a component-scope identifier (a binding that won't exist on the
     // page)? `constLiterals` are exempt — they get inlined, not dropped. Must use REFERENCED-identifier
@@ -1511,6 +1515,26 @@ export function detachInstance(
           const nm = c.openingElement.name;
           const tn = t.isJSXIdentifier(nm) ? nm.name : '';
           if (MOTION_WRAPPERS.has(tn)) return resolveDetachedChildren(c.children);
+          // The master's own <style> element (border ::after overlays, the
+          // Input tool's ::placeholder, :hover rules, per-id @media
+          // overrides). Its selectors key off the MASTER's data-ids, and a
+          // page must keep a SINGLE <style> block (every reader/writer's
+          // styleBlockRegex matches the first block only) — so: remap every
+          // `[data-id="…"]` through the same idMap the elements get, stash
+          // the CSS for the post-splice merge into the page's block, and
+          // DROP the element from the clone. Left verbatim, the rules were
+          // dead on the detached copy while still matching the master's
+          // other live instances from page scope (Adore form, 2026-08-12).
+          if (tn === 'style') {
+            for (const cc of c.children) {
+              if (t.isJSXExpressionContainer(cc) && t.isTemplateLiteral(cc.expression)) {
+                for (const q of cc.expression.quasis) {
+                  detachedStyleCSS.push(q.value.raw.replace(/\[data-id="([^"]+)"\]/g, (_m: string, id: string) => `[data-id="${freshId(id)}"]`));
+                }
+              }
+            }
+            return [];
+          }
         }
         return [c];
       });
@@ -1519,6 +1543,7 @@ export function detachInstance(
       const op = el.openingElement;
       const tagName = t.isJSXIdentifier(op.name) ? op.name.name
         : t.isJSXMemberExpression(op.name) && t.isJSXIdentifier(op.name.property) ? op.name.property.name : '';
+
       // `motion.div` (member expr) OR a `motion.create(X)` local (`MotionLink`) — both
       // are motion-wrapped primitives, not nested instances. The latter converts to its
       // base tag (`MotionLink` → `Link`).
@@ -1737,6 +1762,14 @@ export function detachInstance(
       }
       carried.push(local);
     }
+
+    // 6. Merge the master's remapped <style> CSS (collected + id-rewritten in
+    //    resolveDetachedChildren) into the PAGE's single style block — border
+    //    ::after overlays, Input-tool ::placeholder, :hover, and per-id
+    //    @media overrides all follow their detached nodes; they'd otherwise
+    //    silently vanish from preview/live (the canvas alone kept them via
+    //    the instance afterCSS carry, which dies with the instance).
+    result = mergeDetachedStyleCSSIntoPage(result, detachedStyleCSS.join('\n'));
 
     trace.action('component-ops:detach-instance', { instanceNodeId, componentFilePath, resolvedVariant, instName, idCount: idMap.size, carriedImports: carried });
     return result;

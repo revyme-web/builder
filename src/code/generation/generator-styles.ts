@@ -1169,6 +1169,55 @@ export function copyContainerRulesToNewWidth(
  * Write or update a ::after border overlay rule for a node in the <style> block.
  * Creates the style block if it doesn't exist.
  */
+/** Create the page/master `<style>` block, anchored as the ROOT element's
+ *  first child. The legacy heuristic — first `}}>\n` anywhere in the file —
+ *  picked ANY style-object close: in a component master that was a nested
+ *  `<motion.svg>` (the Adore contact form, 2026-08-12), so the border/
+ *  placeholder rules became children of a decorative svg — they rendered,
+ *  but deleting that svg would silently take every rule with it, and the
+ *  user hunting for the write near their input found nothing. Anchoring at
+ *  the first `data-id` element after `return` (= the root in both the page
+ *  and master dialects) makes the block's home stable and predictable; the
+ *  legacy match stays as the fallback for exotic shapes. */
+function createStyleBlockInCode(code: string, css: string): string {
+  const retIdx = code.search(/\breturn\s*[(<]/);
+  const idIdx = code.indexOf('data-id="', retIdx === -1 ? 0 : retIdx);
+  if (idIdx !== -1) {
+    const gt = findTagClose(code, idIdx);
+    if (gt !== -1 && code[gt - 1] !== '/') {
+      return code.slice(0, gt + 1) + `\n  <style>{\`${css}\`}</style>` + code.slice(gt + 1);
+    }
+  }
+  const rootCloseMatch = code.match(/\}\}>\s*\n/);
+  if (!rootCloseMatch) return code;
+  const insertIdx = rootCloseMatch.index! + rootCloseMatch[0].length;
+  return code.slice(0, insertIdx) + `  <style>{\`${css}\`}</style>\n` + code.slice(insertIdx);
+}
+
+/** DETACH carry: merge a master's `<style>` CSS — selectors ALREADY remapped
+ *  to the fresh `det-` ids by detachInstance's style interception — into the
+ *  page's single `<style>` block (created at the root when the page has
+ *  none). A page must keep ONE block: every reader/writer's styleBlockRegex
+ *  matches the first block only, so letting the master's element land as a
+ *  second block made its rules invisible to the pseudo-parser and
+ *  unremovable by the rule writers. Without the carry the rules silently
+ *  vanished from preview/live — the canvas alone kept them via the instance
+ *  afterCSS carry, which dies with the instance (the Adore form,
+ *  2026-08-12). */
+export function mergeDetachedStyleCSSIntoPage(pageCode: string, css: string): string {
+  const trimmed = css.trim();
+  if (!trimmed) return pageCode;
+  trace.action('generator.mergeDetachedStyleCSSIntoPage', { cssLen: trimmed.length });
+  const chunk = `\n    ${trimmed}\n  `;
+  const styleBlockRegex = /(<style>\s*\{[`'])([\s\S]*?)([`']\}\s*<\/style>)/s;
+  const blockMatch = styleBlockRegex.exec(pageCode);
+  if (blockMatch) {
+    const [fullMatch, prefix, body, suffix] = blockMatch;
+    return pageCode.slice(0, blockMatch.index!) + prefix + body + chunk + suffix + pageCode.slice(blockMatch.index! + fullMatch.length);
+  }
+  return createStyleBlockInCode(pageCode, chunk);
+}
+
 export function updateBorderOverlayStyle(code: string, nodeId: string, afterCSS: string): string {
   trace.fn('generator.updateBorderOverlayStyle', { nodeId, cssLen: afterCSS.length });
 
@@ -1196,12 +1245,7 @@ export function updateBorderOverlayStyle(code: string, nodeId: string, afterCSS:
     const [fullMatch, prefix, , suffix] = blockMatch;
     return code.slice(0, blockMatch.index!) + prefix + existingCSS + suffix + code.slice(blockMatch.index! + fullMatch.length);
   } else {
-    // No style block — create one
-    const rootCloseMatch = code.match(/\}\}>\s*\n/);
-    if (!rootCloseMatch) return code;
-    const insertIdx = rootCloseMatch.index! + rootCloseMatch[0].length;
-    const styleBlock = `  <style>{\`${existingCSS}\`}</style>\n`;
-    return code.slice(0, insertIdx) + styleBlock + code.slice(insertIdx);
+    return createStyleBlockInCode(code, existingCSS);
   }
 }
 
@@ -1265,12 +1309,7 @@ export function updateHoverStyleInCode(code: string, nodeId: string, styles: Rec
     const [fullMatch, prefix, , suffix] = blockMatch;
     return code.slice(0, blockMatch.index!) + prefix + existingCSS + suffix + code.slice(blockMatch.index! + fullMatch.length);
   } else {
-    // No style block — create one
-    const rootCloseMatch = code.match(/\}\}>\s*\n/);
-    if (!rootCloseMatch) return code;
-    const insertIdx = rootCloseMatch.index! + rootCloseMatch[0].length;
-    const styleBlock = `  <style>{\`${existingCSS}\`}</style>\n`;
-    return code.slice(0, insertIdx) + styleBlock + code.slice(insertIdx);
+    return createStyleBlockInCode(code, existingCSS);
   }
 }
 
@@ -1294,17 +1333,19 @@ export function removeHoverStyleInCode(code: string, nodeId: string): string {
 }
 
 
-// ─── Pseudo-Element Rules (::before / ::after) ──────────────────────────────
+// ─── Pseudo Rules (::before / ::after / ::placeholder) ──────────────────────
 
 /**
- * Write or update a ::before or ::after CSS rule in the <style> block.
- * Mirrors updateHoverStyleInCode but for pseudo-elements.
+ * Write or update a ::before / ::after / ::placeholder CSS rule in the
+ * <style> block. Mirrors updateHoverStyleInCode but for pseudo selectors
+ * (`placeholder` styles a form control's placeholder text — the Input tool's
+ * Placeholder Color; inline style objects can't reach it).
  * Creates the style block if it doesn't exist.
  * Each property gets !important. Empty string values are filtered out.
  * If no properties remain, the rule is removed entirely.
  */
 export function updatePseudoStyleInCode(
-  code: string, nodeId: string, pseudo: 'before' | 'after', styles: Record<string, string>
+  code: string, nodeId: string, pseudo: 'before' | 'after' | 'placeholder', styles: Record<string, string>
 ): string {
   trace.fn('generator.updatePseudoStyleInCode', { nodeId, pseudo, styleCount: Object.keys(styles).length });
 
@@ -1334,18 +1375,14 @@ export function updatePseudoStyleInCode(
     const [fullMatch, prefix, , suffix] = blockMatch;
     return code.slice(0, blockMatch.index!) + prefix + existingCSS + suffix + code.slice(blockMatch.index! + fullMatch.length);
   } else {
-    const rootCloseMatch = code.match(/\}\}>\s*\n/);
-    if (!rootCloseMatch) return code;
-    const insertIdx = rootCloseMatch.index! + rootCloseMatch[0].length;
-    const styleBlock = `  <style>{\`${existingCSS}\`}</style>\n`;
-    return code.slice(0, insertIdx) + styleBlock + code.slice(insertIdx);
+    return createStyleBlockInCode(code, existingCSS);
   }
 }
 
 /**
- * Remove a ::before or ::after rule from the <style> block.
+ * Remove a ::before / ::after / ::placeholder rule from the <style> block.
  */
-export function removePseudoStyleInCode(code: string, nodeId: string, pseudo: 'before' | 'after'): string {
+export function removePseudoStyleInCode(code: string, nodeId: string, pseudo: 'before' | 'after' | 'placeholder'): string {
   trace.fn('generator.removePseudoStyleInCode', { nodeId, pseudo });
 
   const styleBlockRegex = /(<style>\s*\{[`'])([\s\S]*?)([`']\}\s*<\/style>)/s;

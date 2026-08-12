@@ -23,6 +23,7 @@ import { resolveCmsRowValues } from '@/code/generation/cms-row-resolve';
 import { captureComponentMasters } from './capture-components';
 import { extractStyleCSS } from '@/code/parsing/parser';
 import { extractBorderAfterRuleBody } from '@/editor/ui/border-utils';
+import { parsePseudoRules } from '@/code/parsing/pseudo-parser';
 import { getProjectId } from '@/backend/project-id';
 import { readTranslationText } from '@/code/project/translation-ops';
 import { getI18nConfig } from '@/code/project/locale-ops';
@@ -207,6 +208,31 @@ function captureBorderOverlays(
   if (count > 0) trace.action('copy:border-overlays-captured', { count });
 }
 
+/**
+ * Carry each copied input's `::placeholder` rule (the Input tool's Placeholder
+ * Color) — same failure mode as the border overlay: the rule lives in the
+ * page's `<style>` block keyed by data-id, so the clipboard tree alone loses
+ * it on paste. Parsed via the pseudo-parser (round-trips exactly what the
+ * generator writes).
+ */
+function capturePlaceholderRules(
+  clipboardNodes: ClipboardNode[],
+  sourceCode: string,
+): void {
+  const css = extractStyleCSS(sourceCode);
+  if (!css) return;
+  const pseudoMap = parsePseudoRules(css);
+  let count = 0;
+  for (const cn of clipboardNodes) {
+    const placeholder = pseudoMap.get(cn.id)?.placeholder;
+    if (placeholder && Object.keys(placeholder).length > 0) {
+      cn.placeholderStyles = placeholder;
+      count++;
+    }
+  }
+  if (count > 0) trace.action('copy:placeholder-rules-captured', { count });
+}
+
 // ─── Overlay collection ──────────────────────────────────────────────────────
 
 /**
@@ -347,7 +373,10 @@ export function copyNodes(
   //     by data-id, so paste must re-inject it under the new ids.
   try {
     const sourceCode = projectFS.readFile(getActiveFilePath()) ?? '';
-    if (sourceCode) captureBorderOverlays(clipboardNodes, sourceCode);
+    if (sourceCode) {
+      captureBorderOverlays(clipboardNodes, sourceCode);
+      capturePlaceholderRules(clipboardNodes, sourceCode);
+    }
   } catch (err) {
     trace.error('clipboard:border-capture-failed', err);
   }

@@ -38,3 +38,25 @@ export function reinjectBorderOverlays(
     });
   }
 }
+
+/**
+ * Same pass for `::placeholder` rules (the Input tool's Placeholder Color):
+ * the rule lives in the <style> block keyed by data-id, so every pasted input
+ * would silently lose its placeholder color without this.
+ */
+export function reinjectPlaceholderStyles(
+  clipboardNodes: ClipboardNode[],
+  idMapper: IdMapper,
+): void {
+  for (const cn of clipboardNodes) {
+    if (!cn.placeholderStyles || Object.keys(cn.placeholderStyles).length === 0) continue;
+    const newIds = idMapper.getNewIdsForClipboard(cn.id);
+    if (newIds.length === 0) continue;
+    for (const newId of newIds) {
+      queueMutation({ type: 'updatePseudoStyle', nodeId: newId, pseudo: 'placeholder', styles: cn.placeholderStyles });
+    }
+    trace.action('paste:placeholder-styles-reinjected', {
+      clipboardId: cn.id, copies: newIds.length,
+    });
+  }
+}

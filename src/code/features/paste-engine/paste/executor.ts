@@ -23,7 +23,7 @@ import {
 import { createNode } from '../core/node-creator';
 import { resolveTargets } from '../core/target-resolver';
 import { reinjectMotionProps } from './motion-reinject';
-import { reinjectBorderOverlays } from './border-reinject';
+import { reinjectBorderOverlays, reinjectPlaceholderStyles } from './border-reinject';
 import type {
   ClipboardNode,
   PasteConfig,
@@ -218,6 +218,10 @@ export function executePaste(
   // ids (the border lives in the <style> block, not on the node — it would
   // silently vanish from every pasted copy otherwise).
   reinjectBorderOverlays(ctx.clipboardNodes, idMapper);
+
+  // Post-paste pass — re-inject ::placeholder rules (Input tool Placeholder
+  // Color) under the new ids; same style-block failure mode as the border.
+  reinjectPlaceholderStyles(ctx.clipboardNodes, idMapper);
 
   return createdIds;
 }

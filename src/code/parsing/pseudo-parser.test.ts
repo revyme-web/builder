@@ -45,4 +45,11 @@ describe('parsePseudoRules', () => {
     const result = parsePseudoRules(css);
     expect(result.get('title')?.before?.animation).toBe('glitch 3s infinite linear alternate-reverse');
   });
+
+  it('parses ::placeholder rules (Input tool placeholder color)', () => {
+    const css = `[data-id="email-field"]::placeholder { color: #94a3b8 !important; }`;
+    const result = parsePseudoRules(css);
+    expect(result.get('email-field')?.placeholder?.color).toBe('#94a3b8');
+    expect(result.get('email-field')?.before).toBeUndefined();
+  });
 });

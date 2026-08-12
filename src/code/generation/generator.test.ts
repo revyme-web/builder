@@ -879,6 +879,48 @@ describe('updatePseudoStyleInCode', () => {
     expect(result).toContain('opacity: 0.5 !important');
   });
 
+  test('writes and removes a ::placeholder rule (Input tool placeholder color)', () => {
+    const INPUT_CODE = `<div data-id="root" style={{position: 'relative', width: '100%'}}>
+  <input data-id="email-field" type="email" placeholder="Email" style={{position: 'relative'}} />
+</div>`;
+    const written = updatePseudoStyleInCode(INPUT_CODE, 'email-field', 'placeholder', { color: '#94a3b8' });
+    expect(written).toContain('[data-id="email-field"]::placeholder');
+    expect(written).toContain('color: #94a3b8 !important');
+    // Clearing the only property removes the rule entirely.
+    const cleared = updatePseudoStyleInCode(written, 'email-field', 'placeholder', { color: '' });
+    expect(cleared).not.toContain('::placeholder');
+  });
+
+  test('style-block CREATION anchors at the ROOT, not the first `}}>` in the file (Adore svg, 2026-08-12)', () => {
+    // A component master where a nested <motion.svg>'s style close is the
+    // FIRST `}}>\n` — the legacy heuristic made the new <style> block a CHILD
+    // OF THE SVG (rules rendered, but deleting the decorative svg would take
+    // them along, and the user hunting near their input found "nothing
+    // written"). It must land as the root's first child instead.
+    const MASTER = `function KuDuFe({ style, initialVariant = 'default', ...rest }: any) {
+  return (
+    <motion.div layout={true} data-id="frame-root-1" {...rest} data-name="Form" style={{
+          position: 'relative', width: '400px'
+        , ...style}}>
+        <motion.svg data-id="svg-deco-1" viewBox="0 0 20 20" style={{
+            width: '20px',
+            position: 'absolute'
+          }}>
+          <path d="M0 0 L10 10" />
+        </motion.svg>
+        <motion.input data-id="input-msq7x8nm-3" type="text" style={{ position: 'relative', width: '100%' }} />
+    </motion.div>
+  );
+}`;
+    const out = updatePseudoStyleInCode(MASTER, 'input-msq7x8nm-3', 'placeholder', { color: '#90D9BE' });
+    const styleIdx = out.indexOf('<style>');
+    expect(styleIdx).toBeGreaterThan(-1);
+    // Block sits BEFORE the svg (root's first child), not inside it.
+    expect(styleIdx).toBeLessThan(out.indexOf('<motion.svg'));
+    expect(styleIdx).toBeGreaterThan(out.indexOf('data-id="frame-root-1"'));
+    expect(out).toContain('[data-id="input-msq7x8nm-3"]::placeholder');
+  });
+
   test('creates style block when none exists', () => {
     const result = updatePseudoStyleInCode(CODE_NO_STYLE, 'title', 'before', { content: "''", color: 'red' });
     expect(result).toContain('<style>');

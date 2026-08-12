@@ -129,6 +129,39 @@ export default function Page() {
     expect(body).toContain('border-style: dashed');
   });
 
+  it('::placeholder rule (Input tool Placeholder Color) survives copy/paste too', () => {
+    // Same style-block-keyed-by-data-id failure mode as the border overlay —
+    // copy captures via the pseudo-parser, paste re-injects under the new id.
+    const FORM = `'use client';
+import React from 'react';
+export default function Page() {
+  return <div data-id="root" data-name="Page" style={{ position: 'relative', width: '100%', height: 'auto' }}>
+  <style>{\`
+    [data-id="email-1"]::placeholder {
+      color: #94a3b8 !important;
+    }
+  \`}</style>
+    <div data-id="form-1" data-name="Form" style={{ position: 'relative', width: '400px', height: 'auto' }}>
+      <input data-id="email-1" data-name="Email" type="email" placeholder="Email" style={{ position: 'relative', width: '100%' }} />
+    </div>
+  </div>;
+}`;
+    seed(FILE, FORM);
+    const nodes = parseJSXToNodes(FORM);
+    copyNodes(['form-1'], nodes);
+    executePaste({ selectedIds: ['form-1'], nodes, activeFilePath: FILE });
+    flushNow();
+
+    const out = projectFS.readFile(FILE)!;
+    expectParses(out);
+    const pastedEmailId = findPastedId(out, 'Email', new Set(['email-1']))!;
+    expect(pastedEmailId).toBeDefined();
+    const css = extractStyleCSS(out);
+    expect(css).toContain(`[data-id="${pastedEmailId}"]::placeholder`);
+    // Original untouched.
+    expect(css).toContain('[data-id="email-1"]::placeholder');
+  });
+
   it('deleting the node removes its ::after rule (no orphaned CSS)', () => {
     // Delete cleanup is the other half of the lifecycle: paste re-creates
     // rules per copy, so delete must reap them — same convention as the
@@ -137,5 +170,24 @@ export default function Page() {
     expectParses(out);
     expect(out).not.toContain('data-id="ring-1"');
     expect(extractBorderAfterRuleBody(extractStyleCSS(out), 'ring-1')).toBeNull();
+  });
+
+  it('deleting an input removes its ::placeholder rule (no orphaned CSS)', () => {
+    const FORM = `'use client';
+import React from 'react';
+export default function Page() {
+  return <div data-id="root" data-name="Page" style={{ position: 'relative', width: '100%', height: 'auto' }}>
+  <style>{\`
+    [data-id="email-1"]::placeholder {
+      color: #94a3b8 !important;
+    }
+  \`}</style>
+    <input data-id="email-1" data-name="Email" type="email" style={{ position: 'relative', width: '100%' }} />
+  </div>;
+}`;
+    const out = removeNodeInCode(FORM, 'email-1');
+    expectParses(out);
+    expect(out).not.toContain('data-id="email-1"');
+    expect(out).not.toContain('::placeholder');
   });
 });
