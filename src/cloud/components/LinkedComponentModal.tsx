@@ -141,7 +141,7 @@ export default function LinkedComponentModal({ isOpen, onClose, cdnUrl, instance
           // component master — and swaps `--accent-fg` to
           // `--accent-secondary-fg` in the same pass — so this token
           // pair gives the right fill AND label in both contexts.
-          style={{ backgroundColor: 'var(--accent, #cec997)' }}
+          style={{ backgroundColor: 'var(--accent, #3388ff)' }}
         >
           {busy === 'all' ? 'Unlinking…' : 'Unlink & Replace All'}
         </button>}

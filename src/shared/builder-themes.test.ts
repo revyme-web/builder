@@ -13,7 +13,7 @@ import {
 describe('builder themes', () => {
   test('ships the intended palettes, Default first', () => {
     expect(BUILDER_THEMES.map((t) => t.id)).toEqual([
-      'default', 'monochrome', 'forest', 'ocean', 'ember', 'amber', 'rose',
+      'default', 'gold', 'monochrome', 'forest', 'ocean', 'ember', 'amber', 'rose',
     ]);
     // Default leads the menu — it's the reset row.
     expect(BUILDER_THEMES[0].id).toBe(DEFAULT_BUILDER_THEME_ID);
@@ -36,8 +36,14 @@ describe('builder themes', () => {
     for (const t of BUILDER_THEMES) {
       for (const mode of ['light', 'dark'] as const) {
         const { accent, accentFg } = t[mode];
+        // DEFAULT is the one deliberate exemption (2026-08-12): white on the
+        // selection blue #3388ff is 3.44:1 — the same trade Figma ships on
+        // its own blue, chosen by explicit product decision so the chrome
+        // accent matches the canvas selection. Held to a 3:1 floor (WCAG
+        // large-text/UI-component bar) so it can't silently degrade further.
+        const floor = t.id === 'default' ? 3 : 4.5;
         expect(ratio(accent, accentFg), `${t.id} (${mode}): ${accentFg} on ${accent}`)
-          .toBeGreaterThanOrEqual(4.5);
+          .toBeGreaterThanOrEqual(floor);
       }
     }
   });
@@ -112,11 +118,12 @@ describe('builder themes', () => {
 
   test('Default matches the shipped globals.css accent', () => {
     // If this drifts, picking Default (which CLEARS the overrides) would land
-    // on a different colour than the menu row implies.
+    // on a different colour than the menu row implies. Stock blue = the
+    // dark-canvas selection stroke, white label (restored 2026-08-12).
     const d = getBuilderThemeById(DEFAULT_BUILDER_THEME_ID)!;
-    expect(d.light.accent).toBe('#cec997');
-    expect(d.dark.accent).toBe('#cec997');
-    expect(d.light.accentFg).toBe('#0d1017');
+    expect(d.light.accent).toBe('#3388ff');
+    expect(d.dark.accent).toBe('#3388ff');
+    expect(d.light.accentFg).toBe('#ffffff');
   });
 
   test('Monochrome inverts between light and dark', () => {

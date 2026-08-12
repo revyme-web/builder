@@ -44,7 +44,7 @@ export const MAP_TEMPLATE_COLOR = '#f97316';  // orange — inline .map() templa
 // swap is effectively immediate). Falls back to the original blue/purple when
 // the tokens aren't readable (tests / SSR). Change the palette in globals.css —
 // never here.
-let ACCENT_COLOR = '#cec997';            // mirrors --accent (brand, chrome)
+let ACCENT_COLOR = '#3388ff';            // mirrors --accent (brand, chrome)
 export let SELECTION_COLOR = '#3388ff';         // mirrors --selection (canvas)
 export let COMPONENT_COLOR = '#9a66ff';         // mirrors --accent-secondary
 let DROP_INDICATOR_COLOR = '#3388ff';    // mirrors --selection

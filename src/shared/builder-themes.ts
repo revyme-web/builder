@@ -32,11 +32,21 @@ export interface BuilderTheme {
 
 export const BUILDER_THEMES: BuilderTheme[] = [
   {
-    // The shipped brass/gold. Selecting this REMOVES the overrides rather than
-    // re-asserting them, so the stylesheet's own values (including the tuned
-    // `--accent-surface` rgba) come back exactly as authored.
+    // The stock blue — same hue as the dark-canvas selection stroke, white
+    // label (restored as the shipped default 2026-08-12). Selecting this
+    // REMOVES the overrides rather than re-asserting them, so the
+    // stylesheet's own values (including the tuned `--accent-surface` rgba)
+    // come back exactly as authored.
     id: 'default',
     label: 'Default',
+    light: { accent: '#3388ff', accentFg: '#ffffff' },
+    dark: { accent: '#3388ff', accentFg: '#ffffff' },
+  },
+  {
+    // The brass/gold that shipped as the default during the redesign — kept
+    // as a selectable palette. Near-black label: white on gold is 1.9:1.
+    id: 'gold',
+    label: 'Gold',
     light: { accent: '#cec997', accentFg: '#0d1017' },
     dark: { accent: '#cec997', accentFg: '#0d1017' },
   },

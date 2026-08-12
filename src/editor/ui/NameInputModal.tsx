@@ -154,7 +154,7 @@ export default function NameInputModal({
   accentFg,
 }: NameInputModalProps) {
   const isSecondary = accent === 'secondary';
-  const fill = accentColor ?? (isSecondary ? 'var(--accent-secondary, #9a66ff)' : 'var(--accent, #cec997)');
+  const fill = accentColor ?? (isSecondary ? 'var(--accent-secondary, #9a66ff)' : 'var(--accent, #3388ff)');
   const fg = accentFg ?? (isSecondary ? 'var(--accent-secondary-fg, #ffffff)' : 'var(--accent-fg)');
   const [value, setValue] = useState(defaultValue);
   const [error, setError] = useState<string | null>(null);

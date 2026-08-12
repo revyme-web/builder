@@ -53,43 +53,28 @@
     --text-tertiary: #999999;
     --text-muted: #b0b0b0;
 
-    /* ACCENT — brass, the one piece of the redesign that carries the identity.
-       Warm and mid-chroma at hue 40.
+    /* ACCENT. --accent is used as both a fill and a text colour across the
+       app (184 fill sites vs ~57 text sites), so the family splits:
+       --accent-text carries a deeper tone for the text sites; --accent-strong
+       keeps the brighter one for CTAs and the active tool. The gold/brass
+       experiment that used to live here is available as a selectable builder
+       theme; the shipped default went back to blue. */
+    /* Blue, back as the stock default (2026-08-12, user decision): the SAME
+       blue as the dark-canvas selection stroke (#3388ff), with a WHITE label —
+       the original look, restored over the gold experiment. IDENTICAL in both
+       themes — a brand accent that changes hue between light and dark stops
+       being a brand colour.
 
-       The tone is a LUMINANCE decision, not a hue one. The brighter gold this
-       started from (#e6b450) hit 9.9:1 on #111111 and read as aggressive —
-       yellow is the brightest hue there is, so at equal chroma it always shouts
-       loudest on a dark chrome. Brass keeps the hue and drops to 6.8:1.
-       Going the other way (lower chroma at this hue) is where brown lives,
-       which is the trap the earlier clay fell into.
-
-       Note --accent is used as both a fill and a text colour across the app, so
-       it has to clear AA in both directions. --accent-text carries the deeper
-       tone for the text sites; --accent-strong keeps the brighter one for CTAs
-       and the active tool. */
-    /* IDENTICAL to dark. A brand accent that changes hue between themes stops
-       being a brand colour, and the dark gold read as muddy on white. Gold is
-       a FILL colour here (184 fill sites vs 57 text sites) and it fills the
-       same in both themes, with the same near-black label.
-
-       --accent-text is the exception: brass ON white is 2.8:1 — fine as a fill,
-       unreadable as text. The 57 places that use the accent as TEXT/icon colour
-       take a deeper tone instead, which clears AA (4.9:1). On dark, where the
-       surface is #111111, it collapses back to the accent. */
-    /* Gold. IDENTICAL in both themes — a brand accent that changes hue between
-       light and dark stops being a brand colour. It's a FILL colour and it
-       fills the same either way, with the same near-black label.
-
-       Chosen back over the monochrome ink: white measured 18.9:1 on the dark
-       panel against gold's 9.9:1, so ink was nearly double the contrast and
-       read as aggressive. --accent-text below is the exception for the ~54
-       sites that use the accent as TEXT, where gold on white is unreadable. */
-    --accent: #cec997;
+       Known trade, accepted deliberately: white on #3388ff is ~3.5:1 (below
+       AA for small text) — the same trade Figma ships on its selection blue.
+       --accent-text below is the exception for the ~54 sites that use the
+       accent as TEXT, where it takes a darkened mix that clears AA. */
+    --accent: #3388ff;
     /* DERIVED from --accent, like --accent-text below. These were hand-set
        hexes, so changing --accent alone left hover and CTA surfaces on the
        previous hue — a Publish button that changed colour on hover. */
     --accent-hover: color-mix(in srgb, var(--accent) 82%, #fff);
-    --accent-fg: #0d1017;
+    --accent-fg: #ffffff;
     /* DERIVED, not hand-tuned. The accent is a FILL colour; on a white panel
        it's too light to read as text or a thin icon (brass managed 2.8:1). So
        the ~54 text/icon sites take a darkened mix of whatever --accent
@@ -106,9 +91,9 @@
        under that and wants a hand-set value here. */
     --accent-text: color-mix(in srgb, var(--accent) 50%, #000);
     --accent-strong: color-mix(in srgb, var(--accent) 88%, #fff);
-    --accent-strong-fg: #0d1017;
+    --accent-strong-fg: #ffffff;
     --accent-muted: color-mix(in srgb, var(--accent) 30%, #fff);
-    --accent-surface: rgba(242, 151, 24, 0.12);
+    --accent-surface: rgba(51, 136, 255, 0.12);
     /* Component / master mode — magenta.
        Purple-for-components is the convention Figma set and the other
        builders inherited, so moving off it is one of the more visible ways
@@ -282,24 +267,20 @@
     --text-tertiary: #666666;
     --text-muted: #848484;
 
-    /* Clay reads 4.7:1 on the #141211 chrome — comfortably legible without
-       shouting. White on it only reaches 4.0, so --accent-fg is near-black:
-       a clay fill with a dark label clears AA and looks deliberate rather
-       than like a washed-out button. */
-    --accent: #cec997;
+    /* Stock blue restored (2026-08-12) — same value as --selection below, so
+       the chrome accent and the canvas selection read as one blue. White
+       label by explicit user choice (~3.5:1 — the Figma trade). */
+    --accent: #3388ff;
     --accent-hover: color-mix(in srgb, var(--accent) 82%, #fff);
-    /* Gold is bright: white on it is 1.9:1, near-black is 10:1. Dark labels on
-       gold are the only readable pairing AND the better-looking one. */
-    --accent-fg: #0d1017;
-    /* On dark chrome the gold is already 10:1 as text — no deeper tone needed. */
+    --accent-fg: #ffffff;
     /* On #111111 the accent is already legible as text, so this is just the
        accent — but written as a var so it tracks any change, including the
        component-mode rewrite. */
     --accent-text: var(--accent);
     --accent-strong: color-mix(in srgb, var(--accent) 88%, #fff);
-    --accent-strong-fg: #0d1017;
+    --accent-strong-fg: #ffffff;
     --accent-muted: color-mix(in srgb, var(--accent) 22%, #000);
-    --accent-surface: rgba(230, 180, 80, 0.13);
+    --accent-surface: rgba(51, 136, 255, 0.13);
     /* See the light-theme note. Hue 293 — magenta pulled back toward purple
        without reaching the stock violet at 260.
 
