@@ -19,6 +19,18 @@ const ANIMATION_KEYS = /^(animation(Name|Duration|TimingFunction|Delay|Iteration
 // slot in the panel and reads as unset (live find 2026-07-04: minHeight:'100vh').
 const MINMAX_SIZE_KEYS = new Set(['minWidth', 'maxWidth', 'minHeight', 'maxHeight']);
 
+// Padding / Margin / Radius are PX-ONLY (2026-08-12): the SpacingControl's
+// %/rem unit cycle was removed — spacing is a pixel concept in this builder,
+// and multi-unit spacing bred shorthand-mix/codegen bugs. Any other unit
+// shows in the panel as a number the control will rewrite to px on the next
+// edit — "reads as a different value", same class as MINMAX_SIZE_UNIT.
+const SPACING_PX_KEYS = new Set([
+  'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+  'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+  'borderRadius', 'borderTopLeftRadius', 'borderTopRightRadius',
+  'borderBottomLeftRadius', 'borderBottomRightRadius',
+]);
+
 function checkStyleObject(
   obj: t.ObjectExpression,
   dataId: string | undefined,
@@ -141,6 +153,16 @@ function checkStyleObject(
         v.push({
           code: 'MINMAX_SIZE_UNIT', tier: 2, line, elementId: dataId,
           message: `${key}: '${bad}' (line ${line}) — the Size panel's min/max fields accept ONLY px or %. '${bad}' (viewport units like vh/vw, em/rem/ch, calc(), or keywords like auto/none/min-content) has no slot in the min/max control, so it shows as unset and is dropped on the next edit. Use a px value (e.g. '800px') or a percentage of the parent (e.g. '100%'). For a full-viewport section, pick a concrete px height — the panel can't express vh.`,
+        });
+      }
+      continue;
+    }
+    if (SPACING_PX_KEYS.has(key)) {
+      const bad = badSpacingUnit(prop.value, key.startsWith('margin'));
+      if (bad) {
+        v.push({
+          code: 'SPACING_UNIT_NOT_PX', tier: 2, line, elementId: dataId,
+          message: `${key}: '${bad}' (line ${line}) — the Padding/Margin/Radius controls are PX-ONLY. '${bad}' (%, rem/em, vh/vw, calc(), …) shows in the panel as a bare number and gets rewritten to px on the user's next edit — silently changing the value. Write px lengths (e.g. '16px', shorthand '8px 16px' is fine${key.startsWith('margin') ? ", and 'auto' is allowed for margin centering" : ''}). For a circle use a large px radius ('9999px'), not '50%'.`,
         });
       }
       continue;
@@ -279,6 +301,31 @@ function badMinMaxSizeUnit(val: t.ObjectProperty['value']): string | null {
   if (t.isConditionalExpression(val)) {
     return badMinMaxSizeUnit(val.consequent as t.ObjectProperty['value'])
       || badMinMaxSizeUnit(val.alternate as t.ObjectProperty['value']);
+  }
+  return null;
+}
+
+/** For a padding/margin/radius value, return the first offending token (any
+ *  non-px length: %, rem/em, viewport units, calc(), keywords) or null when
+ *  every whitespace-separated token in every branch is px / bare-0 / '' —
+ *  plus 'auto', for margins only (the '0 auto' centering idiom). Recurses
+ *  ternary branches (responsive + per-variant values); non-string values
+ *  (variable bindings, expressions) are skipped like every value rule here. */
+function badSpacingUnit(val: t.ObjectProperty['value'], isMargin: boolean): string | null {
+  if (t.isStringLiteral(val)) {
+    const s = val.value.trim();
+    if (s === '') return null;
+    for (const token of s.split(/\s+/)) {
+      if (token === '0') continue;
+      if (/^-?\d*\.?\d+px$/.test(token)) continue;
+      if (isMargin && token === 'auto') continue;
+      return token;
+    }
+    return null;
+  }
+  if (t.isConditionalExpression(val)) {
+    return badSpacingUnit(val.consequent as t.ObjectProperty['value'], isMargin)
+      || badSpacingUnit(val.alternate as t.ObjectProperty['value'], isMargin);
   }
   return null;
 }

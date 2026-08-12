@@ -21,6 +21,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { normalizeIconGeometry } from '@/shared/icon-viewbox';
+import { decomposeSvgDropToShapes } from '@/canvas/drag/svg-drop-shapes';
 import { startToolbarDrag } from '@/canvas/drag/toolbar-drag-bridge';
 import { generateNodeId } from '@/shared/id-utils';
 import { trace } from '@/shared/debug-trace';
@@ -113,7 +114,7 @@ function getIconFilter(isColorful: boolean, isDark: boolean): string {
 // each cell mount so by the time the user pointerdowns, the content is
 // already in cache; the drag starts instantly with no fetch delay.
 
-interface ParsedSvg {
+export interface ParsedSvg {
   viewBox: string;
   inner: string;
 }
@@ -140,10 +141,15 @@ function camelCaseSvgAttrs(html: string): string {
  *  `currentColor`: inherited color follows the section's CSS `color`, which
  *  on a dark hero is typically black → the icon dropped invisible (only its
  *  selection box showed — live find 2026-07-24). #ABABAB reads on light AND
- *  dark surfaces, and the user recolors from there. Covers icons shipping
- *  `currentColor` (most iconify monochrome packs) AND hard-coded blacks. */
-const ICON_DROP_COLOR = '#ABABAB';
-function normalizeFills(svg: string): string {
+ *  dark surfaces, and the user recolors from there.
+ *
+ *  MONOCHROME packs also remap hard-coded blacks (they're the pack's "ink",
+ *  not a design choice). COLORFUL packs keep their palette — black there is
+ *  a real color (openmoji outlines, logo marks); only `currentColor` gets
+ *  pinned, since a shape file has no CSS color context to inherit from. */
+export const ICON_DROP_COLOR = '#ABABAB';
+export function normalizeIconColors(svg: string, colorful: boolean): string {
+  if (colorful) return svg.replace(/currentColor/g, ICON_DROP_COLOR);
   return svg
     .replace(/fill="(currentColor|#000|#000000|black)"/gi, `fill="${ICON_DROP_COLOR}"`)
     .replace(/stroke="(currentColor|#000|#000000|black)"/gi, `stroke="${ICON_DROP_COLOR}"`);
@@ -171,7 +177,7 @@ function fetchSvg(iconName: string): Promise<ParsedSvg | null> {
       // when it carries gradients/patterns the icon actually uses.
       inner = inner.replace(/<defs>\s*<style>[^<]*<\/style>\s*<\/defs>/gi, '');
       inner = camelCaseSvgAttrs(inner);
-      inner = normalizeFills(inner);
+      inner = normalizeIconColors(inner, isColorfulIcon(iconName));
       const viewBox = viewBoxMatch?.[1] ?? '0 0 24 24';
       const parsed: ParsedSvg = { viewBox, inner };
       svgResolved.set(iconName, parsed);
@@ -192,7 +198,7 @@ function fetchSvg(iconName: string): Promise<ParsedSvg | null> {
  *  stays 1:1 with its viewBox. */
 const ICON_DROP_SIZE = 48;
 
-function buildIconDragItem(
+export function buildIconDragItem(
   iconName: string,
   parsed: ParsedSvg | null,
 ): import('@/canvas/drag/toolbar-item-config').ToolbarItem {
@@ -202,6 +208,27 @@ function buildIconDragItem(
   // split, multi-shape icons as nested groups. A converter pass HERE would
   // run the markup through TWO decompositions — the drop landed with all
   // its group children collapsed onto each other (live find 2026-08-12).
+  //
+  // CAPABILITY probe, not a pack-name gate: colorful packs used to be
+  // hard-wired to the <img> fallback on the theory that multi-color icons
+  // can't live in the shape dialect. Empirically false — flat-color-icons /
+  // logos / openmoji / twemoji are just MULTIPLE flat-fill paths, which the
+  // decomposer turns into native groups (verified 2026-08-12: 9 of 10
+  // sampled colorful icons decompose; only real defs/gradient complexity
+  // bails). So: ask the ACTUAL decomposer. It bails → <img> keeps the icon
+  // pixel-perfect; it succeeds → the drop is fully shape-editable. The
+  // probe runs the same input the pipeline will see, so they can't
+  // disagree; its result is discarded (the pipeline re-decomposes for real).
+  if (parsed) {
+    const probe = decomposeSvgDropToShapes(
+      `<svg viewBox="${parsed.viewBox}">${parsed.inner}</svg>`,
+      'probe', iconName, ICON_DROP_SIZE, ICON_DROP_SIZE,
+    );
+    if (!probe) {
+      trace.action('icon-panel:drop-img-fallback', { icon: iconName, reason: 'decompose-bail' });
+      parsed = null;
+    }
+  }
   if (parsed) {
     // Shapes are 1:1 — one viewBox unit == one CSS pixel — because every gesture
     // (resize, shape edit, per-variant geometry) measures in pixels against the
@@ -262,12 +289,13 @@ interface IconCellProps {
 function IconCell({ iconData, isDark }: IconCellProps) {
   const colorful = isColorfulIcon(iconData.icon);
   // Prefetch the SVG content on mount (cached in module scope) so the
-  // drag handler has the markup ready when the user pointerdowns. Skip
-  // for colorful packs — `<svg>` paste of multi-color icons sometimes
-  // strips the inline gradient/pattern defs. Falls back to <img> below.
+  // drag handler has the markup ready when the user pointerdowns —
+  // COLORFUL packs included: whether an icon can drop as native shapes is
+  // decided by the decomposer probe in buildIconDragItem, not by pack name
+  // (most colorful icons are plain flat-fill paths and decompose fine).
   useEffect(() => {
-    if (!colorful) fetchSvg(iconData.icon);
-  }, [iconData.icon, colorful]);
+    fetchSvg(iconData.icon);
+  }, [iconData.icon]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();

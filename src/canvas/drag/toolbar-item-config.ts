@@ -81,7 +81,9 @@ function makeCardHorizontalChildren(): NewNodeDescriptor[] {
 
 function makeCardProfileChildren(): NewNodeDescriptor[] {
   return [
-    { tag: 'div', id: generateNodeId('frame'), name: 'Avatar', styles: { width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#d1d5db', flexShrink: '0' } },
+    // 9999px, not '50%': spacing/radius is PX-ONLY (SPACING_UNIT_NOT_PX) —
+    // an over-large px radius clamps to a perfect circle identically.
+    { tag: 'div', id: generateNodeId('frame'), name: 'Avatar', styles: { width: '64px', height: '64px', borderRadius: '9999px', backgroundColor: '#d1d5db', flexShrink: '0' } },
     { tag: 'h3', id: generateNodeId('heading'), name: 'Heading', styles: { fontSize: '16px', fontWeight: '700', color: '#111' }, textContent: 'Name' },
     { tag: 'p', id: generateNodeId('text'), name: 'Text', styles: { fontSize: '13px', color: '#888' }, textContent: 'Role / Description' },
   ];

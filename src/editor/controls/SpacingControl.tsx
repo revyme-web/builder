@@ -1,7 +1,16 @@
 // SpacingControl.tsx — Reusable global/individual 4-value control.
 // Used by StylesTool for Padding, Margin, Radius sections.
 // Pattern: global input + uniform/individual toggle + 4 segmented inputs when expanded.
-// Per-side unit awareness: each side shows its unit (px/%) as a clickable toggle.
+//
+// PX-ONLY (2026-08-12, user decision): the per-side %/rem unit cycle was
+// removed — spacing is a pixel concept for this audience (reference parity:
+// the reference tools' padding/margin/radius controls have no unit picker),
+// % padding resolves against the parent's WIDTH even for top/bottom (a
+// footgun, not a feature), and multi-unit spacing bred a whole class of
+// shorthand-mix/codegen bugs. Every commit writes `<n>px`. LEGACY values in
+// other units still DISPLAY honestly (numeric part + a static unit label);
+// the first edit converts that side to px. The oracle enforces the same
+// rule for AI-written files (SPACING_UNIT_NOT_PX).
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import ToolInput from './ToolInput';
@@ -44,8 +53,6 @@ interface SpacingControlProps {
    *  release via `onChangeAll`. When omitted, chevron drags fall back to
    *  per-frame `onChangeAll` (legacy behaviour — existing callers unaffected). */
   onChangeAllLive?: (value: string) => void;
-  /** Reference size in px for px↔% conversion. For padding/margin: parent width. For radius: element size. */
-  referenceSize?: number;
   /** Allow NEGATIVE values (margin only). Padding + radius can't be negative in
    *  CSS, so they leave this off and the lower bound stays 0. Margin passes true
    *  (negative margins are valid + needed for overlap/pull-up layouts). */
@@ -54,20 +61,14 @@ interface SpacingControlProps {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-type SpacingUnit = 'px' | '%' | 'rem';
-
-const UNIT_CYCLE: SpacingUnit[] = ['px', '%', 'rem'];
-function nextUnit(u: SpacingUnit): SpacingUnit {
-  const idx = UNIT_CYCLE.indexOf(u);
-  return UNIT_CYCLE[(idx + 1) % UNIT_CYCLE.length];
-}
-
-/** Parse "60px" → { num: 60, unit: 'px' }, "5%" → { num: 5, unit: '%' }, "1.5rem" → { num: 1.5, unit: 'rem' } */
-function parseValue(v: string): { num: number; unit: SpacingUnit } {
-  if (!v || v === '0') return { num: 0, unit: 'px' };
-  if (v.endsWith('rem')) return { num: parseFloat(v) || 0, unit: 'rem' };
-  if (v.endsWith('%')) return { num: parseFloat(v) || 0, unit: '%' };
-  return { num: parseInt(v) || 0, unit: 'px' };
+/** DISPLAY-only unit of a legacy value: '5%' → '%', '1.5rem' → 'rem', else
+ *  'px'. Purely informational — every write is px. */
+function displayUnit(v: string): string {
+  if (!v || v === '0') return 'px';
+  if (v.endsWith('rem')) return 'rem';
+  if (v.endsWith('em')) return 'em';
+  if (v.endsWith('%')) return '%';
+  return 'px';
 }
 
 /** Parse just the number */
@@ -75,12 +76,11 @@ function parseNum(v: string): number {
   return parseFloat(v) || 0;
 }
 
-/** Clamp a spacing number to its unit's valid range. The lower bound is 0
- *  (padding/radius can't be negative in CSS) UNLESS `allowNegative` — margins
- *  can be negative (needed for overlap / pull-up layouts), bounded at -max. */
-export function clampSpacingValue(num: number, unit: SpacingUnit, allowNegative: boolean): number {
-  const max = unit === '%' ? 100 : unit === 'rem' ? 99 : 999;
-  return Math.max(allowNegative ? -max : 0, Math.min(max, num));
+/** Clamp a spacing number. The lower bound is 0 (padding/radius can't be
+ *  negative in CSS) UNLESS `allowNegative` — margins can be negative (needed
+ *  for overlap / pull-up layouts), bounded at -999. */
+export function clampSpacingValue(num: number, allowNegative: boolean): number {
+  return Math.max(allowNegative ? -999 : 0, Math.min(999, num));
 }
 
 function allEqual(values: [string, string, string, string]): boolean {
@@ -90,18 +90,16 @@ function allEqual(values: [string, string, string, string]): boolean {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export default function SpacingControl({ values, labels, onChange, onChangeAll, onChangeAllLive, referenceSize, allowNegative = false }: SpacingControlProps) {
+export default function SpacingControl({ values, labels, onChange, onChangeAll, onChangeAllLive, allowNegative = false }: SpacingControlProps) {
   const [showIndividual, setShowIndividual] = useState(() => !allEqual(values));
   const userToggledRef = useRef(false); // tracks if user explicitly toggled individual mode
   const [localValues, setLocalValues] = useState(values.map(v => String(parseNum(v))));
-  const [units, setUnits] = useState<SpacingUnit[]>(() => values.map(v => parseValue(v).unit));
   const focusedRef = useRef<number | null>(null);
 
   // Sync from props (skip while user is editing)
   useEffect(() => {
     if (focusedRef.current === null) {
       setLocalValues(values.map(v => String(parseNum(v))));
-      setUnits(values.map(v => parseValue(v).unit));
       // Only auto-toggle if user hasn't explicitly set the mode
       if (!userToggledRef.current) {
         setShowIndividual(!allEqual(values));
@@ -111,68 +109,25 @@ export default function SpacingControl({ values, labels, onChange, onChangeAll, 
 
   // Global input value — show just the number (no unit)
   const globalValue = String(parseNum(values[0]));
-  // Global unit — derived from first side's unit
-  const globalUnit = units[0];
 
   const handleGlobalChange = useCallback((val: string) => {
     // Clamp typed AND scrubbed commits — padding/radius can't be negative
     // (the ToolInput `min` handles the scrub display; this guards typed text).
-    const num = clampSpacingValue(parseFloat(val) || 0, globalUnit, allowNegative);
-    const unit = globalUnit;
-    const formatted = `${num}${unit}`;
+    const num = clampSpacingValue(parseFloat(val) || 0, allowNegative);
+    const formatted = `${num}px`;
     trace.action('spacing-control:global-change', { value: formatted });
     onChangeAll(formatted);
-  }, [onChangeAll, globalUnit, allowNegative]);
+  }, [onChangeAll, allowNegative]);
 
   // Live (per-frame) twin for the global input's chevron drag. Same formatting
   // as handleGlobalChange but routes to the DOM-only patch — no source write
   // per frame. The commit lands once on release (ToolInput.onCommit →
-  // handleGlobalChange). The global input carries no unit suffix, so the
-  // ToolInput hands us a bare number; re-append the current unit here.
+  // handleGlobalChange).
   const handleGlobalChangeLive = useCallback((val: string) => {
     if (!onChangeAllLive) return;
-    const num = clampSpacingValue(parseFloat(val) || 0, globalUnit, allowNegative);
-    onChangeAllLive(`${num}${globalUnit}`);
-  }, [onChangeAllLive, globalUnit, allowNegative]);
-
-  // Convert a numeric value between units. rem uses 16px base.
-  const convertValue = useCallback((num: number, from: SpacingUnit, to: SpacingUnit): number => {
-    if (from === to) return num;
-    // First convert to px
-    let px = num;
-    if (from === '%' && referenceSize) px = (num / 100) * referenceSize;
-    else if (from === 'rem') px = num * 16;
-    // Then convert from px to target
-    if (to === 'px') return Math.round(px);
-    if (to === '%' && referenceSize) return Math.round((px / referenceSize) * 100);
-    if (to === 'rem') return Math.round((px / 16) * 100) / 100; // 2 decimal places
-    return Math.round(px);
-  }, [referenceSize]);
-
-  const toggleGlobalUnit = useCallback(() => {
-    const currentUnit = units[0];
-    const newUnit = nextUnit(currentUnit);
-
-    // Apply to all sides
-    const newUnits = units.map(() => newUnit);
-    const newLocals = localValues.map((v) => {
-      const num = parseFloat(v) || 0;
-      return String(convertValue(num, currentUnit, newUnit));
-    });
-
-    setUnits(newUnits);
-    setLocalValues(newLocals);
-    // If all values are the same, use shorthand via onChangeAll
-    const allSame = newLocals.every(v => v === newLocals[0]);
-    if (allSame && !showIndividual) {
-      onChangeAll(`${newLocals[0]}${newUnit}`);
-    } else {
-      for (let i = 0; i < 4; i++) {
-        onChange(i, `${newLocals[i]}${newUnit}`);
-      }
-    }
-    trace.action('spacing-control:global-unit-toggle', { from: currentUnit, to: newUnit });
-  }, [units, localValues, onChange, onChangeAll, referenceSize, showIndividual]);
+    const num = clampSpacingValue(parseFloat(val) || 0, allowNegative);
+    onChangeAllLive(`${num}px`);
+  }, [onChangeAllLive, allowNegative]);
 
   // ─── Segmented input handlers ───────────────────────────────────
   const handleSegmentChange = useCallback((index: number, rawValue: string) => {
@@ -183,13 +138,12 @@ export default function SpacingControl({ values, labels, onChange, onChangeAll, 
 
   const commitSegment = useCallback((index: number) => {
     const num = parseFloat(localValues[index]) || 0;
-    const unit = units[index];
-    const clamped = clampSpacingValue(num, unit, allowNegative);
+    const clamped = clampSpacingValue(num, allowNegative);
     setLocalValues(prev => { const n = [...prev]; n[index] = String(clamped); return n; });
-    trace.action('spacing-control:side-change', { index, label: labels[index], value: clamped, unit });
-    onChange(index, `${clamped}${unit}`);
+    trace.action('spacing-control:side-change', { index, label: labels[index], value: clamped });
+    onChange(index, `${clamped}px`);
     focusedRef.current = null;
-  }, [localValues, units, onChange, labels, allowNegative]);
+  }, [localValues, onChange, labels, allowNegative]);
 
   const handleSegmentKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
     if (e.key === 'Enter') { commitSegment(index); (e.target as HTMLInputElement).blur(); }
@@ -198,26 +152,13 @@ export default function SpacingControl({ values, labels, onChange, onChangeAll, 
       (e.target as HTMLInputElement).blur();
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       e.preventDefault();
-      const unit = units[index];
       const step = e.shiftKey ? 10 : 1;
       const delta = (e.key === 'ArrowUp' ? 1 : -1) * step;
-      const newVal = clampSpacingValue((parseFloat(localValues[index]) || 0) + delta, unit, allowNegative);
+      const newVal = clampSpacingValue((parseFloat(localValues[index]) || 0) + delta, allowNegative);
       setLocalValues(prev => { const n = [...prev]; n[index] = String(newVal); return n; });
-      onChange(index, `${newVal}${unit}`);
+      onChange(index, `${newVal}px`);
     }
-  }, [commitSegment, localValues, units, values, onChange, allowNegative]);
-
-  const toggleUnit = useCallback((index: number) => {
-    const currentUnit = units[index];
-    const newUnit = nextUnit(currentUnit);
-    const currentNum = parseFloat(localValues[index]) || 0;
-    const convertedNum = convertValue(currentNum, currentUnit, newUnit);
-
-    setUnits(prev => { const n = [...prev]; n[index] = newUnit; return n; });
-    setLocalValues(prev => { const n = [...prev]; n[index] = String(convertedNum); return n; });
-    trace.action('spacing-control:unit-toggle', { index, from: currentUnit, to: newUnit, convertedNum });
-    onChange(index, `${convertedNum}${newUnit}`);
-  }, [units, localValues, onChange, convertValue]);
+  }, [commitSegment, localValues, values, onChange, allowNegative]);
 
   return (
     <div className="w-full">
@@ -233,34 +174,32 @@ export default function SpacingControl({ values, labels, onChange, onChangeAll, 
           className="flex-1"
         />
 
-        {/* Toggle group: uniform shows px/% text, individual shows uniform icon */}
+        {/* Toggle group: uniform shows the static px badge, individual shows uniform icon */}
         <div className="flex items-center border border-[var(--control-border)] rounded-md overflow-hidden shrink-0">
-          {/* Left button: when uniform → shows unit (px/%), click toggles unit.
-              When individual → shows uniform icon, click switches to uniform. */}
+          {/* Left button: when individual → shows uniform icon, click switches
+              back to uniform (consolidates the longhands into shorthand).
+              When uniform → a STATIC px badge; spacing is px-only, so there
+              is no unit to cycle. */}
           <button
             tabIndex={-1}
             onClick={() => {
-              if (showIndividual) {
-                // Switch back to uniform — consolidate longhands into shorthand
-                setShowIndividual(false);
-                userToggledRef.current = true;
-                const num = parseFloat(localValues[0]) || 0;
-                const unit = units[0];
-                onChangeAll(`${num}${unit}`);
-              } else {
-                toggleGlobalUnit();
-              }
+              if (!showIndividual) return;
+              // Switch back to uniform — consolidate longhands into shorthand
+              setShowIndividual(false);
+              userToggledRef.current = true;
+              const num = parseFloat(localValues[0]) || 0;
+              onChangeAll(`${num}px`);
             }}
-            className={`flex items-center justify-center h-7 w-7 transition-colors cursor-pointer ${
+            className={`flex items-center justify-center h-7 w-7 transition-colors ${
               !showIndividual
-                ? 'bg-[var(--button-secondary-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:brightness-125'
-                : 'bg-[var(--choice-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                ? 'bg-[var(--button-secondary-bg)] text-[var(--text-disabled)] cursor-default'
+                : 'bg-[var(--choice-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer'
             }`}
-            title={showIndividual ? 'Uniform' : `Switch to ${nextUnit(globalUnit)}`}
+            title={showIndividual ? 'Uniform' : 'px'}
           >
             {showIndividual
               ? <UniformIcon className="w-3 h-3" />
-              : <span className="text-[10px] font-medium">{globalUnit}</span>
+              : <span className="text-[10px] font-medium">px</span>
             }
           </button>
           {/* Right button: individual sides */}
@@ -286,7 +225,9 @@ export default function SpacingControl({ values, labels, onChange, onChangeAll, 
             {localValues.map((val, i) => {
               const isFirst = i === 0;
               const isLast = i === 3;
-              const unit = units[i];
+              // Legacy values in other units display their unit as a STATIC
+              // label so the user sees the truth; the first edit writes px.
+              const unit = displayUnit(values[i]);
               return (
                 <div key={i} className="flex-1 flex flex-col relative">
                   <input
@@ -301,16 +242,9 @@ export default function SpacingControl({ values, labels, onChange, onChangeAll, 
                   />
                   <div className="flex justify-center items-center mt-0.5" style={{ gap: '2px' }}>
                     <span className="text-[9px] text-[var(--text-secondary)]">{labels[i]}</span>
-                    <button
-                      tabIndex={-1}
-                      onClick={() => toggleUnit(i)}
-                      className={`text-[9px] cursor-pointer transition-colors border-none bg-transparent leading-none p-0 ${
-                        unit === '%' ? 'text-[var(--accent-text)]' : unit === 'rem' ? 'text-emerald-400' : 'text-[var(--text-disabled)]'
-                      } hover:text-[var(--text-primary)]`}
-                      title={`Switch to ${nextUnit(unit)}`}
-                    >
+                    <span className={`text-[9px] leading-none ${unit === 'px' ? 'text-[var(--text-disabled)]' : 'text-[var(--accent-text)]'}`}>
                       {unit}
-                    </button>
+                    </span>
                   </div>
                 </div>
               );
