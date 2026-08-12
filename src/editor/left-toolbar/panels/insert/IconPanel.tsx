@@ -64,13 +64,14 @@ const COLORFUL_HINTS = [
   'cryptocurrency', 'meteocons',
 ];
 
-function isColorfulIcon(iconName: string): boolean {
+export function isColorfulIcon(iconName: string): boolean {
   return COLORFUL_HINTS.some(hint => iconName.includes(hint));
 }
 
 /** Light/dark detection by sampling `--text-primary`. Recolors monochrome
- *  icons via CSS filter so they read on either theme; colorful packs bypass. */
-function useIsDarkMode(): boolean {
+ *  icons via CSS filter so they read on either theme; colorful packs bypass.
+ *  Exported for the Input tool's select-caret icon picker (same preview needs). */
+export function useIsDarkMode(): boolean {
   const [isDark, setIsDark] = useState(false);
   useEffect(() => {
     const detect = () => {
@@ -99,7 +100,7 @@ function useIsDarkMode(): boolean {
   return isDark;
 }
 
-function getIconFilter(isColorful: boolean, isDark: boolean): string {
+export function getIconFilter(isColorful: boolean, isDark: boolean): string {
   if (isColorful) return 'none';
   return isDark
     ? 'brightness(0) saturate(100%) invert(1)'

@@ -33,7 +33,7 @@ const PARSED_HTML_ATTRS = ['id', 'src', 'alt', 'href', 'target', 'rel', 'type', 
   // Also captured on CANVAS nodes: a form/search input dragged or pasted onto
   // the workspace lives in `const canvasNodes` — without these the Input tool
   // loses `data-search-field` + form attrs there.
-  'name', 'value', 'required', 'checked', 'disabled', 'readOnly', 'autoComplete', 'autoFocus', 'maxLength', 'minLength', 'pattern', 'min', 'max', 'step', 'rows', 'cols', 'wrap', 'selected', 'multiple', 'inputMode', 'htmlFor', 'method', 'action', 'noValidate', 'data-form', 'data-search-field'];
+  'name', 'value', 'required', 'checked', 'disabled', 'readOnly', 'autoComplete', 'autoFocus', 'maxLength', 'minLength', 'pattern', 'min', 'max', 'step', 'rows', 'cols', 'wrap', 'selected', 'multiple', 'inputMode', 'htmlFor', 'method', 'action', 'noValidate', 'data-form', 'data-search-field', 'data-select-icon'];
 
 // Attributes both walkers deliberately SKIP (handled by dedicated systems).
 const PARSED_SKIP_ATTRS = new Set(['data-id', 'data-name', 'data-viewport', 'data-canvas-node', 'style', 'className', 'variants', 'animate', 'transition', 'key', 'whileHover', 'whileTap', 'whileInView', 'initial', 'viewport']);

@@ -612,8 +612,10 @@ function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boole
             instances / overlays / multi-select). Code-component instances carry
             `isCodeComponent` (not `isComponentInstance`), so gate them explicitly
             too — a code component has no links, and its own `target`/`href` controls
-            would otherwise be misread as a nav link's New Tab / Link To. */}
-        {!isViewportFrame && !isComponentInstance && !isCodeComponentInstance && !isContainerSetInstance && !isMultiSelect && !isOverlayNode && (
+            would otherwise be misread as a nav link's New Tab / Link To.
+            Form controls (input/textarea/select) are gated too: wrapping a form
+            field in a nav link is never what the user means. */}
+        {!isViewportFrame && !isComponentInstance && !isCodeComponentInstance && !isContainerSetInstance && !isMultiSelect && !isOverlayNode && !isInputElement && (
           <>
             <LinkTool />
             <ToolDivider />
@@ -745,7 +747,11 @@ function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boole
             detectLayoutFlags in LayoutTool for the full rationale — so a
             text node has no layout to show, and the Adjust control's
             display:flex plumbing must not surface the frame controls. */}
+        {/* NEVER for form controls (input/textarea/select): they're leaf
+            elements — flex/grid child layout is meaningless on them, and the
+            Input tool owns their padding. */}
         {!isText && !isContainerSetInstance && !isComponentInstance && !isCodeComponentInstance && !isTemplatedViewport
+          && !isInputElement
           && (!isMultiSelect || multiSelectLayoutType !== null) && (
           <LayoutTool
             styles={s}
@@ -767,7 +773,9 @@ function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boole
             only caught the templated case, so a plain page still offered
             "add an overlay" on its root. `isViewportFrame` covers both
             (`root` and `layout::root`). */}
-        {!isOverlayNode && !isCodeComponentInstance && !isViewportFrame && <OverlayTool />}
+        {/* Also hidden on form controls — an input/select isn't an overlay
+            trigger surface (the Input tool owns that panel real estate). */}
+        {!isOverlayNode && !isCodeComponentInstance && !isViewportFrame && !isInputElement && <OverlayTool />}
 
         {/* 6. Text Style (only for text elements, just before Styles) */}
         {isText && <TextStyleTool />}
@@ -847,14 +855,21 @@ function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boole
             The master file is where a11y belongs for both. */}
         {!isViewportFrame && (
           <>
-            <CursorTool />
-            <ToolDivider />
+            {/* Cursor is hidden on form controls too — inputs/selects have
+                native cursor semantics (text caret, pointer on the control). */}
+            {!isInputElement && (
+              <>
+                <CursorTool />
+                <ToolDivider />
+              </>
+            )}
             {/* Scroll Section ("Anchor" target) — above Accessibility. A page
                 concept (links scroll to `#name`), so hidden on component
                 masters and on the layout container. Also hidden on vector/icon
                 sets: their wrapper is cloneElement-replaced at runtime, so an
-                anchor id attached here is dropped. */}
-            {!isComponentFilePath(filePath) && !isContainerSetInstance && (
+                anchor id attached here is dropped. Form controls don't take
+                anchors either — nobody scroll-targets an input. */}
+            {!isComponentFilePath(filePath) && !isContainerSetInstance && !isInputElement && (
               <>
                 <ScrollSectionTool />
                 <ToolDivider />

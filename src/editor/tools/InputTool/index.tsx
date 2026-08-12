@@ -9,8 +9,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useClickOutside } from '../../hooks/useClickOutside';
 import { useAtomValue } from 'jotai';
 import { useControl } from '../../controls/ControlProvider';
-import { ToolSection, ToolRow, ToolSelect, ToolInput, ToolSegmentedControl, RemoveButton, EntryList } from '../../controls';
+import { ToolSection, ToolRow, ToolSelect, ToolInput, ToolSegmentedControl, RemoveButton, EntryList, SpacingControl } from '../../controls';
 import ColorInput from '../../controls/ColorInput';
+import { ImageIcon } from '@/design-system/PropertyIcons';
+import SelectIconPopup from './SelectIconPopup';
+import { SELECT_ICON_ATTR, DEFAULT_SELECT_ICON_COLOR, parseSelectIconSpec, bakeSelectIconStyles, bakeSelectIconDataUri, clearSelectIconStyles, fetchRawIconSvg, getRawIconSvgSync, type SelectIconSpec } from './select-icon';
+import { resolveSpacingSides } from '@/shared/css-utils';
 import ToolPopup from '../../ui/ToolPopup';
 import PageVariableChip from '../../controls/PageVariableChip';
 import { parsePageVariables } from '@/code/features/page-variables';
@@ -201,7 +205,13 @@ export default function InputTool() {
   const [shown, setShown] = useState<Set<ExtraKind>>(new Set());
   const [editOption, setEditOption] = useState<number | null>(null);
   const optRowRef = useRef<HTMLElement | null>(null);
-  useEffect(() => { setShown(new Set()); setEditOption(null); }, [nodeId]);
+  const [iconPopupOpen, setIconPopupOpen] = useState(false);
+  const iconRowRef = useRef<HTMLElement | null>(null);
+  useEffect(() => { setShown(new Set()); setEditOption(null); setIconPopupOpen(false); }, [nodeId]);
+  // Mid-drag popup close / node switch: drop the dangling live icon rule.
+  useEffect(() => {
+    if (!iconPopupOpen && nodeId) removeCanvasCSS(`[data-id="${nodeId}"][data-id]`);
+  }, [iconPopupOpen, nodeId]);
 
   // ─── Select options (<option>/<optgroup> children) — hook, so it lives
   // ABOVE the early return. Fine-grained: re-renders only when the resolved
@@ -237,6 +247,67 @@ export default function InputTool() {
     queueMutation({ type: 'updatePseudoStyle', nodeId, pseudo: 'placeholder', styles: { ...placeholderStyles, color: v } });
     commitNow();
     trace.action('input-tool:placeholder-color', { nodeId, set: !!v });
+  };
+
+  // ─── Padding (the Input tool owns it — LayoutTool is hidden on form
+  // controls). Same shorthand/longhand contract as the Styles padding atom:
+  // per-side writes clear the shorthand + state all four longhands; the
+  // global write states the shorthand + clears the longhands.
+  const paddingSides = resolveSpacingSides(node.styles ?? {}, 'padding');
+  const commitPaddingSide = (index: number, val: string) => {
+    if (!nodeId) return;
+    const sides = [...paddingSides];
+    sides[index] = val;
+    queueMutation({ type: 'updateStyles', nodeId, styles: {
+      padding: '', paddingTop: sides[0], paddingRight: sides[1], paddingBottom: sides[2], paddingLeft: sides[3],
+    } });
+    commitNow();
+    trace.action('input-tool:padding-side', { nodeId, index, val });
+  };
+  const commitPaddingAll = (val: string) => {
+    if (!nodeId) return;
+    queueMutation({ type: 'updateStyles', nodeId, styles: {
+      padding: val, paddingTop: '', paddingRight: '', paddingBottom: '', paddingLeft: '',
+    } });
+    commitNow();
+    trace.action('input-tool:padding-all', { nodeId, val });
+  };
+
+  // ─── Select caret icon — appearance:none + a color-baked background SVG
+  // (see select-icon.ts). Spec attr drives the row chip + color re-bakes.
+  const iconSpec = node.type === 'select' ? parseSelectIconSpec(attrs[SELECT_ICON_ATTR]) : null;
+  const applySelectIcon = async (iconName: string, color?: string) => {
+    if (!nodeId) return;
+    const c = color ?? iconSpec?.color ?? DEFAULT_SELECT_ICON_COLOR;
+    const raw = await fetchRawIconSvg(iconName);
+    if (!raw) { trace.error('input-tool:select-icon-fetch-failed', { iconName }); return; }
+    queueMutation({ type: 'updateStyles', nodeId, styles: bakeSelectIconStyles(raw, c) });
+    queueMutation({ type: 'updateHtmlAttrs', nodeId, attrs: { [SELECT_ICON_ATTR]: JSON.stringify({ icon: iconName, color: c }) } });
+    commitNow();
+    trace.action('input-tool:select-icon', { nodeId, iconName, color: c });
+  };
+  // Live color channel — per-frame drags stay a single canvas CSS patch
+  // (doubled-attribute selector: never collides with committed styles, wins
+  // specificity while dragging); the commit swaps it for the real write.
+  const iconLiveSelector = `[data-id="${nodeId}"][data-id]`;
+  const liveSelectIconColor = (c: string) => {
+    if (!iconSpec) return;
+    const raw = getRawIconSvgSync(iconSpec.icon);
+    if (!raw) { void fetchRawIconSvg(iconSpec.icon); return; } // resolves before the next frame lands
+    injectCanvasCSS(iconLiveSelector, `  background-image: ${bakeSelectIconDataUri(raw, c)} !important;`);
+  };
+  const commitSelectIconColor = (c: string) => {
+    removeCanvasCSS(iconLiveSelector);
+    if (iconSpec) void applySelectIcon(iconSpec.icon, c);
+  };
+
+  const removeSelectIcon = () => {
+    if (!nodeId) return;
+    queueMutation({ type: 'updateStyles', nodeId, styles: clearSelectIconStyles() });
+    queueMutation({ type: 'updateHtmlAttrs', nodeId, attrs: { [SELECT_ICON_ATTR]: '' } });
+    commitNow();
+    setIconPopupOpen(false);
+    trace.action('input-tool:select-icon-removed', { nodeId });
   };
 
   const setAttrsOf = (id: string, a: Record<string, string>) => {
@@ -402,6 +473,14 @@ export default function InputTool() {
         </ToolRow>
         <ColorRow label="Text Color" value={textColor} nodeId={nodeId} onCommit={commitTextColor} />
         <ColorRow label="Placeholder Color" value={placeholderColor} nodeId={nodeId} pseudo="::placeholder" onCommit={commitPlaceholderColor} />
+        <ToolRow label="Padding">
+          <SpacingControl
+            values={paddingSides}
+            labels={['T', 'R', 'B', 'L']}
+            onChange={commitPaddingSide}
+            onChangeAll={commitPaddingAll}
+          />
+        </ToolRow>
       </ToolSection>
     );
   }
@@ -431,6 +510,48 @@ export default function InputTool() {
       {/* <select> has no ::placeholder — its "placeholder" is a disabled <option>. */}
       {!isSelect && (
         <ColorRow label="Placeholder Color" value={placeholderColor} nodeId={nodeId} pseudo="::placeholder" onCommit={commitPlaceholderColor} />
+      )}
+
+      <ToolRow label="Padding">
+        <SpacingControl
+          values={paddingSides}
+          labels={['T', 'R', 'B', 'L']}
+          onChange={commitPaddingSide}
+          onChangeAll={commitPaddingAll}
+        />
+      </ToolRow>
+
+      {/* Select caret icon — replaces the native chevron (appearance: none +
+          a color-baked background SVG). EntryList in singleOnly mode = the
+          EXACT same row the Options list renders: swatch + flex-1 label +
+          the remove × pinned INSIDE the pill's right edge. */}
+      {isSelect && (
+        <EntryList<{ id: string } & SelectIconSpec>
+          label="Icon"
+          property="select-icon"
+          plainLabel
+          singleOnly
+          entries={iconSpec ? [{ id: iconSpec.icon, ...iconSpec }] : []}
+          onEdit={() => setIconPopupOpen((v) => !v)}
+          onRemove={() => removeSelectIcon()}
+          onAdd={() => setIconPopupOpen(true)}
+          renderSwatch={(e) => ({ backgroundColor: e.color })}
+          renderLabel={(e) => e.icon.split(':').pop() ?? e.icon}
+          EmptyIcon={ImageIcon}
+          addButtonRef={iconRowRef}
+          rowClassName="!pr-2"
+        />
+      )}
+
+      {iconPopupOpen && isSelect && (
+        <ToolPopup isOpen onClose={() => setIconPopupOpen(false)} title="Icon" anchorRef={iconRowRef} width={264}>
+          <SelectIconPopup
+            current={iconSpec}
+            onPick={(icon) => { void applySelectIcon(icon); }}
+            onColor={commitSelectIconColor}
+            onColorLive={liveSelectIconColor}
+          />
+        </ToolPopup>
       )}
 
       {/* Extra props (added via the "+") — each removable. */}
