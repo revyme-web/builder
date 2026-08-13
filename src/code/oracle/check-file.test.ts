@@ -1545,3 +1545,59 @@ ${body}
     expect(codes(checkFile(ok, { kind: 'page' }))).not.toContain('INPUT_OUTSIDE_FORM');
   });
 });
+
+// ─── SELECT CARET ICON — the Input tool's rule + marker PAIR ─────────────────
+// A custom dropdown arrow is a select[data-id] rule in the <style> block plus
+// a data-select-icon JSON marker on the element. Half a pair (or an inline
+// backgroundImage bake, which Fill wipes) is unresolvable in the editor.
+
+describe('SELECT_ICON pairing', () => {
+  const CARET_RULE = `<style>{\`
+    select[data-id="type-1"] {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg%3E%3C/svg%3E");
+      background-origin: content-box;
+      background-position: right center;
+      background-repeat: no-repeat;
+    }
+  \`}</style>`;
+  const page = (selectAttrs: string, extra = '') => `'use client';
+import React from 'react';
+export default function Page() {
+  return <div data-id="root" data-name="Page" style={{ position: 'relative', width: '100%', height: 'auto' }}>
+    <form data-id="f-1" data-name="Form" style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <select data-id="type-1" data-name="Type" name="type" ${selectAttrs} style={{ position: 'relative', width: '100%' }}></select>
+    </form>
+    ${extra}
+  </div>;
+}`;
+
+  it('accepts the complete pair (rule + parseable marker)', () => {
+    const ok = page(`data-select-icon='{"icon":"lucide:chevron-down","color":"#ABABAB"}'`, CARET_RULE);
+    expect(codes(checkFile(ok, { kind: 'page' }))).not.toContain('SELECT_ICON_MARKER_MISMATCH');
+  });
+
+  it('bounces a caret rule whose select lacks the marker', () => {
+    expect(codes(checkFile(page('', CARET_RULE), { kind: 'page' }))).toContain('SELECT_ICON_MARKER_MISMATCH');
+  });
+
+  it('bounces a marker without the rule, and a malformed marker', () => {
+    const noRule = page(`data-select-icon='{"icon":"lucide:chevron-down","color":"#ABABAB"}'`);
+    expect(codes(checkFile(noRule, { kind: 'page' }))).toContain('SELECT_ICON_MARKER_MISMATCH');
+    const malformed = page(`data-select-icon='chevron-down'`, CARET_RULE);
+    expect(codes(checkFile(malformed, { kind: 'page' }))).toContain('SELECT_ICON_MARKER_MISMATCH');
+  });
+
+  it('bounces an inline backgroundImage caret bake on a select', () => {
+    const bad = `'use client';
+import React from 'react';
+export default function Page() {
+  return <div data-id="root" data-name="Page" style={{ position: 'relative', width: '100%', height: 'auto' }}>
+    <form data-id="f-1" data-name="Form" style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <select data-id="type-1" data-name="Type" name="type" style={{ position: 'relative', width: '100%', backgroundImage: 'url("data:image/svg+xml,%3Csvg%3E%3C/svg%3E")' }}></select>
+    </form>
+  </div>;
+}`;
+    expect(codes(checkFile(bad, { kind: 'page' }))).toContain('SELECT_ICON_INLINE_BAKE');
+  });
+});

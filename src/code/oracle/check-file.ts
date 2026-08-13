@@ -25,6 +25,7 @@ import { validateGeneratedCode } from '@/code/mutation/mutation-queue';
 import { traverse, TRANSPARENT_TAGS, jsxTagName, jsxAttrs, stringAttr, hasAttr, needsDataId, isAllowedTextExpression, isCodeComponentSource } from './checks/shared';
 import type { FileKind, OracleViolation } from './checks/shared';
 import { checkStyleObject, styleValueIncludes } from './checks/style-object';
+import { SELECT_ICON_ATTR, parseSelectIconSpec } from '@/editor/tools/InputTool/select-icon';
 import { checkVariantDialect, checkVariantTernaryPrimary } from './checks/variant-dialect';
 import { checkScrollDialect } from './checks/scroll-dialect';
 import { checkPageVariableTypes, checkEventVariables, checkComponentFluidWidth } from './checks/element-identity';
@@ -420,6 +421,13 @@ export function checkFile(
   // component INSTANCES (imports precede JSX, so the set is complete before
   // any JSXElement is visited).
   const componentLocalNames = new Set<string>();
+  // Select caret pairing (Input tool Icon row): every select[data-id="…"]
+  // rule in the <style> block must pair with a data-select-icon marker on
+  // that element — collected here, cross-checked after the walk.
+  const selectCaretRuleIds = new Set<string>(
+    [...code.matchAll(/select\[data-id="([^"]+)"\]\s*\{/g)].map((m) => m[1]),
+  );
+  const selectsSeen = new Map<string, { hasIcon: boolean; line: number }>();
 
   traverse(ast, {
     ImportDeclaration(path: NodePath<t.ImportDeclaration>) {
@@ -658,6 +666,47 @@ export function checkFile(
             code: 'INPUT_OUTSIDE_FORM', tier: 2, line, elementId: dataId ?? undefined,
             message: `<${tag}>${dataId ? ` "${dataId}"` : ''} (line ${line}) is not inside a <form> element. Every input/textarea/select must live inside a real <form data-id="…"> — the builder's Form tool (Send To / redirect / antispam) attaches to the form element and wires the submission; a <div> container is invisible to it and the fields never submit. Make the wrapper a <form> (keep its styles), and give the submit button type="submit". (A CMS search input is the exception — mark it data-search-field.)`,
           });
+        }
+
+        // SELECT CARET ICON — the Input tool's Icon row owns a custom dropdown
+        // arrow as a PAIR: a `select[data-id="…"]` rule in the page's <style>
+        // block (color-baked data-URI background) + a data-select-icon JSON
+        // marker on the element that the panel reads back. Half a pair is a
+        // dead end: rule-only paints an icon no control can see or change;
+        // marker-only shows a chip for an icon that doesn't render. And an
+        // INLINE backgroundImage caret sits in the Fill control's channel —
+        // Fill reads it as an image fill, and the form-control Fill (solid
+        // color only) wipes it on the first color edit (live find 2026-08-13).
+        if (tag === 'select' || tag === 'motion.select') {
+          const iconAttrRaw = stringAttr(attrs, SELECT_ICON_ATTR);
+          if (iconAttrRaw != null) {
+            if (!parseSelectIconSpec(iconAttrRaw)) {
+              v.push({
+                code: 'SELECT_ICON_MARKER_MISMATCH', tier: 2, line, elementId: dataId ?? undefined,
+                message: `<select>${dataId ? ` "${dataId}"` : ''} has a malformed ${SELECT_ICON_ATTR} attribute — the Input tool's Icon row reads it as JSON {"icon":"<iconify-name>","color":"#hex"}. Fix the JSON or remove the attribute (and its select[data-id] caret rule).`,
+              });
+            } else if (dataId && !selectCaretRuleIds.has(dataId)) {
+              v.push({
+                code: 'SELECT_ICON_MARKER_MISMATCH', tier: 2, line, elementId: dataId,
+                message: `<select> "${dataId}" carries ${SELECT_ICON_ATTR} but the page's <style> block has no matching select[data-id="${dataId}"] caret rule — the Icon row shows a chip for an icon that never renders. Add the rule (appearance: none + the color-baked background-image data URI) or remove the attribute. The Input tool's Icon row writes both halves together.`,
+              });
+            }
+          }
+          if (dataId) selectsSeen.set(dataId, { hasIcon: iconAttrRaw != null, line: line ?? 0 });
+          const styleAttr = attrs.find((a) => a.name.name === 'style');
+          if (styleAttr && t.isJSXExpressionContainer(styleAttr.value) && t.isObjectExpression(styleAttr.value.expression)) {
+            for (const prop of styleAttr.value.expression.properties) {
+              if (!t.isObjectProperty(prop) || prop.computed) continue;
+              const key = t.isIdentifier(prop.key) ? prop.key.name : t.isStringLiteral(prop.key) ? prop.key.value : '';
+              if ((key === 'backgroundImage' || key === 'background')
+                && t.isStringLiteral(prop.value) && /url\(|data:image/.test(prop.value.value)) {
+                v.push({
+                  code: 'SELECT_ICON_INLINE_BAKE', tier: 2, line, elementId: dataId ?? undefined,
+                  message: `<select>${dataId ? ` "${dataId}"` : ''} bakes a caret image into its INLINE ${key} — that is the Fill control's channel (it reads the caret as an image fill, and form-control Fill is solid-color-only, so the first color edit deletes the icon). A custom dropdown arrow is the Input tool's Icon row: a select[data-id="…"] rule in the page's <style> block (appearance: none + color-baked background-image data URI, background-origin: content-box, background-position: right center) paired with ${SELECT_ICON_ATTR}='{"icon":"lucide:chevron-down","color":"#ABABAB"}' on the element. Or omit it — the native caret is fine.`,
+                });
+              }
+            }
+          }
         }
       }
 
@@ -980,6 +1029,20 @@ export function checkFile(
       }
     },
   });
+
+  // Select caret pairing, inverse direction: a select[data-id] rule whose
+  // element lacks the data-select-icon marker (or doesn't exist) paints an
+  // icon no panel can see, edit or remove.
+  for (const ruleId of selectCaretRuleIds) {
+    const el = selectsSeen.get(ruleId);
+    if (el && el.hasIcon) continue;
+    v.push({
+      code: 'SELECT_ICON_MARKER_MISMATCH', tier: 2, line: el?.line || undefined, elementId: ruleId,
+      message: el
+        ? `The <style> block has a select[data-id="${ruleId}"] caret rule but that <select> has no ${SELECT_ICON_ATTR} attribute — the icon renders while the Input tool's Icon row shows nothing, so nobody can change or remove it. Add ${SELECT_ICON_ATTR}='{"icon":"<iconify-name>","color":"#hex"}' to the element (the pair the Icon row writes), or delete the rule.`
+        : `The <style> block has a select[data-id="${ruleId}"] caret rule but no <select> with that data-id exists — stale CSS no panel can reach. Delete the rule.`,
+    });
+  }
 
   // ── CODE COMPONENT ROOT STYLE SPREAD ORDER — ...props.style LAST, so the instance's
   //    page placement (position/size) overrides the code component's defaults. Spread-
