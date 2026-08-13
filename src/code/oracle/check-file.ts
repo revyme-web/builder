@@ -444,6 +444,57 @@ export function checkFile(
       }
     },
 
+    // HANDLER_CONTENT_STATE — content/state machines steered through event
+    // handlers. The MAISON find (2026-08-13): an AI "carousel" was ONE card +
+    // arrows whose onClick chains 6 page-variable setters with hard-coded
+    // literals per slide — slides 2–5 existed ONLY inside the handler bodies.
+    // Every PIECE passed (data-ids, bindings, setters are legal); the
+    // COMPOSITION is unresolvable in principle: no panel can read content out
+    // of imperative branches, and the Variables panel's default desyncs from
+    // the handler's copy of slide 1 (silent content loss on the live site).
+    //
+    // Discriminator: the builder's own sanctioned handlers NEVER pass content
+    // literals into setters — connection toggles pass an identifier
+    // (`setVariant(_n)`), search fields pass the event value. So flag an
+    // inline handler when (a) any `set*` call takes a non-empty string /
+    // template-literal argument, or (b) it calls ≥2 DISTINCT `set*` setters
+    // (a state machine). `setVariant`+timers exempt; `set*('')` (clear
+    // actions) and event-driven args stay legal.
+    JSXAttribute(path: NodePath<t.JSXAttribute>) {
+      const name = t.isJSXIdentifier(path.node.name) ? path.node.name.name : '';
+      if (!/^on[A-Z]/.test(name)) return;
+      const val = path.node.value;
+      if (!t.isJSXExpressionContainer(val)) return;
+      const fn = val.expression;
+      if (!t.isArrowFunctionExpression(fn) && !t.isFunctionExpression(fn)) return;
+
+      const EXEMPT = new Set(['setVariant', 'setTimeout', 'setInterval']);
+      const setters = new Set<string>();
+      let contentLiteralCall: string | null = null;
+      path.traverse({
+        CallExpression(cp: NodePath<t.CallExpression>) {
+          const c = cp.node.callee;
+          if (!t.isIdentifier(c) || !/^set[A-Z]/.test(c.name) || EXEMPT.has(c.name)) return;
+          setters.add(c.name);
+          for (const arg of cp.node.arguments) {
+            const isContentString = t.isStringLiteral(arg) && arg.value !== '';
+            const isContentTemplate = t.isTemplateLiteral(arg) && arg.expressions.length === 0
+              && arg.quasis.map(q => q.value.cooked ?? '').join('') !== '';
+            if (isContentString || isContentTemplate) contentLiteralCall = c.name;
+          }
+        },
+      });
+      if (!contentLiteralCall && setters.size < 2) return;
+
+      const el = path.findParent(p => p.isJSXElement());
+      const elId = el && t.isJSXElement(el.node) ? stringAttr(jsxAttrs(el.node.openingElement), 'data-id') : null;
+      const line = path.node.loc?.start.line;
+      v.push({
+        code: 'HANDLER_CONTENT_STATE', tier: 2, line, elementId: elId ?? undefined,
+        message: `${name} handler (line ${line}) drives content/state through setter calls${contentLiteralCall ? ` — ${contentLiteralCall}('…literal…')` : ` — ${[...setters].join(', ')}`}. Content or UI state that lives inside handler logic is INVISIBLE to every panel: the user cannot see, edit, or remove it, and Variables-panel edits desync from the handler's hard-coded copies. Express switching UI declaratively instead: a carousel/tabs/toggle is a DESIGN COMPONENT with one VARIANT per state and the triggers wired as CONNECTIONS (click → variant); a content deck can also be a CMS collection + Collection List with pageSize 1 and pagination arrows. Handlers may only pass event-driven values (e.target.value) or clear with ''.`,
+      });
+    },
+
     CallExpression(path: NodePath<t.CallExpression>) {
       const callee = path.node.callee;
       if (t.isMemberExpression(callee) && t.isIdentifier(callee.object) && callee.object.name === 'gsap') {
@@ -592,6 +643,20 @@ export function checkFile(
           v.push({
             code: 'FORM_INPUT_MISSING_NAME', tier: 2, line, elementId: dataId ?? undefined,
             message: `<${tag}>${dataId ? ` "${dataId}"` : ''} inside a form has no name attribute. FormData collects fields by name, so an unnamed field is never sent. Add a name (e.g. name="email").`,
+          });
+        }
+        // INPUT_OUTSIDE_FORM — the MAISON find (2026-08-13): the AI built an
+        // enquiry "form" as a plain <div> full of inputs and a dead Send
+        // button. It renders, but the builder's entire form machinery gates
+        // on a real <form> element — the Form tool (Send To / Redirect /
+        // Antispam / Tracking) never appears, nothing submits, and the user
+        // believes they have a working form. The ONE sanctioned formless
+        // input is the CMS search field (data-search-field marker), which
+        // binds a page variable instead of submitting.
+        if (!insideForm && !hasAttr(attrs, 'data-search-field')) {
+          v.push({
+            code: 'INPUT_OUTSIDE_FORM', tier: 2, line, elementId: dataId ?? undefined,
+            message: `<${tag}>${dataId ? ` "${dataId}"` : ''} (line ${line}) is not inside a <form> element. Every input/textarea/select must live inside a real <form data-id="…"> — the builder's Form tool (Send To / redirect / antispam) attaches to the form element and wires the submission; a <div> container is invisible to it and the fields never submit. Make the wrapper a <form> (keep its styles), and give the submit button type="submit". (A CMS search input is the exception — mark it data-search-field.)`,
           });
         }
       }

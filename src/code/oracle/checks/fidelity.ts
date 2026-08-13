@@ -139,9 +139,13 @@ export function checkResolutionFidelity(
           if (t.isSpreadElement(prop)) {
             // `...style` (and a destructured style-rest) on a component ROOT is
             // the MANDATORY dialect — ROOT_STYLE_SPREAD requires it; instances
-            // and the canvas override through it. Only foreign spreads flag.
+            // and the canvas override through it. `...__instStyle` is the
+            // instance-size wrapper's own rest (instance-size-override.ts
+            // destructures width/height out of `style`), which the parser
+            // round-trips — flagged the builder's committed nav 2026-08-13.
+            // Only foreign spreads flag.
             if (t.isIdentifier(prop.argument)
-              && /^(style|styleRest|restStyle)$/.test(prop.argument.name)) continue;
+              && /^(style|styleRest|restStyle|__instStyle)$/.test(prop.argument.name)) continue;
             v.push({
               code: 'RESOLVE_STYLE_DROPPED', tier: 3, elementId: id,
               message: `[fidelity] data-id="${id}" — the style object contains a \`...\` spread. The parser drops spreads silently: the element PAINTS with those styles while the panel shows an object without them, so the first edit flattens the element to the visible subset. Inline every property as a literal.`,

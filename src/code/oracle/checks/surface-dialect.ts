@@ -74,8 +74,13 @@ const CONTROLLED_STYLE_PROPS = new Set<string>([
   // Scroll section
   'scrollMarginTop',
   // Generator-emitted (verified in generation/ + real project output +
-  // the Insert catalogue: `resize` ships on its textarea)
+  // the Insert catalogue: `resize` ships on its textarea).
+  // `transformBox` — the rotation channel's carrier pair with transformOrigin
+  // (generator-styles pivot mirror + generator-crud rotation fold);
+  // `boxSizing` — cms-search-field-gen emits it inline on the search input.
+  // Both flagged the builder's own committed output 2026-08-13.
   'isolation', 'contain', 'willChange', 'outline', 'resize',
+  'transformBox', 'boxSizing',
   'stroke', 'strokeWidth', 'strokeDasharray', 'strokeDashoffset', 'strokeLinecap',
   'strokeLinejoin', 'strokeOpacity', 'strokeMiterlimit', 'fill', 'fillOpacity',
 ]);

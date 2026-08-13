@@ -52,6 +52,11 @@ describe('STYLE_PROP_NO_CONTROL', () => {
     const code = page(`      <motion.div data-id="t" style={{ position: 'relative', width: '10px', height: '10px', translate: '0 20px' }}>x</motion.div>`);
     expect(codesOf(code)).toContain('STYLE_PROP_NO_CONTROL');
   });
+
+  it('accepts transformBox (rotation carrier) and boxSizing (search-field gen)', () => {
+    const code = page(`      <motion.div data-id="rot" style={{ position: 'relative', width: '80px', height: '8px', rotate: 40, transformBox: 'fill-box', transformOrigin: '50% 50%', boxSizing: 'border-box' }}>x</motion.div>`);
+    expect(codesOf(code)).not.toContain('STYLE_PROP_NO_CONTROL');
+  });
 });
 
 describe('TEXT_STYLE_ON_FRAME', () => {

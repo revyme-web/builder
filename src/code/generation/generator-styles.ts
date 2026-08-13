@@ -1763,6 +1763,35 @@ function seedWouldClobberLonghands(key: string, entryContent: string): boolean {
   return longhands.some((lh) => new RegExp(`(?:^|[,{\\s])['"]?${lh}['"]?\\s*:`).test(entryContent));
 }
 
+/** longhand → the shorthand that fully covers it (`paddingTop` → `padding`). */
+const LONGHAND_TO_SHORTHAND: Record<string, string> = Object.fromEntries(
+  Object.entries(SHORTHAND_LONGHANDS).flatMap(([short, longs]) =>
+    (longs as string[]).map((lh) => [lh, short]),
+  ),
+);
+
+/**
+ * The MIRROR of `seedWouldClobberLonghands`: would seeding this LONGHAND be
+ * overridden by — and silently break — a shorthand the entry already carries?
+ *
+ * Seeds are appended at the END of the entry, so `paddingTop: '0px'` landing
+ * after `padding: '50px'` wins and flattens the side to zero. That is exactly
+ * how a Footer's `padding: 50px` rendered as 0 while the panel kept reporting
+ * 50: the write path correctly deleted the longhands (`''` = delete), and this
+ * heal put them straight back as CSS initials in the same commit.
+ *
+ * Skipping is not just safe, it's CORRECT: the whole point of seeding is that
+ * framer-motion restores the value when animating back to `default`, and a
+ * shorthand already covers every side it owns. `padding: '50px'` on switch-back
+ * resets top/right/bottom/left by itself — the longhand seed adds nothing and
+ * can only do damage.
+ */
+function seedWouldBeClobberedByShorthand(key: string, entryContent: string): boolean {
+  const shorthand = LONGHAND_TO_SHORTHAND[key];
+  if (!shorthand) return false;
+  return new RegExp(`(?:^|[,{\\s])['"]?${shorthand}['"]?\\s*:`).test(entryContent);
+}
+
 function readBaseValuesForNode(
   code: string,
   nodeId: string,
@@ -2090,17 +2119,27 @@ export function healSparseVariantDefaults(code: string): string {
     const seed = readBaseValuesForNode(code, nodeId, missing);
     if (Object.keys(seed).length === 0) continue;
     let newInner = code.slice(def.bodyStart + 1, def.bodyEnd).trimEnd();
+    const seededKeys: string[] = [];
     for (const [k, v] of Object.entries(seed)) {
       // Same guard as the write path — a heal must never make a file worse.
       if (seedWouldClobberLonghands(k, newInner)) continue;
+      // …and the mirror: never append a longhand under a shorthand that
+      // already covers it, or the seed silently overrides the user's value.
+      if (seedWouldBeClobberedByShorthand(k, newInner)) continue;
+      seededKeys.push(k);
       if (newInner && !newInner.endsWith(',')) newInner += ',';
       const key = k.startsWith('--') ? `'${k}'` : k;
       // Motion transform props are numeric (unquoted), like the variant entries.
       const isMotionNum = MOTION_TRANSFORM_PROPS.has(k) && /^-?\d+(\.\d+)?$/.test(v);
       newInner += ` ${key}: ${isMotionNum ? v : quoteStyleValue(v)},`;
     }
+    // Every candidate was skipped by a guard — rewriting the entry with
+    // identical content would be a no-op edit that still churns the file.
+    if (seededKeys.length === 0) continue;
     edits.push({ start: def.bodyStart + 1, end: def.bodyEnd, text: newInner });
-    trace.action('generator:heal-sparse-variant-defaults', { nodeId, varName, seeded: Object.keys(seed) });
+    // Report what was ACTUALLY written. Logging the candidate list made this
+    // heal look like the culprit for keys it had already declined to seed.
+    trace.action('generator:heal-sparse-variant-defaults', { nodeId, varName, seeded: seededKeys });
   }
   if (edits.length === 0) return code;
 

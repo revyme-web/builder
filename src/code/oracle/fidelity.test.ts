@@ -96,6 +96,27 @@ describe('RESOLVE_STYLE_DROPPED — keys that go in but not out', () => {
     expect(codesOf(code)).toContain('RESOLVE_STYLE_DROPPED');
   });
 
+  it("accepts the instance-size wrapper's ...__instStyle rest (builder output)", () => {
+    const code = `'use client';
+
+/** @name "Nav" */
+
+import React from 'react';
+import { motion } from 'framer-motion';
+
+function __applyInstanceSize(variants, w, h) { return variants; }
+
+function Nav({ style, initialVariant = 'default', ...rest }) {
+  const { width: __instW, height: __instH, ...__instStyle } = style ?? {};
+  return <motion.div data-id="nav" variants={__applyInstanceSize({}, __instW, __instH)} {...rest} style={{ position: 'absolute', width: '1280px', height: '88px', ...__instStyle }}>
+    <motion.p data-id="t" style={{ position: 'relative', width: '100%', height: 'auto', flex: '0 0 auto', order: '0' }}>Hi</motion.p>
+  </motion.div>;
+}
+export default withResponsiveProps(Nav);
+`;
+    expect(codesOf(code, 'component')).not.toContain('RESOLVE_STYLE_DROPPED');
+  });
+
   it("accepts the component root's mandatory ...style spread", () => {
     const code = `'use client';
 

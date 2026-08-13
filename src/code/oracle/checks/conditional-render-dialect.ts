@@ -69,6 +69,17 @@ function isVariantTest(node: t.Node): boolean {
     || (named(node.right) && t.isStringLiteral(node.left));
 }
 
+/** One variant test, or the visibility generator's positive OR chain
+ *  `variant === 'C' || variant === 'D'` — variant-visibility-gen.ts emits it
+ *  when fewer variants SHOW the element than hide it (first shipped version
+ *  flagged the builder's own OR gates on a committed nav, 2026-08-13). */
+function isVariantTestOrChain(node: t.Node): boolean {
+  if (t.isLogicalExpression(node) && node.operator === '||') {
+    return isVariantTestOrChain(node.left) && isVariantTestOrChain(node.right);
+  }
+  return isVariantTest(node);
+}
+
 /**
  * Byte ranges of the builder's OWN injected helpers.
  *
@@ -275,6 +286,57 @@ export function checkPageHooks(
   const TEACH =
     `Express the intent natively instead: an ANIMATION over time is the Animation panel (Appear / Loop / Scroll effects); RESPONSIVE behaviour is @media rules in the page's <style> block; SHOW/HIDE state is a design-component variant driven by a connection; DYNAMIC DATA from an API belongs in a CODE COMPONENT (a black box where free React is legitimate) — not in a page. If none of those fit, the behaviour is not supported on pages.`;
 
+  // ── Scroll→Variant shapes (scroll-variant-gen.ts) ────────────────────────
+  // The Animation panel's Scroll Variant emits `useState(<__mq-gated variant>)`
+  // — a ternary chain over the injected media-query gates, optionally wrapped
+  // `<fromVar> || (<gated>)` when a template variable binds the resting variant
+  // — plus a reset `useEffect(() => { set<X>(<same expr>); }, [gates + vars])`.
+  // First shipped rule flagged both on the builder's own committed output
+  // (MAISON nav, 2026-08-13) — prime rule: canvas output must pass.
+  const isMqGate = (n: t.Node): boolean => t.isIdentifier(n) && /^__mq\d+$/.test(n.name);
+  const isMqGatedScalar = (n: t.Node): boolean => {
+    if (t.isConditionalExpression(n)) {
+      return isMqGate(n.test) && isMqGatedScalar(n.consequent) && isMqGatedScalar(n.alternate);
+    }
+    return t.isStringLiteral(n) || t.isIdentifier(n);        // leaves: variant name or bound variable
+  };
+  // The full resting expression a generated useState/reset-setter may carry.
+  // A BARE identifier is NOT one (the generator never emits it alone) — that
+  // stays flagged, or `useState(someVar)` hand-sync would slip the fence.
+  const isGeneratedRestingExpr = (n: t.Node): boolean => {
+    if (t.isConditionalExpression(n)) return isMqGatedScalar(n);
+    if (t.isLogicalExpression(n) && n.operator === '||') {
+      const leftOk = t.isStringLiteral(n.left) || t.isIdentifier(n.left)
+        || (t.isConditionalExpression(n.left) && isMqGatedScalar(n.left));
+      const rightOk = t.isStringLiteral(n.right)
+        || (t.isConditionalExpression(n.right) && isMqGatedScalar(n.right));
+      return leftOk && rightOk;
+    }
+    return false;
+  };
+
+  const acceptedInit = (arg: t.Node | undefined): boolean => arg === undefined
+    || t.isStringLiteral(arg) || t.isNumericLiteral(arg) || t.isBooleanLiteral(arg)
+    || (t.isUnaryExpression(arg) && t.isNumericLiteral(arg.argument))
+    || (t.isIdentifier(arg) && arg.name === 'initialVariant')
+    || isGeneratedRestingExpr(arg);
+
+  // Setters declared by an ACCEPTED useState — the reset effect is only legal
+  // when it calls one of these (pre-pass: the generator emits the useState
+  // first, but hand code may not keep source order).
+  const generatedSetters = new Set<string>();
+  traverse(ast, {
+    CallExpression(path) {
+      const callee = path.node.callee;
+      if (!t.isIdentifier(callee) || callee.name !== 'useState') return;
+      const parent = path.parentPath?.node;
+      if (!t.isVariableDeclarator(parent) || !t.isArrayPattern(parent.id)) return;
+      const setter = parent.id.elements[1];
+      if (!t.isIdentifier(setter)) return;
+      if (acceptedInit(path.node.arguments[0])) generatedSetters.add(setter.name);
+    },
+  });
+
   traverse(ast, {
     CallExpression(path) {
       const callee = path.node.callee;
@@ -290,10 +352,7 @@ export function checkPageHooks(
         const parent = path.parentPath?.node;
         const destructured = t.isVariableDeclarator(parent) && t.isArrayPattern(parent.id);
         const arg = path.node.arguments[0];
-        const literalArg = arg === undefined
-          || t.isStringLiteral(arg) || t.isNumericLiteral(arg) || t.isBooleanLiteral(arg)
-          || (t.isUnaryExpression(arg) && t.isNumericLiteral(arg.argument))
-          || (t.isIdentifier(arg) && arg.name === 'initialVariant');
+        const literalArg = acceptedInit(arg);
         if (destructured && literalArg) return;
         flag(line, `\`useState(${literalArg ? '…' : 'non-literal initializer'})\` outside the generated \`const [x, setX] = useState(<literal>)\` shape`, TEACH);
         return;
@@ -306,6 +365,26 @@ export function checkPageHooks(
           return;
         }
         if (EFFECT_ALLOWED.some((re) => re.test(body))) return;
+        // Scroll→Variant reset effect: a single `set<X>(<generated resting expr>)`
+        // whose setter comes from an accepted useState, deps all identifiers
+        // (the __mq gates + any bound template variables). A bare-LITERAL reset
+        // arg is generated only when the gates live elsewhere in the effect
+        // block, so it must ride on pure `__mq*` deps.
+        if (callee.name === 'useEffect') {
+          const [fn, deps] = path.node.arguments;
+          const stmts = t.isArrowFunctionExpression(fn) && t.isBlockStatement(fn.body) ? fn.body.body : null;
+          const only = stmts?.length === 1 && t.isExpressionStatement(stmts[0]) ? stmts[0].expression : null;
+          const depEls = t.isArrayExpression(deps) ? deps.elements : null;
+          const allIdent = !!depEls && depEls.length > 0 && depEls.every((e) => t.isIdentifier(e));
+          const allMq = allIdent && depEls!.every((e) => isMqGate(e as t.Node));
+          if (only && t.isCallExpression(only) && t.isIdentifier(only.callee)
+            && generatedSetters.has(only.callee.name) && only.arguments.length === 1) {
+            const resetArg = only.arguments[0];
+            const argOk = t.isStringLiteral(resetArg) ? allMq
+              : t.isExpression(resetArg) && isGeneratedRestingExpr(resetArg) && allIdent;
+            if (argOk) return;
+          }
+        }
         flag(line, `a \`${callee.name}\` that matches none of the builder's generated effect shapes`, TEACH);
         return;
       }
@@ -469,11 +548,12 @@ export function checkConditionalRenderDialect(
       // @controls block; those files are exempted above by kind.
       if (isBuilderGatedElement(el)) return;
 
-      // Variant gating: EVERY test must be a variant comparison. A mixed chain
+      // Variant gating: EVERY test must be a variant comparison (or a pure OR
+      // chain of them — the generator's positive form). A mixed chain
       // (`variant !== 'a' && isCompact`) is not something the Hide control can
       // read back, so it does not qualify.
       const tests = conditionTests(expr);
-      if (tests.length > 0 && tests.every(isVariantTest)) return;
+      if (tests.length > 0 && tests.every(isVariantTestOrChain)) return;
 
       const attrs = jsxAttrs(el.openingElement);
       const id = stringAttr(attrs, 'data-id');

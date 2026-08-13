@@ -451,6 +451,94 @@ ${ROOT_OPEN}
 ${ROOT_CLOSE}`, "import { useRef } from 'react';");
     expect(codesOf(code)).not.toContain('PAGE_HOOK_UNRESOLVED');
   });
+
+  // Scroll→Variant (scroll-variant-gen.ts) — the Animation panel's own output
+  // flagged on a real committed page (MAISON nav, 2026-08-13): mq-gated
+  // useState initializer + the reset useEffect. Prime rule: canvas output
+  // must pass.
+  const SCROLL_VARIANT_HEAD = `import { useScroll, useMotionValueEvent } from 'framer-motion';
+import { useMediaQuery } from '@revyme/runtime';`;
+
+  it('accepts the Scroll→Variant generated block (mq-gated resting + reset effect)', () => {
+    const code = page(`  const __mq1 = useMediaQuery('(max-width: 375px)');
+  const __mq2 = useMediaQuery('(max-width: 767.98px)');
+  const __mq3 = useMediaQuery('(max-width: 768px)');
+  const { scrollY: NavSvScrollY } = useScroll();
+  const [NavSv, setNavSv] = useState(__mq1 ? 'mobile' : __mq3 ? 'mobile' : 'default');
+  useMotionValueEvent(NavSvScrollY, "change", () => {
+    let v = __mq1 ? 'mobile' : __mq3 ? 'mobile' : 'default';
+    const NavSvSec0El = document.getElementById('clients');
+    if (NavSvSec0El && NavSvSec0El.getBoundingClientRect().top < window.innerHeight * 0.5) v = __mq1 ? 'variant-4' : __mq2 ? 'variant-4' : 'variant-3';
+    setNavSv(v);
+  });
+  useEffect(() => {
+    setNavSv(__mq1 ? 'mobile' : __mq3 ? 'mobile' : 'default');
+  }, [__mq1, __mq3, __mq2]);
+${ROOT_OPEN}
+      <div data-id="a" style={{ position: 'relative', width: '100%', height: 'auto' }}>x</div>
+${ROOT_CLOSE}`, SCROLL_VARIANT_HEAD);
+    expect(codesOf(code)).not.toContain('PAGE_HOOK_UNRESOLVED');
+  });
+
+  it('accepts the fromVar-bound resting expression `x || (<gated>)`', () => {
+    const code = page(`  const __mq1 = useMediaQuery('(max-width: 768px)');
+  const headerVariant = '';
+  const [HdrSv, setHdrSv] = useState(headerVariant || (__mq1 ? 'mobile' : 'default'));
+  useEffect(() => { setHdrSv(headerVariant || (__mq1 ? 'mobile' : 'default')); }, [__mq1, headerVariant]);
+${ROOT_OPEN}
+      <div data-id="a" style={{ position: 'relative', width: '100%', height: 'auto' }}>x</div>
+${ROOT_CLOSE}`, SCROLL_VARIANT_HEAD);
+    expect(codesOf(code)).not.toContain('PAGE_HOOK_UNRESOLVED');
+  });
+
+  it('accepts a bare-literal reset only when every dep is an __mq gate', () => {
+    const clean = page(`  const __mq0 = useMediaQuery('(max-width: 768px)');
+  const [NavSv, setNavSv] = useState('default');
+  useEffect(() => { setNavSv('default'); }, [__mq0]);
+${ROOT_OPEN}
+      <div data-id="a" style={{ position: 'relative', width: '100%', height: 'auto' }}>x</div>
+${ROOT_CLOSE}`, SCROLL_VARIANT_HEAD);
+    expect(codesOf(clean)).not.toContain('PAGE_HOOK_UNRESOLVED');
+
+    const handSync = page(`  const [tab, setTab] = useState('home');
+  const other = 'x';
+${ROOT_OPEN}
+      <div data-id="a" onClick={() => setTab(other)} style={{ position: 'relative', width: '100%', height: 'auto' }}>x</div>
+${ROOT_CLOSE}`, `import { useMediaQuery } from '@revyme/runtime';`);
+    const handSyncEffect = handSync.replace("const other = 'x';", "const other = 'x';\n  useEffect(() => { setTab('home'); }, [other]);");
+    expect(codesOf(handSyncEffect)).toContain('PAGE_HOOK_UNRESOLVED');
+  });
+
+  it('accepts the visibility generator\'s positive OR gate, rejects mixed chains', () => {
+    const orGate = page(`  const [variant, setVariant] = useState(initialVariant);
+${ROOT_OPEN}
+      <AnimatePresence mode="popLayout">{(variant === 'default' || variant === 'variant-3') && <motion.div layout={true} key="nav-links" data-id="nav-links" style={{ position: 'relative', width: '100%', height: 'auto', flex: '0 0 auto', order: '1' }} exit={{ opacity: 0 }}>x</motion.div>}</AnimatePresence>
+${ROOT_CLOSE}`);
+    expect(codesOf(orGate)).not.toContain('CONDITIONAL_RENDER_UNSUPPORTED');
+
+    const mixed = page(`  const [variant, setVariant] = useState(initialVariant);
+  const isOpen = true;
+${ROOT_OPEN}
+      <AnimatePresence mode="popLayout">{(variant === 'default' || isOpen) && <motion.div layout={true} key="x" data-id="x" style={{ position: 'relative', width: '100%', height: 'auto' }} exit={{ opacity: 0 }}>x</motion.div>}</AnimatePresence>
+${ROOT_CLOSE}`);
+    expect(codesOf(mixed)).toContain('CONDITIONAL_RENDER_UNSUPPORTED');
+  });
+
+  it('still rejects hand-written state hooks (computed init, identifier sync)', () => {
+    const computedInit = page(`  const [w, setW] = useState(computeInit());
+${ROOT_OPEN}
+      <div data-id="a" style={{ position: 'relative', width: '100%', height: 'auto' }}>x</div>
+${ROOT_CLOSE}`, 'function computeInit() { return 1; }');
+    expect(codesOf(computedInit)).toContain('PAGE_HOOK_UNRESOLVED');
+
+    const identSync = page(`  const [foo, setFoo] = useState('a');
+  const bar = 'b';
+  useEffect(() => { setFoo(bar); }, [bar]);
+${ROOT_OPEN}
+      <div data-id="a" style={{ position: 'relative', width: '100%', height: 'auto' }}>x</div>
+${ROOT_CLOSE}`);
+    expect(codesOf(identSync)).toContain('PAGE_HOOK_UNRESOLVED');
+  });
 });
 
 // ─── INTERACTION_HANDLER_BODY_UNREADABLE (2026-08-11) ───────────────────────

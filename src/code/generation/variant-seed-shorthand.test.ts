@@ -136,3 +136,77 @@ function C({ initialVariant = 'default' }) {
     expect(/default:\s*\{([^}]*)\}/.exec(out)![1]).not.toMatch(/(?:^|[,{\s])margin\s*:/);
   });
 });
+
+// ── The MIRROR failure, user report 2026-08-13 ────────────────────────────────
+// A Footer's Frame 37 was set to `padding: 50px`. The panel showed 50, the
+// canvas and the LIVE SITE rendered 0. The default entry held the shorthand,
+// `variant-1` held the four longhands, so the heal saw them "missing" from
+// default and appended them — resolved from the inline style, where they don't
+// exist, hence their CSS initial `0px`. Appended last, they beat the shorthand:
+//
+//   default: { padding: '50px', paddingTop: '0px', paddingRight: '0px', … }
+//
+// The write path had done its job (it sends `''` to DELETE those longhands);
+// this heal put them straight back in the same commit, which is why the edit
+// looked like it "didn't commit".
+describe('healSparseVariantDefaults — longhand seeded under a covering shorthand', () => {
+  const shorthandDefault = () => `const variantConfig = [
+  { name: 'default', label: 'Footer', x: 0, y: 0, isPrimary: true },
+  { name: 'variant-1', label: 'mobile', x: 1640, y: 0 },
+];
+const divMsp237ef30Variants = {
+  default: { backgroundColor: 'rgba(255,253,208,0.45)', padding: '50px',},
+  'variant-1': { paddingTop: '16px', paddingRight: '16px', paddingBottom: '16px', paddingLeft: '16px',},
+};
+function HeWeZa({ style, initialVariant = 'default', ...rest }) {
+  return <motion.div data-id="root" {...rest}>
+    <motion.div data-id="div-msp237ef-30" variants={divMsp237ef30Variants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame 37" style={{
+      display: 'flex', width: '100%', padding: '50px', position: 'relative'
+    }}>x</motion.div>
+  </motion.div>;
+}`;
+
+  it('does not append longhands that the shorthand already covers', () => {
+    const out = healSparseVariantDefaults(shorthandDefault());
+    const def = /default:\s*\{([^}]*)\}/.exec(out)![1];
+    expect(def).toContain("padding: '50px'");
+    for (const lh of ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']) {
+      expect(def, `${lh} was seeded under the shorthand`).not.toMatch(
+        new RegExp(`(?:^|[,{\\s])${lh}\\s*:`),
+      );
+    }
+  });
+
+  it('leaves the file byte-identical when every seed is skipped', () => {
+    const src = shorthandDefault();
+    expect(healSparseVariantDefaults(src)).toBe(src);
+  });
+
+  // The guard must be narrow: a key the shorthand does NOT cover still seeds,
+  // or animating back to default would strand the variant's value.
+  it('still seeds unrelated keys', () => {
+    const withGap = shorthandDefault().replace(
+      "'variant-1': { paddingTop: '16px',",
+      "'variant-1': { gap: '4px', paddingTop: '16px',",
+    ).replace("display: 'flex', width: '100%',", "display: 'flex', gap: '12px', width: '100%',");
+    const def = /default:\s*\{([^}]*)\}/.exec(healSparseVariantDefaults(withGap))![1];
+    expect(def).toContain("gap: '12px'");
+  });
+
+  it('the shorthand→longhand direction stays guarded too', () => {
+    const inverted = `const variantConfig = [
+  { name: 'default', label: 'F', x: 0, y: 0, isPrimary: true },
+  { name: 'variant-1', label: 'm', x: 1640, y: 0 },
+];
+const aVariants = {
+  default: { paddingTop: '90px',},
+  'variant-1': { padding: '8px',},
+};
+function A({ style, initialVariant = 'default', ...rest }) {
+  return <motion.div data-id="n1" variants={aVariants} initial={['default', initialVariant]} animate={['default', initialVariant]} style={{ paddingTop: '90px' }}>x</motion.div>;
+}`;
+    const def = /default:\s*\{([^}]*)\}/.exec(healSparseVariantDefaults(inverted))![1];
+    expect(def).toContain("paddingTop: '90px'");
+    expect(def).not.toMatch(/(?:^|[,{\s])padding\s*:/);
+  });
+});

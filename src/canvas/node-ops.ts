@@ -14,7 +14,7 @@
 
 import { isComponentFilePath } from '@/code/project/file-path-kind';
 import { isPrimaryViewport } from '@/shared/constants';
-import { toKebab, healSpacingShorthand, normalizeTransparent, healInertOffsets } from '@/shared/css-utils';
+import { toKebab, healSpacingShorthand, normalizeTransparent, healInertOffsets, SHORTHAND_LONGHANDS } from '@/shared/css-utils';
 import { projectFS } from '@/code/project/project-fs';
 import { parseVariantConfig } from '@/code/variants/variant-config';
 import { ensureInstanceSizeOverride, hasInstanceSizeOverride } from '@/code/variants/instance-size-override';
@@ -75,6 +75,72 @@ export function setUpdatingFromCanvasFlagger(fn: (() => void) | null): void {
  *  fanning the primary's left/top across tiles yanks them together for a frame (resize-commit glitch).
  *  Size/paint props still mirror — synced variants should follow the primary's resize. */
 const VARIANT_NON_MIRRORED_POSITION = new Set(['left', 'top', 'right', 'bottom']);
+
+/** longhand → the shorthand that covers it (`paddingTop` → `padding`). */
+const LONGHAND_TO_SHORTHAND: Record<string, string> = Object.fromEntries(
+  Object.entries(SHORTHAND_LONGHANDS).flatMap(([short, longs]) =>
+    (longs as readonly string[]).map((lh) => [lh, short]),
+  ),
+);
+
+/**
+ * Narrow a PRIMARY write down to what may safely be mirrored onto a replica /
+ * variant tile that owns overrides of its own.
+ *
+ * SHORTHAND vs LONGHAND is the subtle part. `overridden` holds the keys the
+ * variant actually AUTHORED, so a variant owning `paddingTop/Right/Bottom/Left`
+ * does NOT contain `padding` — and the Padding control writes the SHORTHAND.
+ * A plain `overridden.has(k)` check therefore let `padding` through, and it is
+ * mirrored with `!important`, flattening all four overridden sides for the
+ * length of the drag. It snapped back on mouseup only because the commit
+ * re-renders from source (user report 2026-08-13).
+ *
+ * Mirror only the sides the variant does NOT own; when it owns every side the
+ * shorthand is dropped entirely.
+ *
+ * The expansions are merged LAST on purpose: the same write also carries
+ * `paddingRight: ''` etc. (the control deletes the longhands so the shorthand
+ * governs), and those deletes come later in key order — applied in sequence
+ * they would wipe the very sides just expanded.
+ *
+ * Used by BOTH fan-out paths (parent-frame DOM and the iframe bridge). They
+ * had independent copies of the filter, which is exactly how one of them got
+ * fixed and the other kept corrupting the tiles.
+ */
+function filterMirroredStyles(
+  styles: Record<string, string>,
+  overridden: Set<string> | null | undefined,
+  skipPosition: boolean,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const expanded: Record<string, string> = {};
+  for (const [k, v] of Object.entries(styles)) {
+    if (overridden?.has(k)) continue;
+    if (VARIANT_NON_MIRRORED_POSITION.has(k) && skipPosition) continue;
+    // The INVERSE pairing: the write is a LONGHAND and the variant owns the
+    // covering SHORTHAND (`padding: '16px'`). `overridden` holds only
+    // `padding`, so `paddingTop` isn't matched and would mirror straight over
+    // the side the variant is deliberately setting. Which of the two forms a
+    // variant ends up storing depends on how the override was authored, so
+    // both directions have to be guarded or the same bug returns wearing the
+    // other hat.
+    if (overridden && LONGHAND_TO_SHORTHAND[k] && overridden.has(LONGHAND_TO_SHORTHAND[k]!)) continue;
+    const longhands = SHORTHAND_LONGHANDS[k];
+    if (longhands && overridden && longhands.some((lh) => overridden.has(lh))) {
+      // A multi-value shorthand ('10px 20px') can't be split per side without
+      // parsing it, so it is dropped — the commit re-render restores the
+      // correct value either way.
+      if (!/\s/.test(String(v).trim())) {
+        for (const lh of longhands) {
+          if (!overridden.has(lh)) expanded[lh] = v;
+        }
+      }
+      continue;
+    }
+    out[k] = v;
+  }
+  return Object.assign(out, expanded);
+}
 
 /** Register a function that forces an iframe re-render bypassing the
  *  canvasInteracting / canvasUpdating skip guards. Called by drag strategies
@@ -2297,16 +2363,14 @@ export function updateNodeStyles(options: {
           ancestor = ancestor.parentElement;
         }
         const overridden = variantName ? getVariantOverriddenKeys(id, variantName) : null;
-        for (const [key, value] of Object.entries(styles)) {
-          if (overridden?.has(key)) continue;
-          // POSITION mirroring is COMMIT-only-skipped. On commit (!domOnly) each tile's left/top is
-          // its OWN (variantConfig x/y) — mirroring the primary's left/top there yanked sibling
-          // tiles to the primary's spot for one frame, then the re-render snapped them back: the
-          // user-reported resize-commit glitch. So skip position at commit.
-          // DURING the live drag tick (domOnly) we DO mirror position: a synced replica (no
-          // per-variant override — overridden keys already dropped above) must follow the primary
-          // in real time, exactly like a page-viewport replica. mouseup commit reconciles.
-          if (VARIANT_NON_MIRRORED_POSITION.has(key) && !domOnly) continue;
+        // POSITION mirroring is COMMIT-only-skipped. On commit (!domOnly) each tile's left/top is
+        // its OWN (variantConfig x/y) — mirroring the primary's left/top there yanked sibling
+        // tiles to the primary's spot for one frame, then the re-render snapped them back: the
+        // user-reported resize-commit glitch. So skip position at commit.
+        // DURING the live drag tick (domOnly) we DO mirror position: a synced replica (no
+        // per-variant override — overridden keys already dropped) must follow the primary
+        // in real time, exactly like a page-viewport replica. mouseup commit reconciles.
+        for (const [key, value] of Object.entries(filterMirroredStyles(styles, overridden, !domOnly))) {
           try {
             if (value === '') { (varEl.style as any)[key] = ''; }
             else { (varEl.style as any)[key] = value; }
@@ -2345,12 +2409,7 @@ export function updateNodeStyles(options: {
         // commit-time drop, the primary's left/top fanned onto every sibling tile for one frame on
         // resize-commit, then snapped back (the glitch). During the live drag tick (domOnly) we DO
         // mirror position so a synced replica follows the primary in real time (see DOM path above).
-        const mirrorStyles: Record<string, string> = {};
-        for (const [k, v] of Object.entries(styles)) {
-          if (overridden?.has(k)) continue;
-          if (VARIANT_NON_MIRRORED_POSITION.has(k) && !domOnly) continue;
-          mirrorStyles[k] = v;
-        }
+        const mirrorStyles = filterMirroredStyles(styles, overridden, !domOnly);
         if (Object.keys(mirrorStyles).length === 0) continue;
         // Variant overrides need !important to win against framer-motion's
         // animate-driven inline styles on the variant element.

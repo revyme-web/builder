@@ -1460,3 +1460,88 @@ describe('RAW_STYLE_TAG pseudo-overlay exemption', () => {
     expect(v.some((x) => x.code === 'RAW_STYLE_TAG')).toBe(true);
   });
 });
+
+
+// ─── HANDLER_CONTENT_STATE — content/state machines in event handlers ────────
+// The MAISON carousel (2026-08-13): one card + arrows whose onClick chains six
+// page-variable setters with hard-coded literals per slide. Unresolvable in
+// principle — no panel reads content out of imperative branches.
+
+describe('HANDLER_CONTENT_STATE', () => {
+  const page = (body: string) => `'use client';
+import React, { useState } from 'react';
+export default function Page() {
+  const [idx, setIdx] = useState(0);
+  const [quote, setQuote] = useState('First quote');
+  const [searchTitle, setSearchTitle] = useState('');
+  return <div data-id="root" data-name="Page" style={{ position: 'relative', width: '100%', height: 'auto' }}>
+${body}
+  </div>;
+}`;
+
+  it('bounces a multi-setter content carousel (the MAISON shape)', () => {
+    const bad = page(`    <button data-id="next-btn" data-name="Next" style={{ position: 'relative' }} onClick={() => {
+      if (idx === 0) { setIdx(1); setQuote('Second quote — hard-coded in the handler'); }
+      else { setIdx(0); setQuote('First quote'); }
+    }}>→</button>`);
+    const found = checkFile(bad, { kind: 'page' }).filter(x => x.code === 'HANDLER_CONTENT_STATE');
+    expect(found.length).toBeGreaterThan(0);
+    expect(found[0].tier).toBe(2);
+  });
+
+  it('bounces a single content-literal setter (tab switcher smell)', () => {
+    const bad = page(`    <button data-id="tab-btn" data-name="Tab" style={{ position: 'relative' }} onClick={() => setQuote('Pricing tab content')}>Pricing</button>`);
+    expect(codes(checkFile(bad, { kind: 'page' }))).toContain('HANDLER_CONTENT_STATE');
+  });
+
+  it('bounces two distinct setters even without literals', () => {
+    const bad = page(`    <button data-id="b1" data-name="B" style={{ position: 'relative' }} onClick={() => { setIdx(idx + 1); setQuote(quote); }}>→</button>`);
+    expect(codes(checkFile(bad, { kind: 'page' }))).toContain('HANDLER_CONTENT_STATE');
+  });
+
+  it('ALLOWS the sanctioned shapes: event-value setter, clear-with-empty, setVariant, timers', () => {
+    const ok = page(`    <input data-id="search-1" data-name="Search" type="text" style={{ position: 'relative', width: '100%' }} onChange={(e) => setSearchTitle(e.target.value)} />
+    <button data-id="clear-1" data-name="Clear" style={{ position: 'relative' }} onClick={() => setSearchTitle('')}>Clear</button>
+    <button data-id="conn-1" data-name="Conn" style={{ position: 'relative' }} onClick={() => { const _n = idx === 0 ? 'variant-1' : 'default'; if (_n) setVariant(_n); }}>toggle</button>
+    <button data-id="timer-1" data-name="Timer" style={{ position: 'relative' }} onClick={() => { setTimeout(() => {}, 300); }}>t</button>`);
+    expect(codes(checkFile(ok, { kind: 'page' }))).not.toContain('HANDLER_CONTENT_STATE');
+  });
+
+  it('ALLOWS a single numeric reset (not a state machine on its own)', () => {
+    const ok = page(`    <button data-id="reset-1" data-name="Reset" style={{ position: 'relative' }} onClick={() => setIdx(0)}>reset</button>`);
+    expect(codes(checkFile(ok, { kind: 'page' }))).not.toContain('HANDLER_CONTENT_STATE');
+  });
+});
+
+
+// ─── INPUT_OUTSIDE_FORM — inputs must live in a real <form> ──────────────────
+// The MAISON find (2026-08-13): an AI "form" was a styled <div> of inputs with
+// a dead Send button — the Form tool (which gates on the <form> element) never
+// appeared and nothing could ever submit.
+
+describe('INPUT_OUTSIDE_FORM', () => {
+  const page = (body: string) => `'use client';
+import React from 'react';
+export default function Page() {
+  return <div data-id="root" data-name="Page" style={{ position: 'relative', width: '100%', height: 'auto' }}>
+${body}
+  </div>;
+}`;
+
+  it('bounces an input in a plain div container', () => {
+    const bad = page(`    <div data-id="fake-form" data-name="Form" style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <input data-id="name-1" data-name="Name" type="text" name="name" style={{ position: 'relative', width: '100%' }} />
+    </div>`);
+    expect(codes(checkFile(bad, { kind: 'page' }))).toContain('INPUT_OUTSIDE_FORM');
+  });
+
+  it('ALLOWS inputs inside a real <form> and the data-search-field exception', () => {
+    const ok = page(`    <form data-id="enquiry-form" data-name="Enquiry Form" style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <input data-id="name-1" data-name="Name" type="text" name="name" style={{ position: 'relative', width: '100%' }} />
+      <select data-id="type-1" data-name="Type" name="type" style={{ position: 'relative', width: '100%' }}></select>
+      <textarea data-id="msg-1" data-name="Message" name="message" style={{ position: 'relative', width: '100%' }}></textarea>
+    </form>
+    <input data-id="search-1" data-name="Search" data-search-field="searchTitle" type="text" style={{ position: 'relative', width: '100%' }} />`);
+    expect(codes(checkFile(ok, { kind: 'page' }))).not.toContain('INPUT_OUTSIDE_FORM');
+  });
+});
