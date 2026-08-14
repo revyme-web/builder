@@ -1395,9 +1395,9 @@ export function EffectThemeToggleIcon() {
 }
 
 // ─── Copy Button ───────────────────────────────────────────────────────────
-// Static dark pill with the two-overlapping-rects copy glyph + "Copy" label —
-// the same read-at-a-glance approach as the Theme Toggle tile: the pill
-// shape and glyph alone say "copies something on click", no animation.
+// Static dark pill with the "Copy" label — a faithful mini of what the drop
+// actually produces (the component is text-only; a glyph on the tile promised
+// an icon the dropped button doesn't have).
 
 export function EffectCopyButtonIcon() {
   return (
@@ -1406,18 +1406,13 @@ export function EffectCopyButtonIcon() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 7,
-          padding: '0 16px',
+          padding: '0 18px',
           height: 30,
           borderRadius: 15,
           background: '#171a16',
           boxShadow: 'inset 0 0 0 1px #374151',
         }}
       >
-        <svg viewBox="0 0 16 16" width={11} height={11} fill="none" stroke="#f7f5ee" strokeWidth={1.6}>
-          <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
-          <path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1" />
-        </svg>
         <span
           style={{
             color: '#f7f5ee',
