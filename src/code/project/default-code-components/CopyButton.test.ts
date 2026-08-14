@@ -17,7 +17,11 @@ describe('CopyButton template', () => {
     expect(meta).not.toBeNull();
     expect(meta!.label).toBe('Copy Button');
     expect(meta!.comment).toBeTruthy();
-    expect(Object.keys(meta!.controls)).toEqual(['value', 'label', 'copiedLabel']);
+    expect(Object.keys(meta!.controls)).toEqual([
+      'value', 'label', 'copiedLabel',
+      'textColor', 'background', 'copiedTextColor', 'copiedBackground',
+      'borderRadius', 'fontSize',
+    ]);
   });
 
   it('exports default via withResponsiveProps', () => {
