@@ -560,6 +560,7 @@ const CODE_SNIPPET_TOOLBAR_ITEMS: Record<string, { tag: string; width: number; h
   // Interactive utility — small inline buttons.
   'cs-themeToggle':     { tag: 'ThemeToggle',     width: 44,  height: 44 },
   'cs-localeSwitcher':  { tag: 'LocaleSwitcher',  width: 100, height: 36 },
+  'cs-copyButton':      { tag: 'CopyButton',      width: 160, height: 48 },
   // Creative — text effects (port batch 1). Defaults sized big enough
   // for the rendered animation to be visible on first drop without the
   // user needing to resize. SpinningText is square because the chars

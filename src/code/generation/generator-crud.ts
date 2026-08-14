@@ -11,6 +11,7 @@ import { parseJSX, findFirstElementByDataId, findAttribute, traverse } from '../
 import { toKebab, htmlToJSX, splitStyleProps } from '@/shared/css-utils';
 import { cssTransformToMotionProps } from '@/shared/motion-transform';
 import { trace } from '@/shared/debug-trace';
+import { sweepEmptyGlideWrappers } from './glide-gen';
 import { generate, findTagClose, findJSXDataIdIndex, quoteStyleValue, serializeJSXAttr, findMatchingCloseTagIndex, findStyleObjectEnd } from './generator-utils';
 import { moveNodeIntoParentFast } from './move-fast';
 import { clearContainerStylesForNode, removeHoverStyleInCode, removeBorderOverlayStyle, removePseudoStyleInCode, removeSelectCaretRuleInCode, findBandedOrderWidths, stripBandedOrderForNode } from './generator-styles';
@@ -3451,7 +3452,7 @@ export function removeNodeInCode(code: string, nodeId: string): string {
           result = removePseudoStyleInCode(result, nodeId, 'before');
           result = removeSelectCaretRuleInCode(result, nodeId);
           trace.action('generator:removeNode-empty-map-template', { nodeId });
-          return removeOrphanedVariantConsts(result);
+          return sweepEmptyGlideWrappers(removeOrphanedVariantConsts(result));
         } catch (err) {
           trace.error('generator:removeNode-map-template-generate-failed', { nodeId, error: err instanceof Error ? err.message : String(err) });
           // fall through to the string path (it will bounce in validation
@@ -3516,7 +3517,7 @@ export function removeNodeInCode(code: string, nodeId: string): string {
     selfClosed = removePseudoStyleInCode(selfClosed, nodeId, 'placeholder');
     selfClosed = removePseudoStyleInCode(selfClosed, nodeId, 'before');
     selfClosed = removeSelectCaretRuleInCode(selfClosed, nodeId);
-    return removeOrphanedVariantConsts(selfClosed);
+    return sweepEmptyGlideWrappers(removeOrphanedVariantConsts(selfClosed));
   }
 
   // Find matching closing tag </tagName> — the shared depth matcher SKIPS
@@ -3542,7 +3543,7 @@ export function removeNodeInCode(code: string, nodeId: string): string {
     result = removePseudoStyleInCode(result, nodeId, 'before');
     result = removeSelectCaretRuleInCode(result, nodeId);
     // Garbage-collect the deleted element's now-orphaned variant object(s).
-    result = removeOrphanedVariantConsts(result);
+    result = sweepEmptyGlideWrappers(removeOrphanedVariantConsts(result));
     return result;
   }
 

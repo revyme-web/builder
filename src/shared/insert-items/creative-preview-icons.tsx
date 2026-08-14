@@ -1394,6 +1394,46 @@ export function EffectThemeToggleIcon() {
   );
 }
 
+// ─── Copy Button ───────────────────────────────────────────────────────────
+// Static dark pill with the two-overlapping-rects copy glyph + "Copy" label —
+// the same read-at-a-glance approach as the Theme Toggle tile: the pill
+// shape and glyph alone say "copies something on click", no animation.
+
+export function EffectCopyButtonIcon() {
+  return (
+    <div className="w-full h-full flex items-center justify-center">
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+          padding: '0 16px',
+          height: 30,
+          borderRadius: 15,
+          background: '#171a16',
+          boxShadow: 'inset 0 0 0 1px #374151',
+        }}
+      >
+        <svg viewBox="0 0 16 16" width={11} height={11} fill="none" stroke="#f7f5ee" strokeWidth={1.6}>
+          <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+          <path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1" />
+        </svg>
+        <span
+          style={{
+            color: '#f7f5ee',
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: '0.02em',
+            fontFamily: "'Helvetica Neue', Arial, sans-serif",
+          }}
+        >
+          Copy
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Locale Switcher ───────────────────────────────────────────────────────
 // Row of country flags, one highlighted (the "active" locale). The active
 // one cycles every 1.4s so the tile reads as interactive. Uses Unicode

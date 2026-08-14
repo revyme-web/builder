@@ -156,8 +156,11 @@ function topLevelElementChildren(region: string): Array<{ s: number; e: number }
       }
       // <style>/<script> are non-visual — never wrap them, so a Glide container
       // (e.g. the page root, which holds a global <style> block) doesn't get an
-      // empty layout wrapper around a style/script tag.
-      if (tagName !== 'style' && tagName !== 'script') spans.push({ s: i, e: childEnd });
+      // empty layout wrapper around a style/script tag. A bare <LayoutGroup> is
+      // never a real child either — wrapping one puts EVERY sibling inside a
+      // single glide item (the Adore corruption, 2026-08-14); normalizeRegion
+      // unwraps them before scanning, this skip is the belt to that suspender.
+      if (tagName !== 'style' && tagName !== 'script' && tagName !== 'LayoutGroup') spans.push({ s: i, e: childEnd });
       i = childEnd;
       continue;
     }
@@ -215,6 +218,10 @@ function applyGlide(code: string, nodeId: string, spec: GlideSpec): string {
 
   if (region) {
     let inner = code.slice(region.start, region.end);
+    // Normalize any leftover glide structure first (re-entrancy: apply on a
+    // page whose earlier remove only half-worked must self-heal, never nest).
+    inner = unwrapDirectLayoutGroups(inner);
+    inner = unwrapGlideItems(inner);
     const spans = topLevelElementChildren(inner);
     wrapped = spans.length;
     for (let k = spans.length - 1; k >= 0; k--) {
@@ -253,6 +260,51 @@ function applyGlide(code: string, nodeId: string, spec: GlideSpec): string {
   code = ensureGlideImports(code);               // motion + LayoutGroup
   trace.action('glide:apply', { nodeId, wrapped });
   return code;
+}
+
+/** Unwrap every bare `<LayoutGroup>` that is a DIRECT child of the region.
+ *  Repeats until none remain, so stacked layers (each one a failed remove's
+ *  leftover that a later apply re-wrapped) all collapse. Component-internal
+ *  LayoutGroups are untouched — they are never direct region children. */
+function unwrapDirectLayoutGroups(inner: string): string {
+  let guard = 0;
+  while (guard++ < 100) {
+    let changed = false;
+    let i = 0;
+    while (i < inner.length) {
+      const ch = inner[i];
+      if (ch === ' ' || ch === '\n' || ch === '\t' || ch === '\r') { i++; continue; }
+      if (ch === '{') { i = skipBraces(inner, i, inner.length); continue; }
+      if (ch === '<') {
+        const nameM = inner.slice(i).match(/^<\s*([a-zA-Z][\w.]*)/);
+        if (!nameM) { i++; continue; }
+        const tagName = nameM[1];
+        const gt = findTagGt(inner, i, inner.length);
+        if (gt === -1) break;
+        if (inner[gt - 1] === '/') { i = gt + 1; continue; }
+        const ci = findMatchingCloseTagIndex(inner, tagName, gt + 1);
+        if (ci === -1) break;
+        const childEnd = ci + `</${tagName}>`.length;
+        if (tagName === 'LayoutGroup') {
+          inner = inner.slice(0, i) + inner.slice(gt + 1, ci) + inner.slice(childEnd);
+          changed = true;
+          break; // offsets shifted — rescan from the top
+        }
+        i = childEnd;
+        continue;
+      }
+      i++;
+    }
+    if (!changed) break;
+  }
+  return inner;
+}
+
+/** Delete-time reaper: a glide wrapper whose only child was removed is a
+ *  layout-affecting husk (it kept the child's copied width/order). Exported
+ *  for generator-crud's removeNode path. */
+export function sweepEmptyGlideWrappers(code: string): string {
+  return code.replace(/<motion\.div data-glide-item[^>]*>\s*<\/motion\.div>/g, '');
 }
 
 /** Unwrap every `<motion.div data-glide-item …>child</motion.div>` → child. */
@@ -312,8 +364,20 @@ function removeGlide(code: string, nodeId: string): string {
   const region = childrenRegion(code, nodeId);
   if (region) {
     let inner = code.slice(region.start, region.end);
-    inner = inner.replace(/^\s*<LayoutGroup>([\s\S]*)<\/LayoutGroup>\s*$/, '$1'); // drop our group
-    inner = unwrapGlideItems(inner);
+    // Structural, not the old anchored `^<LayoutGroup>…</LayoutGroup>$` regex:
+    // the moment a child was INSERTED after the group (add-section on a glided
+    // page), that anchor failed silently, the group survived the remove, and
+    // the next apply wrapped the leftover group as ONE child — every sibling
+    // inside a single glide item + stacked groups (the Adore page, 2026-08-14).
+    // Fixpoint loop: unwrapping an item can EXPOSE deeper leftover groups (the
+    // mega-wrapper held the previous generation's whole structure), so a single
+    // pass of each is not enough.
+    for (let guard = 0; guard < 20; guard++) {
+      const before = inner;
+      inner = unwrapDirectLayoutGroups(inner);
+      inner = unwrapGlideItems(inner);
+      if (inner === before) break;
+    }
     code = code.slice(0, region.start) + inner + code.slice(region.end);
   }
   code = cleanNodeTag(code, nodeId);

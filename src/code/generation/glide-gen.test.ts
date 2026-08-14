@@ -166,3 +166,55 @@ describe('glide-gen — wrapper width comes from the child STYLE, not data-* att
     expect(out).toMatch(/data-glide-item layout transition=\{\{[^{}]*\}\} style=\{\{ order: '0', flex: '0 0 auto', width: '100%' \}\}><Header/);
   });
 });
+
+// ─── The Adore corruption (2026-08-14) ───────────────────────────────────────
+// Sequence: apply → user INSERTS a sibling after the LayoutGroup (add-section
+// on a glided page) → any glide update (remove→re-apply). The old anchored
+// `^<LayoutGroup>…</LayoutGroup>$` strip failed on the trailing sibling, the
+// leftover group got re-wrapped as ONE child — every section inside a single
+// width-less glide item (horizontal blow-out on a centered column root),
+// stacked LayoutGroups, and deleted children left empty wrapper husks.
+describe('glide-gen — re-apply after sibling insert (the Adore corruption)', () => {
+  const applied = setGlideInCode(FAQ_LIST, 'faq-list', SPEC);
+  // Simulate generator-crud appending a new child INSIDE faq-list but AFTER
+  // the </LayoutGroup> (exactly what add-node does on a glided container).
+  const withInsert = applied.replace(
+    /<\/LayoutGroup>/,
+    `</LayoutGroup>\n      <FAQItem data-id="faq-3" question="C?" answer="C." style={{ order: '2', flex: '0 0 auto', position: 'relative', width: '100%', height: 'auto' }} />`,
+  );
+  const updated = setGlideInCode(withInsert, 'faq-list', { transition: { type: 'spring', duration: '0.7', bounce: '0.1', delay: '0' } });
+
+  test('produces valid JSX', () => { expect(parses(updated)).toBe(true); });
+
+  test('every child gets its OWN wrapper — never one mega-wrapper', () => {
+    expect((updated.match(/data-glide-item/g) || []).length).toBe(3);
+    expect(updated).toMatch(/data-glide-item[^>]*order: '0'[^>]*><FAQItem data-id="faq-1"/);
+    expect(updated).toMatch(/data-glide-item[^>]*order: '2'[^>]*><FAQItem data-id="faq-3"/);
+  });
+
+  test('exactly ONE LayoutGroup — no stacked layers, none wrapped as a child', () => {
+    expect((updated.match(/<LayoutGroup>/g) || []).length).toBe(1);
+    expect(updated).not.toMatch(/data-glide-item[^>]*>\s*<LayoutGroup>/);
+  });
+
+  test('remove fully heals the corrupted shape (stacked groups + mega-wrap + husk)', () => {
+    const corrupted = `export default function Page() {
+  return <motion.div layout transition={{ type: 'spring', duration: 0.5, bounce: 0.25, delay: 0 }} data-glide='{"transition":{"type":"spring","duration":"0.5","bounce":"0.25","delay":"0"}}' data-id="root" style={{ position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}><LayoutGroup><motion.div data-glide-item layout transition={{ type: 'spring', duration: 0.5, bounce: 0.25, delay: 0 }} style={{ order: '0', flex: '0 0 auto' }}><LayoutGroup>
+    <LayoutGroup><LayoutGroup><style>{\`\`}</style></LayoutGroup></LayoutGroup>
+    <div data-id="hero" data-name="Hero" style={{ width: '100%', height: '100vh', position: 'relative', flex: '0 0 auto' }}>hero</div>
+    <div data-id="gallery" data-name="Gallery" style={{ width: '100%', position: 'relative', flex: '0 0 auto' }}>gallery</div>
+  </LayoutGroup></motion.div>
+    <motion.div data-glide-item layout transition={{ type: 'spring', duration: 0.5, bounce: 0.25, delay: 0 }} style={{ order: '0', flex: '0 0 auto', width: '800px' }}></motion.div></LayoutGroup></motion.div>;
+}`;
+    const healed = setGlideInCode(corrupted, 'root', null);
+    expect(parses(healed)).toBe(true);
+    expect(healed).not.toContain('data-glide');
+    expect(healed).not.toContain('data-glide-item');
+    expect(healed).not.toContain('<LayoutGroup>');
+    expect(healed).not.toContain("width: '800px'");           // husk gone
+    expect(healed).toContain('data-id="hero"');
+    expect(healed).toContain('data-id="gallery"');
+    expect(healed).toContain('<style>');                       // page style block survives
+    expect(healed).toMatch(/<div[^>]*data-id="root"/);         // motion reverted
+  });
+});
