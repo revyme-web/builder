@@ -893,6 +893,19 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
         // nothing else is pinned); expandComponent bakes it per tile to the
         // master's tracked value.
         const activeVar = activeComponentVariant && activeComponentVariant !== 'default' ? activeComponentVariant : null;
+        // PAGE viewport replica: the hug is PER-VIEWPORT, not per-variant —
+        // write the band override 'auto' through the normal responsive
+        // routing (onUpdate) and guarantee the runtime-wrapper marker; the
+        // canvas adopts the master's dim on band-auto tiles (Renderer
+        // instance-wrapper sync, 2026-08-15).
+        const interactVp = viewportsConfig.find(v => v.id === getInteractingViewport().vpId);
+        if (!activeVar && interactVp && !interactVp.isPrimary) {
+          if (unfill) onUpdateMultiple({ width: 'auto', ...unfill });
+          else onUpdate('width', 'auto');
+          queueMutation({ type: 'ensureInstanceHugMarker', nodeId, dim: 'width' });
+          trace.action('size:unit-change', { label: 'W', from: fromUnit, to: toUnit, value: 0, instanceHugMaster: true, viewportBand: interactVp.id, unfill: !!unfill });
+          return;
+        }
         if (unfill) queueMutation({ type: 'updateStyles', nodeId, styles: { ...unfill } });
         queueMutation({ type: 'autoSizeInstanceDim', nodeId, dim: 'width', activeVariant: activeVar });
         trace.action('size:unit-change', { label: 'W', from: fromUnit, to: toUnit, value: 0, instanceHugMaster: true, activeVar: activeComponentVariant, unfill: !!unfill });
@@ -1027,6 +1040,14 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
       if (selfNode?.componentFile != null) {
         // Hug the master — same contract as the width branch above.
         const activeVar = activeComponentVariant && activeComponentVariant !== 'default' ? activeComponentVariant : null;
+        const interactVp = viewportsConfig.find(v => v.id === getInteractingViewport().vpId);
+        if (!activeVar && interactVp && !interactVp.isPrimary) {
+          if (unfill) onUpdateMultiple({ height: 'auto', ...unfill });
+          else onUpdate('height', 'auto');
+          queueMutation({ type: 'ensureInstanceHugMarker', nodeId, dim: 'height' });
+          trace.action('size:unit-change', { label: 'H', from: fromUnit, to: toUnit, value: 0, instanceHugMaster: true, viewportBand: interactVp.id, unfill: !!unfill });
+          return;
+        }
         if (unfill) queueMutation({ type: 'updateStyles', nodeId, styles: { ...unfill } });
         queueMutation({ type: 'autoSizeInstanceDim', nodeId, dim: 'height', activeVariant: activeVar });
         trace.action('size:unit-change', { label: 'H', from: fromUnit, to: toUnit, value: 0, instanceHugMaster: true, activeVar: activeComponentVariant, unfill: !!unfill });

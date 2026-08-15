@@ -173,7 +173,7 @@ import { duplicateCollectionListToCanvasInCode } from '../generation/cms-paste-g
 import { setInstanceEventDelayInCode, setInstanceEventCloseHandlerInCode, removeInstanceEventHandlerInCode } from '../generation/instance-event-gen';
 import { updateLocaleStyleInCode } from '../generation/locale-gen';
 import { setLocaleInstancePropInCode, setInstancePropBaseInCode } from '../generation/responsive-instance-prop-vars-gen';
-import { autoSizeInstanceDimInCode, setInstanceDimStyleWriteInCode } from '../features/instance-auto-size';
+import { autoSizeInstanceDimInCode, setInstanceDimStyleWriteInCode, ensureInstanceHugMarkerInCode } from '../features/instance-auto-size';
 import { getNodesSnapshot } from '../stores/store';
 
 /** Dim style-writes on a DESIGN-component instance route through the
@@ -220,6 +220,7 @@ export type Mutation =
   /** Update styles for a specific viewport variant (e.g. tablet/mobile overrides). */
   | { type: 'updateVariantStyle'; nodeId: string; variantName: string; styles: Record<string, string> }
   | { type: 'autoSizeInstanceDim'; nodeId: string; dim: 'width' | 'height'; activeVariant: string | null }
+  | { type: 'ensureInstanceHugMarker'; nodeId: string; dim: 'width' | 'height' }
   /** Set per-variant visibility via the AnimatePresence + conditional render
    *  pattern. `hiddenVariants` = the FULL list of variants where the element
    *  is hidden (caller computes this from the prior state + the current
@@ -3138,6 +3139,10 @@ function applyMutationCore(code: string, mutation: Mutation): string {
         // pinned), baked to the master's value by expandComponent. See
         // features/instance-auto-size.ts.
         return autoSizeInstanceDimInCode(code, mutation.nodeId, mutation.dim, mutation.activeVariant);
+      case 'ensureInstanceHugMarker':
+        // Page-viewport-replica hug: the dim's `auto` lives in the band CSS,
+        // this just guarantees the runtime-wrapper marker rides the tag.
+        return ensureInstanceHugMarkerInCode(code, mutation.nodeId, mutation.dim);
 
       case 'setVariantVisibility':
         return setVariantVisibilityInCode(code, mutation.nodeId, mutation.hiddenVariants, mutation.allVariants);

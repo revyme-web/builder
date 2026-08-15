@@ -4,6 +4,7 @@ import { parse } from '@babel/parser';
 import {
   autoSizeInstanceDimInCode, migrateInstanceDimPropToStyle, parseDimBranches,
   parseDimBranchesFull, getInstanceDimAttrExpr, setInstanceDimStyleWriteInCode,
+  readInstanceDimBranches, ensureInstanceHugMarkerInCode,
 } from './instance-auto-size';
 import { parseProjectFile } from '@/code/parsing/project-parser';
 import { InMemoryProjectFS } from '@/code/project/project-fs';
@@ -223,6 +224,78 @@ describe('setInstanceDimStyleWriteInCode — the routed dim write', () => {
     expect(wrapper.hugDims?.height).toEqual(['default']);
     const root = nodes.get(`${INST}:${INST}`) as any;
     expect(root.styles?.height).toBe('219px');                             // master value intact, no '' merge
+  });
+});
+
+describe('mid-object entries — the separating comma survives', () => {
+  // The real images-grid instance: motion values + per-variant position/left/
+  // top ternaries, `height` MID-OBJECT with a `flex` entry after it. The
+  // writer used to eat the absorbed trailing comma (`'100%'  flex:` — the
+  // production parse-gate bounce, 2026-08-15).
+  const IMAGES = readFileSync(`${S}/bidama-images.tsx`, 'utf8');
+  const IMG_INST = 'div-msp237ef-k';
+
+  test('auto press keeps the following entry attached with a comma', () => {
+    for (const variant of [null, 'variant-1', 'variant-2']) {
+      const out = autoSizeInstanceDimInCode(IMAGES, IMG_INST, 'height', variant);
+      expect(parses(out)).toBe(true);
+      expect(out).toMatch(/'auto'[^,]*,\s*flex: initialVariant/);
+      expect(out).toContain('data-size-hug="height"');
+    }
+  });
+
+  test('routed dim write on the same shape parses too', () => {
+    const out = setInstanceDimStyleWriteInCode(IMAGES, IMG_INST, 'height', 'variant-2', '300px');
+    expect(parses(out)).toBe(true);
+    expect(out).toContain("height: initialVariant === 'variant-2' ? '300px' : '100%'");
+  });
+
+  test('width (leading-comma side) still round-trips', () => {
+    const out = setInstanceDimStyleWriteInCode(IMAGES, IMG_INST, 'width', 'variant-2', '250px');
+    expect(parses(out)).toBe(true);
+    expect(out).toContain("width: initialVariant === 'variant-2' ? '250px' : '100%'");
+  });
+});
+
+describe('page files — the style-block first-occurrence trap', () => {
+  // The real Adore page: the instance's data-id appears in @media band CSS
+  // (`[data-id="X"] { width: 100% !important }`) thousands of chars BEFORE
+  // the JSX tag. Backtracking from the FIRST occurrence landed on the
+  // <style> tag → channel 'none' → the auto press silently no-oped (the
+  // page-instance regression, 2026-08-15).
+  const PAGE = readFileSync(`${S}/adore-page-now.tsx`, 'utf8');
+  const PAGE_INST = 'BiDaMa-msq5wbqc-1';
+
+  test('the reader finds the JSX tag, not the band CSS', () => {
+    const state = readInstanceDimBranches(PAGE, PAGE_INST, 'width');
+    expect(state.channel).toBe('style');
+    expect(state.branches).toEqual([{ variant: null, value: '100%' }]);
+  });
+
+  test('primary auto press removes the width entry on the page instance', () => {
+    const out = autoSizeInstanceDimInCode(PAGE, PAGE_INST, 'width', null);
+    expect(parses(out)).toBe(true);
+    const tag = out.slice(out.indexOf('<BiDaMa'), out.indexOf('</BiDaMa>'));
+    expect(tag).not.toMatch(/width\s*:/);
+    // the band CSS is untouched
+    expect(out).toContain('[data-id="BiDaMa-msq5wbqc-1"] { flex: 0 0 auto !important; width: 100% !important; }');
+  });
+
+  test('band-hug marker: ensure is additive + a later write keeps it', () => {
+    // simulate the viewport-replica press: band rule flips to auto + marker
+    const banded = PAGE.replace(
+      '[data-id="BiDaMa-msq5wbqc-1"] { flex: 0 0 auto !important; width: 100% !important; }',
+      '[data-id="BiDaMa-msq5wbqc-1"] { flex: 0 0 auto !important; width: auto !important; }',
+    );
+    const marked = ensureInstanceHugMarkerInCode(banded, PAGE_INST, 'width');
+    expect(parses(marked)).toBe(true);
+    expect(marked).toContain('data-size-hug="width"');
+    expect(ensureInstanceHugMarkerInCode(marked, PAGE_INST, 'width')).toBe(marked); // idempotent
+    // an unrelated dim write re-derives the marker — the band auto keeps it alive
+    const later = setInstanceDimStyleWriteInCode(marked, PAGE_INST, 'height', null, '500px');
+    expect(parses(later)).toBe(true);
+    expect(later).toContain('data-size-hug="width"');
+    expect(later).toContain("height: '500px'");
   });
 });
 

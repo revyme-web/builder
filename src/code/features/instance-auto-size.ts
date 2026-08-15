@@ -49,20 +49,45 @@ function skipBraces(code: string, open: number): number {
   return -1;
 }
 
-/** The opening tag carrying data-id=nodeId: [tagStart, tagEnd) (past `>`). */
+/** The opening JSX tag carrying data-id=nodeId: [tagStart, tagEnd) (past `>`).
+ *
+ *  Walks OCCURRENCES: a page's `<style>` block repeats the id in @media
+ *  selectors (`[data-id="X"] { width: 100% !important }`) BEFORE the JSX tag,
+ *  and naive first-occurrence backtracking lands on the `<style>` tag — the
+ *  reader then reports "no entry" and every dim write silently no-ops (the
+ *  page auto-press regression, 2026-08-15; same class as the style-block
+ *  first-occurrence trap). An occurrence counts only when `<` opens a real
+ *  tag name and no unquoted `>` intervenes — i.e. the attr sits inside THAT
+ *  tag. */
 function findTagByDataId(code: string, nodeId: string): { start: number; end: number } | null {
-  const idIdx = code.indexOf(`data-id="${nodeId}"`);
-  if (idIdx === -1) return null;
-  const start = code.lastIndexOf('<', idIdx);
-  if (start === -1) return null;
-  let depth = 0, inStr = '';
-  for (let i = start; i < code.length; i++) {
-    const ch = code[i];
-    if (inStr) { if (ch === inStr && code[i - 1] !== '\\') inStr = ''; continue; }
-    if (ch === "'" || ch === '"' || ch === '`') { inStr = ch; continue; }
-    if (ch === '{') depth++;
-    else if (ch === '}') depth--;
-    else if (ch === '>' && depth === 0) return { start, end: i + 1 };
+  const needle = `data-id="${nodeId}"`;
+  let from = 0;
+  while (from < code.length) {
+    const idIdx = code.indexOf(needle, from);
+    if (idIdx === -1) return null;
+    from = idIdx + needle.length;
+    const start = code.lastIndexOf('<', idIdx);
+    if (start === -1) continue;
+    if (!/[A-Za-z]/.test(code[start + 1] ?? '')) continue;
+    let insideTag = true, inStr = '';
+    for (let i = start; i < idIdx; i++) {
+      const ch = code[i];
+      if (inStr) { if (ch === inStr && code[i - 1] !== '\\') inStr = ''; continue; }
+      if (ch === "'" || ch === '"' || ch === '`') inStr = ch;
+      else if (ch === '>') { insideTag = false; break; }
+    }
+    if (!insideTag) continue;
+    let depth = 0;
+    inStr = '';
+    for (let i = start; i < code.length; i++) {
+      const ch = code[i];
+      if (inStr) { if (ch === inStr && code[i - 1] !== '\\') inStr = ''; continue; }
+      if (ch === "'" || ch === '"' || ch === '`') { inStr = ch; continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+      else if (ch === '>' && depth === 0) return { start, end: i + 1 };
+    }
+    return null;
   }
   return null;
 }
@@ -226,8 +251,15 @@ function writeInstanceStyleDim(code: string, nodeId: string, dim: 'width' | 'hei
     if (expr === null) {
       return code.slice(0, absStart) + code.slice(absEnd);
     }
-    const lead = code[absStart] === ',' ? ', ' : '';
-    return code.slice(0, absStart) + `${lead}${dim}: ${expr}` + code.slice(absEnd);
+    // findStyleEntry absorbs ONE separating comma into the span — trailing
+    // when the entry sits mid-object, leading when it's last. Restore
+    // whichever was absorbed, or the entry after this one loses its comma
+    // (`…'100%'  flex:` — the parse-gate bounce on the images grid,
+    // 2026-08-15).
+    const spanText = code.slice(absStart, absEnd);
+    const lead = spanText.startsWith(',') ? ', ' : '';
+    const trail = spanText.endsWith(',') ? ',' : '';
+    return code.slice(0, absStart) + `${lead}${dim}: ${expr}${trail}` + code.slice(absEnd);
   }
   if (expr === null) return code;
   const insertAt = tagSpan.start + span.end;
@@ -278,18 +310,56 @@ function fileVariantIdent(code: string): string {
   return /\[\s*variant\s*,\s*setVariant\s*\]\s*=\s*useState\(/.test(code) ? 'variant' : 'initialVariant';
 }
 
-/** Sync the `data-size-hug` marker with the CURRENT style state of both dims:
+/** Dims hugged via @media BAND overrides in this file's <style> block —
+ *  a page-viewport-replica hug writes `[data-id="X"] { width: auto !important }`
+ *  into the band CSS rather than a variant branch. Only a selector followed
+ *  directly by `{` counts (the JSX tag also contains the data-id text). */
+function bandHugDims(code: string, nodeId: string): Set<'width' | 'height'> {
+  const out = new Set<'width' | 'height'>();
+  const sel = `[data-id="${nodeId}"]`;
+  let from = 0;
+  while (from < code.length) {
+    const i = code.indexOf(sel, from);
+    if (i === -1) break;
+    from = i + sel.length;
+    const open = code.indexOf('{', from);
+    if (open === -1) break;
+    if (!/^\s*$/.test(code.slice(from, open))) continue;
+    const close = code.indexOf('}', open);
+    if (close === -1) break;
+    const body = code.slice(open + 1, close);
+    if (/(?:^|[;{\s])width\s*:\s*auto\b/.test(body)) out.add('width');
+    if (/(?:^|[;{\s])height\s*:\s*auto\b/.test(body)) out.add('height');
+  }
+  return out;
+}
+
+/** Sync the `data-size-hug` marker with the CURRENT hug state of both dims:
  *  listed when the dim's style ternary carries an 'auto' branch alongside
- *  pinned ones (live needs the runtime placement wrapper), removed otherwise.
- *  All-hug needs no marker — the key is absent and the root's own value
- *  survives natively. */
+ *  pinned ones OR a band override hugs it per viewport (live needs the
+ *  runtime placement wrapper either way), removed otherwise. All-hug needs
+ *  no marker — the key is absent and the root's own value survives natively. */
 function syncHugMarker(code: string, nodeId: string): string {
+  const band = bandHugDims(code, nodeId);
   const dims: string[] = [];
   for (const dim of ['width', 'height'] as const) {
     const state = readInstanceDimBranches(code, nodeId, dim);
-    if (state.channel === 'style' && state.branches.some((b) => b.value === HUG)) dims.push(dim);
+    const styleHug = state.channel === 'style' && state.branches.some((b) => b.value === HUG);
+    if (styleHug || band.has(dim)) dims.push(dim);
   }
   return writeStringAttr(code, nodeId, 'data-size-hug', dims.length ? dims.join(',') : null);
+}
+
+/** Additively list `dim` in the instance's `data-size-hug` marker. Used by
+ *  the page-viewport-replica auto press, whose band-CSS write may land in the
+ *  same flush AFTER this mutation — a derive-from-file sync could miss it. */
+export function ensureInstanceHugMarkerInCode(code: string, nodeId: string, dim: 'width' | 'height'): string {
+  const tagSpan = findTagByDataId(code, nodeId);
+  if (!tagSpan) return code;
+  const m = code.slice(tagSpan.start, tagSpan.end).match(/data-size-hug="([^"]*)"/);
+  const cur = new Set((m?.[1] ?? '').split(',').filter(Boolean));
+  cur.add(dim);
+  return writeStringAttr(code, nodeId, 'data-size-hug', [...cur].join(','));
 }
 
 /** Convert a legacy PROP-dialect dim back into the style channel:

@@ -2222,8 +2222,22 @@ function patchElement(
         rootW: wrapperRootStyles?.width ?? null, rootH: wrapperRootStyles?.height ?? null,
         rootBaseH: wrapperRootNode?.styles?.height ?? null,
       });
-      if (!node.styles.width) el.style.width = wrapperRootStyles?.width ?? '';
-      if (!node.styles.height) el.style.height = wrapperRootStyles?.height ?? '';
+      // PER-VIEWPORT HUG: a band override of `auto` on an instance dim
+      // ("width auto" pressed on a page's viewport replica) means hug the
+      // master on THAT tile. The injected @container band CSS says
+      // `width: auto !important` — adopt the master root's resolved dim as
+      // an inline !important (inline-important beats stylesheet-important)
+      // so the tile paints the master's size instead of collapsing, and the
+      // root fills it. Other tiles clear the priority via the plain
+      // assignments below (a plain `el.style.width = …` write replaces the
+      // declaration including its priority).
+      const bandOv = vpWidth != null ? getResponsiveOverridesForNode(node.id, vpWidth) : {};
+      const bandAutoW = bandOv.width === 'auto';
+      const bandAutoH = bandOv.height === 'auto';
+      if (bandAutoW) el.style.setProperty('width', wrapperRootStyles?.width ?? '', 'important');
+      else if (!node.styles.width) el.style.width = wrapperRootStyles?.width ?? '';
+      if (bandAutoH) el.style.setProperty('height', wrapperRootStyles?.height ?? '', 'important');
+      else if (!node.styles.height) el.style.height = wrapperRootStyles?.height ?? '';
       // Inner fills the wrapper ONLY for axes that have a definite size on
       // the wrapper. Otherwise leave the inner at auto so its content height
       // (or width) bubbles up and the wrapper auto-sizes around it.
@@ -2241,8 +2255,8 @@ function patchElement(
       // canvas model only ever carries definite instance dims. See
       // instanceHugBake in project-parser.ts.
       const instResolved = resolveVariantStyles(node, variantName, vpWidth);
-      const wrapperHasWidth = !!(instResolved.width || el.style.width);
-      const wrapperHasHeight = !!(instResolved.height || el.style.height);
+      const wrapperHasWidth = !!(bandAutoW ? wrapperRootStyles?.width : (instResolved.width || el.style.width));
+      const wrapperHasHeight = !!(bandAutoH ? wrapperRootStyles?.height : (instResolved.height || el.style.height));
       root.style.width = wrapperHasWidth ? '100%' : '';
       root.style.height = wrapperHasHeight ? '100%' : '';
     }
@@ -2310,6 +2324,11 @@ function patchElement(
     .filter(([key, value]) => {
       if (isInstanceWrapper) {
         // Allow-list: only wrapper-relevant props on the outer.
+        // `auto` dims are HUG — the wrapper size-sync above adopted the
+        // master root's value (inline !important on band-hug tiles);
+        // painting the literal `auto` here would stomp it back to a
+        // collapsing box.
+        if ((key === 'width' || key === 'height') && value === 'auto') return false;
         if (key === 'width' || key === 'height' || key === 'overflow') return true;
         // `display: 'none'` from `hiddenOnVariants` MUST reach the wrapper so a
         // hidden instance is removed from layout (not just its inner content) —

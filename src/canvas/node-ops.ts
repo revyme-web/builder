@@ -2237,7 +2237,13 @@ export function updateNodeStyles(options: {
 
   // For component instances (direct write, no colon), 'auto' on width/height means
   // "remove my override, use the master's default" — convert to '' (remove property).
-  if (!isComponentFile && !id.includes(':') && isComponentInstanceInCache(id)) {
+  // PRIMARY VIEWPORT ONLY: on a page @media replica the explicit `auto` band
+  // override IS the per-viewport hug (canvas adopts the master's dim on that
+  // tile; `data-size-hug` wraps it live) — converting it to '' silently
+  // REMOVED the band override instead, so "width auto on the tablet replica"
+  // just re-inherited the primary's value (user report 2026-08-15).
+  if (!isComponentFile && !id.includes(':') && isComponentInstanceInCache(id)
+      && isPrimaryViewport(_interactingVpId)) {
     for (const dim of ['width', 'height'] as const) {
       if (styles[dim] === 'auto') {
         styles = { ...styles, [dim]: '' };
