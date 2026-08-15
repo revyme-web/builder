@@ -755,6 +755,62 @@ function expandComponent(
     if (!node.parentId && !node.isCanvasNode && !node.attrs?.['data-overlay']) rootNodes.push(node);
   }
 
+  // INSTANCE HUG BAKE — `'auto'` on an instance dim means HUG THE MASTER: the
+  // instance tracks the master root's own dimension for that variant instead
+  // of pinning a local value (`height: variant === 'v1' ? 'auto' : '419px'`).
+  // Bake it to the master's CONCRETE value here so the rest of the pipeline
+  // (renderer wrapper sync, replica !important sweep, selection, resize,
+  // override accents) only ever sees definite instance dims — 'auto' painted
+  // on a wrapper would collapse the root, which fills the wrapper with 100%.
+  // Re-expansion on every master edit is what makes the baked value TRACK the
+  // master. Live parity: the runtime lifts placement onto a wrapper for
+  // data-size-hug instances so real CSS `auto` wraps the root there.
+  //   - base 'auto'   → delete the key: absence is the native canvas hug (the
+  //     wrapper adopts the master root's resolved dim in patchElement).
+  //   - branch 'auto' → the master root's value for the variant the instance
+  //     renders (defaultChildVariant), falling back to the master base. A
+  //     master with no dim of its own → drop the branch (nothing to hug).
+  {
+    const hugRoot = rootNodes[0] ?? null;
+    if (hugRoot) {
+      for (const dim of ['width', 'height'] as const) {
+        const masterVal =
+          (defaultChildVariant && defaultChildVariant !== 'default'
+            ? hugRoot.motionVariants?.[defaultChildVariant]?.[dim]
+            : undefined) ?? hugRoot.styles?.[dim];
+        const definiteMasterVal = masterVal && masterVal !== 'auto' ? masterVal : null;
+        // '' reads as hug too: the retired legacy variant writer represented
+        // "no base value" as an empty-string else branch, and '' merged into
+        // the root DELETES the master's dim (primary collapse) — files in
+        // the wild carry it, so the bake heals it at parse time.
+        const hugish = (v: string | undefined) => v === 'auto' || v === '';
+        const hugVariants: string[] = [];
+        if (hugish(instanceNode.styles?.[dim])) {
+          delete instanceNode.styles![dim];
+          hugVariants.push('default');
+        }
+        const branches = instanceNode.conditionalStyles?.[dim];
+        if (branches) {
+          for (const [variantName, value] of Object.entries(branches)) {
+            if (!hugish(value)) continue;
+            hugVariants.push(variantName);
+            if (definiteMasterVal) branches[variantName] = definiteMasterVal;
+            else delete branches[variantName];
+          }
+          if (Object.keys(branches).length === 0) delete instanceNode.conditionalStyles![dim];
+        }
+        if (hugVariants.length > 0) {
+          // the parser mirrors a ternary's else into conditionalStyles['default']
+          // as well as styles — dedupe so 'default' registers once
+          (instanceNode.hugDims ??= {})[dim] = [...new Set(hugVariants)];
+          trace.fn('project-parser:instance-hug-bake', {
+            instanceId: instanceNode.id, dim, hugVariants: [...new Set(hugVariants)], bakedValue: definiteMasterVal,
+          });
+        }
+      }
+    }
+  }
+
   // Mark all component nodes with boundary metadata
   for (const [nodeId, node] of componentNodes) {
     // Prefix node IDs to avoid collisions: "instanceId:componentNodeId"
@@ -846,9 +902,16 @@ function expandComponent(
         !!(instanceNode.hiddenOnVariants && instanceNode.hiddenOnVariants.size > 0) ||
         !!(instanceNode.conditionalStyles && instanceNode.conditionalStyles['display']);
       const instanceStylesForRoot: Record<string, string> = {};
+      // A dim living in the PROP channel (instance-auto-size dialect): the
+      // instance-STYLE '100%' is the WRAPPER's placement box only — copying it
+      // onto the root would override the prop-driven per-variant value.
+      const dimInPropChannel = (k: string) =>
+        (k === 'width' || k === 'height') &&
+        !!(instanceNode.attrConditional?.[k] || instanceNode.componentProps?.[k] != null || instanceNode.attrs?.[k] != null);
       for (const [k, v] of Object.entries(instanceNode.styles)) {
         if (WRAPPER_ONLY_STYLE_PROPS.has(k)) continue;
         if (k === 'display' && instHasVisibilityControl) continue;
+        if (dimInPropChannel(k)) continue;
         instanceStylesForRoot[k] = v;
       }
       if (Object.keys(instanceStylesForRoot).length > 0) {
@@ -974,6 +1037,39 @@ function expandComponent(
       }
       if (instanceNode.conditionalStyles && instanceNode.conditionalStyles['display']) {
         rootConditional = { ...(node.conditionalStyles ?? {}), display: instanceNode.conditionalStyles['display'] };
+      }
+      // Per-PARENT-VARIANT prop-driven style branches: the instance passes
+      // `height={initialVariant === 'v' ? undefined : '800px'}` and the master
+      // root binds `height: height` with a defaulted param. attrConditional
+      // carries the branches; the `undefined` sentinel means "no override on
+      // this variant" → the master's own resolved value (its param default,
+      // already baked into node.styles by the master parse). Routed into
+      // rootConditional so the existing replica machinery renders each tile.
+      if (instanceNode.attrConditional) {
+        for (const [propName, branches] of Object.entries(instanceNode.attrConditional)) {
+          if (propName === 'initialVariant') continue;
+          // map propName → cssProp via the master's `cssProp: propName` binding
+          // ON THIS NODE (mirrors resolveInstancePropOverrides' style scan)
+          const bindRe = new RegExp(`(\\w+):\\s*${propName}(?=\\s*[,}])`, 'g');
+          let cssProp: string | null = null;
+          let bm: RegExpExecArray | null;
+          while ((bm = bindRe.exec(componentCode)) !== null) {
+            const before = componentCode.slice(0, bm.index);
+            const ids = [...before.matchAll(/data-id="([^"]*)"/g)];
+            if (ids.length > 0 && ids[ids.length - 1][1] === nodeId) { cssProp = bm[1]; break; }
+          }
+          if (!cssProp) continue;
+          const masterVal = (node.styles as Record<string, string> | undefined)?.[cssProp] ?? '';
+          const cloned: Record<string, Record<string, string>> =
+            rootConditional && rootConditional !== node.conditionalStyles ? rootConditional : { ...(node.conditionalStyles ?? {}) };
+          rootConditional = cloned;
+          const perVar: Record<string, string> = { ...(cloned[cssProp] ?? {}) };
+          for (const [variant, val] of Object.entries(branches)) {
+            perVar[variant] = val === 'undefined' ? masterVal : val;
+          }
+          cloned[cssProp] = perVar;
+          trace.action('parseProjectFile:prop-variant-branches', { nodeId, propName, cssProp, variants: Object.keys(branches) });
+        }
       }
     }
     // Per-variant VARIABLE bindings (`<cssProp>: variant === 'v' ? prop : '…'`, incl. overlay `--X`):

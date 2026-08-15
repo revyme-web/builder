@@ -173,6 +173,18 @@ import { duplicateCollectionListToCanvasInCode } from '../generation/cms-paste-g
 import { setInstanceEventDelayInCode, setInstanceEventCloseHandlerInCode, removeInstanceEventHandlerInCode } from '../generation/instance-event-gen';
 import { updateLocaleStyleInCode } from '../generation/locale-gen';
 import { setLocaleInstancePropInCode, setInstancePropBaseInCode } from '../generation/responsive-instance-prop-vars-gen';
+import { autoSizeInstanceDimInCode, setInstanceDimStyleWriteInCode } from '../features/instance-auto-size';
+import { getNodesSnapshot } from '../stores/store';
+
+/** Dim style-writes on a DESIGN-component instance route through the
+ *  hug-aware branch writer — the legacy generators' empty-string else branch
+ *  deletes the master's dim through the root merge (see
+ *  setInstanceDimStyleWriteInCode). Code components keep the legacy path:
+ *  their host sizes differently and they never hug a master. */
+const isDesignInstanceNode = (nodeId: string): boolean => {
+  const n = getNodesSnapshot().get(nodeId);
+  return !!n && n.componentFile != null && !n.isCodeComponent;
+};
 import { updateMetadataInCode, updateSiteConfigInCode, ensureLayoutFile } from '../generation/metadata-gen';
 import { addPresetToken, updatePresetToken, removePresetToken, setDarkTokenValue } from '../project/preset-ops';
 import { updateKeyframeInTokensCSS, removeKeyframeFromTokensCSS } from '../project/keyframe-ops';
@@ -207,6 +219,7 @@ export type Mutation =
   | { type: 'stripPositionalTileOverrides'; nodeId: string }
   /** Update styles for a specific viewport variant (e.g. tablet/mobile overrides). */
   | { type: 'updateVariantStyle'; nodeId: string; variantName: string; styles: Record<string, string> }
+  | { type: 'autoSizeInstanceDim'; nodeId: string; dim: 'width' | 'height'; activeVariant: string | null }
   /** Set per-variant visibility via the AnimatePresence + conditional render
    *  pattern. `hiddenVariants` = the FULL list of variants where the element
    *  is hidden (caller computes this from the prior state + the current
@@ -2244,7 +2257,19 @@ function applyMutationCore(code: string, mutation: Mutation): string {
   try {
     switch (mutation.type) {
       case 'updateStyles': {
-        let out = updateNodeInCode(code, mutation.nodeId, mutation.styles);
+        // Design-instance dims: hug-aware branch writer (also migrates legacy
+        // prop-dialect files on first touch) — see isDesignInstanceNode.
+        let mutStyles = mutation.styles;
+        for (const dim of ['width', 'height'] as const) {
+          const v = mutStyles[dim];
+          if (v === undefined) continue;
+          if (!isDesignInstanceNode(mutation.nodeId)) continue;
+          code = setInstanceDimStyleWriteInCode(code, mutation.nodeId, dim, null, v);
+          if (mutStyles === mutation.styles) mutStyles = { ...mutStyles };
+          delete (mutStyles as Record<string, string>)[dim];
+        }
+        if (mutStyles !== mutation.styles && Object.keys(mutStyles).length === 0) return code;
+        let out = updateNodeInCode(code, mutation.nodeId, mutStyles);
         // On an OVERLAY, a transform edit (rotate/scale/skew) must be mirrored into
         // its framer-motion initial/animate/exit so it survives the enter/exit
         // animation — `updateNodeInCode` only puts it in `style` (which motion
@@ -3089,8 +3114,30 @@ function applyMutationCore(code: string, mutation: Mutation): string {
       case 'setVariantAttr':
         return setVariantAttrInCode(code, mutation.nodeId, mutation.variant, mutation.attr, mutation.value, mutation.baseValue);
 
-      case 'updateVariantStyle':
-        return updateVariantStyleInCode(code, mutation.nodeId, mutation.variantName, mutation.styles);
+      case 'updateVariantStyle': {
+        // Same hug-aware routing, variant-scoped (see updateStyles). This is
+        // the exact seam the legacy writer poisoned: a variant dim write on
+        // an all-hug instance wrote `cond ? '219px' : ''` and the '' else
+        // collapsed the primary (user report 2026-08-15).
+        let vCode = code;
+        let vStyles = mutation.styles;
+        for (const dim of ['width', 'height'] as const) {
+          const v = vStyles[dim];
+          if (v === undefined) continue;
+          if (!isDesignInstanceNode(mutation.nodeId)) continue;
+          vCode = setInstanceDimStyleWriteInCode(vCode, mutation.nodeId, dim, mutation.variantName === 'default' ? null : mutation.variantName, v);
+          if (vStyles === mutation.styles) vStyles = { ...vStyles };
+          delete (vStyles as Record<string, string>)[dim];
+        }
+        if (vStyles !== mutation.styles && Object.keys(vStyles).length === 0) return vCode;
+        return updateVariantStyleInCode(vCode, mutation.nodeId, mutation.variantName, vStyles);
+      }
+      case 'autoSizeInstanceDim':
+        // Design-instance "auto" = hug the master: an 'auto' branch in the
+        // ordinary style ternary (whole-entry removal when nothing else is
+        // pinned), baked to the master's value by expandComponent. See
+        // features/instance-auto-size.ts.
+        return autoSizeInstanceDimInCode(code, mutation.nodeId, mutation.dim, mutation.activeVariant);
 
       case 'setVariantVisibility':
         return setVariantVisibilityInCode(code, mutation.nodeId, mutation.hiddenVariants, mutation.allVariants);

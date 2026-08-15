@@ -8,6 +8,8 @@ import { parseIconSetConfig, iconConfigPx } from '@/code/icons/icon-set-config';
 import { updateIconPosition, updateIconSize } from '@/code/icons/icon-set-ops';
 import { projectFS } from '@/code/project/project-fs';
 import { syncQueueCode, queueMutation, flushNow } from '@/code/mutation/mutation-queue';
+import { bakeStylesForTile, tileContextFor } from '@/canvas/replica-bake';
+import { getViewportWidths } from '@/code/stores/viewport-store';
 import { dragStateOps } from '@/canvas/drag/drag-state-store';
 import { getActiveFilePath, findNodeRect, findNodeComputedStyles, patchNodeStyles, getViewportPrefix, updateNodeStyles, findSvgShapeChild, getSvgGroupAncestorChain, isPrimaryViewport, forceCanvasRender } from '@/canvas/node-ops';
 import { viewportBandPinOps } from './viewport-band-pin-store';
@@ -1407,10 +1409,25 @@ export function startResize(
   // and stable (was reverting to px on mouse-up). Everything else commits in px.
   // startWidth/startHeight are the element's start size in px; origW/HValue is the
   // numeric part of the source style (e.g. 100 for '100vh') → px-per-1-unit ratio.
-  const origWidthUnit = parseDimUnit(nodeStyles.width);
-  const origHeightUnit = parseDimUnit(nodeStyles.height);
-  const origWidthValue = parseFloat(nodeStyles.width ?? '') || 0;
-  const origHeightValue = parseFloat(nodeStyles.height ?? '') || 0;
+  // The unit must come from the TILE-EFFECTIVE value, not the base style: a
+  // replica's `%` height lives in the variant branch (conditionalStyles /
+  // dim-prop), while nodeStyles.height still says the primary's px — the
+  // resize then committed px onto a % branch (unit flip on mouse-up,
+  // trace find 2026-08-15). bakeStylesForTile is the paint-shared resolver,
+  // so the unit we preserve is exactly the unit the tile renders.
+  let effWidthSrc = nodeStyles.width;
+  let effHeightSrc = nodeStyles.height;
+  if (nodeData) {
+    try {
+      const effTile = bakeStylesForTile(nodeData, tileContextFor(vpId, getActiveFilePath(), getViewportWidths()));
+      effWidthSrc = effTile.width ?? effWidthSrc;
+      effHeightSrc = effTile.height ?? effHeightSrc;
+    } catch { /* tile context unavailable — base units */ }
+  }
+  const origWidthUnit = parseDimUnit(effWidthSrc);
+  const origHeightUnit = parseDimUnit(effHeightSrc);
+  const origWidthValue = parseFloat(effWidthSrc ?? '') || 0;
+  const origHeightValue = parseFloat(effHeightSrc ?? '') || 0;
   const widthPxPerUnit = origWidthValue > 0 ? startWidth / origWidthValue : 0;
   const heightPxPerUnit = origHeightValue > 0 ? startHeight / origHeightValue : 0;
 

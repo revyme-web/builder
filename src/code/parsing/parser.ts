@@ -344,6 +344,11 @@ export interface CanvasNode {
   // on a child component instance. Lets the user pick a different prop value per parent variant.
   // Resolved during expandComponent to drive per-parent-variant child styling.
   attrConditional?: Record<string, Record<string, string>>;
+  /** Instance dims whose SOURCE value is the 'auto' hug branch, per variant
+   *  ('default' for the base branch). Stamped by expandComponent's instance
+   *  hug bake — the resolved styles carry the master's BAKED concrete value,
+   *  so this is the only way the Size tool knows to display the Auto unit. */
+  hugDims?: { width?: string[]; height?: string[] };
   /** Per-parent-variant conditional branches that are VARIABLES (the per-variant hoist): attr → variant →
    *  varName. A page-level instance resolves them against its own prop overrides (expandComponent). */
   attrConditionalVarRefs?: Record<string, Record<string, string>>;
@@ -1544,8 +1549,11 @@ function extractInstanceExpressionProps(opening: any, tagName: string, attrs: Re
               // Default branch becomes the static value so existing readers
               // (e.g. expandComponent's `instanceNode.attrs?.initialVariant`)
               // still see a sensible fallback when there's no per-variant
-              // resolution context.
-              attrs[attrName] = condResult.map['default'] ?? '';
+              // resolution context. The `undefined` hug-master sentinel must
+              // NOT leak here — an absent attr is what lets the component's
+              // defaulted param fire.
+              const defBranch = condResult.map['default'] ?? '';
+              if (defBranch !== 'undefined') attrs[attrName] = defBranch;
             }
           }
         }
@@ -4254,6 +4262,12 @@ function walkVariantConditionalProp(expr: any, varDefaults?: Record<string, stri
       return `-${node.argument.value}`;
     }
     if (node?.type === 'Identifier') {
+      // `undefined` branch = "no value on this variant" — the component's own
+      // defaulted param fires (the instance-auto-size hug-master dialect:
+      // `height={initialVariant === 'v' ? undefined : '800px'}`). Carried as
+      // the literal sentinel string; consumers resolve it to the master's
+      // value (expansion) or the auto unit (Size tool read-back).
+      if (node.name === 'undefined') return 'undefined';
       varRefs[key] = node.name;
       if (varDefaults && varDefaults[node.name] != null) return varDefaults[node.name].replace(/^["'](.*)["']$/s, '$1');
     }

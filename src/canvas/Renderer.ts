@@ -2227,8 +2227,22 @@ function patchElement(
       // Inner fills the wrapper ONLY for axes that have a definite size on
       // the wrapper. Otherwise leave the inner at auto so its content height
       // (or width) bubbles up and the wrapper auto-sizes around it.
-      const wrapperHasWidth = !!el.style.width;
-      const wrapperHasHeight = !!el.style.height;
+      //
+      // Decide from the MODEL (variant-resolved instance styles), never from
+      // `el.style` mid-patch: on a variant tile the live-!important sweep runs
+      // BEFORE this block and the style pass re-applies the wrapper's height
+      // AFTER it — reading the DOM here saw an empty height, zeroed the
+      // root's fill, and nothing later restored it (replica blank-until-
+      // reload after any dim commit, trace find 2026-08-15).
+      //
+      // NOTE: hug-the-master ('auto' branches in the instance's source dim
+      // ternary) never reaches this block — expandComponent bakes those
+      // branches to the master root's concrete value at parse time, so the
+      // canvas model only ever carries definite instance dims. See
+      // instanceHugBake in project-parser.ts.
+      const instResolved = resolveVariantStyles(node, variantName, vpWidth);
+      const wrapperHasWidth = !!(instResolved.width || el.style.width);
+      const wrapperHasHeight = !!(instResolved.height || el.style.height);
       root.style.width = wrapperHasWidth ? '100%' : '';
       root.style.height = wrapperHasHeight ? '100%' : '';
     }

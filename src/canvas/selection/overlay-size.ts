@@ -44,6 +44,16 @@ export function resolveOverlaySize(
   const resolved = resolveVariantStyles(node, variantName, vp?.width);
   let width = resolved.width ?? node.styles.width ?? '';
   let height = resolved.height ?? node.styles.height ?? '';
+  // Design-instance HUG: the expansion bakes an 'auto' hug branch to the
+  // master's concrete px (so the canvas paints it), stamping `hugDims` with
+  // the hugged variants. The overlay must see the SOURCE semantics — auto —
+  // or the baked px lights up resize circles on an axis the user set to hug
+  // (user report 2026-08-15). Same read the Size tool uses.
+  {
+    const hv = variantName ?? 'default';
+    if (node.hugDims?.width?.includes(hv)) width = 'auto';
+    if (node.hugDims?.height?.includes(hv)) height = 'auto';
+  }
   // PAGE replicas also paint the @media band for their width — variant
   // resolution can't see those (they live in the page's <style> block, not on
   // the node). A replica whose height is overridden to `auto !important` (base

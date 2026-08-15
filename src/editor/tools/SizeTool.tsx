@@ -9,7 +9,7 @@ import { useAtomValue, useSetAtom } from 'jotai';
 import { canvasInteractingAtom, getNodesSnapshot } from '@/code/stores/store';
 import { useNode, useNodesComputed } from '@/code/stores/node-family';
 import { injectFlexLayoutOnFrame, shouldInjectLayoutOnAuto, freezeParentRelativeChildrenForAuto } from './layout-injection';
-import { viewportsConfigAtom, viewportWidthsAtom, syncViewportWidths, getSortedBreakpointWidths } from '@/code/stores/viewport-store';
+import { viewportsConfigAtom, viewportWidthsAtom, syncViewportWidths, getSortedBreakpointWidths, activeComponentVariantAtom } from '@/code/stores/viewport-store';
 import { rewriteAnimationBreakpoints } from '@/code/animations/animation-scope';
 import { activeFilePathAtom, isVectorSetComponentFile } from '@/code/project/active-file-store';
 import { modifyProjectFile } from '@/code/project/modify-file';
@@ -294,6 +294,24 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
   // because viewports always stretch to content.
   const isViewportFrame = nodeId === 'root' || nodeId === 'layout::root';
   const viewportsConfig = useAtomValue(viewportsConfigAtom);
+  const activeComponentVariant = useAtomValue(activeComponentVariantAtom);
+
+  // ── Design-instance hug state (instance-auto-size) ───────────────────────
+  // A hug branch ('auto' in the instance's dim style ternary) is BAKED to the
+  // master's concrete value at parse time (instance hug bake,
+  // project-parser.ts), so the resolved styles carry a definite px and every
+  // legacy write/accent/reset path just works. `hugDims` — stamped by the
+  // bake — is how the panel knows the SOURCE says auto for the active
+  // variant, so the unit dropdown shows Auto instead of the baked px.
+  const dimHug = useCallback((dim: 'width' | 'height'): boolean => {
+    if (!node || node.componentFile == null) return false;
+    const hugged = node.hugDims?.[dim];
+    if (!hugged) return false;
+    const active = activeComponentVariant && activeComponentVariant !== 'default' ? activeComponentVariant : 'default';
+    return hugged.includes(active);
+  }, [node, activeComponentVariant]);
+  const widthHug = dimHug('width');
+  const heightHug = dimHug('height');
   const setViewportsConfig = useSetAtom(viewportsConfigAtom);
   const setViewportWidths = useSetAtom(viewportWidthsAtom);
   const activeFilePath = useAtomValue(activeFilePathAtom);
@@ -867,9 +885,17 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
       // own width resolves through the `...style` spread — design-tool parity. Also
       // skip layout injection (the master owns its internal layout).
       if (selfNode?.componentFile != null) {
-        if (unfill) onUpdateMultiple({ width: '', ...unfill });
-        else onUpdate('width', '');
-        trace.action('size:unit-change', { label: 'W', from: fromUnit, to: toUnit, value: 0, instanceFitRemove: true, unfill: !!unfill });
+        // Hug the master via a dedicated mutation — the generic '' write gets
+        // variant-scoped on a replica into an empty-string OVERRIDE
+        // (`cond ? '' : …`), which still clobbers the master's size (the
+        // Adore grid collapse, 2026-08-15). The mutation writes an 'auto'
+        // branch into the ordinary style ternary (whole-entry removal when
+        // nothing else is pinned); expandComponent bakes it per tile to the
+        // master's tracked value.
+        const activeVar = activeComponentVariant && activeComponentVariant !== 'default' ? activeComponentVariant : null;
+        if (unfill) queueMutation({ type: 'updateStyles', nodeId, styles: { ...unfill } });
+        queueMutation({ type: 'autoSizeInstanceDim', nodeId, dim: 'width', activeVariant: activeVar });
+        trace.action('size:unit-change', { label: 'W', from: fromUnit, to: toUnit, value: 0, instanceHugMaster: true, activeVar: activeComponentVariant, unfill: !!unfill });
         return;
       }
       maybeInjectLayoutForAuto();
@@ -891,7 +917,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     }
     onUpdate('width', newVal);
     trace.action('size:unit-change', { label: 'W', from: fromUnit, to: toUnit, currentPx, newVal });
-  }, [widthIsMainAxis, isWidthFillMain, flexVal, nodeId, computed, onUpdate, onUpdateMultiple, maybeInjectLayoutForAuto, freezeChildrenForAuto]);
+  }, [widthIsMainAxis, isWidthFillMain, flexVal, nodeId, computed, onUpdate, onUpdateMultiple, maybeInjectLayoutForAuto, freezeChildrenForAuto, activeComponentVariant]);
 
   // ─── Height change handler ────────────────────────────────────────────
   const handleHeightChange = useCallback((v: string) => {
@@ -999,9 +1025,11 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
       // override (write '') instead of forcing min-content, and skip layout
       // injection. See handleWidthUnitChange for the full rationale.
       if (selfNode?.componentFile != null) {
-        if (unfill) onUpdateMultiple({ height: '', ...unfill });
-        else onUpdate('height', '');
-        trace.action('size:unit-change', { label: 'H', from: fromUnit, to: toUnit, value: 0, instanceFitRemove: true, unfill: !!unfill });
+        // Hug the master — same contract as the width branch above.
+        const activeVar = activeComponentVariant && activeComponentVariant !== 'default' ? activeComponentVariant : null;
+        if (unfill) queueMutation({ type: 'updateStyles', nodeId, styles: { ...unfill } });
+        queueMutation({ type: 'autoSizeInstanceDim', nodeId, dim: 'height', activeVariant: activeVar });
+        trace.action('size:unit-change', { label: 'H', from: fromUnit, to: toUnit, value: 0, instanceHugMaster: true, activeVar: activeComponentVariant, unfill: !!unfill });
         return;
       }
       maybeInjectLayoutForAuto();
@@ -1021,7 +1049,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     }
     onUpdate('height', newVal);
     trace.action('size:unit-change', { label: 'H', from: fromUnit, to: toUnit, currentPx, newVal });
-  }, [heightIsMainAxis, isHeightFillMain, flexVal, nodeId, computed, onUpdate, onUpdateMultiple, maybeInjectLayoutForAuto, freezeChildrenForAuto]);
+  }, [heightIsMainAxis, isHeightFillMain, flexVal, nodeId, computed, onUpdate, onUpdateMultiple, maybeInjectLayoutForAuto, freezeChildrenForAuto, activeComponentVariant]);
 
   // ─── Flex shorthand parsing ──────────────────────────────────────────
   const flex = parseFlex(styles.flex || '');
@@ -1130,7 +1158,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
         <DimensionRow
           label="Width"
           property="width"
-          value={isWidthFillMain ? String(fillMultiplier) : isWidthFillCross ? String(Math.round(computed.width)) : (inset.horizontalInset ? `${Math.round(computed.width)}px` : (roundPxDisplay(pickLiveDim(styles.width, liveSize?.w) || styles.width) || 'auto'))}
+          value={widthHug ? 'auto' : isWidthFillMain ? String(fillMultiplier) : isWidthFillCross ? String(Math.round(computed.width)) : (inset.horizontalInset ? `${Math.round(computed.width)}px` : (roundPxDisplay(pickLiveDim(styles.width, liveSize?.w) || styles.width) || 'auto'))}
           onChange={handleWidthChange}
           // LIVE scrub — without this the chevron drag fell back to the FULL
           // commit pipeline per tick (the DimensionRow comment documents the
@@ -1144,7 +1172,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
           computedSize={computed.width}
           parentSize={computed.parentWidth}
           unitOptions={widthUnitOptions}
-          currentUnit={isWidthFill ? 'fill' : undefined}
+          currentUnit={widthHug ? 'auto' : isWidthFill ? 'fill' : undefined}
           hideResetStyle={isPrimary}
           overridden={isWidthFill && flexFillOverridden ? true : undefined}
           onResetOverride={isVectorSet ? resetVectorSetSize : (isWidthFill && flexFillOverridden ? resetFlexFillOverride : undefined)}
@@ -1302,7 +1330,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
         <DimensionRow
           label="Height"
           property="height"
-          value={isFitSvgWrapper ? `${Math.round(computed.height) || 0}px` : isHeightFillMain ? String(fillMultiplier) : isHeightFillCross ? String(Math.round(computed.height)) : (inset.verticalInset ? `${Math.round(computed.height)}px` : (roundPxDisplay(pickLiveDim(styles.height, liveSize?.h) || styles.height) || 'auto'))}
+          value={heightHug ? 'auto' : isFitSvgWrapper ? `${Math.round(computed.height) || 0}px` : isHeightFillMain ? String(fillMultiplier) : isHeightFillCross ? String(Math.round(computed.height)) : (inset.verticalInset ? `${Math.round(computed.height)}px` : (roundPxDisplay(pickLiveDim(styles.height, liveSize?.h) || styles.height) || 'auto'))}
           onChange={isFitSvgWrapper ? () => {} : handleHeightChange}
           // LIVE scrub — same as the Width row above.
           onChangeLive={isFitSvgWrapper || isHeightFill || inset.verticalInset ? undefined : (v) => updateStyleLive('height', v)}
@@ -1310,7 +1338,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
           computedSize={computed.height}
           parentSize={computed.parentHeight}
           unitOptions={isFitSvgWrapper ? [{ value: 'fit', label: 'Fit' }, ...heightUnitOptions.map(o => ({ ...o, disabled: true }))] : heightUnitOptions}
-          currentUnit={isFitSvgWrapper ? 'fit' as DimUnit : isHeightFill ? 'fill' : undefined}
+          currentUnit={heightHug ? 'auto' : isFitSvgWrapper ? 'fit' as DimUnit : isHeightFill ? 'fill' : undefined}
           disabled={!!isFitSvgWrapper}
           hideResetStyle={isPrimary}
           overridden={isHeightFill && flexFillOverridden ? true : undefined}
