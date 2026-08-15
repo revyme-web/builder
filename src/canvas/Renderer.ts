@@ -2224,19 +2224,25 @@ function patchElement(
       });
       // PER-VIEWPORT HUG: a band override of `auto` on an instance dim
       // ("width auto" pressed on a page's viewport replica) means hug the
-      // master on THAT tile. The injected @container band CSS says
-      // `width: auto !important` — adopt the master root's resolved dim as
-      // an inline !important (inline-important beats stylesheet-important)
-      // so the tile paints the master's size instead of collapsing, and the
-      // root fills it. Other tiles clear the priority via the plain
-      // assignments below (a plain `el.style.width = …` write replaces the
-      // declaration including its priority).
+      // master on THAT tile. The rebuild path renders it with plain CSS: the
+      // injected band rule puts `auto !important` on the wrapper, the ROOT
+      // paints its own per-tile resolved dim (master value, variant-aware —
+      // e.g. 448px for the tablet variant), and the auto wrapper wraps it.
+      // Mirror that here: CLEAR the wrapper's inline dim (a lingering
+      // inline — like the imperative band write's `auto !important`, or a
+      // previous tile value — would fight the rule), skip the adopt, and
+      // leave the root's dim to its own patch pass (the
+      // isComponentRootInInstance filter opens up for band-hug tiles).
+      // Adopting the merged root dim here instead re-applied the INSTANCE's
+      // own base width (expansion merges instance styles onto the root) —
+      // circular, and the tile stuck at the old size (user report
+      // 2026-08-15).
       const bandOv = vpWidth != null ? getResponsiveOverridesForNode(node.id, vpWidth) : {};
       const bandAutoW = bandOv.width === 'auto';
       const bandAutoH = bandOv.height === 'auto';
-      if (bandAutoW) el.style.setProperty('width', wrapperRootStyles?.width ?? '', 'important');
+      if (bandAutoW) el.style.removeProperty('width');
       else if (!node.styles.width) el.style.width = wrapperRootStyles?.width ?? '';
-      if (bandAutoH) el.style.setProperty('height', wrapperRootStyles?.height ?? '', 'important');
+      if (bandAutoH) el.style.removeProperty('height');
       else if (!node.styles.height) el.style.height = wrapperRootStyles?.height ?? '';
       // Inner fills the wrapper ONLY for axes that have a definite size on
       // the wrapper. Otherwise leave the inner at auto so its content height
@@ -2255,10 +2261,12 @@ function patchElement(
       // canvas model only ever carries definite instance dims. See
       // instanceHugBake in project-parser.ts.
       const instResolved = resolveVariantStyles(node, variantName, vpWidth);
-      const wrapperHasWidth = !!(bandAutoW ? wrapperRootStyles?.width : (instResolved.width || el.style.width));
-      const wrapperHasHeight = !!(bandAutoH ? wrapperRootStyles?.height : (instResolved.height || el.style.height));
-      root.style.width = wrapperHasWidth ? '100%' : '';
-      root.style.height = wrapperHasHeight ? '100%' : '';
+      const wrapperHasWidth = !!(instResolved.width || el.style.width);
+      const wrapperHasHeight = !!(instResolved.height || el.style.height);
+      // Band-hug axes: the root paints its own resolved dim (its patch pass),
+      // so neither fill it nor clear it here.
+      if (!bandAutoW) root.style.width = wrapperHasWidth ? '100%' : '';
+      if (!bandAutoH) root.style.height = wrapperHasHeight ? '100%' : '';
     }
   }
 
@@ -2340,7 +2348,18 @@ function patchElement(
         return false;
       }
       if (isComponentRootInInstance) {
-        if (key === 'width' || key === 'height') return false;
+        if (key === 'width' || key === 'height') {
+          // BAND-HUG tile: the wrapper's per-viewport override is `auto`, so
+          // the ROOT must paint its own per-tile resolved dim (the master's
+          // value, variant-aware) for the auto wrapper to wrap — this is how
+          // the rebuild path renders it. Every other tile keeps the skip
+          // (root fills the sized wrapper via the 100% set in the wrapper
+          // sync). See the per-viewport hug note in the instance-wrapper
+          // block above.
+          const instId = node.componentInstanceId!;
+          const instBandOv = vpWidth != null ? getResponsiveOverridesForNode(instId, vpWidth) : {};
+          return (instBandOv as Record<string, string>)[key] === 'auto';
+        }
         if (WRAPPER_ONLY_STYLE_PROPS.has(key)) return false;
       }
       return true;

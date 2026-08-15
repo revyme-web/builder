@@ -2640,6 +2640,16 @@ export function updateNodeStyles(options: {
         }
       }
       forceRenderForOverrideRemoval(id, overrideRemovedKeys);
+      // Instance dim BAND writes need a real renderer pass: the band flush is
+      // otherwise fully imperative, but a per-viewport `auto` (hug) resolves
+      // to the master root's dim inside patchElement's instance-wrapper sync
+      // — imperatively the wrapper just got `width: auto !important` and sat
+      // stale at its old box until a page switch rebuilt the tile (user
+      // report 2026-08-15). Any dim change forces the pass so the adopt (or
+      // a new definite value's root-fill decision) paints immediately.
+      if (isComponentInstanceInCache(id) && (styles.width !== undefined || styles.height !== undefined)) {
+        forceRenderAfterExternalEdit('instance-dim-band-write', { nodeId: id, keys: Object.keys(styles) });
+      }
     }
     // Solo-clear on unhide. If a display write makes the element
     // visible on a vp OTHER than the solo vp, the element is no

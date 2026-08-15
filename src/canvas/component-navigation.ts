@@ -485,13 +485,19 @@ export function enterComponentFile(
   // to the default store, so this getDefaultStore() write reaches the UI.
   getDefaultStore().set(leftPanelAtom, 'layers');
 
-  // Component-master tiles are keyed by VARIANT name — 'default' IS the
-  // primary id there (isPrimaryViewport('default') === true, prefix '').
-  // Mapping it to the page concept 'desktop' made every consumer keyed by
-  // vp identity miss: the LayersPanel computed `__vp_desktop` while the
-  // master's header row is `__vp_default`, so entering a component never
-  // highlighted the top-level variant row (user report 2026-07-31).
-  const targetVpId = initialVariant;
+  // The interacting-vp id for the PRIMARY variant is 'desktop' — that's the
+  // id visibleViewportsAtom gives the default variant's tile/header row, and
+  // it's what isComponentVariantViewportAtom keys primary-ness on
+  // (`vpId !== 'desktop'`). Setting the raw variant name 'default' here put
+  // the editor into VARIANT-EDITING context on the primary: the panel merged
+  // the default branch's seeded CSS initials (minWidth 'auto' /
+  // maxWidth 'none') as purple overrides, and any write would have routed
+  // into the 'default' variant branch instead of base (user report
+  // 2026-08-15 — dblclick-enter showed Min/Max Width rows that a manual
+  // re-select didn't). The 2026-07-31 concern (LayersPanel `__vp_default`
+  // header) no longer applies: visibleViewportsAtom maps default → 'desktop'
+  // and the panel's header-highlight has a first-header fallback.
+  const targetVpId = initialVariant === 'default' ? 'desktop' : initialVariant;
 
   // Snapshot the camera transform for the FROM file BEFORE switching.
   // The breadcrumb's "back to page" handler reads this stash and
