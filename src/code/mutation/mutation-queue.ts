@@ -185,7 +185,7 @@ const isDesignInstanceNode = (nodeId: string): boolean => {
   const n = getNodesSnapshot().get(nodeId);
   return !!n && n.componentFile != null && !n.isCodeComponent;
 };
-import { updateMetadataInCode, updateSiteConfigInCode, ensureLayoutFile } from '../generation/metadata-gen';
+import { updateMetadataInCode, updateSiteConfigInCode, ensureLayoutFile, ensureCustomCodeRenderInCode, healLayoutFile } from '../generation/metadata-gen';
 import { addPresetToken, updatePresetToken, removePresetToken, setDarkTokenValue } from '../project/preset-ops';
 import { updateKeyframeInTokensCSS, removeKeyframeFromTokensCSS } from '../project/keyframe-ops';
 import { addTextAnimInCode, updateTextAnimInCode, removeTextAnimFromCode, nodeHasTextAnim, readTextAnimConfig } from '../generation/text-anim-gen';
@@ -3566,7 +3566,7 @@ function applyMutationCore(code: string, mutation: Mutation): string {
         if (!projectFS.exists('app/layout.tsx')) {
           projectFS.writeFile('app/layout.tsx', ensureLayoutFile());
         }
-        const metaLayoutCode = projectFS.readFile('app/layout.tsx')!;
+        const metaLayoutCode = healLayoutFile(projectFS.readFile('app/layout.tsx')!);
         const metaUpdated = updateMetadataInCode(metaLayoutCode, mutation.metadata);
         projectFS.writeFile('app/layout.tsx', metaUpdated);
         if (_activeFilePath === 'app/layout.tsx') return metaUpdated;
@@ -3576,8 +3576,18 @@ function applyMutationCore(code: string, mutation: Mutation): string {
         if (!projectFS.exists('app/layout.tsx')) {
           projectFS.writeFile('app/layout.tsx', ensureLayoutFile());
         }
-        const configLayoutCode = projectFS.readFile('app/layout.tsx')!;
-        const configUpdated = updateSiteConfigInCode(configLayoutCode, mutation.config);
+        // healLayoutFile: a corrupted (unparseable) layout from the
+        // pre-hardening custom-code writer is rebuilt with salvage — no
+        // incremental edit can fix a file the parser can't read, and the
+        // site is already down until it parses again.
+        const configLayoutCode = healLayoutFile(projectFS.readFile('app/layout.tsx')!);
+        // ensureCustomCodeRenderInCode: older layouts predate the native
+        // custom-code render blocks — make sure the snippets actually SHIP
+        // (SSR'd by the layout itself; no publish-time injection). Both
+        // functions are parse-gated and return their input on any failure,
+        // so a bad transform can never persist a broken server layout.
+        let configUpdated = updateSiteConfigInCode(configLayoutCode, mutation.config);
+        configUpdated = ensureCustomCodeRenderInCode(configUpdated);
         projectFS.writeFile('app/layout.tsx', configUpdated);
         if (_activeFilePath === 'app/layout.tsx') return configUpdated;
         return code;

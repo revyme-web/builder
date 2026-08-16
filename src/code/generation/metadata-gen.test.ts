@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { parseMetadataFromCode, parseSiteConfigFromCode, updateMetadataInCode, updateSiteConfigInCode, ensureLayoutFile } from './metadata-gen';
+import { parse } from '@babel/parser';
+import { parseMetadataFromCode, parseSiteConfigFromCode, updateMetadataInCode, updateSiteConfigInCode, ensureLayoutFile, ensureCustomCodeRenderInCode, healLayoutFile } from './metadata-gen';
+
+const parses = (c: string) => { parse(c, { sourceType: 'module', plugins: ['jsx', 'typescript'] }); return true; };
 
 describe('parseMetadataFromCode', () => {
   it('parses metadata export from layout code', () => {
@@ -92,8 +95,8 @@ export default function RootLayout({ children }) {
   return <html><body>{children}</body></html>;
 }`;
     const result = updateMetadataInCode(code, { title: 'New Title' });
-    expect(result).toContain("title: 'New Title'");
-    expect(result).toContain("description: 'Old desc'");
+    expect(result).toContain('title: "New Title"');
+    expect(result).toContain('description: "Old desc"');
   });
 
   it('adds metadata export when none exists', () => {
@@ -102,7 +105,7 @@ export default function RootLayout({ children }) {
 }`;
     const result = updateMetadataInCode(code, { title: 'Brand New' });
     expect(result).toContain('export const metadata');
-    expect(result).toContain("title: 'Brand New'");
+    expect(result).toContain('title: "Brand New"');
     expect(result).toContain('export default');
   });
 
@@ -115,7 +118,7 @@ export default function RootLayout({ children }) {
   return <html><body>{children}</body></html>;
 }`;
     const result = updateMetadataInCode(code, { openGraph: { images: ['https://cdn.example.com/new.png'] } });
-    expect(result).toContain("title: 'Site'");
+    expect(result).toContain('title: "Site"');
     expect(result).toContain('openGraph');
     expect(result).toContain('https://cdn.example.com/new.png');
   });
@@ -144,7 +147,7 @@ export default function RootLayout({ children }) {
 }`;
     const result = updateMetadataInCode(code, { description: '' });
     expect(result).not.toContain('description');
-    expect(result).toContain("title: 'Site'");
+    expect(result).toContain('title: "Site"');
   });
 
   it('preserves rest of code', () => {
@@ -176,8 +179,8 @@ export default function RootLayout({ children }) {
   return <html><body>{children}</body></html>;
 }`;
     const result = updateSiteConfigInCode(code, { theme: 'dark' });
-    expect(result).toContain("theme: 'dark'");
-    expect(result).toContain("language: 'en'");
+    expect(result).toContain('theme: "dark"');
+    expect(result).toContain('language: "en"');
   });
 
   it('adds siteConfig when none exists', () => {
@@ -186,7 +189,7 @@ export default function RootLayout({ children }) {
 }`;
     const result = updateSiteConfigInCode(code, { language: 'fr' });
     expect(result).toContain('export const siteConfig');
-    expect(result).toContain("language: 'fr'");
+    expect(result).toContain('language: "fr"');
   });
 });
 
@@ -222,5 +225,142 @@ describe('ensureLayoutFile', () => {
     expect(code).not.toContain("import LayoutClient from './LayoutClient'");
     expect(code).not.toContain('<LayoutClient>{children}</LayoutClient>');
     expect(code).toContain('<Providers>{children}</Providers>');
+  });
+});
+
+describe('custom-code hardening (the finance-project corruption, 2026-08-16)', () => {
+  // The real pasted snippet class: multi-line <script> with quotes,
+  // backslashes, `};` inside the string, and </script>.
+  const NASTY = `<script>
+(function() {
+  const init = function() { return document.querySelector('.menu'); };
+  if (!init()) {
+    const observer = new MutationObserver(() => { if (init()) observer.disconnect(); });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+})();
+</script>`;
+
+  it('any pasted content survives a save as a valid module', () => {
+    const out = updateSiteConfigInCode(ensureLayoutFile(), { customBody: NASTY });
+    expect(parses(out)).toBe(true);
+    expect(parseSiteConfigFromCode(out).customBody).toBe(NASTY);
+  });
+
+  it('repeated saves never strand tails (the lazy-regex corruption)', () => {
+    let code = updateSiteConfigInCode(ensureLayoutFile(), { customBody: NASTY });
+    code = updateSiteConfigInCode(code, { customHead: '<script>alert("x\'y")</script>' });
+    code = updateSiteConfigInCode(code, { customBody: '' });   // clear
+    code = updateSiteConfigInCode(code, { customBody: NASTY });
+    expect(parses(code)).toBe(true);
+    expect((code.match(/export const siteConfig/g) ?? []).length).toBe(1);
+    expect(code).not.toMatch(/<\/script>',\n\};/);            // no stranded tails
+    const cfg = parseSiteConfigFromCode(code);
+    expect(cfg.customBody).toBe(NASTY);
+    expect(cfg.customHead).toBe('<script>alert("x\'y")</script>');
+  });
+
+  it('metadata twin: a title with quotes, newlines and }; round-trips', () => {
+    const title = 'Weird "title" with \'quotes\' and };\nnewline';
+    const out = updateMetadataInCode(ensureLayoutFile(), { title });
+    expect(parses(out)).toBe(true);
+    expect(parseMetadataFromCode(out).title).toBe(title);
+  });
+
+  it('legacy single-quoted values still parse', () => {
+    const legacy = `export const siteConfig = {\n  language: 'fr',\n  customHead: 'a\\'b',\n};\n\nexport default function X() { return null; }`;
+    const cfg = parseSiteConfigFromCode(legacy);
+    expect(cfg.language).toBe('fr');
+    expect(cfg.customHead).toBe("a'b");
+  });
+
+  it('fresh layout renders the custom code natively (no publish-time injection)', () => {
+    const code = ensureLayoutFile();
+    expect(code).toContain('data-custom-code="head"');
+    expect(code).toContain('data-custom-code="body"');
+    expect(code).toContain('dangerouslySetInnerHTML={{ __html: siteConfig.customHead }}');
+    expect(parses(code)).toBe(true);
+  });
+
+  it('ensureCustomCodeRenderInCode retrofits legacy layouts, idempotently', () => {
+    const legacy = `import './globals.css';
+import { Providers } from './providers';
+
+export const metadata = {};
+
+export const siteConfig = {
+  customBody: "x",
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  );
+}
+`;
+    const once = ensureCustomCodeRenderInCode(legacy);
+    expect(parses(once)).toBe(true);
+    expect(once).toContain('data-custom-code="head"');
+    expect(once).toContain('data-custom-code="body"');
+    expect(ensureCustomCodeRenderInCode(once)).toBe(once);
+  });
+
+  it('the wild corrupted layout still yields a usable config read (no crash)', () => {
+    const corrupted = `export const siteConfig = {};if(!init()){const o=1});</script>',\n};\n\nexport default function X() { return null; }`;
+    expect(parseSiteConfigFromCode(corrupted)).toEqual({});
+  });
+});
+
+describe('healLayoutFile', () => {
+  // The REAL corrupted file from the wild (finance project) — an empty
+  // siteConfig head + three stranded string tails + CursorPortal.
+  const WILD = `import './globals.css';
+import { Providers } from './providers';
+import { CursorPortal } from '@revyme/runtime';
+
+export const metadata = {
+  title: 'finance',
+};
+
+export const siteConfig = {};if(!init()){const observer=new MutationObserver(()=>{if(init())observer.disconnect()});observer.observe(document.body,{childList:true,subtree:true})}})();</script>',
+};if(!init()){const observer=new MutationObserver(()=>{if(init())observer.disconnect()});observer.observe(document.body,{childList:true,subtree:true})}})();</script>',
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <Providers>{children}</Providers>
+              <CursorPortal />
+      </body>
+    </html>
+  );
+}
+`;
+
+  it('rebuilds the wild corrupted layout: parses, keeps title + CursorPortal', () => {
+    const healed = healLayoutFile(WILD);
+    expect(parses(healed)).toBe(true);
+    expect(parseMetadataFromCode(healed).title).toBe('finance');
+    expect(healed).toContain("import { CursorPortal } from '@revyme/runtime'");
+    expect(healed).toContain('<CursorPortal />');
+    expect(healed).toContain('data-custom-code="body"');
+    expect(healed).not.toContain('</script>');   // the garbage is gone
+  });
+
+  it('a valid layout passes through byte-identical', () => {
+    const good = ensureLayoutFile();
+    expect(healLayoutFile(good)).toBe(good);
+  });
+
+  it('a save on a corrupted layout produces a working file end to end', () => {
+    const healed = healLayoutFile(WILD);
+    const saved = updateSiteConfigInCode(healed, { customBody: '<script>console.log("back")</script>' });
+    expect(parses(saved)).toBe(true);
+    expect(parseSiteConfigFromCode(saved).customBody).toBe('<script>console.log("back")</script>');
   });
 });

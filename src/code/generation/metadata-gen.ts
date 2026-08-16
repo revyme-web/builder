@@ -1,7 +1,20 @@
 // metadata-gen.ts — Parse and generate Next.js-style metadata exports in layout.tsx.
 // Code-first: SEO metadata lives as `export const metadata = { ... }` in app/layout.tsx.
 // The SettingsOverlay reads/writes through these functions.
+//
+// HARDENED 2026-08-16 (the finance-project corruption): the old writer
+// wrapped values in single quotes escaping only `'`, and located the block
+// with a LAZY quote-blind regex (`\{[\s\S]*?\}\s*;`). A pasted custom-code
+// snippet containing newlines and an in-string `};` (any real <script>)
+// produced invalid JS on the first save, and every following save replaced
+// only up to the `};` INSIDE the stored string — stranding the string's
+// tail as top-level garbage (three stacked tails in the wild file). Now:
+// values serialize via JSON.stringify (any content is a valid literal), the
+// block is located with a balanced string-aware scan, values parse back via
+// Babel (content-proof), and every write is parse-gated — an output that
+// doesn't parse as a module is never written.
 
+import { parse, parseExpression } from '@babel/parser';
 import { trace } from '@/shared/debug-trace';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -37,7 +50,7 @@ export const metadata = {
   description: '',
 };
 
-export const siteConfig = {
+export const siteConfig: Record<string, string> = {
   language: 'en',
   theme: 'light',
   customHead: '',
@@ -48,7 +61,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
+        {siteConfig.customHead ? (
+          <div data-custom-code="head" style={{ display: 'contents' }} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: siteConfig.customHead }} />
+        ) : null}
         <Providers>{children}</Providers>
+        {siteConfig.customBody ? (
+          <div data-custom-code="body" style={{ display: 'contents' }} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: siteConfig.customBody }} />
+        ) : null}
       </body>
     </html>
   );
@@ -64,35 +83,101 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 // ─── Parse ──────────────────────────────────────────────────────────────────
 
+/** Locate `export const <name> = { … };` with a BALANCED, string-aware scan
+ *  (quotes, template literals, escapes). Returns the full statement span and
+ *  the object literal's text. Never confused by `};` inside stored strings. */
+function extractExportObject(code: string, name: string): { start: number; end: number; objStr: string } | null {
+  // optional type annotation (`: Record<string, string>`) between name and `=`
+  const declRe = new RegExp(`export\\s+const\\s+${name}(?:\\s*:\\s*[\\w<>,.\\[\\]\\s]+?)?\\s*=\\s*\\{`);
+  const m = declRe.exec(code);
+  if (!m) return null;
+  const open = m.index + m[0].length - 1;
+  let depth = 0, inStr = '';
+  for (let i = open; i < code.length; i++) {
+    const ch = code[i];
+    if (inStr) { if (ch === inStr && code[i - 1] !== '\\') inStr = ''; continue; }
+    if (ch === "'" || ch === '"' || ch === '`') { inStr = ch; continue; }
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        // absorb the trailing `;` (and whitespace before it)
+        let j = i + 1;
+        while (j < code.length && /\s/.test(code[j])) j++;
+        const end = code[j] === ';' ? j + 1 : i + 1;
+        return { start: m.index, end, objStr: code.slice(open, i + 1) };
+      }
+    }
+  }
+  return null;
+}
+
+/** Evaluate a static object literal to plain data via Babel — content-proof
+ *  (any escapes, quotes, `};` inside strings). Non-literal values are
+ *  skipped. Falls back to the legacy regex→JSON conversion for shapes Babel
+ *  rejects (historic hand-edited files). */
+function objectLiteralToRecord(objStr: string): Record<string, any> | null {
+  try {
+    const node: any = parseExpression(objStr, { plugins: ['jsx', 'typescript'] });
+    const toValue = (n: any): any => {
+      if (!n) return undefined;
+      if (n.type === 'StringLiteral' || n.type === 'NumericLiteral' || n.type === 'BooleanLiteral') return n.value;
+      if (n.type === 'ObjectExpression') {
+        const out: Record<string, any> = {};
+        for (const p of n.properties) {
+          if (p.type !== 'ObjectProperty') continue;
+          const key = p.key.type === 'Identifier' ? p.key.name : (p.key.type === 'StringLiteral' ? p.key.value : null);
+          if (key === null) continue;
+          const v = toValue(p.value);
+          if (v !== undefined) out[key] = v;
+        }
+        return out;
+      }
+      if (n.type === 'ArrayExpression') return n.elements.map(toValue).filter((v: any) => v !== undefined);
+      return undefined;
+    };
+    const out = toValue(node);
+    return out && typeof out === 'object' && !Array.isArray(out) ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+function legacyObjectToRecord(objStr: string): Record<string, any> {
+  try {
+    let s = objStr;
+    s = s.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
+    s = s.replace(/(\s)(\w+)\s*:/g, '$1"$2":');
+    s = s.replace(/,\s*([\]}])/g, '$1');
+    return JSON.parse(s);
+  } catch {
+    return {};
+  }
+}
+
+/** Does the generated module still parse? The last line of defense — a
+ *  writer bug must surface as a bounced edit, never a broken layout.tsx
+ *  (a syntax error in the server layout takes down every route). */
+function moduleParses(code: string): boolean {
+  try {
+    parse(code, { sourceType: 'module', plugins: ['jsx', 'typescript'] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Parse `export const metadata = { ... }` from code string.
- * Uses regex + JSON-ish extraction for speed.
- *
- * Accepts BOTH the compact `{};` form (what fresh page wrappers ship
- * with) and the multi-line form (what the writer emits after the user
- * fills any field). The lazy `[\s\S]*?` stops at the first `}` that's
- * followed by a `;`, which is unambiguous for our generator's output —
- * we never emit functions inside metadata so an internal `};` can't
- * collide.
  */
 export function parseMetadataFromCode(code: string): SiteMetadata {
   trace.fn('metadata-gen:parse');
-  const match = code.match(/export\s+const\s+metadata\s*=\s*(\{[\s\S]*?\})\s*;/);
-  if (!match) return {};
-
-  try {
-    let objStr = match[1];
-    // Replace single-quoted strings with double-quoted
-    objStr = objStr.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
-    // Quote unquoted property keys: `  key:` → `  "key":`
-    objStr = objStr.replace(/(\s)(\w+)\s*:/g, '$1"$2":');
-    // Remove trailing commas before } or ]
-    objStr = objStr.replace(/,\s*([\]}])/g, '$1');
-    return JSON.parse(objStr);
-  } catch {
-    trace.error('metadata-gen:parse-failed', { raw: match[1] });
-    return {};
-  }
+  const block = extractExportObject(code, 'metadata');
+  if (!block) return {};
+  const viaBabel = objectLiteralToRecord(block.objStr);
+  if (viaBabel) return viaBabel;
+  trace.error('metadata-gen:parse-failed', { raw: block.objStr.slice(0, 200) });
+  return legacyObjectToRecord(block.objStr);
 }
 
 /**
@@ -100,20 +185,11 @@ export function parseMetadataFromCode(code: string): SiteMetadata {
  */
 export function parseSiteConfigFromCode(code: string): Record<string, string> {
   trace.fn('metadata-gen:parseSiteConfig');
-  // Same loosened regex as `parseMetadataFromCode` — accepts both
-  // `{};` (compact) and the multi-line form.
-  const match = code.match(/export\s+const\s+siteConfig\s*=\s*(\{[\s\S]*?\})\s*;/);
-  if (!match) return {};
-
-  try {
-    let objStr = match[1];
-    objStr = objStr.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
-    objStr = objStr.replace(/(\s)(\w+)\s*:/g, '$1"$2":');
-    objStr = objStr.replace(/,\s*([\]}])/g, '$1');
-    return JSON.parse(objStr);
-  } catch {
-    return {};
-  }
+  const block = extractExportObject(code, 'siteConfig');
+  if (!block) return {};
+  const viaBabel = objectLiteralToRecord(block.objStr);
+  if (viaBabel) return viaBabel as Record<string, string>;
+  return legacyObjectToRecord(block.objStr) as Record<string, string>;
 }
 
 // ─── Generate ───────────────────────────────────────────────────────────────
@@ -126,10 +202,12 @@ function serializeMetadata(meta: Record<string, any>, indent: string = '  '): st
   for (const [key, value] of Object.entries(meta)) {
     if (value === undefined || value === '') continue;
     if (typeof value === 'string') {
-      lines.push(`${indent}${key}: '${value.replace(/'/g, "\\'")}'`);
+      // JSON.stringify: newlines, quotes, backslashes — any pasted content
+      // is a single valid literal (the single-quote-escape-only form let a
+      // multi-line value corrupt the module).
+      lines.push(`${indent}${key}: ${JSON.stringify(value)}`);
     } else if (Array.isArray(value)) {
-      const items = value.map(v => typeof v === 'string' ? `'${v.replace(/'/g, "\\'")}'` : JSON.stringify(v));
-      lines.push(`${indent}${key}: [${items.join(', ')}]`);
+      lines.push(`${indent}${key}: ${JSON.stringify(value)}`);
     } else if (typeof value === 'object' && value !== null) {
       const inner = serializeMetadata(value, indent + '  ');
       lines.push(`${indent}${key}: {\n${inner}\n${indent}}`);
@@ -158,24 +236,23 @@ export function updateMetadataInCode(code: string, updates: SiteMetadata): strin
     ? `export const metadata = {\n${body},\n};`
     : `export const metadata = {};`;
 
-  // Replace existing metadata block or insert before first export default.
-  // Loosened regex matches both `{};` (compact, what fresh page
-  // wrappers ship with) and the multi-line form (what we emit after
-  // the user fills a field). Without this loosening, the first save
-  // on a fresh page would skip the placeholder block and INSERT a
-  // second one above it — corrupting the file on the next re-read.
-  const metaMatch = code.match(/export\s+const\s+metadata\s*=\s*\{[\s\S]*?\}\s*;/);
-  if (metaMatch) {
-    return code.replace(metaMatch[0], newBlock);
+  const block = extractExportObject(code, 'metadata');
+  const out = block
+    ? code.slice(0, block.start) + newBlock + code.slice(block.end)
+    : insertBeforeDefaultExport(code, newBlock);
+  if (!moduleParses(out)) {
+    trace.error('metadata-gen:update-metadata-parse-gate', { updates: Object.keys(updates) });
+    return code;
   }
+  return out;
+}
 
-  // No existing metadata — insert before first export default
+function insertBeforeDefaultExport(code: string, blockText: string): string {
   const defaultIdx = code.indexOf('export default');
   if (defaultIdx >= 0) {
-    return code.slice(0, defaultIdx) + newBlock + '\n\n' + code.slice(defaultIdx);
+    return code.slice(0, defaultIdx) + blockText + '\n\n' + code.slice(defaultIdx);
   }
-
-  return newBlock + '\n\n' + code;
+  return blockText + '\n\n' + code;
 }
 
 /**
@@ -192,23 +269,97 @@ export function updateSiteConfigInCode(code: string, updates: Record<string, str
     if (merged[k] === '') delete merged[k];
   }
 
-  const lines = Object.entries(merged).map(([k, v]) => `  ${k}: '${String(v).replace(/'/g, "\\'")}'`);
+  const lines = Object.entries(merged).map(([k, v]) => `  ${k}: ${JSON.stringify(String(v))}`);
+  // `Record<string, string>`: the layout JSX reads `siteConfig.customHead`
+  // even when the save removed the (empty) key — loosely typed so exported
+  // projects stay clean under tsc.
   const newBlock = lines.length > 0
-    ? `export const siteConfig = {\n${lines.join(',\n')},\n};`
-    : `export const siteConfig = {};`;
+    ? `export const siteConfig: Record<string, string> = {\n${lines.join(',\n')},\n};`
+    : `export const siteConfig: Record<string, string> = {};`;
 
-  const configMatch = code.match(/export\s+const\s+siteConfig\s*=\s*\{[\s\S]*?\}\s*;/);
-  if (configMatch) {
-    return code.replace(configMatch[0], newBlock);
+  const block = extractExportObject(code, 'siteConfig');
+  const out = block
+    ? code.slice(0, block.start) + newBlock + code.slice(block.end)
+    : insertBeforeDefaultExport(code, newBlock);
+  if (!moduleParses(out)) {
+    trace.error('metadata-gen:update-site-config-parse-gate', { updates: Object.keys(updates) });
+    return code;
   }
+  return out;
+}
 
-  // Insert before export default
-  const defaultIdx = code.indexOf('export default');
-  if (defaultIdx >= 0) {
-    return code.slice(0, defaultIdx) + newBlock + '\n\n' + code.slice(defaultIdx);
+/**
+ * Recover an UNPARSEABLE app/layout.tsx (the pre-hardening custom-code
+ * corruption left files with stranded string tails in module scope — a
+ * syntax error in the server layout takes the whole site down, and no
+ * incremental edit can fix a file the parser can't read). Rebuild from the
+ * canonical template, salvaging what the broken source still legibly
+ * carries: the metadata block (it sits above the corruption), any readable
+ * siteConfig fields, and the CursorPortal import + render (the cursor
+ * feature's layout footprint). Parseable input returns unchanged.
+ */
+export function healLayoutFile(code: string): string {
+  if (moduleParses(code)) return code;
+  trace.error('metadata-gen:heal-layout', { reason: 'layout.tsx does not parse — rebuilding' });
+  const salvagedMeta = (() => {
+    const block = extractExportObject(code, 'metadata');
+    return block ? (objectLiteralToRecord(block.objStr) ?? legacyObjectToRecord(block.objStr)) : {};
+  })();
+  const salvagedConfig = (() => {
+    const block = extractExportObject(code, 'siteConfig');
+    return block ? (objectLiteralToRecord(block.objStr) ?? {}) : {};
+  })();
+  let out = ensureLayoutFile();
+  if (Object.keys(salvagedMeta).length > 0) out = updateMetadataInCode(out, salvagedMeta);
+  const cfgUpdates: Record<string, string> = {};
+  for (const [k, v] of Object.entries(salvagedConfig)) {
+    if (typeof v === 'string' && v !== '') cfgUpdates[k] = v;
   }
+  if (Object.keys(cfgUpdates).length > 0) out = updateSiteConfigInCode(out, cfgUpdates);
+  if (code.includes('CursorPortal') && !out.includes('CursorPortal')) {
+    out = out.replace("import { Providers } from './providers';", "import { Providers } from './providers';\nimport { CursorPortal } from '@revyme/runtime';");
+    out = out.replace('<Providers>{children}</Providers>', '<Providers>{children}</Providers>\n        <CursorPortal />');
+  }
+  return moduleParses(out) ? out : ensureLayoutFile();
+}
 
-  return newBlock + '\n\n' + code;
+// ─── Custom-code native render ──────────────────────────────────────────────
+
+const CUSTOM_HEAD_RENDER = `        {siteConfig.customHead ? (
+          <div data-custom-code="head" style={{ display: 'contents' }} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: siteConfig.customHead }} />
+        ) : null}`;
+const CUSTOM_BODY_RENDER = `        {siteConfig.customBody ? (
+          <div data-custom-code="body" style={{ display: 'contents' }} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: siteConfig.customBody }} />
+        ) : null}`;
+
+/**
+ * Ensure the layout RENDERS siteConfig.customHead/customBody natively — the
+ * snippets ship in the server layout's SSR output verbatim, so the published
+ * site needs NO publish-time injection at all (source = deploy reality).
+ * Server-rendered <script> tags inside the initial document execute
+ * normally; `display: 'contents'` keeps the carrier divs out of layout.
+ * Idempotent (keyed on the data-custom-code markers); a layout without a
+ * recognizable <body> is left untouched; output is parse-gated.
+ */
+export function ensureCustomCodeRenderInCode(code: string): string {
+  if (!extractExportObject(code, 'siteConfig')) return code;
+  let out = code;
+  if (!out.includes('data-custom-code="head"')) {
+    const bodyOpen = out.search(/<body[^>]*>/);
+    if (bodyOpen === -1) return code;
+    const insertAt = out.indexOf('>', bodyOpen) + 1;
+    out = out.slice(0, insertAt) + '\n' + CUSTOM_HEAD_RENDER + out.slice(insertAt);
+  }
+  if (!out.includes('data-custom-code="body"')) {
+    const bodyClose = out.lastIndexOf('</body>');
+    if (bodyClose === -1) return code;
+    out = out.slice(0, bodyClose) + CUSTOM_BODY_RENDER + '\n      ' + out.slice(bodyClose);
+  }
+  if (out !== code && !moduleParses(out)) {
+    trace.error('metadata-gen:ensure-custom-code-render-parse-gate', {});
+    return code;
+  }
+  return out;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
