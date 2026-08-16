@@ -218,3 +218,32 @@ describe('glide-gen — re-apply after sibling insert (the Adore corruption)', (
     expect(healed).toMatch(/<div[^>]*data-id="root"/);         // motion reverted
   });
 });
+
+describe('removeGlide — complex layout values survive', () => {
+  test('the fixed-header dialect layout={cond ? "size" : true} is preserved (Wisp prod heal, 2026-08-16)', () => {
+    const code = `export default function C() {
+  return <motion.div layoutScroll={(style as any)?.position === 'fixed'} layout={(style as any)?.position === 'fixed' ? "size" : true} transition={{ type: 'spring', duration: 0.5, bounce: 0.25, delay: 0 }} data-glide='{"transition":{"type":"spring","duration":"0.5","bounce":"0.25","delay":"0"}}' data-id="x" style={{ width: '100px' }}><LayoutGroup>
+    <motion.div data-glide-item layout transition={{ type: 'spring', duration: 0.5, bounce: 0.25, delay: 0 }} style={{ order: '0' }}><div data-id="c" style={{ width: '5px' }}></div></motion.div>
+  </LayoutGroup></motion.div>;
+}`;
+    const out = setGlideInCode(code, 'x', null);
+    expect(parses(out)).toBe(true);                                  // old \blayout\b strip orphaned `={…}`
+    expect(out).toContain('layout={(style as any)?.position === \'fixed\' ? "size" : true}');
+    expect(out).toContain('layoutScroll=');
+    expect(out).not.toContain('data-glide');
+    expect(out).not.toContain('data-glide-item');
+    expect(out).toContain('data-id="c"');
+    // glide's own root transition IS stripped (balanced scan, not the lazy regex)
+    expect(out.slice(0, out.indexOf('data-id="x"'))).not.toContain('transition={{');
+  });
+
+  test('per-key transition objects strip fully (inner }} does not truncate)', () => {
+    const code = `export default function C() {
+  return <motion.div layout transition={{ layout: { duration: 1 }, borderRadius: { duration: 0 } }} data-glide='{"transition":{"type":"spring"}}' data-id="x" style={{ width: '100px' }}><div data-id="c" style={{ width: '5px' }}></div></motion.div>;
+}`;
+    const out = setGlideInCode(code, 'x', null);
+    expect(parses(out)).toBe(true);
+    expect(out).not.toContain('transition=');
+    expect(out).not.toContain('data-glide');
+  });
+});

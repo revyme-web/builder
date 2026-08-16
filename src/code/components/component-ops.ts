@@ -20,6 +20,7 @@ import { updateVariantStyleInCode, setConditionalStyleInCode, syncLinkHandlerInC
 import { parseContainerRules } from '../stores/container-query-store';
 import { extractStyleCSS } from '../parsing/parser';
 import { rehydrateInstanceFx, setInstanceFxInCode } from '../generation/instance-fx-gen';
+import { setGlideInCode, glidedNodeIds } from '../generation/glide-gen';
 import { adoptTranslationsForComponent } from '@/code/project/translation-ops';
 import { ensureResponsiveTextHook } from '../generation/text-override-gen';
 import { rehydrateScrollVariant, setScrollVariantInCode } from '../generation/scroll-variant-gen';
@@ -621,6 +622,20 @@ export function makeComponent(
     // If we have computed dimensions from the primary viewport, replace auto/fill/100%
     // with computed px values in the root's style object.
     let processedJSX = nodeJSX as string;
+
+    // GLIDE never survives into a master. Every master element is already
+    // motion.* with layout + the variant machine, so the glide shims
+    // (`data-glide-item` wrappers + LayoutGroup) only nest a second FLIP
+    // layer that fights the variant springs (the Top Nav radius wobble,
+    // 2026-08-16 — the Animation "+" hides Glide inside masters for the same
+    // reason). Strip it from the lifted subtree — the root's own glide AND
+    // any glided descendant container — BEFORE the other transforms so they
+    // all see the real structure. setGlideInCode(null) unwraps the shims,
+    // LayoutGroups, and the container's added layout/transition props.
+    for (const glidedId of glidedNodeIds(processedJSX)) {
+      processedJSX = setGlideInCode(processedJSX, glidedId, null);
+      trace.action('make-component:strip-glide', { nodeId, glidedId });
+    }
     const primaryDims = viewportDimensions?.find(v => v.vpId === 'desktop') ?? viewportDimensions?.[0];
     if (primaryDims) {
       processedJSX = replaceNonPxDimensions(processedJSX, primaryDims.width, primaryDims.height);

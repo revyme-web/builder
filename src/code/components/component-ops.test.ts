@@ -2483,3 +2483,83 @@ export default function Page() {
     expect(tag).toContain("height: '178px'");
   });
 });
+
+describe('makeComponent — glide strip', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // The user's real shape (2026-08-16): a glided container lifted into a
+  // master must lose ALL glide machinery — the data-glide attr, the added
+  // layout/transition, the data-glide-item shims and their LayoutGroup —
+  // because every master element already rides the variant machine's layout,
+  // and the shims nest a second FLIP layer (the Top Nav radius wobble).
+  const GLIDED_PAGE = `import React from 'react';
+import { motion, LayoutGroup } from 'framer-motion';
+
+export default function Page() {
+  return (
+    <div data-id="root" style={{ display: 'flex' }}>
+      <motion.div layout transition={{ type: 'spring', duration: 0.5, bounce: 0.25, delay: 0 }} data-glide='{"transition":{"type":"spring","duration":"0.5","bounce":"0.25","delay":"0"}}' data-id="frame-msw1e9c2-4" data-name="Frame" style={{
+          position: 'relative',
+          width: '271px',
+          height: '294px',
+          backgroundColor: '#ffffba',
+          borderRadius: '0px',
+          overflow: 'hidden',
+          flex: '0 0 auto', order: '0'
+        }}><LayoutGroup>
+    <motion.div data-glide-item layout transition={{ type: 'spring', duration: 0.5, bounce: 0.25, delay: 0 }} style={{ order: '0', flex: '0 0 auto', width: '152px' }}><div data-id="frame-msw1eddf-5" data-name="Frame" style={{position: 'absolute', width: '152px', height: '138px', backgroundColor: '#baffc9', borderRadius: '0px', overflow: 'hidden', left: '54px', top: '84px'}}></div></motion.div>
+
+    <motion.div data-glide-item layout transition={{ type: 'spring', duration: 0.5, bounce: 0.25, delay: 0 }} style={{ order: '0', flex: '0 0 auto', width: '32px' }}><div data-id="frame-msw1ef90-6" data-name="Frame" style={{position: 'absolute', width: '32px', height: '105px', backgroundColor: '#bae1ff', borderRadius: '0px', overflow: 'hidden', left: '215px', top: '132px', zIndex: '1'}}></div></motion.div>
+  </LayoutGroup></motion.div>
+    </div>
+  );
+}`;
+
+  test('root glide: master keeps children, loses every glide artifact', () => {
+    mockFS.readFile.mockReturnValue(GLIDED_PAGE);
+    mockFS.exists.mockReturnValue(false);
+    const result = makeComponent('app/page.tsx', 'frame-msw1e9c2-4', 'GlideBox');
+    expect(result).not.toBeNull();
+    const master = getWrittenComponentCode();
+    expect(master).not.toContain('data-glide');
+    expect(master).not.toContain('data-glide-item');
+    // both children survive, unwrapped, with their absolute placement intact
+    expect(master).toContain('data-id="frame-msw1eddf-5"');
+    expect(master).toContain('data-id="frame-msw1ef90-6"');
+    expect(master).toContain("left: '54px', top: '84px'");
+    // no orphan glide-shim LayoutGroup inside the root's children (the master
+    // template's own top-level LayoutGroup wrapper is fine)
+    const rootOpen = master.indexOf('data-id="frame-msw1e9c2-4"');
+    const inner = master.slice(master.indexOf('>', rootOpen) + 1, master.indexOf('data-id="frame-msw1eddf-5"'));
+    expect(inner).not.toContain('<LayoutGroup>');
+    parseJSX(master); // still a valid module
+  });
+
+  test('glided DESCENDANT: lifting a plain parent strips the child container glide too', () => {
+    const PAGE = `import React from 'react';
+import { motion, LayoutGroup } from 'framer-motion';
+
+export default function Page() {
+  return (
+    <div data-id="root" style={{ display: 'flex' }}>
+      <div data-id="wrap" data-name="Wrap" style={{ width: '400px', height: '400px' }}>
+        <motion.div layout transition={{ type: 'spring', duration: 0.5, bounce: 0.25, delay: 0 }} data-glide='{"transition":{"type":"spring","duration":"0.5","bounce":"0.25","delay":"0"}}' data-id="inner-glide" data-name="Inner" style={{ width: '200px', height: '200px' }}><LayoutGroup>
+    <motion.div data-glide-item layout transition={{ type: 'spring', duration: 0.5, bounce: 0.25, delay: 0 }} style={{ order: '0', flex: '0 0 auto' }}><div data-id="leaf" style={{ width: '50px', height: '50px' }}></div></motion.div>
+  </LayoutGroup></motion.div>
+      </div>
+    </div>
+  );
+}`;
+    mockFS.readFile.mockReturnValue(PAGE);
+    mockFS.exists.mockReturnValue(false);
+    const result = makeComponent('app/page.tsx', 'wrap', 'WrapBox');
+    expect(result).not.toBeNull();
+    const master = getWrittenComponentCode();
+    expect(master).not.toContain('data-glide');
+    expect(master).not.toContain('data-glide-item');
+    expect(master).toContain('data-id="leaf"');
+    parseJSX(master);
+  });
+});

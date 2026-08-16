@@ -334,10 +334,17 @@ function unwrapGlideItems(inner: string): string {
 function cleanNodeTag(code: string, nodeId: string): string {
   let got = getOpeningTag(code, nodeId);
   if (!got) return code;
-  const tag = got.tag
-    .replace(/\s*data-glide='[^']*'/g, '')
-    .replace(/\s*\blayout\b(=\{true\})?/g, '')
-    .replace(/\s*transition=\{[\s\S]*?\}\}/g, '');
+  // Strip ONLY the forms applyGlide writes: bare `layout` / `layout={true}`
+  // and a balanced `transition={{…}}`. A COMPLEX layout value
+  // (`layout={cond ? "size" : true}` — the fixed-header scroll heal's
+  // dialect) is NOT glide's and must survive intact: the old `\blayout\b`
+  // strip removed just the word and orphaned `={…}` → unparseable tag (the
+  // Wisp prod heal, 2026-08-16). The old lazy transition regex could also
+  // stop at an inner `}}` of a per-key transition object.
+  let tag = got.tag.replace(/\s*data-glide='[^']*'/g, '');
+  tag = tag.replace(/\s\blayout=\{true\}(?=[\s/>])/g, '');
+  tag = tag.replace(/\s\blayout(?=[\s/>])/g, '');
+  tag = stripBalancedAttr(tag, 'transition');
   code = code.slice(0, got.tagStart) + tag + code.slice(got.gt);
 
   got = getOpeningTag(code, nodeId);
@@ -358,6 +365,29 @@ function cleanNodeTag(code: string, nodeId: string): string {
     }
   }
   return code;
+}
+
+/** Remove every `name={…}` attr from a tag slice with a BALANCED, string-aware
+ *  brace scan — a lazy `\{[\s\S]*?\}\}` regex stops at the first `}}`, which
+ *  truncates per-key objects like `transition={{ layout: {…}, x: {…} }}`. */
+function stripBalancedAttr(tag: string, name: string): string {
+  let out = tag;
+  for (let guard = 0; guard < 8; guard++) {
+    const m = new RegExp(`\\s${name}=\\{`).exec(out);
+    if (!m) break;
+    const open = m.index + m[0].length - 1;
+    let depth = 0, inStr = '', end = -1;
+    for (let i = open; i < out.length; i++) {
+      const ch = out[i];
+      if (inStr) { if (ch === inStr && out[i - 1] !== '\\') inStr = ''; continue; }
+      if (ch === "'" || ch === '"' || ch === '`') { inStr = ch; continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+    }
+    if (end === -1) break;
+    out = out.slice(0, m.index) + out.slice(end);
+  }
+  return out;
 }
 
 function removeGlide(code: string, nodeId: string): string {
@@ -383,6 +413,24 @@ function removeGlide(code: string, nodeId: string): string {
   code = cleanNodeTag(code, nodeId);
   trace.action('glide:remove', { nodeId });
   return code;
+}
+
+/** data-ids of every tag in `code` that carries a `data-glide` attr —
+ *  document order. Works on full files and extracted JSX fragments alike
+ *  (Make Component strips glide from the subtree it lifts into a master). */
+export function glidedNodeIds(code: string): string[] {
+  const ids: string[] = [];
+  const re = /data-glide='/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(code))) {
+    const tagStart = code.lastIndexOf('<', m.index);
+    if (tagStart === -1) continue;
+    const gt = code.indexOf('>', m.index);
+    const tag = code.slice(tagStart, gt === -1 ? code.length : gt + 1);
+    const id = tag.match(/data-id="([^"]+)"/)?.[1];
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
 }
 
 /**

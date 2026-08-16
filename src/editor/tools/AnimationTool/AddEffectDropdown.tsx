@@ -232,7 +232,7 @@ function EffectSubMenu({ label, desc, children, onSelect }: {
   );
 }
 
-export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketchNode, isComponentInstance, appearOnly, glideOnly, onApplyKeyframe }: {
+export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketchNode, isComponentInstance, appearOnly, glideOnly, noGlide, onApplyKeyframe }: {
   onAdd: (t: AddActionType) => void;
   existing: Set<AnimEntryType>;
   isTextNode?: boolean;
@@ -240,6 +240,13 @@ export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketc
    *  where Glide ("Flow") is the one meaningful animation (the reference puts Flow on
    *  the page). Every other effect is hidden from the menu there. */
   glideOnly?: boolean;
+  /** Inside a DESIGN-COMPONENT master, Glide (and Page Transition) are hidden
+   *  entirely: every master element is already motion.* with layout + the
+   *  variant machine, so the glide shims only nest a second FLIP layer that
+   *  fights the variant springs (the Top Nav radius wobble, 2026-08-16).
+   *  Wins over glideOnly — a master's variant-root selection reuses the
+   *  page-root picker path, which is exactly how a master root got glided. */
+  noGlide?: boolean;
   /** Scroll Variant switches a component's variant — only meaningful on a
    *  design-component instance, so the submenu item is gated on this. */
   isComponentInstance?: boolean;
@@ -295,6 +302,7 @@ export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketc
   // node. A submenu group stays visible only while it has at least one addable child.
   const visibleOptions = ADD_OPTIONS.filter(o =>
     !HIDDEN_ADD_TYPES.has(o.type) &&
+    (!noGlide || (o.type !== 'glide' && o.type !== 'pageTransition')) &&
     (!glideOnly || o.type === 'glide' || o.type === 'pageTransition') &&
     // Page Transition is a PAGE-LEVEL effect — only when a viewport/root is the
     // selection (glideOnly), never on a normal element node.

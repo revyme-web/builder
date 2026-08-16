@@ -31,7 +31,7 @@ import { summarizeTransition } from './CurvePreview';
 import AddEffectDropdown, { type AddActionType } from './AddEffectDropdown';
 import NameInputModal from '../../ui/NameInputModal';
 import { ScrollTransformEditor } from './motion/ScrollEditor';
-import { activeFilePathAtom, listPageFiles, getFileDisplayName } from '@/code/project/active-file-store';
+import { activeFilePathAtom, listPageFiles, getFileDisplayName, isDesignComponentFile } from '@/code/project/active-file-store';
 import { projectVersionAtom } from '@/code/project/project-fs';
 import { getEffectsForPage, setPageEffectForPage, removePageEffectForPage, routeForPage } from '@/code/project/page-effects-ops';
 import { applyPreset } from '@/code/generation/view-transition-css';
@@ -207,6 +207,12 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
   useAtomValue(projectVersionAtom); // recompute page effects when project files change
   const setProjVersion = useSetAtom(projectVersionAtom);
   const pageEffects = (glideOnly && activePageFile) ? getEffectsForPage(activePageFile) : [];
+  // Design-master gate for the "+" menu (Glide/Page Transition hidden there) —
+  // memoized: isDesignComponentFile reads + regexes the file.
+  const inDesignMaster = useMemo(
+    () => !!activePageFile && isDesignComponentFile(activePageFile),
+    [activePageFile],
+  );
   // "All Pages" (the site-wide default) is ONLY offered on the HOME page. On any
   // other page you override a specific destination (this page → target page), so
   // the Target list is just the page list — no "All Pages".
@@ -1092,6 +1098,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
           isComponentInstance={!!node?.componentFile}
           appearOnly={isOverlayNode}
           glideOnly={glideOnly}
+          noGlide={inDesignMaster}
           isSketchNode={!!node && node.type === 'svg' && node.attrs?.['data-sketch'] === 'true'}
           onApplyKeyframe={(kfName) => {
             trace.action('animation:apply-existing-keyframe', { nodeId, kfName });
