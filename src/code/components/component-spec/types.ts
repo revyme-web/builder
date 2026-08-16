@@ -38,7 +38,11 @@ export interface PaintStyles {
 }
 
 /** Layout — must be applied SYNCHRONOUSLY (React, not motion) for FLIP. Routed to
- *  inline-style TERNARIES. Keys are exactly CONDITIONAL_LAYOUT_PROPS. */
+ *  inline-style TERNARIES. Keys are exactly PROJECTION_STYLE_PROPS
+ *  (CONDITIONAL_LAYOUT_PROPS + border radii — a radius that value-tweens in a
+ *  variants object races the FLIP's scale correction and wobbles; in the
+ *  style channel it rides the projection). Radii authored under `paint` are
+ *  hoisted here by normalizeSpec. */
 export interface LayoutStyles {
   flexDirection?: 'row' | 'column';
   flexWrap?: 'nowrap' | 'wrap';
@@ -53,6 +57,11 @@ export interface LayoutStyles {
   gridAutoFlow?: 'row' | 'column' | 'dense' | 'row dense' | 'column dense';
   width?: string;
   height?: string;
+  borderRadius?: string;
+  borderTopLeftRadius?: string;
+  borderTopRightRadius?: string;
+  borderBottomLeftRadius?: string;
+  borderBottomRightRadius?: string;
 }
 
 /** The ONLY styles an instance tag may override (WRAPPER_ONLY_STYLE_PROPS). These

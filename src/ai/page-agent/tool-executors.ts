@@ -24,7 +24,7 @@ import { addVariant, removeVariant } from '@/code/variants/variant-ops';
 import { addConnection, removeConnection, parseConnections } from '@/code/variants/connection-config';
 import { parseVariantConfig } from '@/code/variants/variant-config';
 import { parseJSX, traverse } from '@/code/parsing/ast-utils';
-import { FRAME_TAGS, TEXT_TAGS, CONDITIONAL_LAYOUT_PROPS } from '@/shared/constants';
+import { FRAME_TAGS, TEXT_TAGS, PROJECTION_STYLE_PROPS } from '@/shared/constants';
 import { trace } from '@/shared/debug-trace';
 
 const store = getDefaultStore();
@@ -646,7 +646,7 @@ const EXECUTORS: Record<string, Executor> = {
     // whole transition is one coordinated layout pass.
     const variantStyles: Record<string, string> = {};
     for (const [prop, value] of Object.entries(styles)) {
-      if (CONDITIONAL_LAYOUT_PROPS.has(prop)) {
+      if (PROJECTION_STYLE_PROPS.has(prop)) {
         applyMutation({ type: 'setConditionalStyle', nodeId: args.nodeId, prop, variantName: args.variantName, value });
       } else {
         variantStyles[prop] = value;

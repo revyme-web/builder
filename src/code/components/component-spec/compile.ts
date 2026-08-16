@@ -11,7 +11,7 @@
 // Output is gated by validate (before) and resolveCheck (after) — see the loop.
 
 import { trace } from '@/shared/debug-trace';
-import { CONDITIONAL_LAYOUT_PROPS, CSS_LAYOUT_DEFAULTS } from '@/shared/constants';
+import { PROJECTION_STYLE_PROPS, CSS_LAYOUT_DEFAULTS } from '@/shared/constants';
 import { serializeVariantConfig, type VariantConfig } from '@/code/variants/variant-config';
 import {
   serializeConnections,
@@ -52,7 +52,7 @@ const FORBIDDEN_STYLE = new Set([
 
 /** A paint key = not forbidden and not a (ternary-routed) layout prop. */
 function isPaintKey(k: string): boolean {
-  return !FORBIDDEN_STYLE.has(k) && !CONDITIONAL_LAYOUT_PROPS.has(k);
+  return !FORBIDDEN_STYLE.has(k) && !PROJECTION_STYLE_PROPS.has(k);
 }
 
 type PlainEl = Extract<SpecElement, { kind: 'element' }>;
@@ -192,6 +192,26 @@ function normalizeSpec(spec: ComponentSpec): ComponentSpec {
   for (const el of out.elements) {
     if (!isPlainElement(el)) continue;
     if (!el.base) el.base = {};
+    // PROJECTION props authored under `paint` (models naturally put border
+    // radii there) hoist into the `layout` bucket: they compile as style
+    // ternaries riding the layout projection — never variants-object entries
+    // (the FLIP radius race) — and the layout machinery below owns their
+    // dedup/promotion/emission.
+    {
+      const hoist = (holder: { paint?: unknown; layout?: unknown }) => {
+        const p = holder.paint as Record<string, unknown> | undefined;
+        if (!p) return;
+        for (const k of Object.keys(p)) {
+          if (!PROJECTION_STYLE_PROPS.has(k)) continue;
+          const l = (holder.layout ?? {}) as Record<string, unknown>;
+          if (l[k] === undefined) l[k] = p[k];
+          holder.layout = l;
+          delete p[k];
+        }
+      };
+      hoist(el.base as { paint?: unknown; layout?: unknown });
+      for (const ov of el.variantStyles ?? []) hoist(ov as { paint?: unknown; layout?: unknown });
+    }
     {
       const buckets = [el.base.paint, ...(el.variantStyles ?? []).map((o) => o.paint)]
         .filter(Boolean) as Record<string, unknown>[];
@@ -435,13 +455,13 @@ function buildInlineStyle(
   const layoutDeltas = new Map<string, Map<string, string | number>>(); // prop -> variant -> value
   for (const ov of el.variantStyles ?? []) {
     for (const [k, v] of Object.entries(ov.layout ?? {})) {
-      if (!CONDITIONAL_LAYOUT_PROPS.has(k)) continue;
+      if (!PROJECTION_STYLE_PROPS.has(k)) continue;
       if (!layoutDeltas.has(k)) layoutDeltas.set(k, new Map());
       layoutDeltas.get(k)!.set(ov.variant, v as string | number);
     }
   }
   const baseLayout = el.base.layout ?? ({} as LayoutStyles);
-  const layoutKeys = new Set<string>([...Object.keys(baseLayout), ...layoutDeltas.keys()].filter((k) => CONDITIONAL_LAYOUT_PROPS.has(k)));
+  const layoutKeys = new Set<string>([...Object.keys(baseLayout), ...layoutDeltas.keys()].filter((k) => PROJECTION_STYLE_PROPS.has(k)));
   for (const k of layoutKeys) {
     const baseVal = (baseLayout as Record<string, unknown>)[k];
     const deltas = layoutDeltas.get(k);

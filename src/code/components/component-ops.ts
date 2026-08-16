@@ -13,7 +13,7 @@ import { generateSyllableName } from '@/code/project/name-gen';
 import { syncQueueCode, flushNow, queueMutation, syncImports } from '../mutation/mutation-queue';
 import { parseJSX, findFirstElementByDataId, findAttribute, traverse } from '../parsing/ast-utils';
 import { clearComponentCache } from './component-registry';
-import { WRAPPER_ONLY_STYLE_PROPS, CONDITIONAL_LAYOUT_PROPS } from '@/shared/constants';
+import { WRAPPER_ONLY_STYLE_PROPS, PROJECTION_STYLE_PROPS } from '@/shared/constants';
 import { cssTransformToMotionProps } from '@/shared/motion-transform';
 import { toCamel } from '@/shared/css-utils';
 import { updateVariantStyleInCode, setConditionalStyleInCode, syncLinkHandlerInCode, clearContainerStylesForNode, updateContainerQueryStyle, mergeDetachedStyleCSSIntoPage } from '../generation/generator-styles';
@@ -820,7 +820,7 @@ export function makeComponent(
               // value here would overwrite it (a mobile `height: 50vh` landed
               // verbatim in the ternary instead of the frozen px).
               if (dataId === nodeId && (camel === 'width' || camel === 'height')) continue;
-              if (CONDITIONAL_LAYOUT_PROPS.has(camel)) condEntries.push([camel, v]);
+              if (PROJECTION_STYLE_PROPS.has(camel)) condEntries.push([camel, v]);
               else variantStyles[camel] = v;
             }
             for (const [prop, value] of condEntries) {

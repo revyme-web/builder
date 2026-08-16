@@ -10,7 +10,7 @@
 //   const hideUpdates = ctx.hideInAllOthers(nodeId);
 
 import type { PendingUpdate } from '@/shared/types';
-import { CONDITIONAL_LAYOUT_PROPS } from '@/shared/constants';
+import { PROJECTION_STYLE_PROPS } from '@/shared/constants';
 import { scalePathD, translatePathD } from '@/shared/svg-geometry';
 import { isPrimaryViewport } from '@/shared/constants';
 import { isComponentFilePath } from '@/code/project/active-file-store';
@@ -679,7 +679,7 @@ export function getReplicaContext(
         const other: Record<string, string> = {};
         for (const [k, v] of Object.entries(styles)) {
           const isSvgSize = isSvgWrapper && (k === 'width' || k === 'height');
-          const isConditional = CONDITIONAL_LAYOUT_PROPS.has(k) || (k === 'display' && isCmsRow);
+          const isConditional = PROJECTION_STYLE_PROPS.has(k) || (k === 'display' && isCmsRow);
           if (isConditional && !isSvgSize) layout[k] = v;
           else other[k] = v;
         }

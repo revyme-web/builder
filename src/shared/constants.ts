@@ -307,6 +307,29 @@ export const CONDITIONAL_LAYOUT_PROPS: ReadonlySet<string> = new Set([
   'width', 'height',
 ]);
 
+/**
+ * WRITER routing superset of `CONDITIONAL_LAYOUT_PROPS`: everything the
+ * builder writes as inline style ternaries instead of variants-object
+ * entries. Border radius joins for the projection-sync reason (the Wisp
+ * Top Nav, 2026-08-16): a radius that VALUE-TWEENS in the variants object
+ * races the `layout` FLIP's per-frame scale correction — the corrected
+ * radius is value ÷ scale, two unsynchronized curves, so the corner
+ * visibly dips and swells during a variant resize. A radius changed via
+ * the STYLE prop instead is folded into the projection and interpolates in
+ * lockstep with the resize (Framer's own behavior — one driver, no race).
+ *
+ * WRITERS ONLY — the oracle keeps gating on `CONDITIONAL_LAYOUT_PROPS`, so
+ * the thousands of existing files with radius in variants objects stay
+ * dialect-legal (grandfathered; `setConditionalStyleInCode` strips the
+ * stale variants entry whenever a radius is next edited).
+ */
+export const PROJECTION_STYLE_PROPS: ReadonlySet<string> = new Set([
+  ...CONDITIONAL_LAYOUT_PROPS,
+  'borderRadius',
+  'borderTopLeftRadius', 'borderTopRightRadius',
+  'borderBottomLeftRadius', 'borderBottomRightRadius',
+]);
+
 /** CSS initial values for `CONDITIONAL_LAYOUT_PROPS` — used as the ternary's
  *  `default` branch fallback when the element has no prior inline value. */
 export const CSS_LAYOUT_DEFAULTS: Readonly<Record<string, string>> = {
@@ -322,6 +345,11 @@ export const CSS_LAYOUT_DEFAULTS: Readonly<Record<string, string>> = {
   rowGap: '0px',
   columnGap: '0px',
   gridAutoFlow: 'row',
+  borderRadius: '0px',
+  borderTopLeftRadius: '0px',
+  borderTopRightRadius: '0px',
+  borderBottomLeftRadius: '0px',
+  borderBottomRightRadius: '0px',
 };
 
 /** Invisible character used as placeholder text content when creating new

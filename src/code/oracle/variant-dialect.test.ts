@@ -268,3 +268,14 @@ export default withResponsiveProps(Nav);
     expect(codes(checkFile(nav("height: '64px',", absPanel), { kind: 'component' }))).not.toContain('VARIANT_REVEAL_ROOT_SHELL');
   });
 });
+
+describe('border radius grandfathering (PROJECTION_STYLE_PROPS, 2026-08-16)', () => {
+  it('radius in a variants object stays dialect-LEGAL — writers route new radius to style ternaries, but the wild files must not start bouncing', () => {
+    const code = component(`{
+  default: { backgroundColor: '#0f172a', borderRadius: '100px' },
+  'expanded': { backgroundColor: '#1e293b', borderRadius: '24px' },
+}`);
+    const vs = checkFile(code, { kind: 'component' });
+    expect(vs.filter((x) => x.code === 'LAYOUT_PROP_IN_VARIANT_OBJECT')).toEqual([]);
+  });
+});

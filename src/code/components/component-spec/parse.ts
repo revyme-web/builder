@@ -14,7 +14,7 @@ import { parseJSXToNodes, type CanvasNode } from '@/code/parsing/parser';
 import { parseVariantConfig } from '@/code/variants/variant-config';
 import { parseConnections } from '@/code/variants/connection-config';
 import { parseComponentName } from '@/code/components/component-ops';
-import { CONDITIONAL_LAYOUT_PROPS } from '@/shared/constants';
+import { PROJECTION_STYLE_PROPS } from '@/shared/constants';
 import type {
   ComponentSpec,
   SpecVariant,
@@ -105,7 +105,7 @@ function nodeToElement(node: CanvasNode, allVariants: string[]): SpecElement {
   const baseLayout: LayoutStyles = {};
   for (const [k, val] of Object.entries(node.styles)) {
     if (k === 'order' || k.startsWith('--')) continue;
-    if (CONDITIONAL_LAYOUT_PROPS.has(k)) (baseLayout as Record<string, unknown>)[k] = val;
+    if (PROJECTION_STYLE_PROPS.has(k)) (baseLayout as Record<string, unknown>)[k] = val;
     else (basePaint as Record<string, unknown>)[k] = coerce(k, val);
   }
   // motionVariants default → base paint
@@ -115,7 +115,7 @@ function nodeToElement(node: CanvasNode, allVariants: string[]): SpecElement {
   // conditionalStyles default branch → base layout
   for (const [prop, byVariant] of Object.entries(node.conditionalStyles ?? {})) {
     if (prop === 'order') continue;
-    if (byVariant.default !== undefined && CONDITIONAL_LAYOUT_PROPS.has(prop)) (baseLayout as Record<string, unknown>)[prop] = byVariant.default;
+    if (byVariant.default !== undefined && PROJECTION_STYLE_PROPS.has(prop)) (baseLayout as Record<string, unknown>)[prop] = byVariant.default;
   }
 
   // per-variant deltas
@@ -127,7 +127,7 @@ function nodeToElement(node: CanvasNode, allVariants: string[]): SpecElement {
     for (const [k, val] of Object.entries(node.motionVariants?.[variant] ?? {})) (paint as Record<string, unknown>)[k] = coerce(k, val);
     for (const [prop, byVariant] of Object.entries(node.conditionalStyles ?? {})) {
       if (prop === 'order') continue;
-      if (byVariant[variant] !== undefined && CONDITIONAL_LAYOUT_PROPS.has(prop)) (layout as Record<string, unknown>)[prop] = byVariant[variant];
+      if (byVariant[variant] !== undefined && PROJECTION_STYLE_PROPS.has(prop)) (layout as Record<string, unknown>)[prop] = byVariant[variant];
     }
     if (Object.keys(paint).length || Object.keys(layout).length) {
       variantStyles.push({ variant, ...(Object.keys(paint).length ? { paint } : {}), ...(Object.keys(layout).length ? { layout } : {}) });

@@ -2678,9 +2678,38 @@ function updateVariantStyleInCodeInner(
     const defaultMatch = afterC.match(/(default\s*:\s*\{)([^}]*?)(\})/);
     if (!defaultMatch) return result;
     let defaultContent = defaultMatch[2];
+    // PRUNE REDUNDANT LONGHAND SEEDS: earlier writes (missing the mirror
+    // guard below) left default entries carrying a shorthand PLUS its
+    // longhands at the SAME value (`padding: '0px', paddingTop: '0px', …`).
+    // Live, motion merges {…default, …variant} per key — the surviving
+    // longhands land after a variant's shorthand-only override and zero it
+    // (the Wisp Logo padding, 2026-08-16). Removing a longhand whose value
+    // EQUALS the same entry's shorthand is provably behavior-identical (the
+    // shorthand already states it), so files heal on their next write.
+    // Value-differing longhands (padding: '0px', paddingTop: '90px') are a
+    // real design and are never touched.
+    for (const [short, longs] of Object.entries(SHORTHAND_LONGHANDS)) {
+      const shortM = defaultContent.match(new RegExp(`(?:^|[,{\\s])['"]?${short}['"]?\\s*:\\s*'([^']*)'`));
+      if (!shortM) continue;
+      for (const lh of longs as string[]) {
+        const lhRe = new RegExp(`(,\\s*)?['"]?${lh}['"]?\\s*:\\s*'${shortM[1]}'(\\s*,)?`);
+        const before = defaultContent;
+        defaultContent = defaultContent.replace(lhRe, (_m, lead, trail) => (lead && trail ? ',' : ''));
+        if (defaultContent !== before) {
+          trace.action('generator:prune-redundant-longhand-seed', { nodeId, entry: 'default', longhand: lh });
+        }
+      }
+    }
     for (const [key, value] of Object.entries(baseValues)) {
       // Never let a shorthand seed land behind the longhands it would nullify.
       if (seedWouldClobberLonghands(key, defaultContent)) continue;
+      // …and the MIRROR: never seed a longhand under a shorthand the entry
+      // already carries — appended at the end, it wins over the shorthand and
+      // nullifies every variant that overrides via the shorthand only. The
+      // heal loop has carried this guard since 2026-08-08; this write path
+      // didn't, which is how `paddingTop: '0px'` seeds stacked behind
+      // `padding: '0px'` and zeroed a variant's `padding: '34px'` live.
+      if (seedWouldBeClobberedByShorthand(key, defaultContent)) continue;
       // Only add if not already in default entry
       if (!new RegExp(`${keyPat(key)}\\s*:`).test(defaultContent)) {
         defaultContent = defaultContent.trimEnd();
@@ -3394,9 +3423,14 @@ export function setConditionalStyleInCode(
   // This bites ONLY on a component master, because only the master routes
   // layout props through this conditional-style path; a plain page clears them
   // straight through updateNodeInCode (empty-string-removes-property).
-  const removeProp = value === '' && variantName === 'default'
-    && Object.keys(map).length === 0;
-  if (removeProp) trace.action('generator.setConditionalStyle:removeLayoutProp', { nodeId, prop });
+  // ANY clear that leaves no branches removes the prop — for EVERY variant,
+  // not just default. A '' clear on a replica tile for a prop with no entry
+  // used to fall through and MATERIALIZE the CSS default as a plain value
+  // (the Radius control clears corner longhands with ''; the fabricated
+  // `borderTopLeftRadius: '0px'` landed AFTER the shorthand ternary and
+  // zeroed the radius on the live site — the Wisp pill, 2026-08-16).
+  const removeProp = value === '' && Object.keys(map).length === 0;
+  if (removeProp) trace.action('generator.setConditionalStyle:removeLayoutProp', { nodeId, prop, variantName });
   if (map.default === undefined) {
     map.default = variantName === 'default' && value !== '' ? value : (CSS_LAYOUT_DEFAULTS[prop] ?? '');
   }
@@ -3417,6 +3451,25 @@ export function setConditionalStyleInCode(
   // removed only PART of a comma value's ternary, leaving a dangling tail.
   const rmSpan = findTopLevelPropSpan(styleContent, prop);
   if (rmSpan) styleContent = styleContent.slice(0, rmSpan.start) + styleContent.slice(rmSpan.valEnd);
+  // SHORTHAND COHERENCE: writing the `borderRadius` shorthand supersedes any
+  // per-corner longhands — in a React style object a LATER longhand silently
+  // beats an earlier shorthand, and this writer re-inserts the shorthand at
+  // the end (before `...style`), so surviving longhands would zero it on the
+  // live site while the canvas resolver shows it rounded (the Wisp pill,
+  // 2026-08-16). Strip them from the inline style here and from the variants
+  // object below.
+  const RADIUS_LONGHANDS = ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius'];
+  const propsToStripFromVariants = [prop];
+  if (prop === 'borderRadius') {
+    for (const lh of RADIUS_LONGHANDS) {
+      const span = findTopLevelPropSpan(styleContent, lh);
+      if (span) {
+        styleContent = styleContent.slice(0, span.start) + styleContent.slice(span.valEnd);
+        trace.action('generator.setConditionalStyle:stripRadiusLonghand', { nodeId, longhand: lh });
+      }
+    }
+    propsToStripFromVariants.push(...RADIUS_LONGHANDS);
+  }
   // Removing the FIRST prop leaves a dangling leading comma (`{{, height: …}}` →
   // "Unexpected token") because the `,?` prefix only eats a comma BEFORE the
   // prop; a first prop has none, so the comma AFTER its value survives as a
@@ -3458,9 +3511,11 @@ export function setConditionalStyleInCode(
         }
         if (p < result.length) {
           const constEnd = p + 1;
-          const constBody = result.slice(constStart, constEnd);
-          const propRegex = new RegExp(`(,\\s*)?\\b${prop}\\s*:\\s*(?:'[^']*'|"[^"]*"|[^,}]+)(\\s*,)?`, 'g');
-          const cleanedBody = constBody.replace(propRegex, (_m, lead, trail) => (lead && trail ? ',' : ''));
+          let cleanedBody = result.slice(constStart, constEnd);
+          for (const stripProp of propsToStripFromVariants) {
+            const propRegex = new RegExp(`(,\\s*)?\\b${stripProp}\\s*:\\s*(?:'[^']*'|"[^"]*"|[^,}]+)(\\s*,)?`, 'g');
+            cleanedBody = cleanedBody.replace(propRegex, (_m, lead, trail) => (lead && trail ? ',' : ''));
+          }
           result = result.slice(0, constStart) + cleanedBody + result.slice(constEnd);
         }
       }

@@ -1655,3 +1655,98 @@ describe('band losing implicit coverage', () => {
     expect(out).not.toContain('min-width: 375.02px');
   });
 });
+
+describe('setConditionalStyleInCode — border radius (projection channel, 2026-08-16)', () => {
+  // Radius routed to the style ternary rides the layout projection (one
+  // driver — no wobble); the stale variants-object entries must be stripped
+  // in the same write or motion overlays them and the corner snaps back.
+  test('writes the ternary AND strips radius from every variants entry', () => {
+    const code = `const cardVariants = {
+  default: { backgroundColor: '#111', borderRadius: '100px' },
+  'variant-1': { backgroundColor: '#222', borderRadius: '24px' },
+};
+
+export default function Card({ initialVariant = 'default' }) {
+  return <motion.div layout={true} data-id="card" variants={cardVariants} initial={['default', initialVariant]} style={{ display: 'flex', borderRadius: '100px', width: '200px' }} animate={['default', initialVariant]} />;
+}`;
+    const out = setConditionalStyleInCode(code, 'card', 'borderRadius', 'variant-1', '24px');
+    expect(out).toContain("borderRadius: initialVariant === 'variant-1' ? '24px' : '100px'");
+    const variantsBody = out.slice(out.indexOf('const cardVariants'), out.indexOf('};') + 2);
+    expect(variantsBody).not.toContain('borderRadius');
+    expect(variantsBody).toContain('backgroundColor');
+  });
+});
+
+describe('setConditionalStyleInCode — radius clear + shorthand coherence (Wisp pill, 2026-08-16)', () => {
+  const CODE = `const cardVariants = {
+  default: { backgroundColor: '#111' },
+  'variant-1': { backgroundColor: '#222', borderTopLeftRadius: '8px' },
+};
+
+export default function Card({ initialVariant = 'default' }) {
+  return <motion.div layout={true} data-id="card" variants={cardVariants} initial={['default', initialVariant]} style={{ display: 'flex', borderRadius: '100px', borderTopLeftRadius: '8px', width: '200px' }} animate={['default', initialVariant]} />;
+}`;
+
+  test("a '' clear on a NON-default variant for an absent prop is a no-op — never materializes the CSS default", () => {
+    const out = setConditionalStyleInCode(CODE, 'card', 'borderBottomRightRadius', 'variant-1', '');
+    expect(out).toBe(CODE);   // the 0px-materialization wrote a literal here
+  });
+
+  test('writing the borderRadius SHORTHAND strips corner longhands inline AND from the variants object', () => {
+    const out = setConditionalStyleInCode(CODE, 'card', 'borderRadius', 'variant-1', '24px');
+    expect(out).toContain("borderRadius: initialVariant === 'variant-1' ? '24px' : '100px'");
+    expect(out).not.toContain('borderTopLeftRadius');
+    // untouched neighbours survive
+    expect(out).toContain("width: '200px'");
+    expect(out).toContain("backgroundColor: '#222'");
+  });
+
+  test('writing a LONGHAND leaves the shorthand and other corners alone', () => {
+    const out = setConditionalStyleInCode(CODE, 'card', 'borderTopLeftRadius', 'variant-1', '4px');
+    expect(out).toContain("borderTopLeftRadius: initialVariant === 'variant-1' ? '4px' : '8px'");
+    expect(out).toContain("borderRadius: '100px'");
+  });
+});
+
+describe('updateVariantStyleInCode — padding seed coherence (Wisp Logo, 2026-08-16)', () => {
+  const CODE = `const logoVariants = {
+  default: { },
+  'variant-1': { },
+};
+
+export default function Card({ initialVariant = 'default' }) {
+  return <motion.div layout={true} data-id="logo" variants={logoVariants} initial={['default', initialVariant]} style={{ display: 'flex', width: '200px' }} animate={['default', initialVariant]} />;
+}`;
+
+  test('a shorthand padding write seeds default with the SHORTHAND only — no longhand spray', () => {
+    const out = updateVariantStyleInCode(CODE, 'logo', 'variant-1', { padding: '34px' });
+    expect(out).toContain("padding: '34px'");
+    const def = out.slice(out.indexOf('default:'), out.indexOf("'variant-1'"));
+    expect(def).toContain("padding: '0px'");
+    expect(def).not.toContain('paddingTop');
+    expect(def).not.toContain('paddingLeft');
+  });
+
+  test('a poisoned default (shorthand + equal-value longhands) is pruned on the next write', () => {
+    const POISONED = CODE.replace(
+      'default: { },',
+      "default: { padding: '0px', paddingTop: '0px', paddingRight: '0px', paddingBottom: '0px', paddingLeft: '0px' },",
+    );
+    const out = updateVariantStyleInCode(POISONED, 'logo', 'variant-1', { padding: '34px' });
+    const def = out.slice(out.indexOf('default:'), out.indexOf("'variant-1'"));
+    expect(def).toContain("padding: '0px'");
+    expect(def).not.toContain('paddingTop');
+    expect(def).not.toContain('paddingBottom');
+  });
+
+  test('value-DIFFERING longhands are a real design and never pruned', () => {
+    const MIXED = CODE.replace(
+      'default: { },',
+      "default: { padding: '0px', paddingTop: '90px' },",
+    );
+    const out = updateVariantStyleInCode(MIXED, 'logo', 'variant-1', { padding: '34px' });
+    const def = out.slice(out.indexOf('default:'), out.indexOf("'variant-1'"));
+    expect(def).toContain("paddingTop: '90px'");
+    expect(def).toContain("padding: '0px'");
+  });
+});
