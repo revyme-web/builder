@@ -51,6 +51,7 @@ import { getAllCachedNodes } from '@/code/stores/store';
 import { containerOverridesAtom } from '@/code/stores/container-query-store';
 import { getDefaultStore } from 'jotai';
 import { collectTopLevelSnapTargets } from '@/canvas/snap-targets';
+import { beginViewportUnitLivePatch } from './viewport-width-scrub';
 
 const MIN_SIZE = 1;
 
@@ -1990,11 +1991,18 @@ export function startResize(
   // rules the Renderer strips: the "footer jumps on mousedown" report.)
   let bandPinActive = false;
   let bandPinVpId = '';
+  // Live vw/vh re-resolution for the dragged tile — same helper the SizeTool
+  // chevron scrub uses (see viewport-width-scrub.ts). Without it, vh-height
+  // sections stay frozen at the start width's simulated-viewport px and jump
+  // on the commit render ("big jump on the hero section on mouseup",
+  // 2026-08-18).
+  let vpUnitLive: { tick(w: number): void } | null = null;
   if (isVpNode && !isComponentFilePath(getActiveFilePath())) {
     const pinVpId = nodeAttrs['data-viewport'] || vpId;
     if (pinVpId) {
       viewportBandPinOps.set(pinVpId, startWidth);
       bandPinVpId = pinVpId;
+      vpUnitLive = beginViewportUnitLivePatch(pinVpId, startWidth, nodeId);
       // ONE PINNED RENDER at mousedown — not a bare containerType patch. The
       // standing DOM's inline styles can't be assumed to carry every band
       // value (subtree-skips, pre-band builds), so silencing the tile's
@@ -2280,6 +2288,7 @@ export function startResize(
       // startLeft); the commit persists the final x into @canvas positions
       // via onViewportResize.
       if (isVpNode) {
+        vpUnitLive?.tick(newWidth);
         setVpHeadersHidden(true);
         const leftVal = `${Math.round(newLeft)}px`;
         patchNodeStyles(contentEl, nodeId, vpPrefix, { left: leftVal });

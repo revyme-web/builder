@@ -11,11 +11,9 @@ import { marqueeSelectionSig } from './SelectionBox';
 import { activeEditorAtom, suppressSelectionOverlayAtom, colorPickerOpenAtom } from '@/code/stores/editor-store';
 import { activeFilePathAtom } from '@/code/project/active-file-store';
 import { SELECTION_COLOR, COMPONENT_COLOR, MAP_TEMPLATE_COLOR, isTextTag, isFitSize } from '@/shared/constants';
-import { interactingViewportIdAtom, viewportWidthsAtom, syncViewportWidths, viewportsConfigAtom, viewportPositionsAtom, getSortedBreakpointWidths } from '@/code/stores/viewport-store';
+import { interactingViewportIdAtom, viewportWidthsAtom, syncViewportWidths, viewportsConfigAtom, viewportPositionsAtom } from '@/code/stores/viewport-store';
 import { isDefaultLocaleAtom } from '@/code/stores/locale-store';
-import { rewriteAnimationBreakpoints } from '@/code/animations/animation-scope';
-import { rewriteContainerBreakpoints, rewriteResponsiveBreakpoints, rewriteResponsiveTextBreakpoints } from '@/code/generation/generator-styles';
-import { modifyProjectFile } from '@/code/project/modify-file';
+import { applyViewportWidthChange } from '@/code/generation/viewport-width-rewrite';
 import { findNodeRect, findGhostsForTemplate, getContentRoot, updateNodeStyles, findNodeComputedStyles, patchNodeStyles, getViewportPrefix, forceCanvasRender } from '@/canvas/node-ops';
 import { mirrorPrimaryViewportHeightToRoot } from '@/canvas/viewport-size-ops';
 import { makeGhostId } from '@/shared/ghost-id';
@@ -518,20 +516,14 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
           const updated = { ...prev, [resizedVpId]: newWidth };
           syncViewportWidths(updated);
 
-          // 3. Rewrite @container breakpoints AND animation media-query gates so
-          //    both style overrides and responsive hover/tap overrides re-bucket
-          //    to the resized viewport.
+          // 3. Re-stamp every width-keyed artifact (@media bands, animation
+          //    gates, data-responsive, responsive text) in the active file
+          //    AND its route-group companions — a templated page's
+          //    LayoutClient must move with the page or the template chrome
+          //    loses its overrides at the new width. Shared with the
+          //    SizeTool breakpoint-input path.
           if (prevWidth !== newWidth) {
-            modifyProjectFile(activeFilePath, code =>
-              // …plus component-instance `data-responsive` (per-viewport variant + `_bp`)
-              // and width-keyed `useResponsiveText` overrides.
-              rewriteResponsiveTextBreakpoints(
-                rewriteResponsiveBreakpoints(
-                  rewriteAnimationBreakpoints(
-                    rewriteContainerBreakpoints(code, prevWidth, newWidth),
-                    prevWidth, newWidth, getSortedBreakpointWidths()),
-                  prevWidth, newWidth, getSortedBreakpointWidths()),
-                prevWidth, newWidth, getSortedBreakpointWidths()));
+            applyViewportWidthChange(activeFilePath, resizedVpId, prevWidth, newWidth);
           }
 
           return updated;

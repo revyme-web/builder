@@ -3,18 +3,17 @@
 // Inset mode awareness: when L+R pinned, W updates right inset.
 // Fill mode: maps to CSS `flex: N 0 0px` when parent is flex along that axis.
 
-import { useCallback, useMemo, useState, useEffect } from 'react';
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { useLivePreview } from '../hooks/useLivePreview';
-import { useAtomValue, useSetAtom } from 'jotai';
+import { useAtomValue, useSetAtom, getDefaultStore } from 'jotai';
 import { canvasInteractingAtom, getNodesSnapshot } from '@/code/stores/store';
 import { useNode, useNodesComputed } from '@/code/stores/node-family';
 import { injectFlexLayoutOnFrame, shouldInjectLayoutOnAuto, freezeParentRelativeChildrenForAuto } from './layout-injection';
-import { viewportsConfigAtom, viewportWidthsAtom, syncViewportWidths, getSortedBreakpointWidths, activeComponentVariantAtom } from '@/code/stores/viewport-store';
-import { rewriteAnimationBreakpoints } from '@/code/animations/animation-scope';
+import { viewportsConfigAtom, viewportWidthsAtom, syncViewportWidths, activeComponentVariantAtom } from '@/code/stores/viewport-store';
+import { applyViewportWidthChange } from '@/code/generation/viewport-width-rewrite';
 import { activeFilePathAtom, isVectorSetComponentFile } from '@/code/project/active-file-store';
 import { modifyProjectFile } from '@/code/project/modify-file';
 import { setForceRender, queueMutation } from '@/code/mutation/mutation-queue';
-import { rewriteContainerBreakpoints, rewriteResponsiveBreakpoints, rewriteResponsiveTextBreakpoints } from '@/code/generation/generator-styles';
 import { FIT_SIZE, isFitSize } from '@/shared/constants';
 import { ToolSection, ToolInput, ToolSelect } from '../controls';
 import { isPrimaryViewport } from '@/canvas/node-ops';
@@ -22,6 +21,7 @@ import { useControl } from '../controls/ControlProvider';
 import ControlLabel from '../controls/ControlLabel';
 import { getInsetState, computeDimensionInsetStyles, parsePx } from '@/shared/pin-utils';
 import { findNodeSize, findNodeParentInnerSize, findNodeComputedStyles, forceCanvasRender, getInteractingViewport } from '@/canvas/node-ops';
+import { beginViewportWidthScrub, type ViewportWidthScrub } from '@/canvas/resize/viewport-width-scrub';
 import { canUseFill, isMainAxis, isFillMode, getFillMultiplier, makeFillFlex, parseFlex, formatFlex, crossAxisFillPatch } from '@/shared/flex-helpers';
 import { convertPxToDimUnit, estimatedVpHeight, pickLiveDim, fitSizeRedirectTarget, exitFillFlexPatch, isAutoDim } from './size-helpers';
 import { resizeLiveOps } from '@/canvas/resize/resize-live-store';
@@ -361,36 +361,97 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
   //      forced render reads viewport state imperatively from `jotaiStore`
   //      (see Canvas.tsx:435-485), so it picks up the writes from steps
   //      1-2 even before React has committed.
-  const handleViewportBreakpointChange = useCallback((raw: string) => {
+  // LIVE scrub for the breakpoint chevron: mirror the tile-drag gesture.
+  // Dirty ONLY the widths atom + registry (the tile tracks the scrub per
+  // frame); the CONFIG — the band-keying truth — stays untouched until the
+  // single commit on release. Before this row had a live handler, ToolInput's
+  // chevron fell back to firing the FULL commit per hold-repeat tick (50ms),
+  // each with the render-closure's stale prevWidth — the second tick rewrote
+  // from a width the bands no longer carried and every @media override
+  // stranded at an intermediate key ("chevron loses all overrides while the
+  // tile drag keeps them", 2026-08-17).
+  //
+  // The live half is the SHARED viewport-width scrub session (the same
+  // band-pin + imperative-patch + band-crossing-render machinery the tile
+  // drag runs in ResizeManager): on the first tick it pins the tile's
+  // resolution width so page content stays visually intact for the whole
+  // gesture, each tick patches only the tile box through the bridge, and a
+  // full render fires only at responsive-boundary crossings. The pin is
+  // released at commit, whose render ships the final truth.
+  const scrubRef = useRef<ViewportWidthScrub | null>(null);
+  // Unmount mid-scrub (selection change while holding the chevron): release
+  // the pin and repaint, or the tile stays frozen on the pinned inline state.
+  useEffect(() => () => {
+    if (scrubRef.current) {
+      scrubRef.current.end();
+      scrubRef.current = null;
+      forceCanvasRender();
+    }
+  }, []);
+  const handleViewportBreakpointLive = useCallback((raw: string) => {
     const num = parseFloat(raw);
     if (!Number.isFinite(num) || num <= 0) return;
     const rounded = Math.round(num);
-    const prevWidth = currentViewportConfig?.width ?? rounded;
-    if (prevWidth === rounded) return;
+    if (!scrubRef.current) {
+      const startWidth = getDefaultStore().get(viewportsConfigAtom).find(v => v.id === vpId)?.width ?? rounded;
+      scrubRef.current = beginViewportWidthScrub({ vpId, nodeId, startWidth, activeFilePath });
+    }
+    scrubRef.current.tick(rounded);
+  }, [vpId, nodeId, activeFilePath]);
+
+  const handleViewportBreakpointChange = useCallback((raw: string) => {
+    // Release the live scrub's band pin FIRST — before any early return —
+    // so a scrub that lands back on the start width still unpins. The
+    // commit render below ships bandPin:null and re-stamps containerType
+    // (the drag's commit path skips the manual DOM restore the same way).
+    // Early-return paths get an explicit render for the same reason: the
+    // pinned render left containerType: normal + pinned inline styles on
+    // the tile, and only a post-unpin render clears them.
+    const hadScrub = !!scrubRef.current;
+    scrubRef.current?.end();
+    scrubRef.current = null;
+    const bail = () => { if (hadScrub) forceCanvasRender(); };
+    const num = parseFloat(raw);
+    if (!Number.isFinite(num) || num <= 0) return bail();
+    const rounded = Math.round(num);
+    // Read the pre-change width from the CONFIG at call time — never from the
+    // render closure. Rapid consecutive commits (Enter+blur, chevron click
+    // then type) run before React re-renders this component, and a stale
+    // closure width makes the band rewrite move from a key that no longer
+    // exists. The config is only written by commits, so it is always the
+    // width the bands are currently keyed by (same rule the tile-drag path
+    // documents in SelectionOverlay's onViewportResize).
+    const prevWidth = getDefaultStore().get(viewportsConfigAtom).find(v => v.id === vpId)?.width ?? rounded;
+    if (prevWidth === rounded) return bail();
 
     setViewportWidths(prev => {
       const updated = { ...prev, [vpId]: rounded };
       syncViewportWidths(updated);
       return updated;
     });
-    setViewportsConfig(prev => prev.map(v => v.id === vpId ? { ...v, width: rounded } : v));
     if (activeFilePath) {
       setForceRender();
-      modifyProjectFile(activeFilePath, code =>
-        // Re-stamp @media style overrides, animation media-query gates, component-instance
-        // `data-responsive` (per-viewport variant choice + `_bp`) AND width-keyed
-        // `useResponsiveText` overrides so all four keep matching the resized viewport.
-        rewriteResponsiveTextBreakpoints(
-          rewriteResponsiveBreakpoints(
-            rewriteAnimationBreakpoints(
-              rewriteContainerBreakpoints(code, prevWidth, rounded),
-              prevWidth, rounded, getSortedBreakpointWidths()),
-            prevWidth, rounded, getSortedBreakpointWidths()),
-          prevWidth, rounded, getSortedBreakpointWidths()));
+      // Re-stamp every width-keyed artifact (@media bands, animation gates,
+      // data-responsive, responsive text) in the active file AND its
+      // route-group companions — a templated page's LayoutClient carries its
+      // own bands/gates and must move with the page or the template chrome
+      // loses its overrides at the new width. Shared with the tile-drag path.
+      //
+      // ORDER IS LOAD-BEARING: this runs BEFORE setViewportsConfig writes the
+      // new width into the file's @canvas block. The band rewrite's
+      // normalize pass converges stray bands onto the FILE's config keys —
+      // with the new config already committed, the still-old-keyed band
+      // reads as a stray, and when the new width lands inside a WIDER band's
+      // interval the viewport flattens from THAT band (mobile got a copy of
+      // the tablet rules) while its real band is dropped ("width input
+      // removes all the overrides", trace 2026-08-17: normalize-band-keys
+      // dropped:[298]). The tile-drag path always had this order.
+      applyViewportWidthChange(activeFilePath, vpId, prevWidth, rounded);
     }
+    setViewportsConfig(prev => prev.map(v => v.id === vpId ? { ...v, width: rounded } : v));
     forceCanvasRender();
     trace.action('size:viewport-breakpoint-change', { vpId, prevWidth, newWidth: rounded });
-  }, [vpId, currentViewportConfig?.width, activeFilePath, setViewportsConfig, setViewportWidths]);
+  }, [vpId, activeFilePath, setViewportsConfig, setViewportWidths]);
 
   // Viewport HEIGHT change: writes the `height` field on the viewport
   // config (persisted to @canvas) AND mirrors the change onto the root
@@ -1169,6 +1230,10 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
           label="Width"
           value={`${currentViewportConfig.width}px`}
           onChange={handleViewportBreakpointChange}
+          // Chevron scrub live-tracks the tile via the widths atom only; the
+          // commit (onChange via ToolInput's onCommit) runs the band rewrite
+          // ONCE on release — same live/commit split as the tile drag.
+          onChangeLive={handleViewportBreakpointLive}
           onUnitChange={() => {}}
           computedSize={currentViewportConfig.width}
           parentSize={currentViewportConfig.width}
