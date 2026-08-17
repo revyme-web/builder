@@ -139,4 +139,57 @@ describe('dropLineOps', () => {
     expect(dropLineOps.isLayoutDropActive()).toBe(true);
     expect(dropLineOps.get()).toEqual({ parentId: 'p2', insertIndex: 1, vpId: 'desktop' });
   });
+
+  // ─── getLayoutDropTarget (feeds ParentHighlight's drop-target outline) ─────
+
+  test('getLayoutDropTarget() is null with no active preview', () => {
+    expect(dropLineOps.getLayoutDropTarget()).toBeNull();
+  });
+
+  test('show() exposes the line parent as the layout-drop target', () => {
+    dropLineOps.show({ parentId: 'p1', insertIndex: 2, vpId: 'desktop' });
+    expect(dropLineOps.getLayoutDropTarget()).toEqual({ parentId: 'p1', vpId: 'desktop' });
+  });
+
+  test('target reference is STABLE while only insertIndex changes (per-gap moves must not re-render the outline)', () => {
+    dropLineOps.show({ parentId: 'p1', insertIndex: 0, vpId: 'desktop' });
+    const first = dropLineOps.getLayoutDropTarget();
+    dropLineOps.show({ parentId: 'p1', insertIndex: 3, vpId: 'desktop' });
+    expect(dropLineOps.getLayoutDropTarget()).toBe(first);
+  });
+
+  test('target reference stays stable across show() → markEmptyLayoutDrop() on the same container', () => {
+    dropLineOps.show({ parentId: 'p1', insertIndex: 1, vpId: 'desktop' });
+    const first = dropLineOps.getLayoutDropTarget();
+    dropLineOps.markEmptyLayoutDrop({ parentId: 'p1', vpId: 'desktop' });
+    expect(dropLineOps.getLayoutDropTarget()).toBe(first);
+  });
+
+  test('markEmptyLayoutDrop(target) exposes the empty container as the target', () => {
+    dropLineOps.markEmptyLayoutDrop({ parentId: 'empty-1', vpId: 'tablet' });
+    expect(dropLineOps.get()).toBeNull();
+    expect(dropLineOps.getLayoutDropTarget()).toEqual({ parentId: 'empty-1', vpId: 'tablet' });
+  });
+
+  test('markEmptyLayoutDrop(target) dedupes repeats but notifies on target change', () => {
+    const listener = vi.fn();
+    const unsub = dropLineOps.subscribe(listener);
+    listener.mockClear();
+
+    dropLineOps.markEmptyLayoutDrop({ parentId: 'a', vpId: 'desktop' });
+    dropLineOps.markEmptyLayoutDrop({ parentId: 'a', vpId: 'desktop' });
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    dropLineOps.markEmptyLayoutDrop({ parentId: 'b', vpId: 'desktop' });
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(dropLineOps.getLayoutDropTarget()).toEqual({ parentId: 'b', vpId: 'desktop' });
+
+    unsub();
+  });
+
+  test('hide() clears the layout-drop target', () => {
+    dropLineOps.show({ parentId: 'p1', insertIndex: 0, vpId: 'desktop' });
+    dropLineOps.hide();
+    expect(dropLineOps.getLayoutDropTarget()).toBeNull();
+  });
 });

@@ -28,13 +28,18 @@ export type AnimationScope =
 
 /**
  * The media-query band a single viewport width owns, given the full sorted
- * (descending) viewport-width list. Mirrors `rewriteContainerBreakpoints`'
- * `getMinWidth`: the min edge is the next-smaller width + 1; the LARGEST width
- * (primary) has no max edge (it's the open-ended top band).
+ * (descending) viewport-width list. The min edge is the next-smaller width
+ * + 0.02 — the same fractional seam the @media style bands use (and the
+ * media-band-dialect oracle rule mandates). An integer `+ 1` bound leaves a
+ * 1px-wide hole: real Android phones report FRACTIONAL CSS widths (1080
+ * physical / DPR 2.875 = 375.65px), which matched neither `(max-width:
+ * 375px)` nor `(min-width: 376px)` — so a scroll-variant's banded gate fell
+ * through to the DESKTOP target mid-scroll (the rapid-studio-345 nav,
+ * 2026-08-17). The LARGEST width (primary) has no max edge (open top band).
  *
  *   widths [1470, 768, 375]:
- *     1470 → { min: 769 }                 (desktop / primary — open top)
- *      768 → { min: 376, max: 768 }       (tablet)
+ *     1470 → { min: 768.02 }              (desktop / primary — open top)
+ *      768 → { min: 375.02, max: 768 }    (tablet)
  *      375 → { max: 375 }                 (mobile — open bottom)
  */
 export function viewportBand(width: number, allWidths: number[]): { min?: number; max?: number } {
@@ -44,8 +49,8 @@ export function viewportBand(width: number, allWidths: number[]): { min?: number
   const band: { min?: number; max?: number } = {};
   // Not the largest → has a max edge at its own width.
   if (idx > 0) band.max = width;
-  // Not the smallest → has a min edge just above the next-smaller width.
-  if (idx < sorted.length - 1) band.min = sorted[idx + 1] + 1;
+  // Not the smallest → min edge fractionally above the next-smaller width.
+  if (idx < sorted.length - 1) band.min = sorted[idx + 1] + 0.02;
   return band;
 }
 
@@ -103,13 +108,19 @@ export function queryToViewportSet(query: string, allWidths: number[]): number[]
     const maxM = clause.match(/max-width:\s*(\d+)px/);
     const minM = clause.match(/min-width:\s*([\d.]+)px/);
     const max = maxM ? parseInt(maxM[1], 10) : Infinity;
-    const min = minM ? parseInt(minM[1], 10) : 0;
+    const min = minM ? parseFloat(minM[1]) : 0;
     // A width belongs to this clause when its OWN band sits inside [min, max].
+    // The min comparison carries a sub-1px tolerance so LEGACY integer bounds
+    // still resolve: an old `min-width: 376px` and the current fractional seam
+    // `min-width: 375.02px` both encode "just above the 375 breakpoint", and
+    // rewriteAnimationBreakpoints must keep recognising wild files written
+    // before the seam migration. Viewport widths are ≥1px apart, so the
+    // tolerance can never leak a width into a neighbouring band.
     for (const w of sorted) {
       const b = viewportBand(w, sorted);
       const wTop = b.max ?? Infinity;     // the width's upper edge
       const wBottom = b.min ?? 0;          // the width's lower edge
-      if (wBottom >= min && wTop <= max) out.add(w);
+      if (wBottom >= min - 0.99 && wTop <= max) out.add(w);
     }
   }
   return sorted.filter(w => out.has(w));

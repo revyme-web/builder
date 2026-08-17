@@ -2685,7 +2685,7 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
             // Mark the layout-drop flag so PinConstraintLines + snap-
             // guides hide alongside the parent-highlight preview, just
             // like the with-children case.
-            dropLineOps.markEmptyLayoutDrop();
+            dropLineOps.markEmptyLayoutDrop({ parentId: bestId, vpId: this.vpId });
           }
           this.pendingLayoutDrop = { siblingId: bestId, insertIndex };
           // Reset non-layout candidate tracking — these branches are mutually exclusive.
@@ -2717,7 +2717,7 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
             const sd = getFlexDirectionById(this.candidateSiblingId, this.vpId);
             const sc = findChildRects(this.candidateSiblingId, this.vpId);
             if (sc.length > 0) { const ii = calculateLayoutInsertIndexById(mouseScreen, this.candidateSiblingId, this.vpId, sd, draggedIds); dropLineOps.show({ parentId: this.candidateSiblingId, insertIndex: ii, vpId: this.vpId }); }
-            else dropLineOps.markEmptyLayoutDrop();
+            else dropLineOps.markEmptyLayoutDrop({ parentId: this.candidateSiblingId, vpId: this.vpId });
             trace.action('abs-in-frame:sibling-layout-entry', { siblingId: this.candidateSiblingId, layout: sl });
             return { snap: null, dropTarget: null, highlightParentId: this.candidateSiblingId, axisLock: null, switchRequest: { toStrategy: 'layout-lifted', reason: 'sibling-layout-entry' } };
           }

@@ -11,6 +11,11 @@ export interface DropLineInfo {
   vpId: string;
 }
 
+export interface LayoutDropTarget {
+  parentId: string;
+  vpId: string;
+}
+
 let _dropLine: DropLineInfo | null = null;
 // Companion flag: "drag is currently over a flex/grid drop target". The
 // drop-line itself is suppressed when the target has no children (no
@@ -19,7 +24,20 @@ let _dropLine: DropLineInfo | null = null;
 // line. Strategies set this in addition to (or instead of) dropLineOps
 // .show/.hide whenever layout-drop entry is detected.
 let _layoutDropActive = false;
+// The container the active layout-drop preview targets — from the line's
+// parentId, or from the target passed to `markEmptyLayoutDrop`. Kept as a
+// CACHED object (only replaced when the values change) because
+// `useSyncExternalStore` getSnapshot callers compare by reference and a
+// fresh object per call would re-render every notify. ParentHighlight
+// renders this container's outline so the user can see WHICH parent the
+// insertion line belongs to.
+let _layoutTarget: LayoutDropTarget | null = null;
 const _listeners = new Set<() => void>();
+
+function setLayoutTarget(target: LayoutDropTarget | null) {
+  if (target?.parentId === _layoutTarget?.parentId && target?.vpId === _layoutTarget?.vpId) return;
+  _layoutTarget = target;
+}
 
 function notify() {
   for (const fn of _listeners) fn();
@@ -45,6 +63,7 @@ export const dropLineOps = {
     _layoutDropActive = true;
     if (sameInfo && !flagChanged) return;
     _dropLine = info;
+    setLayoutTarget({ parentId: info.parentId, vpId: info.vpId });
     trace.action('drop-line:show', info);
     notify();
   },
@@ -57,6 +76,7 @@ export const dropLineOps = {
     // case calls `markEmptyLayoutDrop()` instead, which keeps the flag
     // on without rendering a line.
     _layoutDropActive = false;
+    _layoutTarget = null;
     trace.action('drop-line:hide');
     notify();
   },
@@ -69,12 +89,17 @@ export const dropLineOps = {
    *  is drawn (there are no siblings to put one between), but the
    *  layout-drop flag flips on so PinConstraintLines + snap-guides
    *  hide for the same UX reason as the with-children case. Replaces
-   *  `hide()` in strategies' empty-layout branches. */
-  markEmptyLayoutDrop() {
-    if (_dropLine === null && _layoutDropActive) return;
+   *  `hide()` in strategies' empty-layout branches. Pass the target so
+   *  ParentHighlight can outline the empty container — with no line to
+   *  draw, the outline is the only "you're dropping in here" signal. */
+  markEmptyLayoutDrop(target?: LayoutDropTarget) {
+    const sameTarget = (target?.parentId ?? null) === (_layoutTarget?.parentId ?? null)
+      && (target?.vpId ?? null) === (_layoutTarget?.vpId ?? null);
+    if (_dropLine === null && _layoutDropActive && sameTarget) return;
     _dropLine = null;
     _layoutDropActive = true;
-    trace.action('drop-line:empty-layout-drop');
+    setLayoutTarget(target ?? null);
+    trace.action('drop-line:empty-layout-drop', target);
     notify();
   },
 
@@ -82,6 +107,14 @@ export const dropLineOps = {
    *  layout drop target. Hook + suppress callers read this. */
   isLayoutDropActive(): boolean {
     return _layoutDropActive;
+  },
+
+  /** The container the active layout-drop preview targets (line parent,
+   *  or the empty container passed to `markEmptyLayoutDrop`). Null when
+   *  no layout drop is active. Stable reference between changes —
+   *  usable directly as a `useSyncExternalStore` snapshot. */
+  getLayoutDropTarget(): LayoutDropTarget | null {
+    return _layoutTarget;
   },
 
   /** Subscribe to changes — multi-listener (DropLineIndicator + Canvas

@@ -41,6 +41,7 @@ import { shapeEditCommitPendingAtom, shapeEditingIdAtom } from '@/code/stores/sh
 import { sketchEditingIdAtom } from '@/code/stores/sketch-edit-store';
 import { getScreenCornersById, type ScreenCorners } from '@/canvas/resize/geometry-utils';
 import { parentHighlightOps, type ParentHighlightInfo } from './parent-highlight-store';
+import { dropLineOps } from './drop-line-store';
 import { resizeLiveOps } from '@/canvas/resize/resize-live-store';
 import { trace } from '@/shared/debug-trace';
 
@@ -106,6 +107,14 @@ export function deriveSelectionParentHighlight(args: {
 export default function ParentHighlight() {
   // Drag-driven info from the module store (highest priority).
   const dragInfo = useSyncExternalStore(parentHighlightOps.subscribe, parentHighlightOps.get);
+  // Layout-drop target: the container the drop-line preview is showing
+  // inside (or the empty layout container being hovered). The insertion
+  // line says WHERE between siblings the drop lands but not WHICH parent
+  // it belongs to — outlining that parent supplies the missing half
+  // (user request 2026-08-17). Joined below at drag priority, so the
+  // line and the outline appear together; a strategy's explicit
+  // `parentHighlightOps.show` still wins when both are set.
+  const lineTarget = useSyncExternalStore(dropLineOps.subscribe, dropLineOps.getLayoutDropTarget);
   // Element drag / resize in flight? (dragStateOps covers both.) Used to tell
   // CAMERA interaction apart from element interaction below.
   const isElementDrag = useSyncExternalStore(dragStateOps.subscribe, dragStateOps.get);
@@ -159,11 +168,14 @@ export default function ParentHighlight() {
       vpId,
       isInteracting,
       isTextEditing: !!activeEditor,
-      dragInfo,
+      // A layout-drop preview suppresses the selection-derived outline the
+      // same way an explicit strategy write does — only one parent should
+      // be outlined while the drag is over a layout target.
+      dragInfo: dragInfo ?? lineTarget,
       isResizing,
     }),
     dragParentIsSvg: dragParentId ? nodes.get(dragParentId)?.type === 'svg' : false,
-  }), [selectedId, vpId, isInteracting, activeEditor, dragInfo, dragParentId, isIconSet, isResizing]);
+  }), [selectedId, vpId, isInteracting, activeEditor, dragInfo, lineTarget, dragParentId, isIconSet, isResizing]);
   const selectionInfo = computed.selectionInfo;
 
   // SVG group: keep the dashed group outline VISIBLE during a child drag
@@ -175,7 +187,7 @@ export default function ParentHighlight() {
   // the dashed outline would stay frozen at the pre-drag fit, which is
   // why this branch USED to null out `dragInfo` for SVG-group parents.
   // (dragParentIsSvg comes from the useNodesComputed above.)
-  const info = dragInfo ?? selectionInfo;
+  const info = dragInfo ?? lineTarget ?? selectionInfo;
   // Depend on primitives, not object identity. `selectionInfo` is rebuilt
   // every render (deriveSelectionParentHighlight returns a fresh object), so
   // depending on `info` directly retriggers the effect on every render →
@@ -189,7 +201,7 @@ export default function ParentHighlight() {
   // look reads as wrong noise; render them with the thin dashed
   // selection look instead.
   const isSvgGroupDrag = !!dragInfo && computed.dragParentIsSvg;
-  const isDragSource = !!dragInfo && !isSvgGroupDrag;
+  const isDragSource = (!!dragInfo && !isSvgGroupDrag) || (!dragInfo && !!lineTarget);
   // Mount/unmount traces — same guard + deps as the poll below, declared
   // FIRST so the mount trace fires before the poll starts (original order).
   useEffect(() => {

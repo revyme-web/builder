@@ -2394,11 +2394,13 @@ export class CanvasDragStrategy implements DragStrategy {
   }
 
   /** Drop-line / empty-layout preview for a confirmed layout parent entry.
-   *  Drop line OR parent highlight (mutually exclusive): has children →
-   *  drop line (shows insertion position); empty container → the
-   *  empty-layout-drop affordance. Shared by the single-select containment
-   *  tail and the multi-select group-layout path (which drives the same
-   *  enteredParentId fields). */
+   *  Has children → drop line (shows insertion position); empty container →
+   *  the empty-layout-drop affordance. Both carry the target container, and
+   *  ParentHighlight outlines it for the preview's duration (line + outline
+   *  together — the line says where between siblings, the outline says which
+   *  parent). Shared by the single-select containment tail and the
+   *  multi-select group-layout path (which drives the same enteredParentId
+   *  fields). */
   private updateLayoutDropPreview(context: DragContext, draggedIds: Set<string>, mouseScreen: Point): void {
     this.dropLineActive = false;
     if (this.enteredParentId && !this.liveReparented) {
@@ -2433,7 +2435,7 @@ export class CanvasDragStrategy implements DragStrategy {
           // guides hide for the same UX reason as the with-children
           // case (`useDropLineActive` reads the layout-drop flag, not
           // just whether a line is showing).
-          dropLineOps.markEmptyLayoutDrop();
+          dropLineOps.markEmptyLayoutDrop({ parentId: this.enteredParentId, vpId });
         }
       }
     }
