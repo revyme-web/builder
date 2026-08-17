@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useClickOutside } from './hooks/useClickOutside';
 import { CLOUD_ENABLED } from '@/shared/cloud-flag';
+import { settingsOverlayOpenAtom, settingsSectionAtom, hasActiveSubscriptionAtom } from '@/code/stores/website-settings-store';
 import { motion } from 'framer-motion';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { toolModeAtom, isShapeMode, isLayoutMode, type ToolMode } from '@/code/stores/tool-store';
@@ -458,12 +459,16 @@ export default function BottomToolbar() {
   // Every creator tool and the ⌘K search are hidden — none of them do
   // anything useful for a read-only seat.
   //
-  // The Upgrade button used to live here, as an accent pill at the right
-  // end of the floating bar. It moved to the logo menu (LeftHeader) under
-  // "Your Account": a billing nudge belongs with the other account actions,
-  // and a permanent accent pill floating over the canvas was the loudest
-  // thing on screen for something the user acts on roughly once.
+  // The Upgrade pill lives at the right end of this bar (it briefly moved
+  // to the logo menu's "Your Account" during the ui redesign — buried
+  // there, nobody found it, so it's back as the distinct accent pill;
+  // the menu entry remains as a secondary path).
   const isViewer = useIsViewer();
+  const setSettingsOpen = useSetAtom(settingsOverlayOpenAtom);
+  const setSettingsSection = useSetAtom(settingsSectionAtom);
+  // Sites already on a paid, active plan don't need the Upgrade nudge —
+  // it (and its separator) collapse out of the toolbar.
+  const hasActiveSubscription = useAtomValue(hasActiveSubscriptionAtom);
   // Offline is a stricter case than role-viewer: a role-viewer MAY
   // comment, but an offline user may NOT (the comment can't be
   // persisted/synced), so the comment tool is hidden when offline.
@@ -686,6 +691,28 @@ export default function BottomToolbar() {
           </ToolButton>
         )}
 
+        {/* ── Upgrade ── hidden for viewers (upgrading is a billing
+            action they can't take; it routes to Settings → Plans which
+            is also disabled for them) AND hidden when the site already
+            has an active paid subscription (nothing left to upgrade to
+            from the toolbar's POV — the separator goes with it). */}
+        {CLOUD_ENABLED && !isViewer && !hasActiveSubscription && (
+          <>
+            <Separator />
+            <button
+              title="Upgrade plan"
+              onClick={() => {
+                trace.action('bottom-toolbar:upgrade');
+                setSettingsSection('plans');
+                setSettingsOpen(true);
+              }}
+              className="flex items-center justify-center h-[32px] px-2.5 rounded-lg transition-all text-xs font-medium text-[var(--accent)] hover:brightness-125"
+              style={{ backgroundColor: 'color-mix(in srgb, var(--accent) 20%, transparent)', cursor: 'pointer', border: 'none' }}
+            >
+              Upgrade
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
