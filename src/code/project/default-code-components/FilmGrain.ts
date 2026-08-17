@@ -34,7 +34,7 @@ function FilmGrain({
     <div
       data-id={props['data-id']}
       data-name={props['data-name']}
-      style={{ ...props.style, position: 'relative', overflow: 'hidden' }}
+      style={{  position: 'relative', overflow: 'hidden', ...props.style }}
     >
       <svg
         width="100%"

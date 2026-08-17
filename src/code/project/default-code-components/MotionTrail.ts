@@ -113,11 +113,10 @@ function MotionTrail({ threshold = 70, rotate = false, fadeMs = 700, fadeScale =
         data-id={props['data-id']}
         data-name={props['data-name']}
         style={{
-          position: 'relative', ...props.style, boxSizing: 'border-box',
+          position: 'relative',  boxSizing: 'border-box',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           justifyContent: 'center', gap: '8px', padding: '20px', textAlign: 'center',
-          background: '#141414', border: '1px dashed rgba(255,255,255,0.14)',
-        }}
+          background: '#141414', border: '1px dashed rgba(255,255,255,0.14)', ...props.style }}
       >
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#A855F7"
           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -136,7 +135,7 @@ function MotionTrail({ threshold = 70, rotate = false, fadeMs = 700, fadeScale =
       ref={boxRef}
       data-id={props['data-id']}
       data-name={props['data-name']}
-      style={{ position: 'relative', ...props.style, overflow: 'hidden' }}
+      style={{ position: 'relative',  overflow: 'hidden', ...props.style }}
     >
       {/* Source pool — invisible on live (only stamps render). On the
           static editor canvas it's a centred, visible preview. */}

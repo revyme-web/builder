@@ -36,11 +36,10 @@ function Scanlines({
       data-id={props['data-id']}
       data-name={props['data-name']}
       style={{
-        ...props.style,
+        
         backgroundImage: bg,
         opacity: opacity,
-        pointerEvents: 'none',
-      }}
+        pointerEvents: 'none', ...props.style }}
     />
   );
 }

@@ -931,15 +931,14 @@ function SplashCursor({
         data-name={props['data-name']}
         style={{
           position: 'relative',
-          ...props.style,
+          
           background: 'transparent',
           border: '1px dashed rgba(168, 85, 247, 0.5)',
           boxSizing: 'border-box',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          pointerEvents: 'none',
-        }}
+          pointerEvents: 'none', ...props.style }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, opacity: 0.85 }}>
           <div style={{ position: 'relative', width: 32, height: 18 }}>

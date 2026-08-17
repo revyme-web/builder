@@ -100,12 +100,11 @@ function MeshGradient({
       data-id={props['data-id']}
       data-name={props['data-name']}
       style={{
-        ...props.style,
+        
         position: 'relative',
         overflow: 'hidden',
         filter: 'blur(' + blur + 'px) saturate(' + saturation + ')',
-        backgroundColor: color1,
-      }}
+        backgroundColor: color1, ...props.style }}
     >
       {colors.map((c, i) => (
         <motion.div

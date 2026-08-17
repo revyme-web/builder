@@ -114,13 +114,12 @@ function Pattern({
   }
 
   const style = {
-    ...(props.style || {}),
+    
     backgroundColor: background,
     backgroundImage,
     backgroundSize,
     ...(backgroundPosition ? { backgroundPosition } : {}),
-    ...(mask ? { WebkitMaskImage: mask, maskImage: mask } : {}),
-  };
+    ...(mask ? { WebkitMaskImage: mask, maskImage: mask } : {}), ...(props.style || {}) };
 
   return (
     <div data-id={props['data-id']} data-name={props['data-name']} style={style} />

@@ -90,3 +90,26 @@ function compactFour(vals: number[]): string {
   if (s[1] === s[3]) return `${s[0]} ${s[1]} ${s[2]}`;
   return s.join(' ');
 }
+
+/**
+ * CAPSULE CLAMP for layout-animated elements. CSS clamps a border-radius to
+ * half the box, but framer-motion's projection interpolates the SPECIFIED
+ * value — when a variant transition crosses the clamp boundary the rendered
+ * corner pins while the math keeps moving, and the close direction of a
+ * pill→card morph visibly jumps (the Wisp nav: 95px typed on a 65px pill,
+ * 2026-08-17). Writing the value the canvas actually renders — 
+ * min(typed, floor(height/2)) — keeps both directions exact.
+ *
+ * Only plain single px values are clamped; %, multi-value, fancy shapes and
+ * non-px units pass through untouched (the caller scopes this to design
+ * masters, where everything rides the variant machine's layout animation —
+ * the page-side `999px` capsule idiom is never touched).
+ */
+export function clampRadiusToCapsule(css: string, heightPx: number): string {
+  if (!css || heightPx <= 0) return css;
+  const m = /^(\d+(?:\.\d+)?)px$/.exec(css.trim());
+  if (!m) return css;
+  const max = Math.floor(heightPx / 2);
+  if (max <= 0 || parseFloat(m[1]) <= max) return css;
+  return `${max}px`;
+}

@@ -115,11 +115,10 @@ function Marquee3D({
         data-id={props['data-id']}
         data-name={props['data-name']}
         style={{
-          position: 'relative', ...props.style, boxSizing: 'border-box',
+          position: 'relative',  boxSizing: 'border-box',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           justifyContent: 'center', gap: '8px', padding: '20px', textAlign: 'center',
-          background: '#141414', border: '1px dashed rgba(255,255,255,0.14)',
-        }}
+          background: '#141414', border: '1px dashed rgba(255,255,255,0.14)', ...props.style }}
       >
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#A855F7"
           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -136,7 +135,7 @@ function Marquee3D({
     <div
       data-id={props['data-id']}
       data-name={props['data-name']}
-      style={{ position: 'relative', ...props.style, overflow: 'hidden', perspective: perspective + 'px' }}
+      style={{ position: 'relative',  overflow: 'hidden', perspective: perspective + 'px', ...props.style }}
     >
       <div
         ref={stageRef}

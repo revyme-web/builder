@@ -84,15 +84,14 @@ function LocaleSwitcher({
       data-id={props['data-id']}
       data-name={props['data-name']}
       style={{
-        ...props.style,
+        
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
         padding: '6px 10px',
         background,
         borderRadius,
-        color,
-      }}
+        color, ...props.style }}
     >
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10" />

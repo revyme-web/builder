@@ -152,7 +152,7 @@ function ModelViewer({
 
   return (
     <div ref={containerRef} data-id={props['data-id']} data-name={props['data-name']}
-         style={{...props.style, position: 'relative', overflow: 'hidden'}}>
+         style={{ position: 'relative', overflow: 'hidden', ...props.style }}>
       {loading && (
         <div style={{position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: 12}}>
           Loading model...

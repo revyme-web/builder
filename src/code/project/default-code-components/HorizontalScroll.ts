@@ -86,11 +86,10 @@ function HorizontalScroll({
         data-id={props['data-id']}
         data-name={props['data-name']}
         style={{
-          position: 'relative', ...props.style, boxSizing: 'border-box',
+          position: 'relative',  boxSizing: 'border-box',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           justifyContent: 'center', gap: '8px', padding: '20px', textAlign: 'center',
-          background: '#141414', border: '1px dashed rgba(255,255,255,0.14)',
-        }}
+          background: '#141414', border: '1px dashed rgba(255,255,255,0.14)', ...props.style }}
       >
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#A855F7"
           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -116,9 +115,8 @@ function HorizontalScroll({
       data-id={props['data-id']}
       data-name={props['data-name']}
       style={{
-        position: 'relative', ...props.style, overflow: 'hidden',
-        maskImage: fadeMask, WebkitMaskImage: fadeMask,
-      }}
+        position: 'relative',  overflow: 'hidden',
+        maskImage: fadeMask, WebkitMaskImage: fadeMask, ...props.style }}
     >
       <div
         ref={scrollRef}

@@ -127,7 +127,7 @@ function ImageSequence({ folder = '/frames', totalFrames = 60, frame = 0, fit = 
   }, [scrollDriven, loaded]);
 
   return (
-    <div data-id={props['data-id']} data-name={props['data-name']} style={{...props.style, position: 'relative', overflow: 'hidden'}}>
+    <div data-id={props['data-id']} data-name={props['data-name']} style={{ position: 'relative', overflow: 'hidden', ...props.style }}>
       <canvas ref={canvasRef} style={{width: '100%', height: '100%', display: 'block'}} />
       {!loaded && (
         <div style={{position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: 12}}>

@@ -61,7 +61,7 @@ function ThemeToggle({
       onClick={handleClick}
       aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
       style={{
-        ...props.style,
+        
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -70,8 +70,7 @@ function ThemeToggle({
         borderRadius,
         border: 'none',
         color,
-        cursor: 'pointer',
-      }}
+        cursor: 'pointer', ...props.style }}
     >
       {isDark ? (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

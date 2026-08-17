@@ -51,7 +51,7 @@ function PinterestEmbed({
 
   return (
     <div ref={containerRef} data-id={props['data-id']} data-name={props['data-name']}
-         style={{ width: '100%', height: '100%', ...props.style, display: 'flex', alignItems: 'center', justifyContent: 'center' }} />
+         style={{ width: '100%', height: '100%',  display: 'flex', alignItems: 'center', justifyContent: 'center', ...props.style }} />
   );
 }
 

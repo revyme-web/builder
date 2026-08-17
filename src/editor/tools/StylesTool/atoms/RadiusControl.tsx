@@ -8,10 +8,11 @@ import { useSetAtom, useAtomValue } from 'jotai';
 import { SpacingControl, ControlActionRow, RemoveButton, ColorSwatch } from '../../../controls';
 import { UnifiedControlProvider, ControlRow, useControlContext } from '../../../controls/unified';
 import { parseShorthand } from '@/shared/css-utils';
-import { parseFancyRadius, formatFancyRadius, isFancyRadius } from '@/shared/border-radius-utils';
+import { parseFancyRadius, formatFancyRadius, isFancyRadius, clampRadiusToCapsule } from '@/shared/border-radius-utils';
 import { activeFancyRadiusAtom, fancyRadiusCallbackAtom, fancyRadiusCommitAtom } from '@/code/stores/borderradius-store';
 import { selectedIdsAtom } from '@/code/stores/store';
-import { updateNodeStyles, getContentRoot } from '@/canvas/node-ops';
+import { updateNodeStyles, getContentRoot, findNodeSize, getInteractingViewport } from '@/canvas/node-ops';
+import { activeFilePathAtom, isDesignComponentFile } from '@/code/project/active-file-store';
 import type { AtomProps } from '../../../controls/unified/types';
 import type { FancyRadiusData } from '@/shared/border-radius-utils';
 import { trace } from '@/shared/debug-trace';
@@ -35,6 +36,26 @@ function RadiusAtom() {
   // Locale `:lang()` overrides → the blue Locale pill replaces the cluster
   // (body reopens the Localize popup with the saved conditions; × clears).
   const radiusLocaleOverrides = useLocaleStyleOverrides('borderRadius', node?.id ?? null);
+
+  // CAPSULE GUARANTEE on design masters: commit the radius the canvas
+  // actually renders — min(typed, floor(tileHeight/2)). CSS clamps radii to
+  // half the box, but framer-motion's projection interpolates the SPECIFIED
+  // value; when a variant morph crosses the clamp boundary the rendered
+  // corner pins while the math keeps moving and the close direction jumps
+  // (the Wisp pill: 95px typed on a 65px state, 2026-08-17). Committing
+  // rendered values makes EVERY input animate smoothly in both directions —
+  // real Framer behaves identically (its captures show one constant radius;
+  // the morph is the clamp reshaping it). Pages are untouched: the 999px
+  // capsule idiom is safe where nothing layout-animates.
+  const activeFilePath = useAtomValue(activeFilePathAtom);
+  const clampForMaster = useCallback((val: string): string => {
+    if (!node?.id || !activeFilePath || !isDesignComponentFile(activeFilePath)) return val;
+    const h = findNodeSize(node.id, getInteractingViewport().vpId)?.height ?? 0;
+    const out = clampRadiusToCapsule(val, h);
+    if (out !== val) trace.action('radius:capsule-clamp', { nodeId: node.id, typed: val, committed: out, height: h });
+    return out;
+  }, [node, activeFilePath]);
+
 
   const sh = parseShorthand(value);
   const corners = [
@@ -158,14 +179,14 @@ function RadiusAtom() {
         values={corners}
         labels={['TL', 'TR', 'BR', 'BL']}
         onChange={(index, val) => {
-          const c = [...corners]; c[index] = val;
+          const c = [...corners]; c[index] = clampForMaster(val);
           onChangeMultiple({
             borderRadius: '', borderTopLeftRadius: c[0], borderTopRightRadius: c[1],
             borderBottomRightRadius: c[2], borderBottomLeftRadius: c[3],
           });
         }}
         onChangeAll={(val) => onChangeMultiple({
-          borderRadius: val, borderTopLeftRadius: '', borderTopRightRadius: '',
+          borderRadius: clampForMaster(val), borderTopLeftRadius: '', borderTopRightRadius: '',
           borderBottomRightRadius: '', borderBottomLeftRadius: '',
         })}
         // Live patch sets ONLY the `borderRadius` shorthand (the unified

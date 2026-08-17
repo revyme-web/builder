@@ -127,7 +127,7 @@ function CausticsLight({
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, [baseColor, lightColor, speed, scale, intensity, glow, sharpness, isStatic]);
 
-  const style = { ...(props.style || {}), position: 'relative', overflow: 'hidden' };
+  const style = {  position: 'relative', overflow: 'hidden', ...(props.style || {}) };
 
   return (
     <div data-id={props['data-id']} data-name={props['data-name']} style={style}>

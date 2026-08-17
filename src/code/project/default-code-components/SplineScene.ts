@@ -47,7 +47,7 @@ function SplineScene({ sceneUrl = '', cameraX = 0, cameraY = 0, ...props }) {
 
   return (
     <div data-id={props['data-id']} data-name={props['data-name']}
-         style={{...props.style, position: 'relative', overflow: 'hidden'}}>
+         style={{ position: 'relative', overflow: 'hidden', ...props.style }}>
       <canvas ref={canvasRef} style={{width: '100%', height: '100%', display: 'block'}} />
       {loading && (
         <div style={{position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: 12}}>

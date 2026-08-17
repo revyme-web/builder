@@ -310,24 +310,24 @@ export const CONDITIONAL_LAYOUT_PROPS: ReadonlySet<string> = new Set([
 /**
  * WRITER routing superset of `CONDITIONAL_LAYOUT_PROPS`: everything the
  * builder writes as inline style ternaries instead of variants-object
- * entries. Border radius joins for the projection-sync reason (the Wisp
- * Top Nav, 2026-08-16): a radius that VALUE-TWEENS in the variants object
- * races the `layout` FLIP's per-frame scale correction — the corrected
- * radius is value ÷ scale, two unsynchronized curves, so the corner
- * visibly dips and swells during a variant resize. A radius changed via
- * the STYLE prop instead is folded into the projection and interpolates in
- * lockstep with the resize (Framer's own behavior — one driver, no race).
+ * entries.
  *
- * WRITERS ONLY — the oracle keeps gating on `CONDITIONAL_LAYOUT_PROPS`, so
- * the thousands of existing files with radius in variants objects stay
- * dialect-legal (grandfathered; `setConditionalStyleInCode` strips the
- * stale variants entry whenever a radius is next edited).
+ * BORDER RADIUS deliberately does NOT belong here (tried 2026-08-16,
+ * reverted 2026-08-17 — the Wisp Top Nav saga). The two channels have
+ * different animation semantics:
+ *   - STYLE ternary → the value SNAPS on variant switch (scale-corrected,
+ *     stable, but no interpolation — reads as an instant corner change).
+ *   - VARIANTS object → the value TWEENS on motion's clock (the smooth
+ *     morph users expect).
+ * The variants channel's historical wobble had two causes, both fixed
+ * elsewhere: values above height/2 crossing the CSS clamp mid-tween
+ * (RadiusControl's capsule clamp commits the rendered value) and bouncy
+ * springs breathing through the scale correction (real Framer sidesteps by
+ * keeping radius CONSTANT and letting the clamp reshape it). Radius stays
+ * in the variants channel so it interpolates.
  */
 export const PROJECTION_STYLE_PROPS: ReadonlySet<string> = new Set([
   ...CONDITIONAL_LAYOUT_PROPS,
-  'borderRadius',
-  'borderTopLeftRadius', 'borderTopRightRadius',
-  'borderBottomLeftRadius', 'borderBottomRightRadius',
 ]);
 
 /** CSS initial values for `CONDITIONAL_LAYOUT_PROPS` — used as the ternary's

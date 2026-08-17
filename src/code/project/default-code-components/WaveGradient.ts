@@ -141,7 +141,7 @@ function WaveGradient({
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, [color1, color2, color3, color4, seed, speed, freqX, freqY, angle, amplitude, softness, blend, isStatic]);
 
-  const style = { ...(props.style || {}), position: 'relative', overflow: 'hidden' };
+  const style = {  position: 'relative', overflow: 'hidden', ...(props.style || {}) };
 
   return (
     <div data-id={props['data-id']} data-name={props['data-name']} style={style}>

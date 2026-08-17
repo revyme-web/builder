@@ -132,7 +132,7 @@ function WaveLines({
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, [fill, lineColor, lineWidth, lineBlur, seed, speed, amplitude, tilt, zoom, rows, brightness, isStatic]);
 
-  const style = { ...(props.style || {}), position: 'relative', overflow: 'hidden', backgroundColor: fill };
+  const style = {  position: 'relative', overflow: 'hidden', backgroundColor: fill, ...(props.style || {}) };
 
   return (
     <div data-id={props['data-id']} data-name={props['data-name']} style={style}>

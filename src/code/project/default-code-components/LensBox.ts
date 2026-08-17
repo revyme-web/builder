@@ -115,7 +115,7 @@ function LensBox({ zoomFactor = 1.5, lensSize = 170, children, ...props }) {
           // (e.g. absolute) wins; it just guarantees a positioning
           // context for the lens overlay when nothing is set.
           position: 'relative',
-          ...props.style,
+          
           overflow: 'hidden',
           boxSizing: 'border-box',
           display: 'flex',
@@ -126,8 +126,7 @@ function LensBox({ zoomFactor = 1.5, lensSize = 170, children, ...props }) {
           padding: '20px',
           textAlign: 'center',
           background: '#141414',
-          border: '1px dashed rgba(255,255,255,0.14)',
-        }}
+          border: '1px dashed rgba(255,255,255,0.14)', ...props.style }}
       >
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
           stroke="#A855F7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -149,7 +148,7 @@ function LensBox({ zoomFactor = 1.5, lensSize = 170, children, ...props }) {
       ref={boxRef}
       data-id={props['data-id']}
       data-name={props['data-name']}
-      style={{ position: 'relative', ...props.style, overflow: 'hidden' }}
+      style={{ position: 'relative',  overflow: 'hidden', ...props.style }}
     >
       <div
         ref={contentRef}

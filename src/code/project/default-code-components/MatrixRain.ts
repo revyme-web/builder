@@ -113,7 +113,7 @@ function MatrixRain({
 
   return (
     <div data-id={props['data-id']} data-name={props['data-name']}
-         style={{ ...props.style, position: 'relative', overflow: 'hidden', backgroundColor: bgColor }}>
+         style={{  position: 'relative', overflow: 'hidden', backgroundColor: bgColor, ...props.style }}>
       <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
     </div>
   );

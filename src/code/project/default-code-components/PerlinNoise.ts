@@ -104,7 +104,7 @@ function PerlinNoise({
 
   return (
     <div data-id={props['data-id']} data-name={props['data-name']}
-         style={{ ...props.style, position: 'relative', overflow: 'hidden' }}>
+         style={{  position: 'relative', overflow: 'hidden', ...props.style }}>
       <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} />
     </div>
   );
