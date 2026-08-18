@@ -30,7 +30,8 @@ import CreateVideoPresetPanel from '../../../ui/CreateVideoPresetPanel';
 import EditAssetPresetPanel from '../../../ui/EditAssetPresetPanel';
 import ColorPresetEditPanel from '../../../ui/ColorPresetEditPanel';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
-import { isComponentFileAtom } from '@/code/stores/store';
+import { isComponentFileAtom, selectedIdsAtom } from '@/code/stores/store';
+import { getContentRoot, updateNodeStyles } from '@/canvas/node-ops';
 import { activeCodeAtom } from '@/code/project/active-file-store';
 import { getPropType } from '@/code/components/prop-meta';
 import {
@@ -682,7 +683,12 @@ function SingleModeFillContent({ styles, onUpdate, onLivePreview, solidOnly }: {
 
 // ─── Layer Editor Panel (pushPanel content for Multiple mode) ────────────────
 
-function LayerEditorPanel({ layer: initialLayer, onChange }: { layer: BgLayer; onChange: (updated: BgLayer) => void }) {
+function LayerEditorPanel({ layer: initialLayer, onChange, onChangeLive }: {
+  layer: BgLayer;
+  onChange: (updated: BgLayer) => void;
+  /** Per-frame (DOM-only) variant of onChange for picker drags. */
+  onChangeLive?: (updated: BgLayer) => void;
+}) {
   // Own local state so the panel is reactive even inside a frozen pushPanel
   const [layer, setLayer] = useState<BgLayer>(initialLayer);
   const [tab, setTab] = useState<'color' | 'gradient' | 'image'>(() => initialLayer.type);
@@ -710,6 +716,16 @@ function LayerEditorPanel({ layer: initialLayer, onChange }: { layer: BgLayer; o
     localLayerSigRef.current = JSON.stringify(updated);
     onChange(updated);
   }, [onChange]);
+
+  // Per-frame variant: local state + DOM-only flush; the commit comes from
+  // `update` on release. Falls back to the commit path when the caller
+  // didn't wire a live flush (nothing regresses for such callers).
+  const updateLive = useCallback((updated: BgLayer) => {
+    if (!onChangeLive) { update(updated); return; }
+    setLayer(updated);
+    localLayerSigRef.current = JSON.stringify(updated);
+    onChangeLive(updated);
+  }, [onChangeLive, update]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -746,8 +762,14 @@ function LayerEditorPanel({ layer: initialLayer, onChange }: { layer: BgLayer; o
             const match = layer.value.match(/rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8}/);
             return match ? match[0] : '#000000';
           })()}
+          // Smooth drag: onChange LIVE-patches the canvas per frame (DOM
+          // only), onChangeEnd commits once on release — the same split the
+          // single-fill picker uses. Colors wrap as flat gradients (CSS
+          // backgroundImage needs gradient or url, not bare colors).
           onChange={(c) => {
-            // Wrap color as a flat gradient (CSS backgroundImage needs gradient or url, not bare colors)
+            updateLive({ ...layer, type: 'color', value: `linear-gradient(${c}, ${c})` });
+          }}
+          onChangeEnd={(c) => {
             update({ ...layer, type: 'color', value: `linear-gradient(${c}, ${c})` });
           }}
           showAlpha
@@ -757,7 +779,12 @@ function LayerEditorPanel({ layer: initialLayer, onChange }: { layer: BgLayer; o
       {tab === 'gradient' && (
         <GradientEditor
           value={layer.value}
+          // With onLiveChange wired, GradientEditor patches per frame through
+          // the DOM-only layer flush and fires onChange ONCE on release —
+          // same split as the color tab above (multi-layer gradient drags ran
+          // the full commit pipeline per frame, 2026-08-18).
           onChange={(css) => update({ ...layer, type: 'gradient', value: css })}
+          onLiveChange={onChangeLive ? (css) => updateLive({ ...layer, type: 'gradient', value: css }) : undefined}
         />
       )}
 
@@ -931,6 +958,24 @@ function MultiModeFillContent({ styles, onUpdate, onChangeMultiple }: {
     trace.action('fill-multi:flush', { layerCount: newLayers.length });
   }, [onChangeMultiple]);
 
+  // LIVE flush — DOM-only patch per drag frame, NO commit. A layer's color
+  // picker used to route every drag tick through `flushLayers` →
+  // onChangeMultiple → generator code write → full reparse → panel
+  // re-render ("multi-background color picker is extremely slow while the
+  // single fill is smooth", 2026-08-18: 48 JSX parses in a 3s drag). Same
+  // split the single-fill picker and the fancy-radius editor use: patch the
+  // iframe element inline per frame, commit once on release via flushLayers.
+  const selectedIds = useAtomValue(selectedIdsAtom);
+  const flushLayersLive = useCallback((newLayers: BgLayer[]) => {
+    setLayers(newLayers);
+    const css = formatBackgroundLayers(newLayers);
+    const contentEl = getContentRoot();
+    if (!contentEl) return;
+    for (const id of selectedIds) {
+      updateNodeStyles({ id, styles: { ...css, background: '' }, contentEl, domOnly: true });
+    }
+  }, [selectedIds]);
+
   const removeLayer = useCallback((layerId: string) => {
     const newLayers = layers.filter(l => l.id !== layerId);
     flushLayers(newLayers);
@@ -952,9 +997,10 @@ function MultiModeFillContent({ styles, onUpdate, onChangeMultiple }: {
         layerId={layer.id}
         layersRef={layersRef}
         onFlush={flushLayers}
+        onFlushLive={flushLayersLive}
       />
     ));
-  }, [pushPanel, flushLayers]);
+  }, [pushPanel, flushLayers, flushLayersLive]);
 
   // Keep a ref to layers so the pushPanel content can read current state
   const layersRef = useRef(layers);
@@ -1029,22 +1075,24 @@ function MultiModeFillContent({ styles, onUpdate, onChangeMultiple }: {
 
 // ─── Connected Layer Editor (reads from ref to stay in sync) ────────────────
 
-function LayerEditorPanelConnected({ layerId, layersRef, onFlush }: {
+function LayerEditorPanelConnected({ layerId, layersRef, onFlush, onFlushLive }: {
   layerId: string;
   layersRef: React.RefObject<BgLayer[]>;
   onFlush: (layers: BgLayer[]) => void;
+  /** DOM-only per-frame flush for picker drags — commit stays with onFlush. */
+  onFlushLive?: (layers: BgLayer[]) => void;
 }) {
   // Find the layer by ID from current ref
   const layer = layersRef.current?.find(l => l.id === layerId);
   if (!layer) return <div className="text-xs text-[var(--text-disabled)]">Layer removed</div>;
 
+  const withLayer = (updated: BgLayer) =>
+    (layersRef.current || []).map(l => l.id === layerId ? updated : l);
   return (
     <LayerEditorPanel
       layer={layer}
-      onChange={(updated) => {
-        const newLayers = (layersRef.current || []).map(l => l.id === layerId ? updated : l);
-        onFlush(newLayers);
-      }}
+      onChange={(updated) => onFlush(withLayer(updated))}
+      onChangeLive={onFlushLive ? (updated) => onFlushLive(withLayer(updated)) : undefined}
     />
   );
 }
