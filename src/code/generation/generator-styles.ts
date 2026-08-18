@@ -2553,10 +2553,25 @@ function updateVariantStyleInCodeInner(
         // "Expected corresponding JSX closing tag" crash when dragging a vector
         // group into a variant. (Open token `<svg` doesn't match the now-converted
         // `<motion.svg` opening, so only the un-converted nested opens are counted.)
+        //
+        // The opening `>` scan must be BRACE/STRING-AWARE (a naive indexOf('>')
+        // stops inside arrow functions or `=>`-carrying prop values), and a
+        // SELF-CLOSING tag has no closer to rename — walking forward anyway
+        // found the PARENT's `</div>` and renamed it, leaving the file
+        // unparseable (a user changing an avatar image on a `<div … />` node
+        // corrupted the whole component, 2026-08-18). Mirrors ensureMotionTag.
         const closeTok = `</${currentTag}>`;
-        const openEnd = code.indexOf('>', findJSXDataIdIndex(code, nodeId));
-        if (openEnd !== -1) {
-          const closingIdx = findMatchingCloseTagIndex(code, currentTag, openEnd + 1);
+        let openGt = -1, tagDepth = 0, tagStr = '';
+        for (let i = afterLt; i < code.length; i++) {
+          const ch = code[i];
+          if (tagStr) { if (ch === tagStr) tagStr = ''; continue; }
+          if (ch === "'" || ch === '"' || ch === '`') { tagStr = ch; continue; }
+          else if (ch === '{') tagDepth++;
+          else if (ch === '}') tagDepth--;
+          else if (ch === '>' && tagDepth === 0) { openGt = i; break; }
+        }
+        if (openGt !== -1 && code[openGt - 1] !== '/') {
+          const closingIdx = findMatchingCloseTagIndex(code, currentTag, openGt + 1);
           if (closingIdx !== -1) {
             code = code.slice(0, closingIdx) + `</motion.${currentTag}>` + code.slice(closingIdx + closeTok.length);
           }

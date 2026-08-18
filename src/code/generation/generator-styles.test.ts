@@ -1750,3 +1750,52 @@ export default function Card({ initialVariant = 'default' }) {
     expect(def).toContain("padding: '0px'");
   });
 });
+
+describe('updateVariantStyleInCode — SELF-CLOSING node inside a same-tag parent (the TeSoVa avatar corruption, 2026-08-18)', () => {
+  const parses = (c: string) => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('@babel/parser').parse(c, { sourceType: 'module', plugins: ['jsx', 'typescript'] });
+      return true;
+    } catch { return false; }
+  };
+
+  test('wiring variants on a self-closing <div /> never renames the parent closer', () => {
+    const code = `import React, { useState } from 'react';
+function Card({ initialVariant = 'default' }: { initialVariant?: string }) {
+  const [variant] = useState(initialVariant);
+  return <div data-id="client" style={{ display: 'flex' }}>
+    <div data-id="avatar" style={{ width: '64px', backgroundImage: 'url(a.webp)' }} />
+    <div data-id="copy" style={{ width: '100%' }}>
+      <p data-id="name">Daniel R.</p>
+    </div>
+  </div>;
+}
+export default Card;`;
+    const out = updateVariantStyleInCode(code, 'avatar', 'default', { backgroundImage: 'url(b.webp)' });
+    expect(parses(out)).toBe(true);
+    // The avatar became motion.div (self-closing, so exactly one motion tag)…
+    expect(out).toContain('<motion.div data-id="avatar"');
+    // …and NO closer got renamed anywhere: parent + sibling closers intact.
+    expect(out).not.toContain('</motion.div>');
+  });
+
+  test('non-self-closing node still gets its own closer renamed (depth-aware)', () => {
+    const code = `import React, { useState } from 'react';
+function Card({ initialVariant = 'default' }: { initialVariant?: string }) {
+  const [variant] = useState(initialVariant);
+  return <div data-id="outer" style={{ display: 'flex' }}>
+    <div data-id="box" style={{ width: '10px' }}>
+      <div data-id="inner" style={{ width: '5px' }}></div>
+    </div>
+  </div>;
+}
+export default Card;`;
+    const out = updateVariantStyleInCode(code, 'box', 'default', { backgroundColor: '#fff' });
+    expect(parses(out)).toBe(true);
+    expect(out).toContain('<motion.div data-id="box"');
+    // Exactly ONE renamed closer — box's own, not inner's, not outer's.
+    expect(out.match(/<\/motion\.div>/g)?.length).toBe(1);
+    expect(out).toContain('<div data-id="inner"');
+  });
+});

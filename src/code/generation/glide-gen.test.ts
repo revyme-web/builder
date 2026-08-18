@@ -247,3 +247,55 @@ describe('removeGlide — complex layout values survive', () => {
     expect(out).not.toContain('data-glide');
   });
 });
+
+describe('glide on LEAF nodes — corruption-proofing (the UI never offers Glide on text; wild files/AI writes can still carry it)', () => {
+  const parses = (c: string) => {
+    try { parse(c, { sourceType: 'module', plugins: ['jsx', 'typescript'] }); return true; }
+    catch { return false; }
+  };
+  const SPEC = { transition: { type: 'spring', duration: '0.5', bounce: '0.25', delay: '0' } };
+
+  test('a text node gets motion tag + layout + data-glide, and its text is NOT wrapped', () => {
+    const code = `import React from 'react';
+export default function C() {
+  return <div data-id="root"><p data-id="t1" style={{ fontSize: '48px' }}>Watch your balance actually move.</p></div>;
+}`;
+    const out = setGlideInCode(code, 't1', SPEC);
+    expect(parses(out)).toBe(true);
+    expect(out).toContain('motion.p');
+    expect(out).toMatch(/data-id="t1"/);
+    expect(out).toContain(`data-glide='`);
+    // The whole point: no ELEMENT child inside the text tag. The old path
+    // wrapped the raw text in <LayoutGroup>, corrupting the text pipeline
+    // (2026-08-18).
+    expect(out).not.toContain('<LayoutGroup>');
+    expect(out).not.toContain('data-glide-item');
+    expect(out).toContain('Watch your balance actually move.');
+    expect(hasGlide(out, 't1')).toBe(true);
+  });
+
+  test('leaf glide round-trips through remove', () => {
+    const code = `import React from 'react';
+export default function C() {
+  return <div data-id="root"><h2 data-id="t2">Hello</h2></div>;
+}`;
+    const applied = setGlideInCode(code, 't2', SPEC);
+    const removed = setGlideInCode(applied, 't2', null);
+    expect(parses(removed)).toBe(true);
+    expect(removed).not.toContain('data-glide');
+    expect(removed).not.toContain('transition=');
+    expect(removed).toContain('>Hello<');
+    expect(hasGlide(removed, 't2')).toBe(false);
+  });
+
+  test('container nodes keep the full LayoutGroup + item-wrapper behavior', () => {
+    const code = `import React from 'react';
+export default function C() {
+  return <div data-id="box" style={{ display: 'flex' }}><div data-id="a" style={{ width: '10px' }}></div><div data-id="b" style={{ width: '20px' }}></div></div>;
+}`;
+    const out = setGlideInCode(code, 'box', SPEC);
+    expect(parses(out)).toBe(true);
+    expect(out).toContain('<LayoutGroup>');
+    expect(out.match(/data-glide-item/g)?.length).toBe(2);
+  });
+});

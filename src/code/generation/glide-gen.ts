@@ -224,6 +224,20 @@ function applyGlide(code: string, nodeId: string, spec: GlideSpec): string {
     inner = unwrapGlideItems(inner);
     const spans = topLevelElementChildren(inner);
     wrapped = spans.length;
+    if (wrapped === 0) {
+      // LEAF node (a text element, an empty frame): nothing to group.
+      // The UI never OFFERS Glide on text nodes (AddEffectDropdown hides
+      // it), so this branch is corruption-proofing for wild files and AI
+      // writes: the old path wrapped the node's raw TEXT content in
+      // <LayoutGroup>, planting an element child inside a text tag and
+      // breaking the text pipeline (2026-08-18). Degrade to a harmless
+      // self-glide instead of corrupting.
+      code = ensureMotionTag(code, nodeId);
+      code = addNodeAttrs(code, nodeId, spec, transBody);
+      code = ensureGlideImports(code);
+      trace.action('glide:apply', { nodeId, wrapped: 0, selfOnly: true });
+      return code;
+    }
     for (let k = spans.length - 1; k >= 0; k--) {
       const { s, e } = spans[k];
       const childText = inner.slice(s, e);

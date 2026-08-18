@@ -303,6 +303,10 @@ export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketc
   const visibleOptions = ADD_OPTIONS.filter(o =>
     !HIDDEN_ADD_TYPES.has(o.type) &&
     (!noGlide || (o.type !== 'glide' && o.type !== 'pageTransition')) &&
+    // Glide is a CONTAINER effect (children glide when one resizes) — a text
+    // node has no element children, so the option never shows there
+    // (user decision 2026-08-18).
+    (o.type !== 'glide' || !isTextNode) &&
     (!glideOnly || o.type === 'glide' || o.type === 'pageTransition') &&
     // Page Transition is a PAGE-LEVEL effect — only when a viewport/root is the
     // selection (glideOnly), never on a normal element node.

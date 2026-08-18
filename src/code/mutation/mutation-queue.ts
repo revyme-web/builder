@@ -867,6 +867,19 @@ const OVERLAY_STRUCTURAL_TYPES = new Set<Mutation['type']>([
  *  covered by `processQueue`'s validation. */
 const SYNC_SYNTAX_GATED_TYPES = new Set<Mutation['type']>([
   'createOverlay', 'removeOverlay', 'cloneCanvasOverlay',
+  // STRUCTURE-SPLICING panel commits — every one of these can convert tags
+  // (`<div>` → `<motion.div>` + closer rename), wrap JSX (AnimatePresence),
+  // or splice consts/props, and every one is a single-shot click action where
+  // one extra parse is imperceptible. A defect in any of those transforms
+  // writes an UNPARSEABLE file through the sync drain with no net — a user
+  // changing an avatar image (updateVariantStyle's motionify renamed the
+  // PARENT's closer on a self-closing tag) corrupted a whole component and
+  // its page (TeSoVa, 2026-08-18). The gesture-hot family (move / addNode /
+  // removeNode / updateStyles) deliberately stays ungated for frame budget —
+  // see the comment at the gate below.
+  'updateVariantStyle', 'setVariantVisibility', 'updateMotionProp',
+  'updateScrollVariant', 'updateGlide',
+  'updateLocaleInstanceProp', 'updateInstancePropBase', 'hoistInstanceProp',
 ]);
 
 // ─── Public API ────────────────────────────────────────────────────────────
