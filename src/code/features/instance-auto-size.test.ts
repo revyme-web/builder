@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { readFileSync } from 'fs';
+import { join } from 'path';
 import { parse } from '@babel/parser';
 import {
   autoSizeInstanceDimInCode, migrateInstanceDimPropToStyle, parseDimBranches,
@@ -10,15 +11,18 @@ import { parseProjectFile } from '@/code/parsing/project-parser';
 import { InMemoryProjectFS } from '@/code/project/project-fs';
 import { checkFile } from '@/code/oracle/check-file';
 
-const S = '/private/tmp/claude-501/-Users-nk-Documents-Solo-revyme-revyme-open/012f3ab6-0602-4174-9b7f-bac47b2bb6c3/scratchpad';
-// The user's real minimal pair. DUMP = pre-press (style ternary '79%'/'419px',
-// `variant` ident — GoJoNe has connections); BROKEN = the retired PROP dialect
-// (`height={variant === 'variant-1' ? undefined : '419px'}` + style '100%'
-// pin + hoisted master).
-const GOJONE = readFileSync(`${S}/gojone-dump.tsx`, 'utf8');
-const FEGAXI = readFileSync(`${S}/fegaxi-plain.tsx`, 'utf8');
-const GOJONE_BROKEN = readFileSync(`${S}/gojone-broken.tsx`, 'utf8');
-const FEGAXI_BROKEN = readFileSync(`${S}/fegaxi-broken.tsx`, 'utf8');
+// The anonymized minimal pair, checked in under __fixtures__ (as `.tsx.txt`
+// so tsc/vitest never try to compile them — they import project-relative
+// modules that don't exist here). DUMP = pre-press (style ternary
+// '79%'/'419px', `variant` ident — GoJoNe has connections); BROKEN = the
+// retired PROP dialect (`height={variant === 'variant-1' ? undefined :
+// '419px'}` + style '100%' pin + hoisted master).
+const fixture = (name: string) =>
+  readFileSync(join(__dirname, '__fixtures__', `${name}.tsx.txt`), 'utf8');
+const GOJONE = fixture('gojone-dump');
+const FEGAXI = fixture('fegaxi-plain');
+const GOJONE_BROKEN = fixture('gojone-broken');
+const FEGAXI_BROKEN = fixture('fegaxi-broken');
 const INST = 'frame-msu8oque-2';
 const parses = (c: string) => { parse(c, { sourceType: 'module', plugins: ['jsx', 'typescript'] }); return true; };
 const instTag = (c: string) => c.slice(c.indexOf('<FeGaXi'), c.indexOf('/>', c.indexOf('<FeGaXi')));
@@ -232,7 +236,7 @@ describe('mid-object entries — the separating comma survives', () => {
   // top ternaries, `height` MID-OBJECT with a `flex` entry after it. The
   // writer used to eat the absorbed trailing comma (`'100%'  flex:` — the
   // production parse-gate bounce, 2026-08-15).
-  const IMAGES = readFileSync(`${S}/bidama-images.tsx`, 'utf8');
+  const IMAGES = fixture('bidama-images');
   const IMG_INST = 'div-msp237ef-k';
 
   test('auto press keeps the following entry attached with a comma', () => {
@@ -263,7 +267,7 @@ describe('page files — the style-block first-occurrence trap', () => {
   // the JSX tag. Backtracking from the FIRST occurrence landed on the
   // <style> tag → channel 'none' → the auto press silently no-oped (the
   // page-instance regression, 2026-08-15).
-  const PAGE = readFileSync(`${S}/adore-page-now.tsx`, 'utf8');
+  const PAGE = fixture('adore-page-now');
   const PAGE_INST = 'BiDaMa-msq5wbqc-1';
 
   test('the reader finds the JSX tag, not the band CSS', () => {

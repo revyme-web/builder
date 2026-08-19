@@ -1,0 +1,501 @@
+'use client';
+
+/** @name "image grid" */
+
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, useScroll, useMotionValueEvent, useMotionValue, animate, LayoutGroup } from 'framer-motion';
+import { withResponsiveProps } from '@revyme/runtime';
+import TaKuZo from '@/components/TaKuZo';
+import NuSuCe from '@/components/NuSuCe';
+import HuFiFe from '@/components/HuFiFe';
+import FiNuGa from '@/components/FiNuGa';
+import ViLiVi from '@/components/ViLiVi';
+import ZaRoUx from '@/components/ZaRoUx';
+import NuFiBa from '@/components/NuFiBa';
+import TiBiBi from '@/components/TiBiBi';
+import CoCoZa from '@/components/CoCoZa';
+import TiNuFe from '@/components/TiNuFe';
+import HuHeRe from '@/components/HuHeRe';
+import ZoBaZo from '@/components/ZoBaZo';
+import PoBiHu from '@/components/PoBiHu';
+import WeJoTi from '@/components/WeJoTi';
+import NuLiLe from '@/components/NuLiLe';
+
+const variantConfig = [
+  { name: 'default', label: 'images', x: 0, y: 0, isPrimary: true },
+  { name: 'variant-1', label: 'images-tablet', x: 1161, y: 0 },
+  { name: 'variant-2', label: 'images- mobile', x: 1710, y: 0 },
+];
+const frameMsro3epuSVariants = {
+  default: {
+    overflow: 'hidden'
+  },
+
+  'variant-2': { display: 'flex' },
+};
+const frameMsro3q9oTVariants = {
+  default: {
+    overflow: 'hidden'
+  },
+
+  'variant-2': { display: 'flex' },
+};
+const frameMsro3vglUVariants = {
+  default: {
+    overflow: 'hidden'
+  },
+
+  'variant-2': { display: 'flex' },
+};
+const frameMsro48o2VVariants = {
+  default: { overflow: 'hidden' },
+
+  'variant-2': { display: 'flex' },
+};
+
+const frameMsro4agkWVariants = {
+  default: { overflow: 'hidden' },
+
+  'variant-2': { display: 'flex' },
+};
+
+const frameMsro4cmiXVariants = {
+  default: { overflow: 'hidden' },
+
+  'variant-2': { display: 'flex' },
+};
+
+const frameMsro4efcYVariants = {
+  default: { overflow: 'hidden' },
+
+  'variant-2': { display: 'flex' },
+};
+
+const frameMsro4g0zZVariants = {
+  default: { overflow: 'hidden' },
+
+  'variant-2': { display: 'flex' },
+};
+
+const frameMsro4hq710Variants = {
+  default: { overflow: 'hidden' },
+
+  'variant-2': { display: 'flex' },
+};
+
+const frameMsro4jbu11Variants = {
+  default: { overflow: 'hidden' },
+
+  'variant-2': { display: 'flex' },
+};
+
+const frameMsro4lh112Variants = {
+  default: { overflow: 'hidden' },
+
+  'variant-2': { display: 'flex' },
+};
+
+const frameMsro4n6u13Variants = {
+  default: { overflow: 'hidden' },
+
+  'variant-2': { display: 'flex' },
+};
+
+const frameMsro4oww14Variants = {
+  default: { overflow: 'hidden' },
+
+  'variant-2': { display: 'flex' },
+};
+
+const frameMsro4qzj15Variants = {
+  default: { overflow: 'hidden' },
+
+  'variant-2': { display: 'flex' },
+};
+
+const frameMsro4t2j16Variants = {
+  default: { overflow: 'hidden' },
+
+  'variant-2': { display: 'flex' },
+};
+
+const divMsp237efJVariants = {
+  default: { display: 'grid', maxWidth: '961px', minWidth: 'auto',},
+  'variant-1': { display: 'grid', maxWidth: '720px',},
+  'variant-2': { display: 'grid', minWidth: '200px',},
+};
+
+function __applyInstanceSize(variants, w, h) {
+  if (w === undefined && h === undefined) return variants;
+  const out = {};
+  for (const k in variants) {
+    out[k] = { ...variants[k], ...(w !== undefined ? { width: w } : {}), ...(h !== undefined ? { height: h } : {}) };
+  }
+  return out;
+}
+
+function BiDaMa({
+  style,
+  initialVariant = 'default',
+  ...rest
+}: {
+  style?: React.CSSProperties;
+  initialVariant?: string;
+  [key: string]: any;
+}) {
+  const { width: __instW, height: __instH, ...__instStyle } = style ?? {};
+  const divMsp237efUFxAppOpacity = useMotionValue(0);
+  const divMsp237efUFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efUFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 2 });
+    animate(divMsp237efUFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 2 });
+  }, []);
+  const divMsp237efVFxAppOpacity = useMotionValue(0);
+  const divMsp237efVFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efVFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 2.2 });
+    animate(divMsp237efVFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 2.2 });
+  }, []);
+  const divMsp237efWFxAppOpacity = useMotionValue(0);
+  const divMsp237efWFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efWFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 2.4 });
+    animate(divMsp237efWFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 2.4 });
+  }, []);
+  const divMsp237efXFxAppOpacity = useMotionValue(0);
+  const divMsp237efXFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efXFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeOut', delay: 2.6 });
+    animate(divMsp237efXFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeOut', delay: 2.6 });
+  }, []);
+  const divMsp237efYFxAppOpacity = useMotionValue(0);
+  const divMsp237efYFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efYFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeOut', delay: 2.8 });
+    animate(divMsp237efYFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeOut', delay: 2.8 });
+  }, []);
+  const divMsp237efPFxAppOpacity = useMotionValue(0);
+  const divMsp237efPFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efPFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 1 });
+    animate(divMsp237efPFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 1 });
+  }, []);
+  const divMsp237efQFxAppOpacity = useMotionValue(0);
+  const divMsp237efQFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efQFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 1.2 });
+    animate(divMsp237efQFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 1.2 });
+  }, []);
+  const divMsp237efRFxAppOpacity = useMotionValue(0);
+  const divMsp237efRFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efRFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 1.4 });
+    animate(divMsp237efRFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 1.4 });
+  }, []);
+  const divMsp237efSFxAppOpacity = useMotionValue(0);
+  const divMsp237efSFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efSFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeOut', delay: 1.6 });
+    animate(divMsp237efSFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeOut', delay: 1.6 });
+  }, []);
+  const divMsp237efTFxAppOpacity = useMotionValue(0);
+  const divMsp237efTFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efTFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 1.8 });
+    animate(divMsp237efTFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 1.8 });
+  }, []);
+  const divMsp237efOFxAppOpacity = useMotionValue(0);
+  const divMsp237efOFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efOFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 0.8 });
+    animate(divMsp237efOFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 0.8 });
+  }, []);
+  const divMsp237efNFxAppOpacity = useMotionValue(0);
+  const divMsp237efNFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efNFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 0.6 });
+    animate(divMsp237efNFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 0.6 });
+  }, []);
+  const divMsp237efMFxAppOpacity = useMotionValue(0);
+  const divMsp237efMFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efMFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 0.4 });
+    animate(divMsp237efMFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 0.4 });
+  }, []);
+  const divMsp237efLFxAppOpacity = useMotionValue(0);
+  const divMsp237efLFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efLFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 0.4 });
+    animate(divMsp237efLFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 0.4 });
+  }, []);
+  const divMsp237efKFxAppOpacity = useMotionValue(0);
+  const divMsp237efKFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237efKFxAppOpacity, 1, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 0 });
+    animate(divMsp237efKFxAppY, 0, { type: 'tween', duration: 0.6, ease: 'easeIn', delay: 0 });
+  }, []);
+  const divMsp237efNSvRef = useRef(null);
+  const [divMsp237efNSv, setDivMsp237efNSv] = useState('default');
+  const { scrollY: divMsp237efNSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efNSvScrollY, "change", () => {
+    const el = divMsp237efNSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efNSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efMSvRef = useRef(null);
+  const [divMsp237efMSv, setDivMsp237efMSv] = useState('default');
+  const { scrollY: divMsp237efMSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efMSvScrollY, "change", () => {
+    const el = divMsp237efMSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efMSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efLSvRef = useRef(null);
+  const [divMsp237efLSv, setDivMsp237efLSv] = useState('default');
+  const { scrollY: divMsp237efLSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efLSvScrollY, "change", () => {
+    const el = divMsp237efLSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efLSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efKSvRef = useRef(null);
+  const [divMsp237efKSv, setDivMsp237efKSv] = useState('default');
+  const { scrollY: divMsp237efKSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efKSvScrollY, "change", () => {
+    const el = divMsp237efKSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efKSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efOSvRef = useRef(null);
+  const [divMsp237efOSv, setDivMsp237efOSv] = useState('default');
+  const { scrollY: divMsp237efOSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efOSvScrollY, "change", () => {
+    const el = divMsp237efOSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efOSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efPSvRef = useRef(null);
+  const [divMsp237efPSv, setDivMsp237efPSv] = useState('default');
+  const { scrollY: divMsp237efPSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efPSvScrollY, "change", () => {
+    const el = divMsp237efPSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efPSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efQSvRef = useRef(null);
+  const [divMsp237efQSv, setDivMsp237efQSv] = useState('default');
+  const { scrollY: divMsp237efQSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efQSvScrollY, "change", () => {
+    const el = divMsp237efQSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efQSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efRSvRef = useRef(null);
+  const [divMsp237efRSv, setDivMsp237efRSv] = useState('default');
+  const { scrollY: divMsp237efRSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efRSvScrollY, "change", () => {
+    const el = divMsp237efRSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efRSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efSSvRef = useRef(null);
+  const [divMsp237efSSv, setDivMsp237efSSv] = useState('default');
+  const { scrollY: divMsp237efSSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efSSvScrollY, "change", () => {
+    const el = divMsp237efSSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efSSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efTSvRef = useRef(null);
+  const [divMsp237efTSv, setDivMsp237efTSv] = useState('default');
+  const { scrollY: divMsp237efTSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efTSvScrollY, "change", () => {
+    const el = divMsp237efTSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efTSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efUSvRef = useRef(null);
+  const [divMsp237efUSv, setDivMsp237efUSv] = useState('default');
+  const { scrollY: divMsp237efUSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efUSvScrollY, "change", () => {
+    const el = divMsp237efUSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efUSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efVSvRef = useRef(null);
+  const [divMsp237efVSv, setDivMsp237efVSv] = useState('default');
+  const { scrollY: divMsp237efVSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efVSvScrollY, "change", () => {
+    const el = divMsp237efVSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efVSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efWSvRef = useRef(null);
+  const [divMsp237efWSv, setDivMsp237efWSv] = useState('default');
+  const { scrollY: divMsp237efWSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efWSvScrollY, "change", () => {
+    const el = divMsp237efWSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efWSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efXSvRef = useRef(null);
+  const [divMsp237efXSv, setDivMsp237efXSv] = useState('default');
+  const { scrollY: divMsp237efXSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efXSvScrollY, "change", () => {
+    const el = divMsp237efXSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efXSv(past ? 'default-hover' : 'default');
+    }
+  });
+  const divMsp237efYSvRef = useRef(null);
+  const [divMsp237efYSv, setDivMsp237efYSv] = useState('default');
+  const { scrollY: divMsp237efYSvScrollY } = useScroll();
+  useMotionValueEvent(divMsp237efYSvScrollY, "change", () => {
+    const el = divMsp237efYSvRef.current;
+    if (el) {
+      const past = el.getBoundingClientRect().top <= window.innerHeight * 0.5;
+      setDivMsp237efYSv(past ? 'default-hover' : 'default');
+    }
+  });
+                                                                                                                                                                                                                                                                                                                                    return <LayoutGroup>
+    <motion.div layout={true} data-id="div-msp237ef-j" variants={__applyInstanceSize(divMsp237efJVariants, __instW, __instH)} initial={['default', initialVariant]} animate={['default', initialVariant]} {...rest} data-name="images- mobile" style={{ contain: 'layout paint', willChange: 'transform', 
+      display: 'grid',   
+      position: 'absolute',
+      flex: '0 0 auto',
+      order: '0', flexDirection: initialVariant === 'variant-2' ? 'column' : initialVariant === 'variant-1' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : initialVariant === 'variant-1' ? 'center' : 'flex-start',   gridAutoColumns: '', gridAutoFlow: 'row', justifyItems: 'stretch',   maxWidth: '961px', ...__instStyle,   rowGap: initialVariant === 'variant-2' ? '24px' : '16px', columnGap: initialVariant === 'variant-1' ? '20px' : '14px', gridTemplateColumns: initialVariant === 'variant-2' ? 'repeat(1, 1fr)' : initialVariant === 'variant-1' ? 'repeat(2, 1fr)' : 'repeat(5, minmax(0, 1fr))', gridTemplateRows: initialVariant === 'variant-2' ? 'masonry' : initialVariant === 'variant-1' ? 'masonry' : 'repeat(3, minmax(0px, 1fr))', gridAutoRows: 'minmax(0px, 1fr)',  width: initialVariant === 'variant-2' ? '146px' : initialVariant === 'variant-1' ? '449px' : '961px', height: initialVariant === 'variant-1' ? '2200px' : initialVariant === 'variant-2' ? '3866px' : '800px'}}>
+                
+    <motion.div layout={true} data-id="frame-msro3epu-s" variants={frameMsro3epuSVariants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <NuSuCe ref={divMsp237efKSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efKSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"trigger":"onAppear","transition":{"type":"tween","duration":0.6,"ease":"easeIn","delay":0},"start":"bottom"}}' data-id="div-msp237ef-k" layout={true} data-name="Image 1" style={{ opacity: divMsp237efKFxAppOpacity, y: divMsp237efKFxAppY, position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro3q9o-t" variants={frameMsro3q9oTVariants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <HuFiFe ref={divMsp237efLSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efLSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeIn","delay":0.4},"trigger":"onAppear","start":"bottom"}}' data-id="div-msp237ef-l" layout={true} data-name="Image 2" style={{ opacity: divMsp237efLFxAppOpacity, y: divMsp237efLFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro3vgl-u" variants={frameMsro3vglUVariants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <FiNuGa ref={divMsp237efMSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efMSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeIn","delay":0.4},"trigger":"onAppear","start":"bottom"}}' data-id="div-msp237ef-m" layout={true} data-name="Image 3" style={{ opacity: divMsp237efMFxAppOpacity, y: divMsp237efMFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro48o2-v" variants={frameMsro48o2VVariants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <ViLiVi ref={divMsp237efNSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efNSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeIn","delay":0.6},"trigger":"onAppear","start":"bottom"}}' data-id="div-msp237ef-n" layout={true} data-name="Image 4" style={{ opacity: divMsp237efNFxAppOpacity, y: divMsp237efNFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro4agk-w" variants={frameMsro4agkWVariants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <ZaRoUx ref={divMsp237efOSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efOSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeIn","delay":0.8},"trigger":"onAppear","start":"bottom"}}' data-id="div-msp237ef-o" layout={true} data-name="Image 5" style={{ opacity: divMsp237efOFxAppOpacity, y: divMsp237efOFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro4cmi-x" variants={frameMsro4cmiXVariants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <NuFiBa ref={divMsp237efPSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efPSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeIn","delay":1},"trigger":"onAppear","start":"bottom","replay":true}}' data-id="div-msp237ef-p" layout={true} data-name="Image 6" style={{ opacity: divMsp237efPFxAppOpacity, y: divMsp237efPFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro4efc-y" variants={frameMsro4efcYVariants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <TiBiBi ref={divMsp237efQSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efQSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeIn","delay":1.2},"trigger":"onAppear","start":"bottom","replay":true}}' data-id="div-msp237ef-q" layout={true} data-name="Image 7" style={{ opacity: divMsp237efQFxAppOpacity, y: divMsp237efQFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro4g0z-z" variants={frameMsro4g0zZVariants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <TaKuZo ref={divMsp237efRSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efRSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeIn","delay":1.4},"trigger":"onAppear","start":"bottom","replay":true}}' data-id="div-msp237ef-r" layout={true} data-name="Image 8" style={{ opacity: divMsp237efRFxAppOpacity, y: divMsp237efRFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro4hq7-10" variants={frameMsro4hq710Variants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <CoCoZa ref={divMsp237efSSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efSSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeOut","delay":1.6},"trigger":"onAppear","start":"bottom","replay":true}}' data-id="div-msp237ef-s" layout={true} data-name="Image 9" style={{ opacity: divMsp237efSFxAppOpacity, y: divMsp237efSFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro4jbu-11" variants={frameMsro4jbu11Variants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <TiNuFe ref={divMsp237efTSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efTSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeIn","delay":1.8},"trigger":"onAppear","start":"bottom","replay":true}}' data-id="div-msp237ef-t" layout={true} data-name="Image 10" style={{ opacity: divMsp237efTFxAppOpacity, y: divMsp237efTFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro4lh1-12" variants={frameMsro4lh112Variants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <HuHeRe ref={divMsp237efUSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efUSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeIn","delay":2},"trigger":"onAppear","start":"bottom"}}' data-id="div-msp237ef-u" layout={true} data-name="Image 11" style={{ opacity: divMsp237efUFxAppOpacity, y: divMsp237efUFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro4n6u-13" variants={frameMsro4n6u13Variants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <ZoBaZo ref={divMsp237efVSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efVSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeIn","delay":2.2},"trigger":"onAppear","start":"bottom"}}' data-id="div-msp237ef-v" layout={true} data-name="Image 12" style={{ opacity: divMsp237efVFxAppOpacity, y: divMsp237efVFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro4oww-14" variants={frameMsro4oww14Variants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <PoBiHu ref={divMsp237efWSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efWSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeIn","delay":2.4},"trigger":"onAppear","start":"bottom"}}' data-id="div-msp237ef-w" layout={true} data-name="Image 13" style={{ opacity: divMsp237efWFxAppOpacity, y: divMsp237efWFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro4qzj-15" variants={frameMsro4qzj15Variants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <WeJoTi ref={divMsp237efXSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efXSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeOut","delay":2.6},"trigger":"onAppear","start":"bottom"}}' data-id="div-msp237ef-x" layout={true} data-name="Image 14" style={{ opacity: divMsp237efXFxAppOpacity, y: divMsp237efXFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+                
+    <motion.div layout={true} data-id="frame-msro4t2j-16" variants={frameMsro4t2j16Variants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Frame" style={{ flex: '0 0 auto',
+        backgroundColor: 'rgba(0, 0, 0, 0)',
+        overflow: 'hidden',
+        position: 'relative', width: '100%',  flexDirection: initialVariant === 'variant-2' ? 'column' : 'row', alignItems: initialVariant === 'variant-2' ? 'center' : 'stretch', justifyContent: initialVariant === 'variant-2' ? 'center' : 'flex-start', height: initialVariant === 'variant-2' ? 'min-content' : '100%'}}>
+    <NuLiLe ref={divMsp237efYSvRef} data-scroll-variant='{"trigger":"layerInView","from":"default","to":"default-hover","direction":"down","replay":true,"canvasVariant":"default","scope":[{"variant":"variant-2"}],"start":"center"}' initialVariant={(initialVariant === 'variant-2' ? divMsp237efYSv : 'default')} data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeOut","delay":2.8},"trigger":"onAppear","start":"bottom"}}' data-id="div-msp237ef-y" layout={true} data-name="Image 15" style={{ opacity: divMsp237efYFxAppOpacity, y: divMsp237efYFxAppY,  position: initialVariant === 'variant-2' ? 'relative' : 'absolute', left: initialVariant === 'variant-2' ? 'auto' : '0px', top: initialVariant === 'variant-2' ? 'auto' : '0px',  width: initialVariant === 'variant-2' ? '200px' : '100%', height: initialVariant === 'variant-2' ? '235px' : '100%',  flex: initialVariant === 'variant-2' ? '0 0 auto' : ''}} />
+  </motion.div>
+              </motion.div>
+    </LayoutGroup>;
+}
+export default withResponsiveProps(BiDaMa);

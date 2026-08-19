@@ -1,0 +1,914 @@
+'use client';
+
+/** @canvas {
+  "viewports": [
+    {
+      "id": "desktop",
+      "label": "Desktop",
+      "width": 1440,
+      "isPrimary": true,
+      "order": 0,
+      "height": "auto"
+    },
+    {
+      "id": "tablet",
+      "label": "Tablet",
+      "width": 768,
+      "isPrimary": false,
+      "order": 1
+    },
+    {
+      "id": "mobile",
+      "label": "Mobile",
+      "width": 375,
+      "isPrimary": false,
+      "order": 2
+    }
+  ],
+  "positions": {
+    "desktop": {
+      "x": 0,
+      "y": 0
+    },
+    "tablet": {
+      "x": 1600,
+      "y": 0
+    },
+    "mobile": {
+      "x": 2528,
+      "y": 0
+    }
+  }
+} */
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { motion, useMotionValue, animate, LayoutGroup } from 'framer-motion';
+import { useLocale } from 'next-intl';
+import KuRoBa from '@/components/KuRoBa';
+import CardDeck from "https://assets.example.com/components/CardDeck@0000000000000000.js";
+import collection1 from '@/cms/collection-1.json';
+import BiDaMa from '@/components/BiDaMa';
+import Marquee from '@/components/Marquee';
+import KuDuFe from '@/components/KuDuFe';
+import RainPane from "https://assets.example.com/components/RainPane@0000000000000000.js";
+import BokehDrift from "https://assets.example.com/components/BokehDrift@0000000000000000.js";
+import SphereGallery from "https://assets.example.com/components/SphereGallery@0000000000000000.js";
+import SliceShift from "https://assets.example.com/components/SliceShift@0000000000000000.js";
+import DepthWheel from "https://assets.example.com/components/DepthWheel@0000000000000000.js";
+function useResponsiveText(primary, overrides, vpWidths) {
+  const ref = useRef(null);
+  const [w, setW] = useState(() => typeof window !== 'undefined' ? window.innerWidth : Infinity);
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return;
+    let host = ref.current && ref.current.parentElement;
+    while (host && host !== document.body && !host.hasAttribute('data-viewport-width')) {
+      host = host.parentElement;
+    }
+    if (host && host.hasAttribute && host.hasAttribute('data-viewport-width')) {
+      const read = () => setW(parseInt(host.getAttribute('data-viewport-width'), 10) || window.innerWidth);
+      read();
+      const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(read) : null;
+      if (ro) ro.observe(host);
+      const mo = new MutationObserver(read);
+      mo.observe(host, {
+        attributes: true,
+        attributeFilter: ['data-viewport-width']
+      });
+      return () => {
+        if (ro) ro.disconnect();
+        mo.disconnect();
+      };
+    }
+    const onResize = () => setW(window.innerWidth);
+    setW(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  // Bucket the current width into one of the configured viewports, then look
+  // up that bucket's override. Smallest viewport width >= w wins. If no
+  // viewport is wider than w, fall through to primary. Without the full
+  // viewport list, we can't tell mobile (375) from tablet (768) when only
+  // tablet has an override — both would resolve to tablet's text.
+  const widths = (vpWidths || Object.keys(overrides || {}).map(Number)).filter(function (n) {
+    return typeof n === 'number' && isFinite(n) && n > 0;
+  }).slice().sort(function (a, b) {
+    return a - b;
+  });
+  let bucket = null;
+  for (let i = 0; i < widths.length; i++) {
+    if (w <= widths[i]) {
+      bucket = widths[i];
+      break;
+    }
+  }
+  let value = primary;
+  if (bucket !== null && overrides && overrides[bucket] !== undefined) {
+    value = overrides[bucket];
+  }
+  // Override values may contain rich-text marks emitted by TipTap on commit
+  // (`<span style="font-size: 14px">word</span>` etc.). Plain string children
+  // get escaped by React, so use dangerouslySetInnerHTML when the value looks
+  // like HTML. Plain text falls through to the children path so React's text
+  // diffing stays cheap.
+  const isHtml = typeof value === 'string' && /<[a-z][^>]*>/i.test(value);
+  return isHtml ? React.createElement('span', {
+    ref: ref,
+    style: {
+      display: 'contents'
+    },
+    dangerouslySetInnerHTML: {
+      __html: value
+    }
+  }) : React.createElement('span', {
+    ref: ref,
+    style: {
+      display: 'contents'
+    }
+  }, value);
+}
+// @useResponsiveText-end
+
+export default function Page() {
+  const [formStateFormmsq7x8nm1, setFormStateFormmsq7x8nm1] = useState('idle');
+  const __activeLocale = useLocale();
+  const componentMsqffnjmDFxAppOpacity = useMotionValue(0);
+  const componentMsqffnjmDFxAppY = useMotionValue(-150);
+  useEffect(() => {
+    animate(componentMsqffnjmDFxAppOpacity, 1, {
+      type: 'tween',
+      duration: 0.55,
+      ease: 'easeIn',
+      delay: 0.8
+    });
+    animate(componentMsqffnjmDFxAppY, 0, {
+      type: 'tween',
+      duration: 0.55,
+      ease: 'easeIn',
+      delay: 0.8
+    });
+  }, []);
+  const divMsp237eeCFxAppOpacity = useMotionValue(0);
+  const divMsp237eeCFxAppY = useMotionValue(30);
+  useEffect(() => {
+    animate(divMsp237eeCFxAppOpacity, 1, {
+      type: 'tween',
+      duration: 0.6,
+      ease: 'easeIn',
+      delay: 0.5
+    });
+    animate(divMsp237eeCFxAppY, 0, {
+      type: 'tween',
+      duration: 0.6,
+      ease: 'easeIn',
+      delay: 0.5
+    });
+  }, []);
+  return <motion.div layout transition={{
+    type: 'spring',
+    duration: 0.5,
+    bounce: 0.25,
+    delay: 0
+  }} data-glide='{"transition":{"type":"spring","duration":"0.5","bounce":"0.25","delay":"0"}}' data-id="root" data-name="Page" style={{
+    position: 'relative',
+    width: '100%',
+    height: 'auto',
+    flexDirection: 'column',
+    alignItems: 'center',
+    display: 'flex'
+  }}><LayoutGroup>
+    
+  
+    
+    
+    
+        
+    
+    
+    
+    
+    <motion.div data-glide-item layout transition={{
+        type: 'spring',
+        duration: 0.5,
+        bounce: 0.25,
+        delay: 0
+      }} style={{
+        order: '0',
+        flex: '0 0 auto',
+        width: '100%'
+      }}><div data-id="div-msp237ee-7" data-name="Hero" style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          width: '100%',
+          height: '100vh',
+          overflow: 'hidden',
+          backgroundColor: '#0A0A0A',
+          position: 'relative',
+          flex: '0 0 auto',
+          paddingTop: '160px',
+          paddingRight: '0px',
+          paddingBottom: '160px',
+          paddingLeft: '0px',
+          order: '0'
+        }}>
+          
+    
+  <style>{`
+    @media (max-width: 768px) and (min-width: 375.02px) {
+      [data-id="frame-msp70zji-4"] { width: 100% !important; }
+      [data-id="div-msp237ef-1r"] { height: min-content !important; padding-top: 80px !important; padding-right: 16px !important; padding-bottom: 80px !important; padding-left: 16px !important; }
+      [data-id="div-msp237ef-i"] { height: min-content !important; padding-top: 80px !important; padding-right: 16px !important; padding-bottom: 80px !important; padding-left: 16px !important; }
+      [data-id="BiDaMa-msq5wbqc-1"] { flex: 0 0 auto !important; width: 100% !important; }
+      [data-id="div-msp237ee-8"] { flex: 1 0 0px !important; padding-right: 16px !important; padding-left: 16px !important; }
+      [data-id="frame-msrn16cp-o"] { flex-direction: column !important; align-items: center !important; justify-content: center !important; display: flex !important; }
+      [data-id="div-msp237ee-c"] { flex: 0 0 auto !important; width: 100% !important; max-width: 480px !important; }
+      [data-id="div-msp237ef-1i"] { padding-top: 80px !important; padding-right: 16px !important; padding-bottom: 80px !important; padding-left: 16px !important; }
+      [data-id="div-msp237ef-10"] { width: 100% !important; padding-right: 16px !important; padding-left: 16px !important; }
+      [data-id="div-msp237ef-11"] { width: 100% !important; height: min-content !important; }
+      [data-id="frame-msrog9vk-17"] { width: 100% !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; display: flex !important; height: min-content !important; }
+      [data-id="p-msp237ef-12"] { position: relative !important; left: auto !important; top: auto !important; flex: 0 0 auto !important; width: 100% !important; text-align: center !important; }
+      [data-id="frame-msrogn1j-18"] { width: 100% !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; display: flex !important; height: min-content !important; }
+      [data-id="p-msp237ef-13"] { position: relative !important; left: auto !important; top: auto !important; flex: 0 0 auto !important; width: 100% !important; }
+      [data-id="frame-msrn8mt7-q"] { width: 100% !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; display: flex !important; height: min-content !important; }
+      [data-id="div-msp237ee-9"] { width: 100% !important; align-items: center !important; justify-content: center !important; }
+      [data-id="p-msp237ee-a"] { flex: 0 0 auto !important; width: 100% !important; text-align: center !important; }
+      [data-id="frame-msrn8k25-p"] { width: 100% !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; display: flex !important; height: min-content !important; }
+      [data-id="p-msp237ee-b"] { flex: 0 0 auto !important; }
+      [data-id="frame-msrnap6k-r"] { align-items: center !important; height: min-content !important; }
+    }
+    @media (max-width: 375px) {
+      [data-id="frame-msp70zji-4"] { width: 100% !important; }
+      [data-id="div-msp237ef-1r"] { height: min-content !important; padding-top: 80px !important; padding-right: 16px !important; padding-bottom: 80px !important; padding-left: 16px !important; }
+      [data-id="div-msp237ee-8"] { flex: 1 0 0px !important; padding-right: 16px !important; padding-left: 16px !important; }
+      [data-id="p-msp237ee-a"] { font-size: 40px !important; padding-left: 67px !important; padding-right: 67px !important; text-align: center !important; width: 100% !important; height: auto !important; flex: 0 0 auto !important; display: flex !important; flex-direction: column !important; }
+      [data-id="frame-msrn16cp-o"] { width: 100% !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; display: flex !important; height: min-content !important; }
+      [data-id="div-msp237ee-9"] { width: 100% !important; }
+      [data-id="frame-msrn8mt7-q"] { width: 100% !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; display: flex !important; height: min-content !important; }
+      [data-id="p-msp237ee-b"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="frame-msrn8k25-p"] { width: 100% !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; display: flex !important; height: min-content !important; }
+      [data-id="component-msqffnjm-d"] { width: 100% !important; }
+      [data-id="div-msp237ef-i"] { height: min-content !important; padding-top: 80px !important; padding-right: 16px !important; padding-bottom: 80px !important; padding-left: 16px !important; }
+      [data-id="p-msp237ef-12"] { font-size: 32px !important; width: 100% !important; text-align: center !important; position: relative !important; left: auto !important; top: auto !important; flex: 0 0 auto !important; }
+      [data-id="frame-msrog9vk-17"] { width: 100% !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; display: flex !important; height: min-content !important; }
+      [data-id="div-msp237ef-11"] { width: 100% !important; height: min-content !important; }
+      [data-id="div-msp237ef-10"] { width: 100% !important; }
+      [data-id="p-msp237ef-13"] { width: 100% !important; position: relative !important; left: auto !important; top: auto !important; flex: 0 0 auto !important; }
+      [data-id="frame-msrogn1j-18"] { width: 100% !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; display: flex !important; height: min-content !important; }
+      [data-id="div-msp237ef-z"] { padding-top: 80px !important; padding-right: 16px !important; padding-bottom: 80px !important; padding-left: 16px !important; }
+      [data-id="BiDaMa-msq5wbqc-1"] { width: 100% !important; }
+      [data-id="div-msp237ee-c"] { flex: 0 0 auto !important; width: 100% !important; }
+      [data-id="div-msp237ef-1i"] { padding-top: 80px !important; padding-right: 16px !important; padding-bottom: 80px !important; padding-left: 16px !important; gap: 20px !important; }
+      [data-id="frame-msrombz8-2"] { flex-direction: column !important; align-items: center !important; justify-content: center !important; display: flex !important; padding-right: 16px !important; padding-left: 16px !important; height: min-content !important; width: 100% !important; }
+      [data-id="dup-msq5yphb-a"] { position: relative !important; left: auto !important; top: auto !important; flex: 0 0 auto !important; width: 100% !important; }
+      [data-id="frame-msrnap6k-r"] { align-items: flex-start !important; justify-content: center !important; height: min-content !important; }
+      [data-id="frame-msrom19o-1"] { width: 100% !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; display: flex !important; height: min-content !important; }
+      [data-id="p-msp237ef-1j"] { position: relative !important; left: auto !important; top: auto !important; flex: 0 0 auto !important; }
+      [data-id="Marquee-msq5y6tp-2"] { flex: 1 0 0px !important; }
+      [data-id="p-msqft78a-f"] { font-size: 28px !important; }
+    }
+  `}</style>
+        <div data-id="div-msp237ee-8" data-name="Frame 6" data-pinned="true" style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '24px',
+            position: 'relative',
+            height: 'min-content',
+            order: '0',
+            zIndex: '2',
+            flex: '1 0 0px',
+            paddingRight: '16px',
+            paddingLeft: '16px'
+          }}>
+            <div data-id="div-msp237ee-9" data-name="Frame 5" style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '4px',
+              width: '100%',
+              height: 'min-content',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0',
+              justifyContent: 'center'
+            }}>
+              
+    <div data-id="frame-msrn8mt7-q" data-name="Frame" style={{
+                width: '100%',
+                height: 'min-content',
+                flex: '0 0 auto',
+                backgroundColor: 'rgba(0, 0, 0, 0)',
+                overflow: 'hidden',
+                position: 'relative',
+                order: '0',
+                margin: '0px',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                display: 'flex'
+              }}>
+    <motion.p data-id="p-msp237ee-a" data-name="Sample Hero Heading" style={{
+                  color: '#FFF',
+                  fontFamily: '"Cormorant Infant", sans-serif',
+                  fontSize: '64px',
+                  fontStyle: 'normal',
+                  fontWeight: '500',
+                  lineHeight: 'normal',
+                  width: '100%',
+                  height: 'auto',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  textAlign: 'center'
+                }} initial={{
+                  opacity: 0,
+                  y: 30
+                }} whileInView={{
+                  opacity: 1,
+                  y: 0
+                }} viewport={{
+                  once: true
+                }} transition={{
+                  ease: 'easeIn',
+                  duration: 0.6
+                }} data-pinned="true">{useResponsiveText("Sample Hero Heading", {
+                    375: "Sample Hero Heading"
+                  }, [375, 768, 1440])}</motion.p>
+  </div>
+              
+    <div data-id="frame-msrn8k25-p" data-name="Frame" style={{
+                width: '100%',
+                height: 'min-content',
+                flex: '0 0 auto',
+                backgroundColor: 'rgba(0, 0, 0, 0)',
+                overflow: 'hidden',
+                position: 'relative',
+                order: '1',
+                margin: '0px',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                display: 'flex'
+              }}>
+    <motion.p data-id="p-msp237ee-b" data-name="Placeholder subtitle for the hero section." style={{
+                  color: '#FFF',
+                  textAlign: 'center',
+                  fontFamily: 'Manrope, sans-serif',
+                  fontSize: '20px',
+                  fontStyle: 'normal',
+                  fontWeight: '500',
+                  lineHeight: 'normal',
+                  width: '100%',
+                  height: 'auto',
+                  position: 'relative',
+                  flex: '0 0 auto'
+                }} initial={{
+                  opacity: 0,
+                  y: 16
+                }} whileInView={{
+                  opacity: 1,
+                  y: 0
+                }} viewport={{
+                  once: true
+                }} transition={{
+                  duration: 0.6,
+                  delay: 0.3
+                }}>{useResponsiveText("Placeholder subtitle for the hero section.", {
+                    375: "Placeholder subtitle for the hero section."
+                  }, [375, 768, 1440])}</motion.p>
+  </div>
+            </div>
+            
+    <div data-id="frame-msrn16cp-o" data-name="Frame" style={{
+              width: '100%',
+              height: 'min-content',
+              flex: '0 0 auto',
+              backgroundColor: 'rgba(0, 0, 0, 0)',
+              overflow: 'hidden',
+              position: 'relative',
+              order: '1',
+              transform: "rotate(0.1deg)",
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              display: 'flex'
+            }}>
+    <KuRoBa data-responsive='{"375":{"initialVariant":"variant-3"},"768":{"initialVariant":"variant-3"},"_bp":[375,768,1440]}' data-instance-fx='{"appear":{"from":{"opacity":0,"y":30},"transition":{"type":"tween","duration":0.6,"ease":"easeIn","delay":0.5}}}' data-id="div-msp237ee-c" data-name="Frame 3" style={{
+                opacity: divMsp237eeCFxAppOpacity,
+                y: divMsp237eeCFxAppY,
+                width: '105px',
+                position: 'relative',
+                height: '35px',
+                flex: '0 0 auto'
+              }} />
+  </div>
+          </div>
+  
+      
+      
+    <SliceShift ease={0.16} fringe={0.6} shift={46} slices={11} image="https://assets.example.com/img.webp" data-id="component-msrmioty-n" data-name="SliceShift" style={{
+            position: 'absolute',
+            height: '100%',
+            order: '1',
+            left: '0px',
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: '100%',
+            opacity: '0.5',
+            zIndex: '1'
+          }}></SliceShift>
+  </div></motion.div>
+    <motion.div data-glide-item layout transition={{
+        type: 'spring',
+        duration: 0.5,
+        bounce: 0.25,
+        delay: 0
+      }} style={{
+        order: '0',
+        flex: '0 0 auto',
+        width: '100%'
+      }}><div data-id="div-msp237ee-e" data-name="Pictures" style={{
+          display: 'flex',
+          height: '100vh',
+          paddingTop: '160px',
+          justifyContent: 'center',
+          alignItems: 'center',
+          width: '100%',
+          overflow: 'hidden',
+          position: 'relative',
+          flex: '0 0 auto',
+          paddingBottom: '160px',
+          flexDirection: 'column',
+          order: '1'
+        }}>
+        
+      
+    
+    <div data-id="frame-msrnap6k-r" data-name="Frame" style={{
+            width: '100%',
+            height: '617px',
+            flex: '0 0 auto',
+            backgroundColor: 'rgba(0, 0, 0, 0)',
+            overflow: 'visible',
+            position: 'relative',
+            order: '1',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            display: 'flex'
+          }}>
+    <SphereGallery data-responsive='{"375":{"tileSize":132},"_bp":[375,768,1440]}' data-instance-fx='{"appear":{"from":{"opacity":0,"y":-150},"transition":{"type":"tween","duration":0.55,"ease":"easeIn","delay":0.8}}}' tileRadius={14} tilt={0.16} tileSize={128} speed={0.1} data-id="component-msqffnjm-d" data-name="SphereGallery" style={{
+              opacity: componentMsqffnjmDFxAppOpacity,
+              y: componentMsqffnjmDFxAppY,
+              position: 'relative',
+              width: '720px',
+              aspectRatio: '1.16667 / 1',
+              height: '617px',
+              maxWidth: '720px',
+              flex: '0 0 auto'
+            }}></SphereGallery>
+  </div>
+  </div></motion.div>
+    <motion.div data-glide-item layout transition={{
+        type: 'spring',
+        duration: 0.5,
+        bounce: 0.25,
+        delay: 0
+      }} style={{
+        order: '0',
+        flex: '0 0 auto',
+        width: '100%'
+      }}><div data-id="div-msp237ef-i" data-name="Gallery" style={{
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center',
+          gap: '4px',
+          width: '100%',
+          height: 'min-content',
+          overflow: 'hidden',
+          backgroundColor: '#0A0A0A',
+          position: 'relative',
+          flex: '0 0 auto',
+          justifyContent: 'center',
+          order: '3',
+          scrollMarginTop: '60px', paddingTop: '80px', paddingRight: '120px', paddingBottom: '80px', paddingLeft: '120px'
+        }} id="gallery">
+          
+    
+            
+    <BiDaMa data-responsive='{"375":{"initialVariant":"variant-2"},"768":{"initialVariant":"variant-1"},"_bp":[375,768,1440]}' data-id="BiDaMa-msq5wbqc-1" data-name="BiDaMa" style={{
+            position: 'relative', flex: '0 0 auto',
+            order: '1', width: '100%'}}></BiDaMa></div></motion.div>
+    <motion.div data-glide-item layout transition={{
+        type: 'spring',
+        duration: 0.5,
+        bounce: 0.25,
+        delay: 0
+      }} style={{
+        order: '0',
+        flex: '0 0 auto',
+        width: '100%'
+      }}><div data-id="div-msp237ef-z" data-name="Selected works" style={{
+          height: 'min-content',
+          width: '100%',
+          overflow: 'hidden',
+          backgroundColor: '#0F0F0F',
+          position: 'relative',
+          flex: '0 0 auto',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          display: 'flex',
+          paddingTop: '80px',
+          paddingBottom: '80px',
+          order: '2',
+          scrollMarginTop: '60px'
+        }} id="works">
+          <div data-id="div-msp237ef-10" data-name="Frame 6" data-pinned="true" style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '24px',
+            width: '566px',
+            height: 'min-content',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0'
+          }}>
+            <div data-id="div-msp237ef-11" data-name="Frame 5" style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '16px',
+              width: '566px',
+              height: '121px',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0'
+            }}>
+              
+    <div data-id="frame-msrog9vk-17" data-name="Frame" style={{
+                width: '566px',
+                height: '77px',
+                flex: '0 0 auto',
+                backgroundColor: 'rgba(0, 0, 0, 0)',
+                overflow: 'hidden',
+                position: 'relative',
+                order: '0',
+                margin: '0px'
+              }}>
+    <motion.p data-id="p-msp237ef-12" data-name="A Glimpse Into Fixtures" style={{
+                  color: '#FFF',
+                  fontFamily: '"Cormorant Infant", sans-serif',
+                  fontSize: '64px',
+                  fontStyle: 'normal',
+                  fontWeight: '500',
+                  lineHeight: 'normal',
+                  width: '566px',
+                  height: 'auto',
+                  position: 'absolute',
+                  left: '0px',
+                  top: '0px'
+                }} initial={{
+                  opacity: 0,
+                  y: 30
+                }} whileInView={{
+                  opacity: 1,
+                  y: 0
+                }} viewport={{
+                  once: true
+                }} transition={{
+                  duration: 0.6
+                }}>{useResponsiveText("A Glimpse Into Fixtures", {
+                    768: "A Glimpse Into Fixtures"
+                  }, [375, 768, 1440])}</motion.p>
+  </div>
+              
+    <div data-id="frame-msrogn1j-18" data-name="Frame" style={{
+                width: '566px',
+                height: '27px',
+                flex: '0 0 auto',
+                backgroundColor: 'rgba(0, 0, 0, 0)',
+                overflow: 'hidden',
+                position: 'relative',
+                order: '1',
+                margin: '0px'
+              }}>
+    <motion.p data-id="p-msp237ef-13" data-name="Placeholder gallery heading" style={{
+                  color: 'var(--color-text-light)',
+                  textAlign: 'center',
+                  fontFamily: 'Manrope, sans-serif',
+                  fontSize: '20px',
+                  fontStyle: 'normal',
+                  fontWeight: '500',
+                  lineHeight: 'normal',
+                  width: '566px',
+                  height: 'auto',
+                  position: 'absolute',
+                  left: '0px',
+                  top: '0px'
+                }} initial={{
+                  opacity: 0,
+                  y: 16
+                }} whileInView={{
+                  opacity: 1,
+                  y: 0
+                }} viewport={{
+                  once: true
+                }} transition={{
+                  duration: 0.6,
+                  delay: 0.3
+                }}>{useResponsiveText("Placeholder gallery heading", {
+                    768: "Placeholder gallery heading"
+                  }, [375, 768, 1440])}</motion.p>
+  </div>
+            </div>
+                      </div>
+                  
+    
+      
+    
+      
+    <DepthWheel data-responsive='{"375":{"autoSpin":0.05},"768":{"autoSpin":0.05},"_bp":[375,768,1440]}' sideScale={0.64} gap={56} autoSpin={0.1} cardWidth={390} maxAngle={0} depth={440} edgeBlur={6} radius={24} cardHeight={600} images="https://assets.example.com/img.webp|https://assets.example.com/img.webp|https://assets.example.com/img.webp|https://assets.example.com/img.webp|https://assets.example.com/img.webp|https://assets.example.com/img.webp|https://assets.example.com/img.webp|https://assets.example.com/img.webp|https://assets.example.com/img.webp|https://assets.example.com/img.webp" data-id="DepthWheel-mstcfec1-3" data-name="DepthWheel" style={{
+            position: 'relative',
+            width: '100%',
+            order: '3',
+            height: '668px'
+          }}></DepthWheel>
+  </div></motion.div>
+    <motion.div data-glide-item layout transition={{
+        type: 'spring',
+        duration: 0.5,
+        bounce: 0.25,
+        delay: 0
+      }} style={{
+        order: '0',
+        flex: '0 0 auto',
+        width: '100%'
+      }}><div data-id="div-msp237ef-1i" data-name="studio" style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '16px',
+          width: '100%',
+          height: 'min-content',
+          overflow: 'visible',
+          backgroundColor: '#0A0A0A',
+          position: 'relative',
+          flex: '0 0 auto',
+          paddingTop: '80px',
+          paddingRight: '0',
+          paddingBottom: '80px',
+          paddingLeft: '0',
+          maxWidth: '100%',
+          order: '4',
+          scrollMarginTop: '60px'
+        }} id="studio">
+          
+    <div data-id="frame-msrom19o-1" data-name="Frame" style={{
+            width: '125px',
+            height: '58px',
+            flex: '0 0 auto',
+            backgroundColor: 'rgba(0, 0, 0, 0)',
+            overflow: 'hidden',
+            position: 'relative',
+            order: '0',
+            margin: '0px'
+          }}>
+    <motion.p data-id="p-msp237ef-1j" data-name="Studio" data-pinned="true" style={{
+              color: '#FFF',
+              textAlign: 'center',
+              fontFamily: '"Cormorant Infant", sans-serif',
+              fontSize: '48px',
+              fontStyle: 'normal',
+              fontWeight: '500',
+              lineHeight: 'normal',
+              width: '125px',
+              position: 'absolute',
+              height: 'auto',
+              left: '0px',
+              top: '0px'
+            }} initial={{
+              opacity: 0,
+              y: 30
+            }} whileInView={{
+              opacity: 1,
+              y: 0
+            }} viewport={{
+              once: true
+            }} transition={{
+              duration: 0.6
+            }}>
+            Studio
+          </motion.p>
+  </div>
+    
+    <div data-id="frame-msrombz8-2" data-name="Frame" style={{
+            width: '373px',
+            height: '44px',
+            flex: '0 0 auto',
+            backgroundColor: 'rgba(0, 0, 0, 0)',
+            overflow: 'hidden',
+            position: 'relative',
+            order: '1',
+            margin: '0px'
+          }}>
+    <motion.p data-id="dup-msq5yphb-a" data-name="Placeholder about paragraph for this fixture page." style={{
+              color: '#a9a9a9',
+              fontFamily: 'Manrope, sans-serif',
+              fontSize: '16px',
+              fontStyle: 'normal',
+              fontWeight: '300',
+              lineHeight: 'normal',
+              position: 'absolute',
+              textAlign: 'center',
+              width: '373px',
+              height: 'min-content',
+              left: '0px',
+              top: '0px'
+            }} initial={{
+              opacity: 0,
+              y: 30
+            }} whileInView={{
+              opacity: 1,
+              y: 0
+            }} viewport={{
+              once: true
+            }} transition={{
+              duration: 0.6,
+              delay: 0.3
+            }}>Placeholder about paragraph for this fixture page.</motion.p>
+  </div><div data-id="frame-msq68xa0-c" data-name="image wrap" style={{
+            width: '100%',
+            height: '640px',
+            flex: '0 0 auto',
+            backgroundColor: 'rgba(0, 0, 0, 0)',
+            overflow: 'visible',
+            position: 'relative',
+            order: '2',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            display: 'flex',
+            maxWidth: '100%'
+          }}>
+    <Marquee speed={20} gap={12} data-id="Marquee-msq5y6tp-2" data-name="Marquee" style={{
+              width: '100%',
+              height: '640px',
+              position: 'relative',
+              flex: '0 0 auto',
+              maxWidth: '100%'
+            }}>{cn_div_msp237ef_1o}{cn_div_msp237ef_1m}{cn_div_msp237ef_1l}{cn_div_msp237ef_1n}</Marquee>
+  
+    <div data-id="div-msp237ef-1p" data-name="Overlay" data-pinned="true" style={{
+              width: '100%',
+              height: '640px',
+              position: 'absolute',
+              backgroundImage: 'linear-gradient(180deg, rgba(217, 217, 217, 0.00) 0%, rgba(53, 53, 53, 0.40) 25%, #0A0A0A 102%)',
+              flex: '0 0 auto',
+              order: '1',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              display: 'flex',
+              paddingBottom: '16px',
+              left: '0px',
+              top: '0px',
+              maxWidth: '100%'
+            }}>
+  
+    <p data-id="p-msqft78a-f" data-name="Studio" data-pinned="true" style={{
+                flex: '0 0 auto',
+                color: '#FFF',
+                textAlign: 'center',
+                fontFamily: '"Cormorant Infant", sans-serif',
+                fontSize: '40px',
+                fontStyle: 'normal',
+                fontWeight: '400',
+                lineHeight: 'normal',
+                width: '251px',
+                position: 'relative',
+                margin: '0px',
+                height: 'min-content',
+                order: '0'
+              }}>Fixture Home</p></div>
+  
+    </div>
+            </div></motion.div>
+    <motion.div data-glide-item layout transition={{
+        type: 'spring',
+        duration: 0.5,
+        bounce: 0.25,
+        delay: 0
+      }} style={{
+        order: '0',
+        flex: '0 0 auto',
+        width: '100%'
+      }}><div data-id="div-msp237ef-1r" data-name="Contact" style={{
+          height: '100vh',
+          width: '100%',
+          overflow: 'hidden',
+          backgroundColor: '#0A0A0A',
+          position: 'relative',
+          flex: '0 0 auto',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          display: 'flex',
+          paddingRight: '0px',
+          paddingTop: '80px',
+          paddingBottom: '80px',
+          order: '5',
+          scrollMarginTop: '60px'
+        }} id="contact">
+          
+    
+    <KuDuFe data-responsive='{"375":{"initialVariant":"variant-2"},"768":{"initialVariant":"variant-2"},"_bp":[1440,768,375]}' data-id="frame-msp70zji-4" data-name="container" style={{
+            position: 'relative',
+            flex: '0 0 auto',
+            width: '100%'
+          }} />
+        </div></motion.div>
+  
+    
+    
+    </LayoutGroup></motion.div>;
+}
+const cn_div_msp237ef_1n = <div data-id="div-msp237ef-1n" data-name="Studio image 3" style={{
+  width: '364px',
+  height: '640px',
+  borderRadius: '24px',
+  position: 'absolute',
+  left: '-2149px',
+  top: '3984px',
+  backgroundImage: 'url(https://assets.example.com/img.webp)',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+  flex: '0 0 auto'
+}} data-canvas-node="true"></div>;
+const cn_div_msp237ef_1l = <div data-id="div-msp237ef-1l" data-name="Studio image 1" style={{
+  width: '364px',
+  height: '640px',
+  borderRadius: '24px',
+  position: 'absolute',
+  left: '-1714px',
+  top: '3984px',
+  backgroundImage: 'url(https://assets.example.com/img.webp)',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+  flex: '0 0 auto'
+}} data-canvas-node="true"></div>;
+const cn_div_msp237ef_1m = <div data-id="div-msp237ef-1m" data-name="Studio image 2" style={{
+  width: '364px',
+  height: '640px',
+  borderRadius: '24px',
+  position: 'absolute',
+  left: '-1279px',
+  top: '3984px',
+  backgroundImage: 'url(https://assets.example.com/img.webp)',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+  flex: '0 0 auto'
+}} data-canvas-node="true"></div>;
+const cn_div_msp237ef_1o = <div data-id="div-msp237ef-1o" data-name="Studio image 4" data-pinned="true" style={{
+  width: '364px',
+  height: '640px',
+  borderRadius: '24px',
+  position: 'absolute',
+  left: '-844px',
+  top: '3984px',
+  backgroundImage: 'url(https://assets.example.com/img.webp)',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+  flex: '0 0 auto'
+}} data-canvas-node="true"></div>;
+const canvasNodes = <>
+
+    
+  
+
+  
+
+  
+
+  
+
+  
+
+    
+
+  
+
+  
+
+  
+
+    
+
+  
+
+  
+
+  
+</>;

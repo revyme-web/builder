@@ -1,0 +1,19 @@
+import React from 'react';
+import { motion, LayoutGroup } from 'framer-motion';
+import { withResponsiveProps } from '@revyme/runtime';
+
+/** @name "Frame" */
+
+const variantConfig = [
+  { name: 'default', label: 'Frame', x: 0, y: 0, isPrimary: true },
+];
+
+function FeGaXi({ style, initialVariant = 'default', ...rest }: { style?: React.CSSProperties; initialVariant?: string; [key: string]: any }) {
+  return (
+    <LayoutGroup>
+    <motion.div layout={true} data-id="frame-msu8oque-2" {...rest} data-name="Frame" style={{position: 'absolute', width: '1123px',  backgroundColor: '#ffb3ba', borderRadius: '0px', overflow: 'hidden', height: '219px', left: '0px', top: '0px', ...style}}></motion.div>
+    </LayoutGroup>
+  );
+}
+
+export default withResponsiveProps(FeGaXi);

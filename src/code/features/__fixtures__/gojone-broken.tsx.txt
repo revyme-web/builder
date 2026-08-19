@@ -1,0 +1,33 @@
+'use client';
+
+/** @name "Frame" */
+
+import React, { useState, useEffect } from 'react';
+import { motion, LayoutGroup } from 'framer-motion';
+import { withResponsiveProps } from '@revyme/runtime';
+import FeGaXi from '@/components/FeGaXi';
+
+const variantConfig = [
+  { name: 'default', label: 'Frame', x: 0, y: 0, isPrimary: true },
+  { name: 'variant-1', label: 'Frame', x: 1944, y: 0 },
+];
+
+const connections = [
+  { from: 'default', to: 'variant-1', trigger: 'click' },
+];
+
+function GoJoNe({ style, initialVariant = 'default', ...rest }: { style?: React.CSSProperties; initialVariant?: string; [key: string]: any }) {
+  const [variant, setVariant] = useState(initialVariant);
+  useEffect(() => { setVariant(initialVariant); }, [initialVariant]);
+
+  return (
+    <LayoutGroup>
+    <motion.div
+      onTap={() => { const _n = variant === 'default' ? 'variant-1' : null; if (_n) setVariant(_n); }} layout={true} data-id="frame-msu8opx2-1" {...rest} data-name="Frame" style={{position: 'absolute',  backgroundColor: '#97cffc', borderRadius: '0px', overflow: 'hidden',  left: '0px', top: '0px',  width: '834px', height: '673px', ...style}} initial={['default', initialVariant]} animate={['default', variant]}>
+        <FeGaXi height={variant === 'variant-1' ? undefined : '419px'} data-id="frame-msu8oque-2" layout={true} data-name="Frame" style={{ position: 'absolute',   left: '7.2100%', top: '61px',  width: '719px', height: '100%'}} />
+      </motion.div>
+    </LayoutGroup>
+  );
+}
+
+export default withResponsiveProps(GoJoNe);
