@@ -36,7 +36,10 @@ import {
   RowSelect,
   LANGUAGE_OPTIONS,
   ConfirmModal,
+  Toggle,
 } from './settings-shared';
+import { CLOUD_ENABLED } from '@/shared/cloud-flag';
+import { setWebsiteWatermark } from '@/backend/revyme-backend';
 
 // ─── Inline SVG icons ──────────────────────────────────────────────────────
 
@@ -236,6 +239,33 @@ export default function SettingsOverlay() {
   const [customCodeHead, setCustomCodeHead] = useState(websiteSettings.customCodeHead || '');
   const [customCodeBody, setCustomCodeBody] = useState(websiteSettings.customCodeBody || '');
   const [defaultTheme, setDefaultTheme] = useState<'light' | 'dark' | 'system'>(websiteSettings.defaultTheme || 'light');
+
+  // ─── "Made in Revyme" badge opt-out ─────────────────────────────────
+  // Available on EVERY plan (2026-08-19) — the badge is a user choice, not
+  // a paid perk. Truth lives in `websites.hide_watermark` (the Worker reads
+  // it via PLANS_KV), so this reads/writes the backend directly rather than
+  // the project's siteConfig. Applies to the LIVE site within seconds — no
+  // republish (for sites published on the hideWatermark-aware worker).
+  const [showBadge, setShowBadge] = useState(true);
+  const [badgeLoaded, setBadgeLoaded] = useState(false);
+  useEffect(() => {
+    if (!CLOUD_ENABLED || !websiteId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/websites/${websiteId}`, { credentials: 'include' });
+        if (!res.ok) return;
+        const row = await res.json() as { hide_watermark?: boolean };
+        if (!cancelled) { setShowBadge(!(row.hide_watermark ?? false)); setBadgeLoaded(true); }
+      } catch { /* toggle stays at default-on, disabled until loaded */ }
+    })();
+    return () => { cancelled = true; };
+  }, [websiteId]);
+  const handleToggleBadge = useCallback((show: boolean) => {
+    setShowBadge(show); // optimistic — revert on failure
+    void setWebsiteWatermark(websiteId, !show).catch(() => setShowBadge(!show));
+    trace.action('settings:watermark-toggle', { websiteId, show });
+  }, [websiteId]);
 
   // ─── Change tracking ───────────────────────────────────────────────
   const [hasMetadataChanges, setHasMetadataChanges] = useState(false);
@@ -832,6 +862,24 @@ export default function SettingsOverlay() {
                 </p>
               </div>
             </SettingsRow>
+
+            {/* "Made in Revyme" badge — a free choice on every plan. Saves
+                immediately (no Save button): the backend flips the column and
+                rewrites the site's edge KV, so the live site follows within
+                seconds. Hidden entirely in OSS/self-hosted builds — there is
+                no worker injecting a badge there. */}
+            {CLOUD_ENABLED && (
+              <SettingsRow label="Made in Revyme badge">
+                <div className="flex items-center justify-between gap-3 py-1">
+                  <p className="text-xs text-[var(--text-tertiary)]">
+                    Show the small &ldquo;Made in Revyme&rdquo; badge on your published site.
+                  </p>
+                  <div className={badgeLoaded ? '' : 'opacity-40 pointer-events-none'}>
+                    <Toggle value={showBadge} onChange={handleToggleBadge} />
+                  </div>
+                </div>
+              </SettingsRow>
+            )}
           </SettingsGroup>
 
           {/* ─── Appearance ─── */}

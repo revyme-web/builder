@@ -212,6 +212,31 @@ export default function InputTool() {
   useEffect(() => {
     if (!iconPopupOpen && nodeId) removeCanvasCSS(`[data-id="${nodeId}"][data-id]`);
   }, [iconPopupOpen, nodeId]);
+  // SELF-HEAL (2026-08-19): wild files where a band re-serialization ate the
+  // select caret RULE while the data-select-icon attr survived —
+  // extractLangRules used to preserve only :lang top-level rules, so any
+  // replica style edit or viewport resize deleted every `select[data-id]`
+  // rule. The panel (reading the attr) still showed the icon while canvas +
+  // live rendered none. The attr is the intent: if the rule is missing from
+  // the live code, re-bake it once per selection. New damage can't occur
+  // (extractLangRules now preserves ALL top-level rules); this repairs files
+  // broken before that fix.
+  const caretHealRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!nodeId || node?.type !== 'select') return;
+    const spec = parseSelectIconSpec(node?.attrs?.[SELECT_ICON_ATTR]);
+    if (!spec) return;
+    if (caretHealRef.current === nodeId) return;
+    if (!code || code.includes(`select[data-id="${nodeId}"]`)) return;
+    caretHealRef.current = nodeId;
+    trace.action('input-tool:select-icon-heal', { nodeId, icon: spec.icon });
+    void (async () => {
+      const raw = await fetchRawIconSvg(spec.icon);
+      if (!raw) { trace.error('input-tool:select-icon-heal-fetch-failed', { icon: spec.icon }); return; }
+      queueMutation({ type: 'updateSelectCaretRule', nodeId, cssBody: bakeSelectCaretCssBody(raw, spec.color ?? DEFAULT_SELECT_ICON_COLOR) });
+      flushNow();
+    })();
+  }, [nodeId, node?.type, node?.attrs, code]);
 
   // ─── Select options (<option>/<optgroup> children) — hook, so it lives
   // ABOVE the early return. Fine-grained: re-renders only when the resolved

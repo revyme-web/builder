@@ -4,6 +4,7 @@ import {
   updateContainerQueryStyle, updateVariantStyleInCode, setConditionalStyleInCode,
   rewriteResponsiveBreakpoints, addResponsiveBreakpoint, removeResponsiveBreakpoint,
   setConditionalOrderInCode, clearContainerStylesInSubtree,
+  rewriteContainerBreakpoints, clearContainerStylesForNode,
 } from './generator-styles';
 import { updateNodeInCode } from './generator-crud';
 import { parseJSXToNodes } from '../parsing/parser';
@@ -1797,5 +1798,61 @@ export default Card;`;
     // Exactly ONE renamed closer — box's own, not inner's, not outer's.
     expect(out.match(/<\/motion\.div>/g)?.length).toBe(1);
     expect(out).toContain('<div data-id="inner"');
+  });
+});
+
+describe('band re-serialization preserves NON-band top-level rules (the vanished select chevrons, 2026-08-19)', () => {
+  const PAGE = `export default function Page() {
+  return <div data-id="root" style={{ width: '100%' }}>
+    <select data-id="interest-select" data-select-icon='{"icon":"pixel:chevron-down-solid","color":"#ABABAB"}' style={{ width: '100%' }}></select>
+    <div data-id="hero" style={{ width: '100%' }}></div>
+    <style>{\`
+    @media (max-width: 768px) and (min-width: 400.02px) {
+      [data-id="hero"] { padding: 24px !important; }
+    }
+    @media (max-width: 400px) {
+      [data-id="hero"] { padding: 16px !important; }
+    }
+
+    select[data-id="interest-select"] {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg%3E%3C/svg%3E");
+      background-position: right center;
+    }
+    @keyframes pulse-x { from { opacity: 0; } to { opacity: 1; } }
+  \`}</style>
+  </div>;
+}`;
+
+  test('updateContainerQueryStyle keeps caret rules and @keyframes', () => {
+    const out = updateContainerQueryStyle(PAGE, 'hero', 400, { gap: '8px' });
+    expect(out).toContain('select[data-id="interest-select"]');
+    expect(out).toContain('background-image: url("data:image/svg+xml');
+    expect(out).toContain('@keyframes pulse-x');
+    expect(out).toContain('gap: 8px !important');
+    // …and only ONE copy of each (no duplication on repeated writes).
+    const twice = updateContainerQueryStyle(out, 'hero', 400, { gap: '12px' });
+    expect(twice.match(/select\[data-id="interest-select"\]/g)?.length).toBe(1);
+    expect(twice.match(/@keyframes pulse-x/g)?.length).toBe(1);
+  });
+
+  test('rewriteContainerBreakpoints keeps caret rules and @keyframes', () => {
+    syncViewportWidths({ desktop: 1440, tablet: 768, mobile: 500 });
+    try {
+      const out = rewriteContainerBreakpoints(PAGE, 400, 500);
+      expect(out).toContain('select[data-id="interest-select"]');
+      expect(out).toContain('@keyframes pulse-x');
+      expect(out).toContain('@media (max-width: 500px)');
+    } finally {
+      syncViewportWidths({ desktop: 1440, tablet: 768, mobile: 400 });
+    }
+  });
+
+  test('clearContainerStylesForNode keeps caret rules', () => {
+    const out = clearContainerStylesForNode(PAGE, 'hero');
+    expect(out).toContain('select[data-id="interest-select"]');
+    expect(out).toContain('@keyframes pulse-x');
+    expect(out).not.toContain('padding: 24px !important');
   });
 });

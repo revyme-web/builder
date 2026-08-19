@@ -204,14 +204,21 @@ import { updateNodeInCode } from './generator-crud';
 import { isIndexInsideSlotConst } from './slot-ops';
 
 
-// ─── :lang() rule preservation ──────────────────────────────────────────────
+// ─── Non-band rule preservation ──────────────────────────────────────────────
 // updateContainerQueryStyle / clearContainerStylesForNode re-serialize the
 // WHOLE <style> block from parseContainerRules' model, which only understands
-// plain `[data-id]` band rules — locale rules (`:lang(fr) [data-id] {…}`,
-// top-level AND banded) were being EATEN on every regular replica style write
-// (and their props merged into the plain rule — the "Reset Override removed
-// the locale transform everywhere" report). Extract them first, re-inject
-// after serialization.
+// plain `[data-id]` band rules — everything else must be carried through
+// explicitly or it is EATEN on every regular replica style write:
+//   · locale rules (`:lang(fr) [data-id] {…}`, top-level AND banded) — the
+//     "Reset Override removed the locale transform everywhere" report;
+//   · select caret rules (`select[data-id="…"] {…}`, the Input tool's Icon)
+//     and any other top-level construct (@keyframes, …) — the vanished
+//     select chevron icons, 2026-08-19: only :lang was preserved here, so a
+//     replica style edit / viewport resize silently deleted the carets while
+//     the panel (reading data-select-icon) still showed them.
+// Extract them first, re-inject after serialization. `topLevel` holds EVERY
+// top-level construct verbatim in document order; `banded` holds the :lang
+// rules that live inside band blocks (re-emitted into their band).
 function extractLangRules(css: string): {
   css: string;
   topLevel: string[];
@@ -245,10 +252,46 @@ function extractLangRules(css: string): {
     headRe.lastIndex = i;
   }
   out += css.slice(cursor);
-  // 2. Top-level: whatever :lang rules remain outside bands.
-  const topLevel = (out.match(langRuleRe) ?? []).map(r => r.trim());
-  out = out.replace(langRuleRe, '');
-  return { css: out, topLevel, banded };
+  // 2. Split what remains into band blocks (stay in `css` for
+  //    parseContainerRules) and top-level constructs (preserved verbatim).
+  const topLevel: string[] = [];
+  let res = '';
+  let i = 0;
+  while (i < out.length) {
+    // Skip inter-construct whitespace (the serializers re-indent).
+    while (i < out.length && /\s/.test(out[i])) i++;
+    if (i >= out.length) break;
+    headRe.lastIndex = 0;
+    const rest = out.slice(i);
+    const bm = headRe.exec(rest);
+    if (bm && bm.index === 0) {
+      // Band block — copy verbatim, brace-balanced.
+      let depth = 1;
+      let j = headRe.lastIndex;
+      while (j < rest.length && depth > 0) {
+        if (rest[j] === '{') depth++;
+        else if (rest[j] === '}') depth--;
+        j++;
+      }
+      res += '\n    ' + rest.slice(0, j) + '\n';
+      i += j;
+      continue;
+    }
+    // Top-level construct: selector (or at-rule head) up to its first `{`,
+    // then the balanced block — @keyframes' nested braces included.
+    const open = rest.indexOf('{');
+    if (open === -1) { i = out.length; break; } // trailing junk — drop
+    let depth = 1;
+    let j = open + 1;
+    while (j < rest.length && depth > 0) {
+      if (rest[j] === '{') depth++;
+      else if (rest[j] === '}') depth--;
+      j++;
+    }
+    topLevel.push(rest.slice(0, j).trim());
+    i += j;
+  }
+  return { css: res, topLevel, banded };
 }
 
 export function updateContainerQueryStyle(

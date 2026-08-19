@@ -604,6 +604,25 @@ export async function createWebsite(name?: string, workspaceId?: string | null):
   return created.id;
 }
 
+/** "Made in Revyme" badge opt-out — available on every plan. The backend
+ *  flips `websites.hide_watermark` AND rewrites the site's PLANS_KV entry,
+ *  so a published site (with a post-2026-08-19 worker) updates live without
+ *  a republish. */
+export async function setWebsiteWatermark(websiteId: string, hideWatermark: boolean): Promise<void> {
+  const res = await fetch(url(`/api/websites/${encodeURIComponent(websiteId)}/watermark`), {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hideWatermark }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    trace.error('website:set-watermark-failed', { websiteId, hideWatermark, status: res.status, body: text });
+    throw new Error('Could not update the badge setting.');
+  }
+  trace.action('website:set-watermark', { websiteId, hideWatermark });
+}
+
 export async function setWebsiteWorkspace(
   websiteId: string,
   workspaceId: string,

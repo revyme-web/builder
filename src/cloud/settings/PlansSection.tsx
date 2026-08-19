@@ -75,9 +75,10 @@ const PLANS: PlanDef[] = [
     monthly: 10,
     annualPerMonth: 8.33,
     annualTotal: 100,
+    // 'No watermark' removed 2026-08-19 — the badge is a free per-site
+    // choice now (Website settings → Branding), not a paid perk.
     features: [
       'Custom domain',
-      'No watermark',
       'Advanced analytics',
       '10 GB storage',
     ],
@@ -300,7 +301,7 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
             </p>
             <h4 className="text-base font-semibold text-[var(--text-primary)]">Free</h4>
             <p className="text-xs text-[var(--text-secondary)] mt-1">
-              revyme.app subdomain · "Made with Revyme" badge · Basic analytics · 500 MB storage
+              revyme.app subdomain · Basic analytics · 500 MB storage
             </p>
           </div>
           <div className="flex items-center gap-1.5 px-2 py-1 bg-green-500/10 rounded-md shrink-0">
