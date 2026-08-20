@@ -168,7 +168,7 @@ export default function VideoSearchModal({ isOpen, onClose, onSelect }: VideoSea
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`px-4 py-2 rounded-md text-xs font-medium transition-colors ${
+                className={`px-4 py-2 cut-corners text-xs font-medium transition-colors ${
                   tab === t
                     ? 'bg-[var(--choice-bg)] text-[var(--text-primary)]'
                     : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
@@ -188,7 +188,7 @@ export default function VideoSearchModal({ isOpen, onClose, onSelect }: VideoSea
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Search videos... (Enter to search)"
-              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors"
+              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
             />
           )}
         </div>
@@ -197,7 +197,7 @@ export default function VideoSearchModal({ isOpen, onClose, onSelect }: VideoSea
         {tab === 'pixabay' && (
           <div ref={pixabayGridRef} onScroll={onPixabayScroll} className="grid grid-cols-4 gap-3 max-h-[500px] min-h-[400px] overflow-y-auto scrollbar-hide">
             {loading && Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="aspect-video rounded-md overflow-hidden animate-pulse bg-gradient-to-r from-[var(--grid-line)] via-[var(--bg-hover)] to-[var(--grid-line)]" />
+              <div key={i} className="aspect-video cut-corners overflow-hidden animate-pulse bg-gradient-to-r from-[var(--grid-line)] via-[var(--bg-hover)] to-[var(--grid-line)]" />
             ))}
             {!loading && results.map(vid => {
               const videoUrl = vid.videos.small?.url || vid.videos.tiny?.url || vid.videos.medium?.url || '';
@@ -207,7 +207,7 @@ export default function VideoSearchModal({ isOpen, onClose, onSelect }: VideoSea
                 <button
                   key={vid.id}
                   onClick={() => handleSelect(videoUrl)}
-                  className="relative group cursor-pointer aspect-video rounded-md overflow-hidden bg-[var(--grid-line)]"
+                  className="relative group cursor-pointer aspect-video cut-corners overflow-hidden bg-[var(--grid-line)]"
                 >
                   <video
                     src={tinyUrl}
@@ -234,7 +234,7 @@ export default function VideoSearchModal({ isOpen, onClose, onSelect }: VideoSea
             })}
             {/* Loading-more skeletons (append) — existing results stay visible. */}
             {loadingMore && Array.from({ length: 4 }).map((_, i) => (
-              <div key={`more-${i}`} className="aspect-video rounded-md overflow-hidden animate-pulse bg-gradient-to-r from-[var(--grid-line)] via-[var(--bg-hover)] to-[var(--grid-line)]" />
+              <div key={`more-${i}`} className="aspect-video cut-corners overflow-hidden animate-pulse bg-gradient-to-r from-[var(--grid-line)] via-[var(--bg-hover)] to-[var(--grid-line)]" />
             ))}
             {!loading && results.length === 0 && (
               <div className="col-span-4 text-center py-8 text-xs text-[var(--text-secondary)]">
@@ -253,7 +253,7 @@ export default function VideoSearchModal({ isOpen, onClose, onSelect }: VideoSea
         {tab === 'upload' && (
           <div className="flex flex-col gap-4 min-h-[400px]">
             {/* Upload drop zone */}
-            <label className="flex-shrink-0 h-32 rounded-md bg-[var(--bg-surface)] border-2 border-dashed border-[var(--control-border)] flex flex-col items-center justify-center gap-2 hover:bg-[var(--bg-hover)] cursor-pointer transition-colors">
+            <label className="flex-shrink-0 h-32 cut-corners bg-[var(--bg-surface)] border-2 border-dashed border-[var(--control-border)] flex flex-col items-center justify-center gap-2 hover:bg-[var(--bg-hover)] cursor-pointer transition-colors">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)]">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
               </svg>
@@ -277,12 +277,12 @@ export default function VideoSearchModal({ isOpen, onClose, onSelect }: VideoSea
                 onChange={(e) => setUrlInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && urlInput.trim()) handleSelect(urlInput.trim()); }}
                 placeholder="Or paste a video URL..."
-                className="flex-1 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors"
+                className="flex-1 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
               />
               {urlInput.trim() && (
                 <button
                   onClick={() => handleSelect(urlInput.trim())}
-                  className="h-8 px-3 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] rounded-[var(--radius-lg)] hover:brightness-110 transition-all"
+                  className="h-8 px-3 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] cut-corners hover:brightness-110 transition-all"
                 >
                   Use
                 </button>

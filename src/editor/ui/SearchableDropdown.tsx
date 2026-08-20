@@ -124,7 +124,7 @@ export default function SearchableDropdown<T>({
       </button>
 
       {open && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-[100] bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-md shadow-[var(--shadow-lg)] overflow-hidden">
+        <div className="absolute left-0 right-0 top-full mt-1 z-[100] bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-[var(--shadow-lg)] overflow-hidden">
           <div className="p-1.5 border-b border-[var(--border-light)]">
             <input
               ref={inputRef}

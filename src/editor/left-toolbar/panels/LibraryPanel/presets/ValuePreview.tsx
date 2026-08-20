@@ -16,7 +16,7 @@ export function ValuePreview({ token }: { token: PresetToken }) {
     const color = livePreset?.name === token.name ? livePreset.value : token.value;
     return (
       <div
-        className="w-3.5 h-3.5 rounded-sm border border-[var(--border-light)] flex-shrink-0"
+        className="w-3.5 h-3.5 rounded border border-[var(--border-light)] flex-shrink-0"
         style={{ backgroundColor: color }}
       />
     );
@@ -25,17 +25,17 @@ export function ValuePreview({ token }: { token: PresetToken }) {
     const url = extractAssetUrl(token.value);
     return url ? (
       <div
-        className="w-3.5 h-3.5 rounded-sm border border-[var(--border-light)] flex-shrink-0 bg-[var(--grid-line)]"
+        className="w-3.5 h-3.5 rounded border border-[var(--border-light)] flex-shrink-0 bg-[var(--grid-line)]"
         style={{ backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
       />
     ) : (
-      <div className="w-3.5 h-3.5 rounded-sm border border-[var(--border-light)] bg-[var(--bg-secondary)] flex-shrink-0" />
+      <div className="w-3.5 h-3.5 rounded border border-[var(--border-light)] bg-[var(--bg-secondary)] flex-shrink-0" />
     );
   }
   if (token.category === 'video') {
     const url = extractAssetUrl(token.value);
     return (
-      <div className="w-3.5 h-3.5 rounded-sm border border-[var(--border-light)] flex-shrink-0 bg-black overflow-hidden flex items-center justify-center">
+      <div className="w-3.5 h-3.5 rounded border border-[var(--border-light)] flex-shrink-0 bg-black overflow-hidden flex items-center justify-center">
         {url ? (
           <svg width="8" height="8" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21" /></svg>
         ) : null}
@@ -63,14 +63,14 @@ export function ValuePreview({ token }: { token: PresetToken }) {
   if (token.category === 'shadow') {
     return (
       <div
-        className="w-3.5 h-3.5 rounded-sm border border-[var(--border-light)] flex-shrink-0"
+        className="w-3.5 h-3.5 rounded border border-[var(--border-light)] flex-shrink-0"
         style={{ backgroundColor: 'rgba(0,0,0,0.2)' }}
       />
     );
   }
   if (token.category === 'spacing') {
     return (
-      <div className="w-3.5 h-3.5 border border-[var(--text-secondary)] rounded-sm relative flex-shrink-0">
+      <div className="w-3.5 h-3.5 border border-[var(--text-secondary)] rounded relative flex-shrink-0">
         <div className="absolute inset-1 bg-[var(--text-secondary)] opacity-20" />
       </div>
     );
@@ -78,8 +78,8 @@ export function ValuePreview({ token }: { token: PresetToken }) {
   if (token.category === 'margin') {
     return (
       <div className="w-3.5 h-3.5 relative flex-shrink-0">
-        <div className="absolute inset-0 border border-dashed border-[var(--text-secondary)] rounded-sm" />
-        <div className="absolute inset-1 border border-[var(--text-secondary)] rounded-sm" />
+        <div className="absolute inset-0 border border-dashed border-[var(--text-secondary)] cut-corners" />
+        <div className="absolute inset-1 border border-[var(--text-secondary)] cut-corners" />
       </div>
     );
   }
@@ -89,7 +89,7 @@ export function ValuePreview({ token }: { token: PresetToken }) {
     const side = parseBorderShorthand(token.value);
     return (
       <div
-        className="w-3.5 h-3.5 rounded-sm flex-shrink-0"
+        className="w-3.5 h-3.5 rounded flex-shrink-0"
         style={{
           borderWidth: side.width ? `${Math.min(side.width, 3)}px` : '1px',
           borderStyle: side.width ? side.style : 'solid',
@@ -99,6 +99,6 @@ export function ValuePreview({ token }: { token: PresetToken }) {
     );
   }
   return (
-    <div className="w-3.5 h-3.5 rounded-sm border border-[var(--border-light)] bg-[var(--bg-secondary)] flex-shrink-0" />
+    <div className="w-3.5 h-3.5 rounded border border-[var(--border-light)] bg-[var(--bg-secondary)] flex-shrink-0" />
   );
 }

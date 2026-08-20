@@ -42,7 +42,7 @@ export function useEscapeToClose(active: boolean, locked: boolean, onCancel: () 
 /** Default × close-button class (header, top-right). A/B tests passes its
  *  own shorter variant (no transition-colors / disabled cursor). */
 const MODAL_CLOSE_BUTTON_CLASS =
-  'p-1 hover:bg-[var(--bg-hover)] rounded-md transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed';
+  'p-1 hover:bg-[var(--bg-hover)] cut-corners transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed';
 
 interface ConfirmModalShellProps {
   /** Render the overlay + dialog. The portal stays mounted while false so
@@ -98,7 +98,7 @@ export function ConfirmModalShell({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className={`relative ${widthClassName} bg-[var(--bg-surface)] rounded-lg shadow-2xl`}
+            className={`relative ${widthClassName} bg-[var(--bg-surface)] cut-corners cut-lg shadow-2xl`}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -126,7 +126,7 @@ export function ConfirmModalShell({
 // ─── Footer cancel button ──────────────────────────────────────────────────
 
 const MODAL_CANCEL_BUTTON_CLASS =
-  'flex-1 h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-lg)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer';
+  'flex-1 h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] cut-corners transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer';
 
 /** The left "Cancel" footer button — identical across the confirm modals
  *  (A/B tests overrides `className` with its shorter class string). */
@@ -176,7 +176,7 @@ export function RowActionsMenu({ items, isOpen, disabled, onToggle, onClose, dis
         type="button"
         onClick={onToggle}
         disabled={disabled}
-        className={`inline-flex items-center justify-center gap-1 w-[110px] h-[30px] text-xs font-medium bg-neutral-800 dark:bg-white/10 hover:bg-neutral-700 dark:hover:bg-white/20 text-white rounded-md cursor-pointer ${
+        className={`inline-flex items-center justify-center gap-1 w-[110px] h-[30px] text-xs font-medium bg-neutral-800 dark:bg-white/10 hover:bg-neutral-700 dark:hover:bg-white/20 text-white cut-corners cursor-pointer ${
           disabledOpacity === '50' ? 'disabled:opacity-50' : 'disabled:opacity-60'
         } disabled:cursor-not-allowed`}
       >

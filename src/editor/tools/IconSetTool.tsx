@@ -241,12 +241,12 @@ export default function IconSetTool() {
         <button
           ref={pickerAnchorRef}
           onClick={() => setPickerOpen(o => !o)}
-          className="flex items-center gap-2 w-full px-2 h-7 rounded-[var(--radius-sm)] bg-[var(--button-secondary-bg,rgba(255,255,255,0.06))] hover:brightness-125 cursor-pointer border-none text-xs text-[var(--text-primary)]"
+          className="flex items-center gap-2 w-full px-2 h-7 cut-corners bg-[var(--button-secondary-bg,rgba(255,255,255,0.06))] hover:brightness-125 cursor-pointer border-none text-xs text-[var(--text-primary)]"
         >
           {currentEntry ? (
             <IconThumb entry={currentEntry} size={16} />
           ) : (
-            <span className="w-4 h-4 rounded-sm bg-white/10" />
+            <span className="w-4 h-4 rounded bg-white/10" />
           )}
           <span className="flex-1 text-left truncate">{currentEntry?.displayName ?? 'No icons'}</span>
         </button>
@@ -278,7 +278,7 @@ export default function IconSetTool() {
                 key={entry.id}
                 onClick={() => handlePickIcon(entry.id)}
                 title={entry.displayName}
-                className={`flex items-center justify-center aspect-square rounded-[var(--radius-md)] border ${
+                className={`flex items-center justify-center aspect-square cut-corners border ${
                   entry.id === currentIconId
                     ? 'border-[var(--accent)] bg-[var(--accent)]/10'
                     : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.08]'

@@ -104,7 +104,7 @@ function VariableBoundPillView({
         // matches the bordered value widgets (ToolSelect / ControlActionRow): same
         // 1px border-box width AND the fill insets 1px like theirs — without this the
         // borderless pill's colour reaches the outer edge and reads ~2px wider.
-        className="w-full h-8 flex items-center gap-2 pl-1 pr-2 rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium cursor-pointer transition-colors hover:opacity-90 truncate"
+        className="w-full h-8 flex items-center gap-2 pl-1 pr-2 cut-corners border border-transparent bg-clip-padding text-xs font-medium cursor-pointer transition-colors hover:opacity-90 truncate"
         style={{ backgroundColor: pillBg, color: pillFg }}
         title={`Variable: ${displayName} — click to manage`}
       >

@@ -201,10 +201,10 @@ export default function ColorInput({ value, onChange, onChangeLive, showAlpha, s
         ref={btnRef}
         onClick={handleClick}
         className={swatchOnly
-          ? "w-7 h-7 rounded border border-white/10 shrink-0 cursor-pointer hover:ring-1 hover:ring-[var(--border-focus)] transition-all"
+          ? "w-7 h-7 cut-corners border border-white/10 shrink-0 cursor-pointer hover:ring-1 hover:ring-[var(--border-focus)] transition-all"
           : isPresetRef
-            ? "w-full h-8 flex items-center gap-2 px-1 bg-[var(--accent)] rounded-[var(--radius-lg)] cursor-pointer transition-colors min-w-0 overflow-hidden hover:opacity-90"
-            : "w-full h-8 flex items-center gap-2 px-1 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors min-w-0 overflow-hidden"}
+            ? "w-full h-8 flex items-center gap-2 px-1 bg-[var(--accent)] cut-corners cursor-pointer transition-colors min-w-0 overflow-hidden hover:opacity-90"
+            : "w-full h-8 flex items-center gap-2 px-1 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] cursor-pointer transition-colors min-w-0 overflow-hidden"}
         style={swatchOnly ? { backgroundColor: displayColor } : undefined}
       >
         {!swatchOnly && (

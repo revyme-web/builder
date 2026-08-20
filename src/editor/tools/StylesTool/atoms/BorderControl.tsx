@@ -406,7 +406,7 @@ function BorderEditorPanel({ styles: s, nodeId, onChangeMultiple, onChangeMultip
           downstream is a single string, no per-side longhand survives. */}
       {borderType === 'solid' && !isScrollMode && (
         <div className="flex justify-end">
-          <div className="flex items-center border border-[var(--control-border)] rounded-md overflow-hidden shrink-0">
+          <div className="flex items-center border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)] overflow-hidden shrink-0">
             <button tabIndex={-1} onClick={switchToUniform}
               className={`flex items-center justify-center h-[var(--control-height-sm)] w-7 transition-colors ${!showIndividual ? 'bg-[var(--button-secondary-bg)] text-[var(--text-primary)]' : 'bg-[var(--choice-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
               title="Uniform"><BorderUniformIcon className="w-3 h-3" /></button>
@@ -747,7 +747,7 @@ function BorderPresetPillRow({ group, onClear }: {
         <ControlLabel label="Border" property="border" />
         <button
           ref={anchorRef}
-          className="w-full h-8 flex items-center gap-2 px-2 bg-[var(--accent)] rounded-[var(--radius-lg)] cursor-pointer transition-colors min-w-0 overflow-hidden hover:opacity-90"
+          className="w-full h-8 flex items-center gap-2 px-2 bg-[var(--accent)] cut-corners cursor-pointer transition-colors min-w-0 overflow-hidden hover:opacity-90"
           onClick={() => setEditOpen(true)}
         >
           <span className="w-5 h-5 rounded bg-[var(--bg-surface)] flex-shrink-0" style={previewStyle} />

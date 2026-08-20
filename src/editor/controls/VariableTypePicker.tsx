@@ -49,12 +49,12 @@ export function VariableTypePicker({ anchorRef, onSelect, onClose }: VariableTyp
         <div
           ref={panelRef}
           // Same shell as the editor's other dropdown menus: solid `--dropdown-bg`, large shadow, py-1.5.
-          className="absolute bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] py-1.5 overflow-hidden flex flex-col"
+          className="absolute bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-[var(--shadow-lg)] py-1.5 overflow-hidden flex flex-col"
           style={{ top: pos.top, left: pos.left, width: PANEL_W, maxHeight: '60vh' }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           {/* Search */}
-          <div className="flex items-center gap-2 mx-1.5 mb-1 px-2.5 h-8 rounded-[var(--radius-sm)] bg-[var(--grid-line)] shrink-0">
+          <div className="flex items-center gap-2 mx-1.5 mb-1 px-2.5 h-8 cut-corners bg-[var(--grid-line)] shrink-0">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-[var(--text-secondary)] shrink-0">
               <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
@@ -74,7 +74,7 @@ export function VariableTypePicker({ anchorRef, onSelect, onClose }: VariableTyp
               <button
                 key={t.id}
                 onClick={() => { trace.action('variable-type-picker:select', { type: t.id }); onSelect(t); }}
-                className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors"
+                className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors"
               >
                 {t.label}
               </button>

@@ -55,7 +55,7 @@ export function PresetRow({ token, isEditing, isRenaming, renameValue, onRenameC
   // When renaming, show inline input instead of SidebarRow
   if (isRenaming) {
     return (
-      <div className="group flex items-center gap-1.5 py-1.5 px-2 rounded-md bg-[var(--bg-hover)] select-none">
+      <div className="group flex items-center gap-1.5 py-1.5 px-2 cut-corners bg-[var(--bg-hover)] select-none">
         <span className="shrink-0 flex items-center justify-center w-4 h-4"><ValuePreview token={token} /></span>
         <input
           autoFocus

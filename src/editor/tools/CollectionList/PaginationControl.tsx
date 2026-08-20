@@ -26,7 +26,7 @@ interface Props {
 const MODE_LABEL: Record<'loadMore' | 'infinite', string> = { loadMore: 'Load More', infinite: 'Infinite Scroll' };
 
 // Mirrors the Animation tool's add-dropdown item (same hover-accent fill).
-const ADD_ITEM = 'group flex items-center mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
+const ADD_ITEM = 'group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
 const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]';
 
 export default function PaginationControl({ pagination, onSet, onRemove, editable = true }: Props) {
@@ -81,7 +81,7 @@ export default function PaginationControl({ pagination, onSet, onRemove, editabl
           {addMenu && (
             <>
               <div className="fixed inset-0 z-50" onClick={() => setAddMenu(false)} />
-              <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-md rounded-[var(--radius-md)] py-1.5 z-[51] w-max border border-[var(--border-light)] space-y-0.5">
+              <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-md cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[51] w-max border border-[var(--border-light)] space-y-0.5">
                 {(['infinite', 'loadMore'] as const).map(m => (
                   <button key={m} type="button" onClick={() => choose(m)} className={ADD_ITEM}>
                     <span className={ADD_ITEM_LABEL}>{MODE_LABEL[m]}</span>

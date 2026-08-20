@@ -637,7 +637,7 @@ export function TextColorControl() {
         {activePresetToken ? (
           <button
             onClick={handleClick}
-            className="w-full h-8 flex items-center gap-2 px-2 bg-[var(--accent)] rounded-[var(--radius-lg)] cursor-pointer transition-colors min-w-0 overflow-hidden hover:opacity-90"
+            className="w-full h-8 flex items-center gap-2 px-2 bg-[var(--accent)] cut-corners cursor-pointer transition-colors min-w-0 overflow-hidden hover:opacity-90"
           >
             <ColorSwatch style={{ background: livePreset?.name === activePresetToken.name ? livePreset.value : activePresetToken.value }} />
             <span className="text-xs text-[var(--accent-fg)] truncate flex-1 text-left">

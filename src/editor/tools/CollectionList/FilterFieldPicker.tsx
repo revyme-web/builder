@@ -43,7 +43,7 @@ function dynamicWired(type: string | undefined): boolean {
   return dynamicInputLabel(type) === 'Search Field';
 }
 
-const ROW = 'group flex items-center justify-between mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
+const ROW = 'group flex items-center justify-between mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
 const ROW_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]';
 
 /** One field row + its left-opening flyout (Dynamic option / Static). The
@@ -87,7 +87,7 @@ function FieldRow({ field, onStatic, onDynamic }: { field: FieldDefinition; onSt
           <div style={{ position: 'absolute', top: 0, right: -12, width: 16, height: '100%' }} />
           {/* Same shell as the main dropdown: same py-1.5, inset rounded rows
               (ROW), bg-white/10 separator — NOT full-bleed edge-touching rows. */}
-          <div className="min-w-[150px] bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-2xl py-1.5">
+          <div className="min-w-[150px] bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-2xl py-1.5">
             {dyn && (
               <>
                 <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-secondary)] opacity-60">Dynamic</div>
@@ -162,7 +162,7 @@ export default function FilterFieldPicker({ open, onClose, fields, anchorRef, on
         onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); trace.action('filter-field-picker:backdrop-close', {}); onClose(); }}
       />
       <div ref={ref} style={{ position: 'fixed', left: pos.left, top: pos.top, maxHeight: pos.maxH, zIndex: 100030, width: 240, opacity: visible ? 1 : 0 }}
-      className="bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-2xl py-1.5 overflow-y-auto transition-opacity duration-150">
+      className="bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-2xl py-1.5 overflow-y-auto transition-opacity duration-150">
       {/* Inline search — icon + borderless input + separator (LeftHeader style). */}
       <div className="flex items-center gap-2 px-3 py-1.5">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)] shrink-0">

@@ -45,7 +45,7 @@ export default function AssetPresetGrid({
             trace.action('asset-preset-grid:create-click', { type });
             onCreatePreset();
           }}
-          className="w-full flex items-center justify-between px-1 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-md)] cursor-pointer transition-colors"
+          className="w-full flex items-center justify-between px-1 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] cut-corners cursor-pointer transition-colors"
         >
           <span>Create new {type} preset</span>
           <PlusIcon />
@@ -62,7 +62,7 @@ export default function AssetPresetGrid({
             return (
               <div
                 key={preset.name}
-                className={`group flex items-center gap-2 px-1 py-1.5 rounded-[var(--radius-md)] cursor-pointer transition-colors ${
+                className={`group flex items-center gap-2 px-1 py-1.5 cut-corners cursor-pointer transition-colors ${
                   isActive ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
                 }`}
                 onClick={() => {
@@ -83,7 +83,7 @@ export default function AssetPresetGrid({
                       trace.action('asset-preset-grid:edit-click', { type, name: preset.name });
                       onEditPreset(preset.name);
                     }}
-                    className="opacity-0 group-hover:opacity-100 text-[10px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] rounded px-2 py-0.5 transition-all cursor-pointer"
+                    className="opacity-0 group-hover:opacity-100 text-[10px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border px-2 py-0.5 transition-all cursor-pointer"
                   >
                     Edit
                   </button>
@@ -92,11 +92,11 @@ export default function AssetPresetGrid({
                     swatch, image bg or muted-loop <video> for the media. */}
                 {type === 'image' ? (
                   <div
-                    className="w-5 h-5 rounded-md border border-white/10 flex-shrink-0 bg-[var(--grid-line)]"
+                    className="w-5 h-5 rounded border border-white/10 flex-shrink-0 bg-[var(--grid-line)]"
                     style={url ? { backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
                   />
                 ) : (
-                  <div className="w-5 h-5 rounded-md border border-white/10 flex-shrink-0 bg-black overflow-hidden flex items-center justify-center">
+                  <div className="w-5 h-5 rounded border border-white/10 flex-shrink-0 bg-black overflow-hidden flex items-center justify-center">
                     {url ? (
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21" /></svg>
                     ) : null}

@@ -135,12 +135,12 @@ export function CommandPalette() {
           className="pointer-events-auto"
         >
           <div
-            className="max-h-[400px] bg-[var(--bg-surface)] rounded-[var(--radius-md)] shadow-2xl border border-[var(--border-light)] overflow-hidden flex flex-col"
+            className="max-h-[400px] bg-[var(--bg-surface)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-2xl border border-[var(--border-light)] overflow-hidden flex flex-col"
             style={{ width: `${toolbarWidth}px` }}
           >
             {/* Search input */}
             <div className="p-2 border-b border-[var(--border-light)]">
-              <div className="flex items-center gap-2 px-2.5 h-[var(--control-height)] bg-[var(--grid-line)] border border-[var(--control-border)] rounded-lg">
+              <div className="flex items-center gap-2 px-2.5 h-[var(--control-height)] bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)]">
                 <SearchIcon className="w-3.5 h-3.5 text-[var(--text-tertiary)] flex-shrink-0" />
                 <input
                   ref={inputRef}

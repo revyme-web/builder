@@ -24,7 +24,7 @@ import { COLLECTION_VALUE_CLS, fieldsForSortFilter } from './CollectionList/cms-
 import PaginationControl from './CollectionList/PaginationControl';
 
 // Mirrors the Animation/Layout tool add-dropdown item styling.
-const ADD_ITEM = 'group flex items-center mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
+const ADD_ITEM = 'group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
 const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]';
 
 /** The "+" on the Collection List section header → a native floating dropdown
@@ -60,7 +60,7 @@ function ContentAddMenu({ showLimit, showOffset, onAdd }: {
       {open && (
         <>
           <div className="fixed inset-0 z-50" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-md rounded-[var(--radius-md)] py-1.5 z-[51] w-max border border-[var(--border-light)] space-y-0.5">
+          <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-md cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[51] w-max border border-[var(--border-light)] space-y-0.5">
             {items.map(it => (
               <button key={it.key} type="button" className={ADD_ITEM}
                 onClick={() => { onAdd(it.key); setOpen(false); }}>

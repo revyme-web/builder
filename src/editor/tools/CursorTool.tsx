@@ -262,10 +262,10 @@ function CursorAddButton({ nodeId, onPending }: { nodeId: string; onPending: () 
       {open && (
         <>
           <div className="fixed inset-0 z-50" onClick={() => setOpen(false)} />
-          <div className="absolute right-[10px] top-full mt-1 bg-[var(--dropdown-bg)] shadow-md rounded-[var(--radius-md)] py-1.5 z-[51] min-w-[180px] border border-[var(--border-light)]">
+          <div className="absolute right-[10px] top-full mt-1 bg-[var(--dropdown-bg)] shadow-md cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[51] min-w-[180px] border border-[var(--border-light)]">
             <button
               type="button"
-              className="group flex flex-col gap-0.5 mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
+              className="group flex flex-col gap-0.5 mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
               onClick={handleWeb}
             >
               <div className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">Web</div>
@@ -273,7 +273,7 @@ function CursorAddButton({ nodeId, onPending }: { nodeId: string; onPending: () 
             </button>
             <button
               type="button"
-              className="group flex flex-col gap-0.5 mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
+              className="group flex flex-col gap-0.5 mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
               onClick={handleComponent}
             >
               <div className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">Component</div>
@@ -491,7 +491,7 @@ function PendingCursorRow({
           ref={triggerRef}
           type="button"
           onClick={openMenu}
-          className="w-full h-[var(--control-height)] flex items-center justify-between px-2 bg-[var(--control-bg)] hover:bg-[var(--bg-hover)] border border-[var(--border-light)] rounded-[var(--radius-lg)] text-xs cursor-pointer transition-colors"
+          className="w-full h-[var(--control-height)] flex items-center justify-between px-2 bg-[var(--control-bg)] hover:bg-[var(--bg-hover)] border border-[var(--border-light)] cut-corners cut-border [--cut-border-color:var(--border-light)] text-xs cursor-pointer transition-colors"
         >
           <span className="truncate flex-1 text-left text-[var(--text-disabled)]">Add</span>
         </button>
@@ -509,7 +509,7 @@ function PendingCursorRow({
           />
           <div
             ref={menuPortalRef}
-            className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-1.5 z-[10001] min-w-45 border border-[var(--border-light)] space-y-0.5"
+            className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[10001] min-w-45 border border-[var(--border-light)] space-y-0.5"
             style={{ left: menuPos.x, top: menuPos.y }}
           >
             {existingProps.length > 0 && (
@@ -517,7 +517,7 @@ function PendingCursorRow({
                 type="button"
                 onMouseEnter={openSubmenu}
                 onClick={openSubmenu}
-                className="group flex items-center justify-between gap-2 mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent-secondary)] transition-colors"
+                className="group flex items-center justify-between gap-2 mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent-secondary)] transition-colors"
               >
                 <span className="text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)]">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -544,7 +544,7 @@ function PendingCursorRow({
                 // Default row for a componentCursor (its editor === 'componentCursor'), so no hideDefault needed.
                 setVariableModalRequest({ property: 'cursor', propertyLabel: 'Cursor', currentValue: '', variableRef: name, nameEditable: true });
               }}
-              className="group flex items-center justify-between gap-2 mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent-secondary)] transition-colors"
+              className="group flex items-center justify-between gap-2 mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent-secondary)] transition-colors"
             >
               <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] flex-1">
                 Create Variable
@@ -554,7 +554,7 @@ function PendingCursorRow({
 
           {submenuOpen && existingProps.length > 0 && (
             <div
-              className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-1.5 z-[10002] min-w-[200px] max-h-[320px] overflow-y-auto border border-[var(--border-light)] space-y-0.5"
+              className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[10002] min-w-[200px] max-h-[320px] overflow-y-auto border border-[var(--border-light)] space-y-0.5"
               style={{ left: submenuOpen.pos.x, top: submenuOpen.pos.y }}
               onMouseLeave={() => setSubmenuOpen(null)}
             >
@@ -563,7 +563,7 @@ function PendingCursorRow({
                   key={p.name}
                   type="button"
                   onClick={() => { closeMenu(); writeCursorBinding(p.name, false); }}
-                  className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent-secondary)] transition-colors"
+                  className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent-secondary)] transition-colors"
                 >
                   <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] truncate">
                     {p.name}
@@ -660,7 +660,7 @@ function ComponentCursorRow({
               with the full Component Cursor control mounted as its Default via renderDefaultValue. */}
           <button
             onClick={() => setOpen(true)}
-            className="w-full h-8 flex items-center gap-2 px-2 rounded-[var(--radius-lg)] text-xs font-medium text-[var(--accent-secondary-fg)] cursor-pointer transition-colors hover:opacity-90 truncate"
+            className="w-full h-8 flex items-center gap-2 px-2 cut-corners text-xs font-medium text-[var(--accent-secondary-fg)] cursor-pointer transition-colors hover:opacity-90 truncate"
             style={{ backgroundColor: 'var(--accent-secondary)' }}
             title={`Cursor variable: ${cursor.componentName} — click to manage`}
           >
@@ -766,7 +766,7 @@ function ComponentCursorPicker({
     // the user needs to create a component first.
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30" onClick={onClose}>
-        <div className="bg-[var(--bg-secondary)] rounded-lg p-4 text-xs text-[var(--text-secondary)]">
+        <div className="bg-[var(--bg-secondary)] cut-corners p-4 text-xs text-[var(--text-secondary)]">
           Create a component first, then attach it as a cursor.
         </div>
       </div>

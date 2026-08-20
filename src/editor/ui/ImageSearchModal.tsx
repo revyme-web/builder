@@ -269,7 +269,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`px-4 py-2 rounded-md text-xs font-medium transition-colors ${
+                className={`px-4 py-2 cut-corners text-xs font-medium transition-colors ${
                   tab === t
                     ? 'bg-[var(--choice-bg)] text-[var(--text-primary)]'
                     : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
@@ -292,7 +292,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
               // immediately without clearing first.
               onFocus={(e) => e.currentTarget.select()}
               placeholder="Search images... (Enter to search)"
-              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors"
+              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
             />
           )}
 
@@ -304,7 +304,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
               onChange={(e) => setQuery3d(e.target.value)}
               onFocus={(e) => e.currentTarget.select()}
               placeholder="Search 3D assets..."
-              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors"
+              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
             />
           )}
         </div>
@@ -313,13 +313,13 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
         {tab === 'unsplash' && (
           <div ref={unsplashGridRef} onScroll={onUnsplashScroll} className="grid grid-cols-6 gap-3 max-h-[500px] min-h-[400px] overflow-y-auto scrollbar-hide">
             {loading && Array.from({ length: 24 }).map((_, i) => (
-              <div key={i} className="aspect-square rounded-md overflow-hidden animate-pulse bg-gradient-to-r from-[var(--grid-line)] via-[var(--bg-hover)] to-[var(--grid-line)]" />
+              <div key={i} className="aspect-square cut-corners overflow-hidden animate-pulse bg-gradient-to-r from-[var(--grid-line)] via-[var(--bg-hover)] to-[var(--grid-line)]" />
             ))}
             {!loading && results.map(img => (
               <button
                 key={img.id}
                 onClick={() => handleSelect(img.urls.regular)}
-                className="relative group cursor-pointer aspect-square rounded-md overflow-hidden"
+                className="relative group cursor-pointer aspect-square cut-corners overflow-hidden"
               >
                 <div
                   className="w-full h-full bg-cover bg-center transition-transform group-hover:scale-105"
@@ -330,7 +330,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
             ))}
             {/* Loading-more skeletons (append) — existing results stay visible. */}
             {loadingMore && Array.from({ length: 6 }).map((_, i) => (
-              <div key={`more-${i}`} className="aspect-square rounded-md overflow-hidden animate-pulse bg-gradient-to-r from-[var(--grid-line)] via-[var(--bg-hover)] to-[var(--grid-line)]" />
+              <div key={`more-${i}`} className="aspect-square cut-corners overflow-hidden animate-pulse bg-gradient-to-r from-[var(--grid-line)] via-[var(--bg-hover)] to-[var(--grid-line)]" />
             ))}
             {!loading && results.length === 0 && (
               <div className="col-span-6 text-center py-8 text-xs text-[var(--text-secondary)]">
@@ -353,7 +353,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
                   so the file lands in the project's R2 bucket (cloud) or
                   local backend store and shows up in the LeftPanel media
                   gallery alongside every other upload. */}
-              <label className={`aspect-square rounded-md bg-[var(--bg-surface)] border-2 border-dashed border-[var(--control-border)] flex flex-col items-center justify-center gap-2 transition-colors ${uploading ? 'opacity-60 cursor-progress' : 'hover:bg-[var(--bg-hover)] cursor-pointer'}`}>
+              <label className={`aspect-square cut-corners bg-[var(--bg-surface)] border-2 border-dashed border-[var(--control-border)] flex flex-col items-center justify-center gap-2 transition-colors ${uploading ? 'opacity-60 cursor-progress' : 'hover:bg-[var(--bg-hover)] cursor-pointer'}`}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)]">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
                 </svg>
@@ -377,7 +377,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
                 <button
                   key={item.url + i}
                   onClick={() => handleSelect(item.url)}
-                  className="relative group cursor-pointer aspect-square rounded-md overflow-hidden"
+                  className="relative group cursor-pointer aspect-square cut-corners overflow-hidden"
                 >
                   <div
                     className="w-full h-full bg-cover bg-center transition-transform group-hover:scale-105"
@@ -388,7 +388,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
               ))}
             </div>
             {uploadError && (
-              <div className="px-2.5 py-1.5 rounded-md bg-red-500/10 border border-red-500/20 text-[11px] text-red-500 dark:text-red-400 leading-snug">
+              <div className="px-2.5 py-1.5 cut-corners bg-red-500/10 border border-red-500/20 text-[11px] text-red-500 dark:text-red-400 leading-snug">
                 {uploadError}
               </div>
             )}
@@ -399,7 +399,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
         {tab === 'create' && (
           <div className="grid grid-cols-6 gap-3 max-h-[500px] min-h-[400px] overflow-y-auto scrollbar-hide">
             {/* Generate button */}
-            <button className="aspect-square rounded-md bg-gradient-to-br from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors">
+            <button className="aspect-square cut-corners bg-gradient-to-br from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
               </svg>
@@ -419,7 +419,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
         {tab === '3d' && (
           <div className="grid grid-cols-6 gap-3 max-h-[500px] min-h-[400px] overflow-y-auto scrollbar-hide">
             {!assets3dLoaded && Array.from({ length: 18 }).map((_, i) => (
-              <div key={i} className="aspect-square rounded-md overflow-hidden animate-pulse bg-gradient-to-r from-[var(--grid-line)] via-[var(--bg-hover)] to-[var(--grid-line)]" />
+              <div key={i} className="aspect-square cut-corners overflow-hidden animate-pulse bg-gradient-to-r from-[var(--grid-line)] via-[var(--bg-hover)] to-[var(--grid-line)]" />
             ))}
             {assets3dLoaded && filtered3d.map(a => (
               <button
@@ -428,7 +428,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
                 title={`${a.shape} · ${a.material}${a.color ? ` · ${a.color}` : ''}`}
                 // Light tile so dark + light renders are both visible (the WebPs
                 // are trimmed/transparent), matching the revyme-cloud asset cards.
-                className="relative group cursor-pointer aspect-square rounded-md overflow-hidden bg-[#ececec]"
+                className="relative group cursor-pointer aspect-square cut-corners overflow-hidden bg-[#ececec]"
               >
                 <img src={a.url} loading="lazy" alt={a.shape} className="w-full h-full object-contain p-2 transition-transform group-hover:scale-105" />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all" />

@@ -212,7 +212,7 @@ export default function PageVariablesModal() {
             <div className="px-2 pt-2 pb-1">
               <button
                 onClick={handleStartCreate}
-                className={`flex items-center w-full px-2 py-1.5 cursor-pointer transition-colors rounded-[var(--radius-md)] ${
+                className={`flex items-center w-full px-2 py-1.5 cursor-pointer transition-colors cut-corners ${
                   mode === 'create'
                     ? 'bg-[var(--accent-secondary)] text-[var(--accent-secondary-fg)]'
                     : 'hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'
@@ -247,7 +247,7 @@ export default function PageVariablesModal() {
                       <button
                         key={v.name}
                         onClick={() => handleSelectVariable(v.name)}
-                        className={`flex items-center text-left px-3 py-2 cursor-pointer transition-colors rounded-[var(--radius-md)] mx-2 ${
+                        className={`flex items-center text-left px-3 py-2 cursor-pointer transition-colors cut-corners mx-2 ${
                           isSelected
                             ? 'bg-[var(--accent-secondary)] text-[var(--accent-secondary-fg)]'
                             : 'hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'
@@ -283,7 +283,7 @@ export default function PageVariablesModal() {
                   onChange={(e) => setDraftName(e.target.value)}
                   placeholder="e.g. opacity"
                   autoFocus={mode === 'create'}
-                  className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] rounded-[var(--radius-lg)] text-[var(--text-primary)] focus:outline-none transition-colors ${
+                  className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] cut-corners text-[var(--text-primary)] focus:outline-none transition-colors ${
                     nameError
                       ? 'border border-red-500 focus:border-red-500'
                       : 'border border-[var(--border-light)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)]'
@@ -321,7 +321,7 @@ export default function PageVariablesModal() {
                   value={draftQueryParam}
                   onChange={(e) => setDraftQueryParam(e.target.value)}
                   placeholder="e.g. tab"
-                  className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] rounded-[var(--radius-lg)] text-[var(--text-primary)] focus:outline-none transition-colors ${
+                  className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] cut-corners text-[var(--text-primary)] focus:outline-none transition-colors ${
                     queryParamError
                       ? 'border border-red-500 focus:border-red-500'
                       : 'border border-[var(--border-light)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)]'
@@ -347,14 +347,14 @@ export default function PageVariablesModal() {
                   <>
                     <button
                       onClick={onClose}
-                      className="px-4 h-[var(--control-height-sm)] text-xs bg-[var(--control-bg)] text-[var(--text-primary)] border border-[var(--border-light)] rounded-[var(--radius-lg)] hover:bg-[var(--bg-hover)] transition-colors"
+                      className="px-4 h-[var(--control-height-sm)] text-xs bg-[var(--control-bg)] text-[var(--text-primary)] border border-[var(--border-light)] cut-corners cut-border [--cut-border-color:var(--border-light)] hover:bg-[var(--bg-hover)] transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleCreate}
                       disabled={!isValid}
-                      className="px-4 h-7 text-xs bg-[var(--accent-secondary)] text-[var(--accent-secondary-fg)] rounded-[var(--radius-lg)] hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
+                      className="px-4 h-7 text-xs bg-[var(--accent-secondary)] text-[var(--accent-secondary-fg)] cut-corners hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
                     >
                       Create variable
                     </button>
@@ -364,7 +364,7 @@ export default function PageVariablesModal() {
                   <button
                     onClick={handleSave}
                     disabled={!isValid || !dirty}
-                    className="px-4 h-7 text-xs bg-[var(--accent-secondary)] text-[var(--accent-secondary-fg)] rounded-[var(--radius-lg)] hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
+                    className="px-4 h-7 text-xs bg-[var(--accent-secondary)] text-[var(--accent-secondary-fg)] cut-corners hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
                   >
                     Save changes
                   </button>

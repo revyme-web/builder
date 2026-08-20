@@ -64,10 +64,10 @@ export default function ToolSegmentedControl({ value, onChange, options, size = 
     // Outlined like the inputs and selects: the track was a bare fill with no
     // border, so when the other controls moved to outlined-and-recessed this
     // one stayed a filled slab and stood out as the odd control.
-    <div ref={containerRef} className="relative flex w-full bg-[var(--choice-bg)] border border-[var(--control-border)] rounded-[var(--radius-lg)] p-0.5">
+    <div ref={containerRef} className="relative flex w-full bg-[var(--choice-bg)] border border-[var(--control-border)] cut-corners cut-border p-0.5">
       {/* Animated highlight */}
       <div
-        className="absolute rounded"
+        className="absolute cut-corners cut-sm"
         style={{
           left: highlight.left,
           width: highlight.width,
@@ -85,7 +85,7 @@ export default function ToolSegmentedControl({ value, onChange, options, size = 
         <button
           key={opt.value}
           onClick={() => { trace.action('tool-segmented:change', { from: value, to: opt.value }); onChange(opt.value); }}
-          className={`flex-1 flex items-center justify-center gap-2 text-xs ${py} ${px} rounded transition-colors relative z-10 ${value === opt.value ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+          className={`flex-1 flex items-center justify-center gap-2 text-xs ${py} ${px} cut-corners transition-colors relative z-10 ${value === opt.value ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
         >
           {opt.icon}
           {opt.label && <span>{opt.label}</span>}

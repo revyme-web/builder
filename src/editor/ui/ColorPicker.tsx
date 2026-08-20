@@ -403,8 +403,10 @@ export default function ColorPicker({ value, onChange, onChangeEnd, showAlpha = 
   const currentHex = rgbToHex(currentRgb);
 
   // Input styles
-  const inputCls = 'h-[var(--control-height-sm)] px-1.5 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-center outline-none focus:border-[var(--border-focus)] text-[var(--text-primary)]';
-  const iconBtnCls = 'h-[var(--control-height-sm)] w-7 flex items-center justify-center bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] cursor-pointer hover:border-[var(--control-border-hover)] text-[var(--text-secondary)]';
+  // NO cut on this row (user call 2026-08-20): the hex/alpha inputs and
+  // their sibling buttons stay rounded so the row reads as one quiet strip.
+  const inputCls = 'h-[var(--control-height-sm)] px-1.5 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-md text-center outline-none focus:border-[var(--border-focus)] text-[var(--text-primary)]';
+  const iconBtnCls = 'h-[var(--control-height-sm)] w-7 flex items-center justify-center bg-[var(--grid-line)] border border-[var(--control-border)] rounded-md cursor-pointer hover:border-[var(--control-border-hover)] text-[var(--text-secondary)]';
 
   return (
     <div className="space-y-0">
@@ -441,7 +443,7 @@ export default function ColorPicker({ value, onChange, onChangeEnd, showAlpha = 
       <div
         ref={hueDrag.ref}
         onPointerDown={hueDrag.onPointerDown}
-        className="w-full h-2 rounded-md relative cursor-pointer mt-3 touch-none"
+        className="w-full h-2 rounded relative cursor-pointer mt-3 touch-none"
         style={{
           background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)',
         }}
@@ -461,7 +463,7 @@ export default function ColorPicker({ value, onChange, onChangeEnd, showAlpha = 
         <div
           ref={alphaDrag.ref}
           onPointerDown={alphaDrag.onPointerDown}
-          className="w-full h-2 rounded-md relative cursor-pointer mt-2 touch-none"
+          className="w-full h-2 rounded relative cursor-pointer mt-2 touch-none"
           style={{
             // Checkerboard background for transparency
             backgroundImage: `
@@ -492,7 +494,7 @@ export default function ColorPicker({ value, onChange, onChangeEnd, showAlpha = 
         <button
           type="button"
           onClick={cycleMode}
-          className="h-[var(--control-height-sm)] px-2 text-[10px] font-bold bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] cursor-pointer hover:border-[var(--control-border-hover)] text-[var(--text-secondary)] shrink-0 select-none"
+          className="h-[var(--control-height-sm)] px-2 text-[10px] font-bold bg-[var(--grid-line)] border border-[var(--control-border)] rounded-md hover:[--cut-border-color:var(--control-border-hover)] cursor-pointer hover:border-[var(--control-border-hover)] text-[var(--text-secondary)] shrink-0 select-none"
         >
           {inputMode.toUpperCase()}
         </button>
@@ -583,7 +585,7 @@ export default function ColorPicker({ value, onChange, onChangeEnd, showAlpha = 
                 trace.action('color-picker:create-preset-click', { color: currentHex });
                 onCreatePreset(currentHex);
               }}
-              className="w-full flex items-center justify-between px-1 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-md)] cursor-pointer transition-colors"
+              className="w-full flex items-center justify-between px-1 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] cut-corners cursor-pointer transition-colors"
             >
               <span>Create new color preset</span>
               <PlusIcon />
@@ -599,7 +601,7 @@ export default function ColorPicker({ value, onChange, onChangeEnd, showAlpha = 
                 return (
                   <div
                     key={preset.name}
-                    className={`group flex items-center gap-2 px-1 py-1.5 rounded-[var(--radius-md)] cursor-pointer transition-colors ${
+                    className={`group flex items-center gap-2 px-1 py-1.5 cut-corners cursor-pointer transition-colors ${
                       isActive ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
                     }`}
                     onClick={() => {
@@ -620,13 +622,13 @@ export default function ColorPicker({ value, onChange, onChangeEnd, showAlpha = 
                           onEditPreset(preset.name);
                           trace.action('color-picker:edit-preset', { name: preset.name });
                         }}
-                        className="opacity-0 group-hover:opacity-100 text-[10px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] rounded px-2 py-0.5 transition-all cursor-pointer"
+                        className="opacity-0 group-hover:opacity-100 text-[10px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border px-2 py-0.5 transition-all cursor-pointer"
                       >
                         Edit
                       </button>
                     )}
                     <div
-                      className="w-5 h-5 rounded-md border border-white/10 flex-shrink-0"
+                      className="w-5 h-5 rounded border border-white/10 flex-shrink-0"
                       style={{ backgroundColor: preset.value }}
                     />
                   </div>

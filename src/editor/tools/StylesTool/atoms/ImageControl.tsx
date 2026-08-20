@@ -97,14 +97,14 @@ function ImagePopupBody({ value, onChange }: ImagePopupBodyProps) {
       {hasImage ? (
         <div className="flex flex-col gap-2">
           <div
-            className="w-full h-28 rounded-lg border border-[var(--border-light)] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+            className="w-full h-28 cut-corners cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setImageModalOpen(true)}
             style={{ backgroundImage: `url(${previewUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
           />
           <div className="flex gap-1.5">
             <button
               onClick={() => setImageModalOpen(true)}
-              className="flex-1 h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+              className="flex-1 h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
             >
               Change
             </button>
@@ -119,7 +119,7 @@ function ImagePopupBody({ value, onChange }: ImagePopupBodyProps) {
       ) : (
         <button
           onClick={() => setImageModalOpen(true)}
-          className="w-full h-20 rounded-lg border-2 border-dashed border-[var(--control-border)] hover:border-[var(--accent)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+          className="w-full h-20 cut-corners border-2 border-dashed border-[var(--control-border)] hover:border-[var(--accent)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" />

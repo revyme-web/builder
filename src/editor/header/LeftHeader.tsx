@@ -227,7 +227,7 @@ export function LogoButton() {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center justify-center w-8 h-8 rounded-md cursor-pointer border-none bg-transparent hover:bg-white/[0.10] transition-colors"
+        className="flex items-center justify-center w-8 h-8 cut-corners cursor-pointer border-none bg-transparent hover:bg-white/[0.10] transition-colors"
       >
         <RevymeLogo />
       </button>
@@ -253,8 +253,11 @@ export default function LeftHeader() {
 
   return (
     <div
-      className="h-[52px] bg-[var(--bg-surface)] border-b border-r border-[var(--border-light)] fixed top-0 left-0 z-[9999] flex"
-      style={{ width: 'calc(52px + 256px)' }}
+      className="h-[52px] border-b border-[var(--border-light)] fixed top-0 left-0 z-[9999] flex"
+      // Sits on the left ChromeIsland (12px margins) — the island backdrop
+      // carries surface/glass/outer border; this keeps only the bottom
+      // divider between header row and rail/panel.
+      style={{ width: 'calc(52px + 256px)', left: 0, top: 0 }}
     >
       {/* Logo column — 51 px wide so the rule at its right edge lands
           at x=51 (1 px left of the LeftMenu's internal rule at x=52).
@@ -292,6 +295,7 @@ export default function LeftHeader() {
             variant="secondary"
             size="sm"
             tabIndex={-1}
+            className="cut-corners"
             icon={<BackChevronIcon />}
             onClick={() => {
               trace.action('left-header:exit-preview');

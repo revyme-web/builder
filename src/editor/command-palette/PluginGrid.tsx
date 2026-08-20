@@ -34,10 +34,10 @@ function PluginCard({ plugin, onClick, loading }: PluginCardProps) {
     <button
       onClick={onClick}
       disabled={loading}
-      className="group relative rounded-lg overflow-hidden p-2 flex flex-col gap-2 bg-black/[0.03] dark:bg-white/[0.03] hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors disabled:opacity-60"
+      className="group relative cut-corners overflow-hidden p-2 flex flex-col gap-2 bg-black/[0.03] dark:bg-white/[0.03] hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors disabled:opacity-60"
       title={plugin.description || plugin.name}
     >
-      <div className="relative w-full aspect-[16/10] rounded-md overflow-hidden bg-[var(--bg-tertiary)] flex items-center justify-center">
+      <div className="relative w-full aspect-[16/10] cut-corners overflow-hidden bg-[var(--bg-tertiary)] flex items-center justify-center">
         {thumbnail ? (
           <img src={thumbnail} alt={plugin.name} className="w-full h-full object-cover" />
         ) : (
@@ -161,7 +161,7 @@ export function PluginGrid() {
           Install from URL
         </div>
         {urlPreviewLoading ? (
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-black/[0.03] dark:bg-white/[0.03]">
+          <div className="flex items-center gap-3 p-3 cut-corners bg-black/[0.03] dark:bg-white/[0.03]">
             <SpinnerIcon className="w-4 h-4 text-[var(--text-tertiary)] animate-spin" />
             <span className="text-[11px] text-[var(--text-secondary)]">Fetching plugin...</span>
           </div>
@@ -169,9 +169,9 @@ export function PluginGrid() {
           <button
             onClick={() => handleClick(urlPreview)}
             disabled={loadingPluginId === urlPreview.id}
-            className="w-full flex items-center gap-3 p-3 rounded-lg bg-black/[0.03] dark:bg-white/[0.03] hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors text-left"
+            className="w-full flex items-center gap-3 p-3 cut-corners bg-black/[0.03] dark:bg-white/[0.03] hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors text-left"
           >
-            <div className="w-12 h-12 rounded-md overflow-hidden bg-[var(--bg-tertiary)] flex items-center justify-center shrink-0">
+            <div className="w-12 h-12 cut-corners overflow-hidden bg-[var(--bg-tertiary)] flex items-center justify-center shrink-0">
               {urlPreview.thumbnailUrl ? (
                 <img src={urlPreview.thumbnailUrl} alt={urlPreview.name} className="w-full h-full object-cover" />
               ) : (
@@ -211,8 +211,8 @@ export function PluginGrid() {
         </div>
         <div className="grid grid-cols-4 gap-2">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="flex flex-col gap-1.5 bg-black/[0.03] dark:bg-white/[0.03] rounded-lg p-2">
-              <div className="w-full aspect-[16/10] rounded-md bg-black/[0.05] dark:bg-white/[0.05] animate-pulse" />
+            <div key={i} className="flex flex-col gap-1.5 bg-black/[0.03] dark:bg-white/[0.03] cut-corners p-2">
+              <div className="w-full aspect-[16/10] cut-corners bg-black/[0.05] dark:bg-white/[0.05] animate-pulse" />
               <div className="h-3 w-3/4 rounded bg-black/[0.05] dark:bg-white/[0.05] animate-pulse" />
             </div>
           ))}

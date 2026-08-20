@@ -69,7 +69,7 @@ function FontRow({ index, style, filteredFonts, currentFontName, onSelect, onPre
       onMouseEnter={() => onPreview?.(cssFamily)}
     >
       <div
-        className={`flex items-center justify-between px-3 py-2 rounded-[var(--radius-md)] cursor-pointer transition-colors ${
+        className={`flex items-center justify-between px-3 py-2 cut-corners cursor-pointer transition-colors ${
           isSelected
             ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
             : 'hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'
@@ -338,7 +338,7 @@ export default function FontFamilyPopup({ value, onChange, isOpen, onClose, anch
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onMouseDown={(e) => e.stopPropagation()}
-            className="w-full bg-[var(--bg-hover)] rounded-md px-8 py-1.5 text-sm focus:outline-none text-[var(--text-primary)]"
+            className="w-full bg-[var(--bg-hover)] cut-corners px-8 py-1.5 text-sm focus:outline-none text-[var(--text-primary)]"
             placeholder="Search fonts..."
           />
           <svg className="absolute left-2 top-2 w-3.5 h-3.5 text-[var(--text-secondary)]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -351,7 +351,7 @@ export default function FontFamilyPopup({ value, onChange, isOpen, onClose, anch
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
             onMouseDown={(e) => e.stopPropagation()}
-            className="flex-1 bg-[var(--bg-hover)] rounded-md px-2 py-1 text-xs focus:outline-none text-[var(--text-primary)] cursor-pointer"
+            className="flex-1 bg-[var(--bg-hover)] cut-corners px-2 py-1 text-xs focus:outline-none text-[var(--text-primary)] cursor-pointer"
           >
             {FEELING_CATEGORIES.map(cat => (
               <option key={cat} value={cat}>{cat === 'All' ? 'All Categories' : cat}</option>
@@ -382,7 +382,7 @@ export default function FontFamilyPopup({ value, onChange, isOpen, onClose, anch
                     onMouseEnter={() => onPreview?.(cssFamily)}
                   >
                     <div
-                      className={`flex items-center justify-between px-3 py-2 rounded-[var(--radius-md)] cursor-pointer transition-colors ${
+                      className={`flex items-center justify-between px-3 py-2 cut-corners cursor-pointer transition-colors ${
                         isSelected
                           ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
                           : 'hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'

@@ -2,7 +2,7 @@
 // tab. Pixel-perfect port from builder/src/builder/view/search/
 // components/{SearchResults,SearchResultItem}.tsx: same padding
 // (px-3 py-2.5), same row shape (icon + name + right-aligned hint
-// or kbd), same mx-1 rounded-lg highlight band, same category header
+// or kbd), same mx-1 cut-corners highlight band, same category header
 // (10px uppercase, tracking-wider).
 //
 // Category icons are inline-SVG tiles in the builder's colors. Each
@@ -262,7 +262,7 @@ function SearchRow({
     <div
       onClick={onClick}
       onMouseEnter={onMouseEnter}
-      className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors rounded-lg mx-1 ${
+      className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors cut-corners mx-1 ${
         isSelected ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
       }`}
     >
@@ -273,7 +273,7 @@ function SearchRow({
       <div className="flex-shrink-0">
         {ItemIcon ? (
           <div
-            className="flex items-center justify-center rounded-lg bg-[var(--bg-tertiary)]"
+            className="flex items-center justify-center cut-corners bg-[var(--bg-tertiary)]"
             style={{ width: iconSize, height: iconSize }}
           >
             <ItemIcon size={iconSize * 0.5} className="text-[var(--text-primary)]" />

@@ -343,7 +343,7 @@ export default function SelectionTool() {
             ) : (
               <button
                 onClick={() => setIsExpanded(true)}
-                className="w-full h-[var(--control-height)] flex items-center gap-1.5 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+                className="w-full h-[var(--control-height)] flex items-center gap-1.5 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
                 title="Click to expand"
               >
                 {compactGroups.map(g => (

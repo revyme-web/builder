@@ -6,6 +6,7 @@ import PropertiesPanel from './editor/PropertiesPanel';
 import CommentsListPanel from './editor/CommentsListPanel';
 import { commentModeActiveAtom } from './code/stores/comment-store';
 import DebugToolbar from './editor/ui/DebugToolbar';
+import ChromeIslands from './editor/ChromeIslands';
 import BottomToolbar from './editor/BottomToolbar';
 import IconSetChat from './editor/IconSetChat';
 import PageChat from './editor/PageChat';
@@ -178,6 +179,7 @@ export default function App() {
     <div style={{ display: 'flex', height: '100vh', flexDirection: 'column' }}>
       {/* Debug toolbar — floating at top center, above everything */}
       <DebugToolbar />
+      <ChromeIslands />
       {/* Live-collab broadcast loops + remote cursor overlay. Renders
           inside the provider so its hooks have context; the overlay
           itself is `position: fixed` and floats above the canvas. */}
@@ -210,8 +212,17 @@ export default function App() {
       <LeftMenu />
       <LeftPanel />
 
-      {/* Main — always offset by 52px menu + 256px panel = 308px */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', marginLeft: 308 }}>
+      {/* Main — offset ONLY by the 52px icon rail: the canvas runs FULL-BLEED
+          under both side panels (the right sidebar pulls itself over it with
+          marginLeft: -260). This is what feeds the panels' glassmorphism —
+          backdrop-blur needs real canvas behind the glass, not app
+          background — and the cut notches keep working for free. Camera
+          fits/pans center in the VISIBLE strip between the slabs:
+          getAvailableArea (CameraCommands) adds insets.left now that the
+          container origin is 0. To revert to opaque panels,
+          restore marginLeft 296 here and -12 on the right-sidebar shells
+          (the 12px = the cut-notch underlap). */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', marginLeft: 0 }}>
         <Canvas />
         {/* Right panel: PropertiesPanel by default, swap for the
             project-wide comments list while comment mode is active.

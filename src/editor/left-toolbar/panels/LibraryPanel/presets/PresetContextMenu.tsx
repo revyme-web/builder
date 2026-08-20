@@ -15,7 +15,7 @@ export function PresetContextMenu({ x, y, onRename, onDelete, onClose }: Context
     <>
       <div className="fixed inset-0 z-[10010]" onClick={onClose} />
       <div
-        className="fixed z-[10011] bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-lg shadow-xl py-1 min-w-[120px]"
+        className="fixed z-[10011] bg-[var(--bg-surface)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-xl py-1 min-w-[120px]"
         style={{ left: x, top: y }}
       >
         <button

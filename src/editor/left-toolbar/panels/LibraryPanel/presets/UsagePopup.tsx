@@ -98,7 +98,7 @@ export function UsagePopup({ usages, triggerRef, onClose }: UsagePopupProps) {
   return createPortal(
     <div
       ref={popupRef}
-      className="fixed z-[9999] min-w-[200px] max-w-[280px] bg-[var(--dropdown-bg,var(--bg-surface))] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] p-1"
+      className="fixed z-[9999] min-w-[200px] max-w-[280px] bg-[var(--dropdown-bg,var(--bg-surface))] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-[var(--shadow-lg)] p-1"
       style={{ top: position.top, left: position.left }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
@@ -111,13 +111,13 @@ export function UsagePopup({ usages, triggerRef, onClose }: UsagePopupProps) {
             <div
               key={`${u.filePath}::${u.nodeId}`}
               onClick={() => handleViewNode(u)}
-              className="group flex items-center gap-2 px-2 py-1.5 rounded-[var(--radius-sm)] cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
+              className="group flex items-center gap-2 px-2 py-1.5 cut-corners cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
             >
               <div className="flex-1 min-w-0">
                 <span className="block text-xs font-medium text-[var(--text-primary)] truncate">{u.nodeName}</span>
                 <span className="block text-[10px] text-[var(--text-disabled)] truncate">{u.fileLabel}</span>
               </div>
-              <span className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/10 text-[var(--text-secondary)] transition-opacity">View</span>
+              <span className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 cut-corners text-[10px] font-medium bg-white/10 text-[var(--text-secondary)] transition-opacity">View</span>
             </div>
           ))
         )}

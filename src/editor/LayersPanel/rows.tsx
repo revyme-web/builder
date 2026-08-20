@@ -743,10 +743,6 @@ export const LayerRow = React.memo(function LayerRow({
     // light-mode gold). Never hard-code #fff on an accent fill.
     s.color = selFg;
     bgStyle.backgroundColor = selColor;
-    bgStyle.borderTopLeftRadius = 'var(--radius-md)';
-    bgStyle.borderTopRightRadius = 'var(--radius-md)';
-    bgStyle.borderBottomLeftRadius = hasHighlightedChildren ? '0' : 'var(--radius-md)';
-    bgStyle.borderBottomRightRadius = hasHighlightedChildren ? '0' : 'var(--radius-md)';
   } else if (isChildOfSelected) {
     // Faded (low-opacity) highlight → use the theme's primary text so it's
     // readable in BOTH modes (white-on-light-blue was unreadable in light
@@ -754,11 +750,22 @@ export const LayerRow = React.memo(function LayerRow({
     // saturated accent, dark enough for white in either theme.
     s.color = 'var(--text-primary)';
     bgStyle.backgroundColor = selColorFaded;
-    if (isLastHighlightedChild) {
-      bgStyle.borderBottomLeftRadius = 'var(--radius-md)';
-      bgStyle.borderBottomRightRadius = 'var(--radius-md)';
-    }
   }
+
+  // Cut-corner language (replaces the old per-corner radii): the selection
+  // BLOCK cuts only its outer corners — top-left on the block's first row,
+  // bottom-right on its last — middle rows stay square so the selected row
+  // plus its tinted descendants read as ONE shape. Standalone rows (and the
+  // hover chip) take the full two-corner cut.
+  const bgCut = isSelected
+    ? hasHighlightedChildren
+      ? 'cut-tl'
+      : 'cut-corners'
+    : isChildOfSelected
+      ? isLastHighlightedChild
+        ? 'cut-br'
+        : ''
+      : 'cut-corners';
 
   const isVpHeader = !layer.nodeId;
 
@@ -771,7 +778,7 @@ export const LayerRow = React.memo(function LayerRow({
           never bleeds to the edges, no matter how far the tree is scrolled. */}
       <div
         aria-hidden
-        className={`pointer-events-none absolute top-0 bottom-0 z-0 ${!isSelected && !isChildOfSelected ? 'rounded-md group-hover:bg-[var(--bg-hover)]' : ''}`}
+        className={`pointer-events-none absolute top-0 bottom-0 z-0 ${bgCut} ${!isSelected && !isChildOfSelected ? 'group-hover:bg-[var(--bg-hover)]' : ''}`}
         style={{
           left: 0,
           width: 'calc(var(--layers-vw, 100%) - 16px)',
@@ -828,7 +835,7 @@ export const LayerRow = React.memo(function LayerRow({
           </>
         )}
         {isDragOver && dropPosition === 'inside' && (
-          <div className="absolute inset-0 rounded-md pointer-events-none z-50" style={{ boxShadow: `inset 0 0 0 2px ${selColor}` }} />
+          <div className="absolute inset-0 cut-corners pointer-events-none z-50" style={{ boxShadow: `inset 0 0 0 2px ${selColor}` }} />
         )}
 
         {/* Expand/Collapse — chevron button when the row has children,

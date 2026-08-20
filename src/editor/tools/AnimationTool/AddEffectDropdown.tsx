@@ -117,7 +117,7 @@ function KeyframeSubMenu({ label, desc, existingKeyframes, onCreateNew, onApply 
   return (
     <div onMouseEnter={() => setShowSub(true)} onMouseLeave={() => setShowSub(false)}>
       <button ref={btnRef} type="button" title={desc}
-        className="group flex items-center justify-between mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
+        className="group flex items-center justify-between mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
         onClick={() => setShowSub(!showSub)}>
         <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">{label}</span>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
@@ -134,9 +134,9 @@ function KeyframeSubMenu({ label, desc, existingKeyframes, onCreateNew, onApply 
         >
           {/* Invisible bridge to cover the gap between button and flyout */}
           <div style={{ position: 'absolute', top: 0, right: -12, width: 16, height: '100%' }} />
-          <div className="min-w-max bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-2xl py-1">
+          <div className="min-w-max bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-2xl py-1">
             <button type="button"
-              className="group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
+              className="group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
               onClick={onCreateNew}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)] shrink-0">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -151,7 +151,7 @@ function KeyframeSubMenu({ label, desc, existingKeyframes, onCreateNew, onApply 
                 </div>
                 {existingKeyframes.map(name => (
                   <button key={name} type="button"
-                    className="group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
+                    className="group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
                     onClick={() => onApply(name)}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)] shrink-0">
                       <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
@@ -198,7 +198,7 @@ function EffectSubMenu({ label, desc, children, onSelect }: {
   return (
     <div onMouseEnter={() => setShowSub(true)} onMouseLeave={() => setShowSub(false)}>
       <button ref={btnRef} type="button" title={desc}
-        className="group flex items-center justify-between mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
+        className="group flex items-center justify-between mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
         onClick={() => setShowSub(!showSub)}>
         <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">{label}</span>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
@@ -211,7 +211,7 @@ function EffectSubMenu({ label, desc, children, onSelect }: {
           style={{ position: 'fixed', left: subPos.x, top: subPos.y, transform: 'translateX(-100%)', zIndex: 9999 }}
           onMouseEnter={() => setShowSub(true)} onMouseLeave={() => setShowSub(false)}>
           <div style={{ position: 'absolute', top: 0, right: -12, width: 16, height: '100%' }} />
-          <div className="min-w-max bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-2xl py-1">
+          <div className="min-w-max bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-2xl py-1">
             {children.map(c => c.disabled ? (
               <div key={c.type} title={c.desc}
                 className="mx-1 px-3 py-1.5 whitespace-nowrap">
@@ -219,7 +219,7 @@ function EffectSubMenu({ label, desc, children, onSelect }: {
               </div>
             ) : (
               <button key={c.type} type="button" title={c.desc}
-                className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
+                className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
                 onClick={() => onSelect(c.type)}>
                 <span className="text-[12px] font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">{c.label}</span>
               </button>
@@ -345,7 +345,7 @@ export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketc
               than a fixed min-width. `w-max` collapses the box to the
               widest child (`whitespace-nowrap` on each row keeps them
               from wrapping and disturbing the intrinsic measurement). */}
-          <div className={`absolute right-[10px] bg-[var(--dropdown-bg)] shadow-md rounded-[var(--radius-md)] py-1.5 z-[51] w-max max-h-[420px] overflow-y-auto border border-[var(--border-light)] space-y-0.5 transition-opacity duration-150 ${
+          <div className={`absolute right-[10px] bg-[var(--dropdown-bg)] shadow-md cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[51] w-max max-h-[420px] overflow-y-auto border border-[var(--border-light)] space-y-0.5 transition-opacity duration-150 ${
             openDir === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'
           }`} style={{ opacity: visible ? 1 : 0, scrollbarWidth: 'none' }}>
             {visibleOptions.length === 0 ? (
@@ -387,7 +387,7 @@ export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketc
                 return (
                   <button key={o.type} type="button"
                     title={o.desc}
-                    className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
+                    className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
                     onClick={() => { onAdd(o.type); setOpen(false); }}>
                     <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">
                       {o.label}

@@ -49,7 +49,7 @@ export default function PagesLayersPanel() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[var(--bg-surface)] overflow-hidden min-h-0">
+    <div className="flex flex-col h-full overflow-hidden min-h-0">
       {/* `shrink-0` so the content below owns every remaining pixel — the
           switcher must never be squeezed by a long tree or asset list.
           `pt-[12px]` matches the rail's top padding so the switcher sits on

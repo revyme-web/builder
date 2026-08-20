@@ -122,7 +122,7 @@ export default function LinkedComponentModal({ isOpen, onClose, cdnUrl, instance
           title={!instanceNodeId
             ? 'Select an instance on the canvas to enable per-instance unlink'
             : undefined}
-          className="w-full h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--button-secondary-bg,rgba(255,255,255,0.06))] hover:brightness-125 rounded-[var(--radius-lg)] transition-[filter] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          className="w-full h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--button-secondary-bg,rgba(255,255,255,0.06))] hover:brightness-125 cut-corners transition-[filter] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         >
           {busy === 'instance' ? 'Unlinking…' : 'Unlink Instance'}
         </button>}
@@ -134,7 +134,7 @@ export default function LinkedComponentModal({ isOpen, onClose, cdnUrl, instance
           // accent fill, and light accents (stock gold, Amber) need a
           // near-black label — --accent-fg is the per-theme "label on accent"
           // token (builder-themes.ts).
-          className="w-full h-8 text-xs font-medium text-[var(--accent-fg,#0d1017)] rounded-[var(--radius-lg)] transition-[filter] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          className="w-full h-8 text-xs font-medium text-[var(--accent-fg,#0d1017)] cut-corners transition-[filter] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           // `--accent` is the editor's primary accent (blue by
           // default). `App.tsx` swaps it to `--accent-secondary`
           // (purple) on `<html>` whenever the active file is a

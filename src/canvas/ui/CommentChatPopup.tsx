@@ -161,7 +161,7 @@ export default function CommentChatPopup({ comment, screenX, screenY, onClose }:
   return createPortal(
     <div
       data-comment-bubble
-      className="flex flex-col bg-[var(--dropdown-bg,var(--bg-surface))] border border-[var(--border-light)] rounded-lg shadow-[var(--shadow-lg)] overflow-hidden"
+      className="flex flex-col bg-[var(--dropdown-bg,var(--bg-surface))] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-[var(--shadow-lg)] overflow-hidden"
       style={{
         position: 'fixed',
         left: position.left,
@@ -240,7 +240,7 @@ export default function CommentChatPopup({ comment, screenX, screenY, onClose }:
                     </span>
                   </div>
                   <div
-                    className={`max-w-full px-2.5 py-1.5 rounded-xl text-[11px] whitespace-pre-wrap [overflow-wrap:anywhere] leading-relaxed font-sans text-[var(--text-primary)] ${
+                    className={`max-w-full px-2.5 py-1.5 cut-corners text-[11px] whitespace-pre-wrap [overflow-wrap:anywhere] leading-relaxed font-sans text-[var(--text-primary)] ${
                       isMine
                         ? 'bg-[var(--grid-line)] rounded-tr-sm'
                         : 'bg-[var(--bg-hover)] rounded-tl-sm'
@@ -259,7 +259,7 @@ export default function CommentChatPopup({ comment, screenX, screenY, onClose }:
       {/* Reply input — inner card with subtle border. Enter sends,
           Shift+Enter inserts a newline (default textarea behavior). */}
       <div className="p-2">
-        <div className="bg-[var(--grid-line)] rounded-lg px-3 pt-2 pb-2">
+        <div className="bg-[var(--grid-line)] cut-corners px-3 pt-2 pb-2">
           <textarea
             ref={textareaRef}
             value={replyText}

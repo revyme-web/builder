@@ -798,7 +798,7 @@ export default function SettingsOverlay() {
             <SettingsRow label="Favicon" align="top">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 shrink-0 rounded-lg border border-[var(--border-light)] bg-[var(--bg-hover)]/50 flex items-center justify-center overflow-hidden">
+                  <div className="w-12 h-12 shrink-0 cut-corners cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] bg-[var(--bg-hover)]/50 flex items-center justify-center overflow-hidden">
                     {websiteSettings.faviconLight ? (
                       <img src={websiteSettings.faviconLight} alt="Favicon" className="w-full h-full object-contain" />
                     ) : (
@@ -832,7 +832,7 @@ export default function SettingsOverlay() {
             <SettingsRow label="Social image" align="top">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-3">
-                  <div className="w-28 h-[59px] shrink-0 rounded-lg border border-[var(--border-light)] bg-[var(--bg-hover)]/50 flex items-center justify-center overflow-hidden">
+                  <div className="w-28 h-[59px] shrink-0 cut-corners cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] bg-[var(--bg-hover)]/50 flex items-center justify-center overflow-hidden">
                     {websiteSettings.socialShareImage ? (
                       <img src={websiteSettings.socialShareImage} alt="Social share" className="w-full h-full object-cover" />
                     ) : (
@@ -1017,6 +1017,7 @@ export default function SettingsOverlay() {
             variant="secondary"
             size="sm"
             tabIndex={-1}
+            className="cut-corners"
             icon={<BackIcon />}
             onClick={onClose}
             title="Back to canvas"
@@ -1077,7 +1078,7 @@ export default function SettingsOverlay() {
                         <div key={item.id} className="group relative flex items-center">
                           {isRenaming && abRenameTarget ? (
                             <div
-                              className={`w-full flex items-center gap-2 pl-5 pr-3 py-1.5 rounded-md text-xs font-medium ${
+                              className={`w-full flex items-center gap-2 pl-5 pr-3 py-1.5 cut-corners text-xs font-medium ${
                                 isActive
                                   ? 'bg-[var(--bg-active)] text-[var(--text-primary)]'
                                   : 'text-[var(--text-primary)] bg-[var(--bg-hover)]'
@@ -1105,7 +1106,7 @@ export default function SettingsOverlay() {
                               }}
                               // `pr-9` reserves space so the row label never
                               // disappears behind the ellipsis on hover.
-                              className={`w-full flex items-center gap-2 pl-5 ${showEllipsis ? 'pr-9' : 'pr-3'} py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                              className={`w-full flex items-center gap-2 pl-5 ${showEllipsis ? 'pr-9' : 'pr-3'} py-1.5 cut-corners text-xs font-medium transition-colors cursor-pointer ${
                                 isActive
                                   ? 'bg-[var(--bg-active)] text-[var(--text-primary)]'
                                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
@@ -1128,7 +1129,7 @@ export default function SettingsOverlay() {
                               // selected — matches the reference pages-panel
                               // ellipsis pattern: visible only when the user
                               // is hovering or interacting with the row.
-                              className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] cursor-pointer transition-opacity ${
+                              className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center cut-corners text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] cursor-pointer transition-opacity ${
                                 menuOpen || isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
                               }`}
                             >
@@ -1171,7 +1172,7 @@ export default function SettingsOverlay() {
                 {mobileNavOpen && (
                   <>
                     <div className="fixed inset-0 z-[1]" onClick={() => setMobileNavOpen(false)} />
-                    <div className="absolute top-full left-0 mt-1 min-w-[200px] bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-lg shadow-lg py-1.5 z-[2]">
+                    <div className="absolute top-full left-0 mt-1 min-w-[200px] bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-lg py-1.5 z-[2]">
                       {menuCategories.map((category, ci) => (
                         <div key={ci}>
                           <div className="px-3 py-1 text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">

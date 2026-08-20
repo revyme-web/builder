@@ -59,7 +59,7 @@ export default function SelectIconPopup({ current, onPick, onColor, onColorLive 
       <ToolRow label="Search">
         <ToolInput value={query} onChange={setQuery} placeholder="chevron, caret, arrow…" text />
       </ToolRow>
-      <div className="grid grid-cols-6 gap-1 max-h-[168px] overflow-y-auto rounded-[var(--radius-md)] p-1"
+      <div className="grid grid-cols-6 gap-1 max-h-[168px] overflow-y-auto cut-corners p-1"
         style={{ backgroundColor: 'var(--grid-line)' }}>
         {icons.map((icon) => (
           <button
@@ -67,7 +67,7 @@ export default function SelectIconPopup({ current, onPick, onColor, onColorLive 
             type="button"
             title={icon}
             onClick={() => onPick(icon)}
-            className="flex items-center justify-center w-7 h-7 rounded cursor-pointer border-none bg-transparent hover:!bg-[var(--accent)]"
+            className="flex items-center justify-center w-7 h-7 cut-corners cursor-pointer border-none bg-transparent hover:!bg-[var(--accent)]"
             style={current?.icon === icon ? { backgroundColor: 'var(--accent)' } : undefined}
           >
             <img

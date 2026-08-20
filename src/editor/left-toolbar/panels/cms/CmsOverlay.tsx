@@ -105,7 +105,7 @@ function ItemRow({ item, schema, allItems, isExpanded, onToggle, onSave, onDelet
             e.stopPropagation();
             onDelete();
           }}
-          className="w-6 h-6 flex items-center justify-center text-[var(--text-disabled)] hover:text-red-400 hover:bg-red-500/10 rounded transition-colors cursor-pointer opacity-0 group-hover:opacity-100 shrink-0"
+          className="w-6 h-6 flex items-center justify-center text-[var(--text-disabled)] hover:text-red-400 hover:bg-red-500/10 cut-corners transition-colors cursor-pointer opacity-0 group-hover:opacity-100 shrink-0"
           title="Delete item"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -287,7 +287,7 @@ export default function CmsOverlay() {
 
       {/* Content */}
       <div
-        className="relative bg-[var(--bg-surface)] rounded-xl shadow-2xl border border-[var(--border-light)] flex flex-col"
+        className="relative bg-[var(--bg-surface)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-2xl border border-[var(--border-light)] flex flex-col"
         style={{ width: 1100, height: 750 }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -303,7 +303,7 @@ export default function CmsOverlay() {
           </div>
           <button
             onClick={handleClose}
-            className="p-1 hover:bg-[var(--bg-hover)] rounded transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+            className="p-1 hover:bg-[var(--bg-hover)] cut-corners transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -316,7 +316,7 @@ export default function CmsOverlay() {
           {/* Add Item */}
           <button
             onClick={handleAddItem}
-            className="h-7 px-3 text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] rounded-md hover:opacity-90 transition-opacity cursor-pointer flex items-center gap-1.5"
+            className="h-7 px-3 text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] cut-corners hover:opacity-90 transition-opacity cursor-pointer flex items-center gap-1.5"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -338,7 +338,7 @@ export default function CmsOverlay() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search items..."
-            className="w-[200px] h-[var(--control-height-sm)] px-2.5 text-xs bg-[var(--bg-input)] border border-[var(--control-border)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
+            className="w-[200px] h-[var(--control-height-sm)] px-2.5 text-xs bg-[var(--bg-input)] border border-[var(--control-border)] cut-corners cut-border text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
           />
         </div>
 
@@ -369,7 +369,7 @@ export default function CmsOverlay() {
           </span>
           <button
             onClick={handleClose}
-            className="h-8 px-5 text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
+            className="h-8 px-5 text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] cut-corners hover:opacity-90 transition-opacity cursor-pointer"
           >
             Done
           </button>

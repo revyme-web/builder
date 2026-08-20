@@ -395,7 +395,7 @@ export default function PinControl({ styles, nodeId, vpId, onUpdate, onUpdateMul
     return (
       <button
         onClick={() => handlePinToggle(side)}
-        className={`flex items-center justify-center text-xs font-medium rounded transition-colors cursor-pointer ${active
+        className={`flex items-center justify-center text-xs font-medium cut-corners transition-colors cursor-pointer ${active
           ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
           : 'bg-[var(--control-bg)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
         }`}
@@ -436,7 +436,7 @@ export default function PinControl({ styles, nodeId, vpId, onUpdate, onUpdateMul
           {/* Center — pin/unpin all */}
           <button
             onClick={handlePinAll}
-            className={`rounded transition-colors cursor-pointer hover:bg-[var(--bg-hover)] ${allPinned ? 'bg-[var(--accent)] opacity-20' : 'bg-[var(--border-light)]'}`}
+            className={`cut-corners transition-colors cursor-pointer hover:bg-[var(--bg-hover)] ${allPinned ? 'bg-[var(--accent)] opacity-20' : 'bg-[var(--border-light)]'}`}
           />
           <PinBtn side="right" />
           <div />

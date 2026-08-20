@@ -111,7 +111,7 @@ export default function CodeEditorPopup() {
 
   return (
     <div
-      className="fixed flex flex-col overflow-hidden rounded-lg shadow-2xl"
+      className="fixed flex flex-col overflow-hidden cut-corners shadow-2xl"
       style={{
         left: pos.x,
         top: pos.y,

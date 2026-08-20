@@ -29,7 +29,7 @@ export default function TextEffectPreview({ config }: { config: TextAnimConfig }
   ]);
 
   return (
-    <div className="w-full rounded-[var(--radius-md)] border border-[var(--control-border)] overflow-hidden bg-[var(--grid-line)] flex items-center justify-center"
+    <div className="w-full cut-corners cut-border [--cut-border-color:var(--control-border)] border border-[var(--control-border)] overflow-hidden bg-[var(--grid-line)] flex items-center justify-center"
       style={{ height: 64, perspective: 600 }}
     >
       <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: 1 }}>

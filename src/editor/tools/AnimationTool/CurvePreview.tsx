@@ -99,7 +99,7 @@ export default function CurvePreview({ isSpring, ease, bounce, stiffness, dampin
     const path = getSpringCurvePoints(stiffness, damping, mass, bounce, springMode);
     const sMapY = (v: number) => VPAD + PAD + (1 - v) * (H - PAD * 2);
     return (
-      <div className="w-full rounded-lg overflow-hidden" style={boxStyle}>
+      <div className="w-full cut-corners overflow-hidden" style={boxStyle}>
         <svg width="100%" viewBox={`0 0 ${totalW} ${totalH}`} style={{ display: 'block' }}>
           <line x1={HPAD} y1={sMapY(0)} x2={HPAD + W} y2={sMapY(0)} stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />
           <line x1={HPAD} y1={sMapY(1)} x2={HPAD + W} y2={sMapY(1)} stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />
@@ -119,7 +119,7 @@ export default function CurvePreview({ isSpring, ease, bounce, stiffness, dampin
   const curvePath = `M ${p0.x} ${p0.y} C ${p1.x} ${p1.y}, ${p2.x} ${p2.y}, ${p3.x} ${p3.y}`;
 
   return (
-    <div className="w-full rounded-lg overflow-hidden" style={boxStyle}>
+    <div className="w-full cut-corners overflow-hidden" style={boxStyle}>
       <svg ref={svgRef} width="100%" viewBox={`0 0 ${totalW} ${totalH}`} style={{ display: 'block', cursor: 'default' }}>
         <line x1={HPAD} y1={oMapY(0)} x2={HPAD + W} y2={oMapY(0)} stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />
         <line x1={HPAD} y1={oMapY(1)} x2={HPAD + W} y2={oMapY(1)} stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />

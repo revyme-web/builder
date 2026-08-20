@@ -152,7 +152,7 @@ export function IconSearchResults({ query }: { query: string }) {
                 <button
                   key={icon.icon}
                   onClick={() => handleClick(icon)}
-                  className="w-full aspect-square flex items-center justify-center bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-md border border-[var(--control-border)] transition-colors disabled:opacity-50"
+                  className="w-full aspect-square flex items-center justify-center bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] cut-corners cut-border border border-[var(--control-border)] transition-colors disabled:opacity-50"
                   disabled={insertingIcon === icon.icon}
                   title={`${icon.name} (${icon.prefix})`}
                 >

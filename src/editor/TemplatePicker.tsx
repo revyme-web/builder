@@ -543,7 +543,7 @@ export default function TemplatePicker() {
       {pickerOpen && hasAnyTemplate && (
         <>
           <div className="fixed inset-0 z-[10000]" onClick={() => setPickerOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-1.5 z-[10001] min-w-44 border border-[var(--border-light)] space-y-0.5">
+          <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[10001] min-w-44 border border-[var(--border-light)] space-y-0.5">
             {templates.map(tpl => (
               <button
                 key={tpl.name}
@@ -551,7 +551,7 @@ export default function TemplatePicker() {
                   setPickerOpen(false);
                   applyTemplate(tpl.name);
                 }}
-                className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent)] transition-colors"
+                className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent)] transition-colors"
               >
                 <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">
                   {tpl.name}
@@ -563,7 +563,7 @@ export default function TemplatePicker() {
                 setPickerOpen(false);
                 setCreateModalOpen(true);
               }}
-              className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent)] transition-colors"
+              className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent)] transition-colors"
             >
               <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">
                 New Template…

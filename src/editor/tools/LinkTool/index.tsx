@@ -783,7 +783,7 @@ export default function LinkTool() {
       {addMenuOpen && (
         <>
           <div className="fixed inset-0 z-50" onClick={() => setAddMenuOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-md rounded-[var(--radius-md)] py-1.5 z-[51] w-max border border-[var(--border-light)] space-y-0.5">
+          <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-md cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[51] w-max border border-[var(--border-light)] space-y-0.5">
             {/* Only controls NOT yet on the link — once added it's shown in the
                 section, so it drops off the menu (no checkmark / left gutter). */}
             {(() => {
@@ -796,7 +796,7 @@ export default function LinkTool() {
                   key={key}
                   type="button"
                   onClick={() => toggleOptionalControl(key, false)}
-                  className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
+                  className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
                 >
                   <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">{label}</span>
                 </button>

@@ -35,7 +35,7 @@ function CopyBlock({ label, value }: { label: string; value: string }) {
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <pre className="text-[11px] leading-relaxed px-3 py-2.5 rounded-[var(--radius-md)] bg-[var(--grid-line)] border border-[var(--border-light)] text-[var(--text-primary)] whitespace-pre-wrap break-all select-all">{value}</pre>
+      <pre className="text-[11px] leading-relaxed px-3 py-2.5 cut-corners cut-border [--cut-border-color:var(--border-light)] bg-[var(--grid-line)] border border-[var(--border-light)] text-[var(--text-primary)] whitespace-pre-wrap break-all select-all">{value}</pre>
     </div>
   );
 }
@@ -70,7 +70,7 @@ export default function ConnectAiSection() {
 
       <button
         onClick={() => openWorkspaceSettingsPage('api-tokens')}
-        className="w-full h-9 rounded-[var(--radius-lg)] bg-[var(--accent)] text-[var(--accent-fg)] text-xs font-medium hover:opacity-90 cursor-pointer transition-opacity"
+        className="w-full h-9 cut-corners bg-[var(--accent)] text-[var(--accent-fg)] text-xs font-medium hover:opacity-90 cursor-pointer transition-opacity"
       >
         Manage API Tokens
       </button>
@@ -82,7 +82,7 @@ export default function ConnectAiSection() {
           onChange={(e) => setToken(e.target.value)}
           placeholder={TOKEN_PLACEHOLDER}
           spellCheck={false}
-          className="w-full h-9 px-3 text-xs font-mono bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] rounded-[var(--radius-md)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none transition-colors"
+          className="w-full h-9 px-3 text-xs font-mono bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none transition-colors"
         />
         <p className="text-[11px] text-[var(--text-disabled)]">
           One account-level token works for all your projects — create it with

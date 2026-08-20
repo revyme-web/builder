@@ -195,7 +195,7 @@ export default function ItemEditor({ schema, item, focusedFieldId, siblingItems,
             <div
               key={field.id}
               ref={isFocused ? focusedRef : undefined}
-              className={isFocused ? 'cms-field-focus-ring rounded-md' : ''}
+              className={isFocused ? 'cms-field-focus-ring cut-corners' : ''}
             >
               <SettingsRow
                 label={field.required ? `${fieldName} *` : fieldName}

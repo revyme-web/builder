@@ -313,7 +313,7 @@ export default function BackupsSection({ websiteId }: BackupsSectionProps) {
             <div className="text-[10px] text-[var(--text-secondary)] mt-0.5">{timePart}</div>
           </div>
           {isLive ? (
-            <span className="inline-flex items-center justify-center gap-1.5 w-[110px] h-[30px] rounded-md text-[11px] font-semibold border bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
+            <span className="inline-flex items-center justify-center gap-1.5 w-[110px] h-[30px] cut-corners text-[11px] font-semibold border bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
               <span className="relative flex w-1.5 h-1.5">
                 <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping bg-emerald-400" />
                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
@@ -383,7 +383,7 @@ export default function BackupsSection({ websiteId }: BackupsSectionProps) {
                   <Skeleton className="h-3 w-32" />
                 </div>
               </div>
-              <Skeleton className="h-[30px] w-[110px] rounded-md" />
+              <Skeleton className="h-[30px] w-[110px] cut-corners" />
             </li>
           ))}
         </ul>
@@ -526,7 +526,7 @@ function DeleteConfirmModal({ snap, onCancel, onConfirm }: DeleteConfirmModalPro
             try { await onConfirm(); } catch { setRunning(false); }
           }}
           disabled={running}
-          className="flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center bg-red-500/90 hover:bg-red-500 text-white disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+          className="flex-1 h-8 px-3 text-xs cut-corners font-medium flex items-center justify-center bg-red-500/90 hover:bg-red-500 text-white disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
         >
           {running ? 'Deleting…' : 'Delete snapshot'}
         </button>
@@ -665,7 +665,7 @@ function RestoreConfirmModal({ confirm, onCancel, onRun }: RestoreConfirmModalPr
         <button
           onClick={handleRun}
           disabled={running}
-          className="relative overflow-hidden flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] transition-colors font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] disabled:opacity-100 disabled:bg-[var(--accent)] disabled:cursor-not-allowed cursor-pointer"
+          className="relative overflow-hidden flex-1 h-8 px-3 text-xs cut-corners transition-colors font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] disabled:opacity-100 disabled:bg-[var(--accent)] disabled:cursor-not-allowed cursor-pointer"
         >
           {running && (
             <span

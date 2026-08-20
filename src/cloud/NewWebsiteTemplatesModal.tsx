@@ -173,7 +173,7 @@ function ScratchCard({ disabled, onPick }: { disabled: boolean; onPick: () => vo
       type="button"
       onClick={onPick}
       disabled={disabled}
-      className="group flex flex-col overflow-hidden rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] text-left transition-colors hover:border-[var(--accent)] disabled:opacity-60"
+      className="group flex flex-col overflow-hidden cut-corners cut-border [--cut-border-color:var(--border-default)] hover:[--cut-border-color:var(--accent)] border border-[var(--border-default)] bg-[var(--bg-surface)] text-left transition-colors hover:border-[var(--accent)] disabled:opacity-60"
     >
       <span className="grid aspect-[4/3] w-full place-items-center bg-white">
         <SketchPencilIcon size={28} className="text-[#111111] transition-transform duration-300 group-hover:scale-110" />
@@ -204,7 +204,7 @@ function TemplateCard({ tpl, free, applying, disabled, onPick }: {
       onClick={onPick}
       disabled={disabled}
       title={free ? undefined : 'Opens the marketplace page'}
-      className="group flex flex-col overflow-hidden rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] text-left transition-colors hover:border-[var(--accent)] disabled:opacity-60"
+      className="group flex flex-col overflow-hidden cut-corners cut-border [--cut-border-color:var(--border-default)] hover:[--cut-border-color:var(--accent)] border border-[var(--border-default)] bg-[var(--bg-surface)] text-left transition-colors hover:border-[var(--accent)] disabled:opacity-60"
     >
       <span className="relative block aspect-[4/3] w-full overflow-hidden bg-[var(--bg-hover)]">
         {tpl.thumbnail_url ? (

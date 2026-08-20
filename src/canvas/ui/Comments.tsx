@@ -257,7 +257,7 @@ const CommentBubble: React.FC<CommentBubbleProps> = ({
         <div
           ref={contextMenuRef}
           data-comment-bubble
-          className="fixed py-2 min-w-[160px] bg-[var(--dropdown-bg,var(--bg-surface))] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-[var(--shadow-lg)]"
+          className="fixed py-2 min-w-[160px] bg-[var(--dropdown-bg,var(--bg-surface))] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-[var(--shadow-lg)]"
           style={{ left: contextMenu.x, top: contextMenu.y, zIndex: 99999 }}
         >
           <div
@@ -267,7 +267,7 @@ const CommentBubble: React.FC<CommentBubbleProps> = ({
               commentOps.removeComment(comment.id);
               setContextMenu(null);
             }}
-            className="group flex items-center gap-3 mx-1.5 px-2 py-2 cursor-pointer rounded-[var(--radius-sm)] hover:bg-[var(--accent)]"
+            className="group flex items-center gap-3 mx-1.5 px-2 py-2 cursor-pointer cut-corners hover:bg-[var(--accent)]"
           >
             <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] flex-1">
               Delete Comment
@@ -295,7 +295,7 @@ const CommentBubble: React.FC<CommentBubbleProps> = ({
       {isEditing && (
         <div
           data-comment-bubble
-          className="absolute left-8 top-1/2 -translate-y-1/2 flex items-center gap-2 bg-[var(--dropdown-bg,var(--bg-surface))] border border-[var(--border-light)] rounded-lg shadow-[var(--shadow-lg)] px-3 py-2"
+          className="absolute left-8 top-1/2 -translate-y-1/2 flex items-center gap-2 bg-[var(--dropdown-bg,var(--bg-surface))] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-[var(--shadow-lg)] px-3 py-2"
           style={{ width: 280, animation: 'commentFadeIn 0.15s ease-out' }}
           onClick={(e) => e.stopPropagation()}
         >

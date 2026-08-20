@@ -59,7 +59,7 @@ function MenuItem({ label, shortcut, onClick, disabled }: {
       onMouseUp={stop}
       onClick={(e) => { e.stopPropagation(); if (!disabled) onClick(); }}
       disabled={disabled}
-      className={`group flex items-center gap-3 mx-1.5 px-2 h-8 w-[calc(100%-12px)] text-left cursor-pointer rounded-[var(--radius-sm)] hover:bg-[var(--accent)] ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
+      className={`group flex items-center gap-3 mx-1.5 px-2 h-8 w-[calc(100%-12px)] text-left cursor-pointer cut-corners hover:bg-[var(--accent)] ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
     >
       <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] flex-1">
         {label}
@@ -88,7 +88,7 @@ function SubMenu({ label, children }: { label: string; children: React.ReactNode
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
-      <button className="group flex items-center gap-3 mx-1.5 px-2 h-8 w-[calc(100%-12px)] text-left cursor-pointer rounded-[var(--radius-sm)] hover:bg-[var(--accent)]">
+      <button className="group flex items-center gap-3 mx-1.5 px-2 h-8 w-[calc(100%-12px)] text-left cursor-pointer cut-corners hover:bg-[var(--accent)]">
         <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] flex-1">{label}</span>
         <span className="text-[10px] text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)]/70">▸</span>
       </button>
@@ -100,7 +100,7 @@ function SubMenu({ label, children }: { label: string; children: React.ReactNode
               empty space, fires `onMouseLeave`, and the submenu closes
               before the user can reach it. */}
           <div className="absolute left-full top-0 w-1 h-full" aria-hidden="true" />
-          <div className="absolute left-full top-0 ml-0.5 bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-2 min-w-[200px] border border-[var(--border-light)] space-y-0.5">
+          <div className="absolute left-full top-0 ml-0.5 bg-[var(--dropdown-bg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-2 min-w-[200px] border border-[var(--border-light)] space-y-0.5">
             {children}
           </div>
         </>
@@ -365,7 +365,12 @@ export default function ContextMenu() {
     setMakeCompName('');
   };
 
-  const nodeId = menu.show ? (menu.nodeId || selectedId) : null;
+  // viewportHeader: right-click on a viewport header — the viewport root is
+  // SELECTED (overlay + layers row stay lit) but none of the node operations
+  // apply, so nodeId stays null and every `disabled={!nodeId}` item greys
+  // out. Without the guard the `|| selectedId` fallback would resurrect the
+  // freshly-selected root and offer to cut it.
+  const nodeId = menu.show && !menu.viewportHeader ? (menu.nodeId || selectedId) : null;
   // Fine-grained subscriptions: the menu's render only needs THIS node, its
   // parent, and the vector-set classification — not the whole map.
   const nodeFromFamily = useNode(nodeId);
@@ -836,13 +841,24 @@ export default function ContextMenu() {
       {/* Menu — one above the backdrop, above all other UI (see comment above) */}
       <div
         ref={menuRef}
-        className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-2 z-[1000001] min-w-[240px] border border-[var(--border-light)] space-y-0.5"
-        style={{ left: menu.x, top: menu.y }}
+        className="fixed py-2 z-[1000001] min-w-[240px] space-y-0.5"
+        // isolation: the cut backdrop below sits at z -1; isolating keeps it
+        // inside this menu instead of sliding under the page.
+        style={{ left: menu.x, top: menu.y, isolation: 'isolate' }}
         {...stopHoverProbe}
         onPointerDown={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         onContextMenu={(e) => e.preventDefault()}
       >
+        {/* Cut backdrop — bg/border/clip on THIS layer, not the container:
+            clip-path clips ALL descendant painting, and the Select submenu
+            flyout opens OUTSIDE the container (absolute left-full) — with
+            the container clipped it rendered invisible (same bug as the
+            bottom-toolbar dropdowns). */}
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-10 bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)]"
+        />
         {/* Construction shortcuts — most-used surface, kept at top */}
         {/* Detach Instance — only for component instances; inlines the master's content as normal
             nodes (resolving variables/variant/styles), keeping any NESTED instances as instances. */}
@@ -855,7 +871,7 @@ export default function ContextMenu() {
         {/* Make Vector Set — any SVG node or all-SVG group (icons and/or
             sketches; sketches bundle into vector sets). */}
         {showMakeVectorSet && (
-          <MenuItem label="Make Vector Set" onClick={handleMakeVectorSet} disabled={!nodeId && !canMakeVectorSetMulti} />
+          <MenuItem label="Make Vector Set" onClick={handleMakeVectorSet} disabled={menu.viewportHeader || (!nodeId && !canMakeVectorSetMulti)} />
         )}
         {/* Group — collapse 2+ SVGs that share a parent into a single composite <svg>. */}
         {canGroupSvgs && (

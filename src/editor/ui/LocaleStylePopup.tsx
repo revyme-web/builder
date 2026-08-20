@@ -388,7 +388,7 @@ export default function LocaleStylePopup({ property, propertyLabel, nodeId, base
           <button
             onClick={() => { setTranslationsOverlayOpen(true); onClose(); }}
             data-locale-variable-pill
-            className="w-full h-8 flex items-center gap-2 pl-1 pr-2 rounded-[var(--radius-lg)] border border-transparent text-xs font-medium text-[var(--accent-fg)] cursor-pointer"
+            className="w-full h-8 flex items-center gap-2 pl-1 pr-2 cut-corners border border-transparent text-xs font-medium text-[var(--accent-fg)] cursor-pointer"
             style={{ backgroundColor: 'var(--accent)' }}
             title="Open Localization"
           >
@@ -461,7 +461,7 @@ export default function LocaleStylePopup({ property, propertyLabel, nodeId, base
                 setConds(prev => [...prev, { locale: nextFree.code, value: effectiveBase || '' }]);
               }}
               data-locale-add-condition
-              className="w-full h-[var(--control-height)] rounded-[var(--radius-lg)] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-xs text-[var(--text-primary)] cursor-pointer transition-colors"
+              className="w-full h-[var(--control-height)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-xs text-[var(--text-primary)] cursor-pointer transition-colors"
             >
               Add Condition
             </button>

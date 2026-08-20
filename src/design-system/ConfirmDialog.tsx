@@ -48,7 +48,7 @@ export default function ConfirmDialog({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="flex-1 h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--btn-secondary-bg)] hover:bg-[var(--btn-secondary-bg-hover,var(--bg-hover))] rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--btn-secondary-bg)] hover:bg-[var(--btn-secondary-bg-hover,var(--bg-hover))] cut-corners cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {cancelLabel}
           </button>
@@ -57,7 +57,7 @@ export default function ConfirmDialog({
             onClick={onConfirm}
             disabled={loading}
             style={{ backgroundColor: confirmBg, color: confirmFg }}
-            className="flex-1 h-8 text-xs font-medium hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 h-8 text-xs font-medium hover:opacity-90 cut-corners cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {confirmLabel}
           </button>

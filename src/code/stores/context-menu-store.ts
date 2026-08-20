@@ -7,6 +7,12 @@ export interface ContextMenuState {
   x: number;
   y: number;
   nodeId: string | null;
+  /** True when the right-click landed on a VIEWPORT HEADER — the menu's
+   *  node operations (Make Component, Cut, Delete, …) don't apply to a
+   *  viewport, so they all disable. Without this flag the menu would
+   *  resurrect the current selection via its `menu.nodeId || selectedId`
+   *  fallback and happily offer to cut it. */
+  viewportHeader?: boolean;
 }
 
 export const contextMenuAtom = atom<ContextMenuState>({

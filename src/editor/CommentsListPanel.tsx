@@ -108,7 +108,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ value, options, onChang
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+        className={`flex items-center gap-1 h-6 px-2 cut-corners text-[10px] font-medium transition-colors cursor-pointer ${
           open
             ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
             : 'bg-[var(--grid-line)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
@@ -127,7 +127,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ value, options, onChang
         // ~280 px so a project with dozens of pages still scrolls
         // gracefully instead of running off the bottom of the panel.
         <div
-          className="absolute right-0 top-full mt-1 min-w-[180px] max-h-[280px] overflow-y-auto bg-[var(--dropdown-bg,var(--bg-surface))] border border-[var(--border-light)] rounded-md shadow-lg p-1"
+          className="absolute right-0 top-full mt-1 min-w-[180px] max-h-[280px] overflow-y-auto bg-[var(--dropdown-bg,var(--bg-surface))] cut-corners cut-lg shadow-lg p-1"
           style={{ zIndex: 5500 }}
         >
           {options.map((opt) => {
@@ -136,7 +136,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ value, options, onChang
               <button
                 key={opt.value}
                 onClick={() => { onChange(opt.value); setOpen(false); }}
-                className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-sm text-[11px] text-left transition-colors cursor-pointer ${
+                className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 cut-corners text-[11px] text-left transition-colors cursor-pointer ${
                   active
                     ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
                     : 'bg-transparent text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
@@ -279,8 +279,8 @@ export default function CommentsListPanel() {
     return (
       <aside
         data-comment-panel
-        className="w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] flex flex-col relative z-5000"
-        style={{ marginTop: 52, paddingLeft: '1.5px' }}
+        className="w-[260px] shrink-0 flex flex-col relative z-5000"
+        style={{ marginTop: 52, marginLeft: -260, paddingLeft: '1.5px' }}
       >
         <div className="px-4 py-3 border-b border-[var(--border-light)]">
           <h3 className="text-xs font-semibold text-[var(--text-primary)]">Comments (0)</h3>
@@ -298,8 +298,8 @@ export default function CommentsListPanel() {
   return (
     <aside
       data-comment-panel
-      className="w-[260px] shrink-0 bg-[var(--bg-surface)] border-l border-[var(--border-light)] flex flex-col relative z-5000"
-      style={{ marginTop: 52, paddingLeft: '1.5px' }}
+      className="w-[260px] shrink-0 flex flex-col relative z-5000"
+      style={{ marginTop: 52, marginLeft: -260, paddingLeft: '1.5px' }}
     >
       {/* Header — title + filter chip on the right. The chip wraps to a
           new line if needed (very narrow project names) but at 260 px

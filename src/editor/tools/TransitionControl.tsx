@@ -48,7 +48,7 @@ export default function TransitionControl({ label, value, onChange }: Transition
       <button
         ref={btnRef}
         onClick={() => setOpen(o => !o)}
-        className="w-full h-[var(--control-height-sm)] px-2 flex items-center gap-1.5 text-xs rounded-md bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] transition-colors"
+        className="w-full h-[var(--control-height-sm)] px-2 flex items-center gap-1.5 text-xs cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] transition-colors"
       >
         {/* Reuse the EXACT same curve icon + summary as the Animation tool's
             Transition row, so the code component `transition` control reads identically. */}

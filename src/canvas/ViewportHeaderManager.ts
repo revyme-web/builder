@@ -212,7 +212,12 @@ export function updateViewportHeaderPositions(container: HTMLElement): void {
     header.style.height = `${scaledH}px`;
     header.style.padding = `0 ${8 / scale}px`;
     header.style.borderWidth = `${1 / scale}px`;
-    header.style.borderRadius = `${8 / scale}px`;
+    // Cut corners in CANVAS space: the header lives inside the zoomed
+    // transform, so the slice (like every other px here) divides by scale
+    // to stay constant on screen. Custom props need setProperty — they
+    // don't apply through style-object assignment.
+    header.style.setProperty("--cut", `${9 / scale}px`);
+    header.style.setProperty('--cut-border-color', 'var(--canvas-chrome-border)');
 
     // Update inner text sizes
     const label = header.querySelector('[data-header-label]') as HTMLElement;
@@ -232,7 +237,7 @@ export function updateViewportHeaderPositions(container: HTMLElement): void {
     if (addBtn) {
       addBtn.style.width = `${24 / scale}px`;
       addBtn.style.height = `${24 / scale}px`;
-      addBtn.style.borderRadius = `${6 / scale}px`;
+      addBtn.style.setProperty('--cut', `${5 / scale}px`);
       addBtn.style.fontSize = `${14 / scale}px`;
       // Keep the viewer check in sync with the creation-time style
       // below — this per-transform update would otherwise re-show the
@@ -260,7 +265,7 @@ function createHeader(
   const { left, top, width } = posData;
 
   const addBtn = el('button', {
-    attrs: { 'data-header-add': '' },
+    attrs: { 'data-header-add': '', class: 'cut-corners' },
     text: '+',
     styles: {
       // Hidden below 0.15 zoom (too small to hit) AND for viewers —
@@ -268,7 +273,7 @@ function createHeader(
       display: scale >= 0.15 && !isViewerMode() ? 'flex' : 'none',
       alignItems: 'center', justifyContent: 'center',
       width: `${24 / scale}px`, height: `${24 / scale}px`,
-      borderRadius: `${6 / scale}px`, backgroundColor: 'transparent',
+      backgroundColor: 'transparent',
       // `--text-primary` so the glyph is black on the light-mode header
       // and white on the dark one. On hover the bg flips to `--accent`,
       // so the glyph switches to `--accent-fg` — the theme's own ink for
@@ -327,14 +332,17 @@ function createHeader(
   });
 
   const header = el('div', {
-    attrs: { 'data-viewport-header': vp.id, 'data-vp-label': vp.label },
+    // cut-corners + cut-border: the shared angular chrome shape. The scaled
+    // --cut / --cut-border-color vars are driven per-frame in
+    // updateHeaderPosition (setProperty — custom props don't assign through
+    // the styles object). shadow-sm dropped: clip-path clips box-shadows.
+    attrs: { 'data-viewport-header': vp.id, 'data-vp-label': vp.label, class: 'cut-corners cut-border' },
     styles: {
       position: 'absolute', left: `${left}px`, top: `${top - scaledH - scaledM}px`,
       width: `${width}px`, height: `${scaledH}px`,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: `0 ${8 / scale}px`, backgroundColor: 'var(--canvas-chrome-bg)',
       border: `${1 / scale}px solid var(--canvas-chrome-border)`,
-      borderRadius: `${8 / scale}px`, boxShadow: 'var(--shadow-sm)',
       userSelect: 'none', pointerEvents: 'auto', cursor: 'grab',
       zIndex: '9999', overflow: 'hidden', boxSizing: 'border-box',
     },
@@ -389,8 +397,28 @@ function createHeader(
     // on the canvas container in capture phase). The pan handler has already
     // fired by the time we get here. If we stopPropagation + start a drag,
     // we end up panning the canvas AND moving the viewport at the same time.
-    // Right-click (button 2) is also not a drag — let it bubble for context
-    // menus etc. Only treat left-click (button 0) as a viewport drag start.
+    if (e.button === 1) {
+      trace.action('viewport-header:non-primary-button-skip', { vpId: vp.id, button: e.button });
+      return;
+    }
+    // Right-click (button 2): select the viewport frame like a left-click
+    // would (so the selection overlay + layers row light up for the thing
+    // the context menu is about), then suppress the compat mousedown —
+    // letting it bubble had the canvas treating the header as empty space
+    // and CLEARING the selection under the opening menu. The contextmenu
+    // event itself still fires and bubbles to the canvas handler, which
+    // opens the (viewport-gated) menu. No drag on this button.
+    if (e.button === 2) {
+      if (!isViewerMode()) {
+        const vpNodeId = vpEl?.getAttribute('data-id') || getViewportFrameNodeId(vp.id);
+        callbacks.onSelect(vpNodeId);
+        callbacks.onInteractingViewport(vp.id);
+        trace.action('viewport-header:context-select', { vpId: vp.id });
+      }
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
     if (e.button !== 0) {
       trace.action('viewport-header:non-primary-button-skip', { vpId: vp.id, button: e.button });
       return;

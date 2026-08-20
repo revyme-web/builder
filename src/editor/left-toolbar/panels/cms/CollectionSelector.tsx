@@ -58,8 +58,8 @@ export default function CollectionSelector() {
       itemIcon={<CmsIcon width={12} height={12} />}
       placeholder="Search collections…"
       emptyText="No collections match."
-      triggerClassName="w-full flex items-center gap-2 px-2 py-1.5 text-xs bg-white/[0.1] hover:bg-white/[0.14] rounded-md text-[var(--text-primary)] outline-none transition-colors"
-      inputClassName="w-full px-2 py-1.5 text-xs bg-white/[0.1] hover:bg-white/[0.14] focus:bg-white/[0.18] rounded text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] outline-none transition-colors"
+      triggerClassName="w-full flex items-center gap-2 px-2 py-1.5 text-xs bg-white/[0.1] hover:bg-white/[0.14] cut-corners text-[var(--text-primary)] outline-none transition-colors"
+      inputClassName="w-full px-2 py-1.5 text-xs bg-white/[0.1] hover:bg-white/[0.14] focus:bg-white/[0.18] cut-corners text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] outline-none transition-colors"
       listClassName="max-h-60 overflow-y-auto py-1"
       onSelect={(c) => handleSwitch(c.slug)}
     />

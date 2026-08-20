@@ -196,13 +196,13 @@ function ComponentInstanceEventInteractions({ selectedId, componentFile }: { sel
       {addOpen && (
         <>
           <div className="fixed inset-0 z-50" onClick={() => setAddOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-md rounded-[var(--radius-md)] py-1.5 z-[51] w-max border border-[var(--border-light)] space-y-0.5">
+          <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-md cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[51] w-max border border-[var(--border-light)] space-y-0.5">
             {unboundProps.map(p => (
               <button
                 key={p.name}
                 type="button"
                 onClick={() => bindClose(p.name)}
-                className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
+                className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
               >
                 <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">Close Overlay · {p.label ?? p.name}</span>
               </button>
@@ -306,7 +306,7 @@ const EVENT_FIRE_TRIGGER_OPTIONS: Array<{ value: EventFireTrigger; label: string
 // ─── The + dropdown: New Transition / New Event / Choose Event ──────────────
 // Item styling + the left-flyout submenu are COPIED from AnimationTool's
 // AddEffectDropdown (its EffectSubMenu) so they look identical.
-const ADD_ITEM = 'group flex items-center justify-between mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
+const ADD_ITEM = 'group flex items-center justify-between mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
 const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]';
 
 /** "Choose Event" — a hover flyout that opens to the LEFT (portaled), exactly like
@@ -328,7 +328,7 @@ function ChooseEventSubMenu({ eventVars, onChoose }: { eventVars: ComponentProp[
         <div style={{ position: 'fixed', left: subPos.x, top: subPos.y, transform: 'translateX(-100%)', zIndex: 9999 }}
           onMouseEnter={() => setShowSub(true)} onMouseLeave={() => setShowSub(false)}>
           <div style={{ position: 'absolute', top: 0, right: -12, width: 16, height: '100%' }} />
-          <div className="min-w-max bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-2xl py-1">
+          <div className="min-w-max bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-2xl py-1">
             {eventVars.map(v => (
               <button key={v.name} type="button"
                 className="group flex items-center w-full px-3 py-1.5 text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
@@ -370,7 +370,7 @@ function InteractionAddMenu({ buttonRef, onNewTransition, onNewEvent, eventVars,
       {open && (
         <>
           <div className="fixed inset-0 z-50" onClick={() => setOpen(false)} />
-          <div className={`absolute right-0 ${openDir === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'} bg-[var(--dropdown-bg)] shadow-md rounded-[var(--radius-md)] py-1.5 z-[51] w-max min-w-[160px] border border-[var(--border-light)] transition-opacity duration-150`}
+          <div className={`absolute right-0 ${openDir === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'} bg-[var(--dropdown-bg)] shadow-md cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[51] w-max min-w-[160px] border border-[var(--border-light)] transition-opacity duration-150`}
             style={{ opacity: visible ? 1 : 0 }}>
             <button type="button" className={ADD_ITEM} onClick={() => { setOpen(false); onNewTransition(); }}><span className={ADD_ITEM_LABEL}>New Transition</span></button>
             <button type="button" className={ADD_ITEM} onClick={() => { setOpen(false); onNewEvent(); }}><span className={ADD_ITEM_LABEL}>New Event</span></button>
@@ -581,7 +581,7 @@ function EventFireForm({ binding, eventVars, onSetTrigger, onSetDelay, onSetEven
         <div className="flex items-center gap-2 w-full">
           {/* The purple variable pill — clicking opens the Variable Modal to manage/rename it. */}
           <button type="button" onClick={onOpenVariable}
-            className="w-full h-7 flex items-center gap-1.5 px-2 rounded-lg text-xs font-medium text-white cursor-pointer hover:brightness-110"
+            className="w-full h-7 flex items-center gap-1.5 px-2 cut-corners text-xs font-medium text-white cursor-pointer hover:brightness-110"
             style={{ backgroundColor: 'var(--accent-secondary, #a855f7)' }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 L4 14 h6 l-1 8 9-12 h-6 z" /></svg>
             <span className="truncate">{eventDisplay}</span>
@@ -636,7 +636,7 @@ function AddInteractionMenu({ buttonRef, showSetVar, showClose, onSetVar, onClos
 
   // hover pairs bg accent WITH --accent-fg text — text-primary is white on
   // dark themes and unreadable on a light accent (theme pairing rule).
-  const itemCls = 'mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] whitespace-nowrap text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] cursor-pointer block';
+  const itemCls = 'mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] whitespace-nowrap text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] cursor-pointer block';
   return (
     <div className="relative" ref={ref}>
       <button
@@ -653,7 +653,7 @@ function AddInteractionMenu({ buttonRef, showSetVar, showClose, onSetVar, onClos
         <>
           <div className="fixed inset-0 z-50" onClick={() => setOpen(false)} />
           <div
-            className="absolute right-[10px] top-full mt-1 bg-[var(--dropdown-bg)] shadow-md rounded-[var(--radius-md)] py-1.5 z-[51] w-max border border-[var(--border-light)] space-y-0.5"
+            className="absolute right-[10px] top-full mt-1 bg-[var(--dropdown-bg)] shadow-md cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[51] w-max border border-[var(--border-light)] space-y-0.5"
             style={{ scrollbarWidth: 'none' }}
           >
             {showSetVar && (
@@ -686,7 +686,7 @@ function CloseOverlayForm({ co, onChangeTrigger, onChangeDelay, onRemove }: {
       </ToolRow>
       <button
         onClick={onRemove}
-        className="h-[var(--control-height-sm)] px-3 flex items-center justify-center text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] rounded-lg transition-colors cursor-pointer hover:bg-[var(--control-border)]"
+        className="h-[var(--control-height-sm)] px-3 flex items-center justify-center text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border transition-colors cursor-pointer hover:bg-[var(--control-border)]"
       >
         Remove
       </button>
@@ -921,14 +921,14 @@ function EditInteractionForm({ conn, variants, onUpdate, onRemove }: {
       <div className="flex gap-2">
         <button
           onClick={onRemove}
-          className="h-[var(--control-height-sm)] px-3 flex items-center justify-center text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] rounded-lg transition-colors cursor-pointer hover:bg-[var(--control-border)]"
+          className="h-[var(--control-height-sm)] px-3 flex items-center justify-center text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border transition-colors cursor-pointer hover:bg-[var(--control-border)]"
         >
           Remove
         </button>
         <button
           onClick={() => onUpdate(trigger, from, to, delay)}
           disabled={from === to}
-          className="flex-1 h-7 flex items-center justify-center text-xs font-medium text-white rounded-lg transition-all cursor-pointer hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex-1 h-7 flex items-center justify-center text-xs font-medium text-white cut-corners transition-all cursor-pointer hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
           style={{ backgroundColor: 'var(--accent-secondary, #a855f7)' }}
         >
           Update
@@ -1002,7 +1002,7 @@ function AddInteractionForm({ variants, onAdd }: {
       <button
         onClick={() => onAdd(trigger, from, to, delay)}
         disabled={from === to}
-        className="w-full h-7 flex items-center justify-center text-xs font-medium text-white rounded-lg transition-all cursor-pointer hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full h-7 flex items-center justify-center text-xs font-medium text-white cut-corners transition-all cursor-pointer hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
         style={{ backgroundColor: 'var(--accent-secondary, #a855f7)' }}
       >
         Create Interaction
@@ -1062,7 +1062,7 @@ function AddPageInteractionForm({
       <button
         onClick={() => canSubmit && onAdd(trigger, varName, value)}
         disabled={!canSubmit}
-        className="w-full h-7 flex items-center justify-center text-xs font-medium text-[var(--accent-fg)] rounded-lg transition-all cursor-pointer hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full h-7 flex items-center justify-center text-xs font-medium text-[var(--accent-fg)] cut-corners transition-all cursor-pointer hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
         style={{ backgroundColor: 'var(--accent)' }}
       >
         Add Interaction
@@ -1116,7 +1116,7 @@ function EditPageInteractionForm({
       </ToolRow>
       <button
         onClick={onRemove}
-        className="w-full h-[var(--control-height-sm)] flex items-center justify-center text-xs font-medium text-red-400 hover:text-red-300 bg-[var(--grid-line)] border border-[var(--control-border)] rounded-lg transition-colors cursor-pointer"
+        className="w-full h-[var(--control-height-sm)] flex items-center justify-center text-xs font-medium text-red-400 hover:text-red-300 bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border transition-colors cursor-pointer"
       >
         Remove
       </button>
@@ -1128,7 +1128,7 @@ function EditPageInteractionForm({
 
 function ReadOnlyField({ text }: { text: string }) {
   return (
-    <div className="w-full h-[var(--control-height-sm)] px-2 flex items-center text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-md text-[var(--text-secondary)] truncate">
+    <div className="w-full h-[var(--control-height-sm)] px-2 flex items-center text-xs bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)] text-[var(--text-secondary)] truncate">
       {text}
     </div>
   );

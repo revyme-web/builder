@@ -39,8 +39,8 @@ export const BUILDER_THEMES: BuilderTheme[] = [
     // come back exactly as authored.
     id: 'default',
     label: 'Default',
-    light: { accent: '#3388ff', accentFg: '#ffffff' },
-    dark: { accent: '#3388ff', accentFg: '#ffffff' },
+    light: { accent: '#b858a3', accentFg: '#ffffff' },
+    dark: { accent: '#b858a3', accentFg: '#ffffff' },
   },
   {
     // The brass/gold that shipped as the default during the redesign — kept

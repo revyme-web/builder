@@ -108,7 +108,7 @@ export function AssetValueEditor({ value, type, onChange }: {
     <div className="flex flex-col gap-2">
       {url ? (
         <div
-          className="w-full h-28 rounded-lg border border-[var(--border-light)] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity bg-[var(--grid-line)]"
+          className="w-full h-28 cut-corners cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity bg-[var(--grid-line)]"
           onClick={() => setPickerOpen(true)}
         >
           {type === 'image' ? (
@@ -131,7 +131,7 @@ export function AssetValueEditor({ value, type, onChange }: {
       ) : (
         <button
           onClick={() => setPickerOpen(true)}
-          className="w-full h-28 rounded-lg border-2 border-dashed border-[var(--control-border)] hover:border-[var(--accent)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center"
+          className="w-full h-28 cut-corners border-2 border-dashed border-[var(--control-border)] hover:border-[var(--accent)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center"
         >
           Choose {type === 'image' ? 'Image' : 'Video'}
         </button>
@@ -139,7 +139,7 @@ export function AssetValueEditor({ value, type, onChange }: {
       {url && (
         <button
           onClick={() => setPickerOpen(true)}
-          className="w-full h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+          className="w-full h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
         >
           Change {type === 'image' ? 'Image' : 'Video'}
         </button>

@@ -98,7 +98,7 @@ export default function AIChatSheet({ headerAccessory, contextLabel, onClose, ch
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: 'spring', bounce: 0.15, duration: 0.25 }}
-      className="fixed z-[9990] flex flex-col overflow-hidden rounded-xl border border-[var(--border-light)] bg-[var(--bg-surface)] shadow-2xl"
+      className="fixed z-[9990] flex flex-col overflow-hidden cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] bg-[var(--bg-surface)] shadow-2xl"
       style={{ left: pos.x, top: pos.y, width: size.width, height: size.height }}
     >
       {/* Header — drag anywhere on it to move the panel. */}

@@ -290,7 +290,7 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
             <Skeleton className="h-5 w-24" />
             <Skeleton className="h-3 w-72" />
           </div>
-          <Skeleton className="h-6 w-16 rounded-md" />
+          <Skeleton className="h-6 w-16 cut-corners" />
         </div>
       )}
       {!loading && currentPlan === 'free' && (
@@ -304,7 +304,7 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
               revyme.app subdomain · Basic analytics · 500 MB storage
             </p>
           </div>
-          <div className="flex items-center gap-1.5 px-2 py-1 bg-green-500/10 rounded-md shrink-0">
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-green-500/10 cut-corners shrink-0">
             <div className="relative flex items-center justify-center w-2 h-2">
               <span className="absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75 animate-ping"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
@@ -334,13 +334,13 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={handleManageBilling}
-              className="inline-flex items-center gap-2 h-8 px-3 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-md transition-colors cursor-pointer"
+              className="inline-flex items-center gap-2 h-8 px-3 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] cut-corners transition-colors cursor-pointer"
             >
               Manage Billing
               <ExternalLinkIcon />
             </button>
             {subscription.cancelAtPeriodEnd ? (
-              <div className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded-md">
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-white/5 cut-corners">
                 <div className="relative flex items-center justify-center w-2 h-2">
                   <span className="absolute inline-flex h-full w-full rounded-full bg-white/40 opacity-75 animate-ping"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-white/60"></span>
@@ -350,7 +350,7 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
                 </span>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 px-2 py-1 bg-green-500/10 rounded-md">
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-green-500/10 cut-corners">
                 <div className="relative flex items-center justify-center w-2 h-2">
                   <span className="absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75 animate-ping"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
@@ -396,7 +396,7 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
       </div>
 
       {subscribeError && (
-        <div className="px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs rounded-lg">
+        <div className="px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs cut-corners">
           {subscribeError}
         </div>
       )}
@@ -418,7 +418,7 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
           return (
             <div
               key={plan.id}
-              className={`flex flex-col justify-between items-start gap-8 px-6 pt-8 pb-4 rounded-lg relative overflow-hidden ${
+              className={`flex flex-col justify-between items-start gap-8 px-6 pt-8 pb-4 cut-corners relative overflow-hidden ${
                 plan.premium
                   // Tailwind 4 dropped --tw-gradient-stops; use literal hex
                   // for the radial. neutral-900 = #171717, neutral-950 = #0a0a0a.
@@ -511,7 +511,7 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
                   plan.id === 'free' ||
                   checkoutLoading === plan.id
                 }
-                className={`mt-4 w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 min-h-[40px] flex items-center justify-center cursor-pointer ${
+                className={`mt-4 w-full px-4 py-2.5 cut-corners text-sm font-medium transition-all duration-200 min-h-[40px] flex items-center justify-center cursor-pointer ${
                   plan.comingSoon
                     ? 'bg-white/5 text-white/60 cursor-not-allowed border border-white/10'
                     : isCurrent || plan.id === 'free'
@@ -558,7 +558,7 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
         </div>
         <button
           onClick={handleContactEnterprise}
-          className="self-start inline-flex items-center gap-2 h-8 px-3 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-md cursor-pointer transition-colors"
+          className="self-start inline-flex items-center gap-2 h-8 px-3 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] cut-corners cursor-pointer transition-colors"
         >
           Contact us
           <ExternalLinkIcon />
@@ -657,7 +657,7 @@ function ChangePlanConfirmModal({
         <button
           onClick={() => { void onConfirm(); }}
           disabled={running}
-          className="flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] transition-colors font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] disabled:opacity-100 disabled:bg-[var(--accent)] disabled:cursor-not-allowed cursor-pointer"
+          className="flex-1 h-8 px-3 text-xs cut-corners transition-colors font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] disabled:opacity-100 disabled:bg-[var(--accent)] disabled:cursor-not-allowed cursor-pointer"
         >
           {running ? (
             <Spinner className="w-4 h-4 text-[var(--accent-fg)]" />

@@ -149,7 +149,7 @@ export default function PagesSeoSection(): React.ReactElement {
                         trace.action('pages-seo:select', { filePath: p.filePath });
                         setSelectedPath(p.filePath);
                       }}
-                      className={`w-full flex items-center gap-2 pl-5 pr-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                      className={`w-full flex items-center gap-2 pl-5 pr-3 py-1.5 cut-corners text-xs font-medium transition-colors cursor-pointer ${
                         isActive
                           ? 'bg-black/[0.06] dark:bg-white/10 text-[var(--text-primary)]'
                           : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]'
@@ -494,7 +494,7 @@ function ImagePickerField({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className={`group relative w-28 h-28 shrink-0 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer transition-colors ${
+          className={`group relative w-28 h-28 shrink-0 cut-corners overflow-hidden flex items-center justify-center cursor-pointer transition-colors ${
             hasImage && !loadFailed
               ? 'border border-[var(--border-light)]'
               : hasImage && loadFailed
@@ -543,7 +543,7 @@ function ImagePickerField({
           <button
             type="button"
             onClick={() => onChange('')}
-            className="h-7 px-2 text-[10px] font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-md cursor-pointer"
+            className="h-7 px-2 text-[10px] font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 cut-corners cursor-pointer"
             title="Remove image"
           >
             Remove

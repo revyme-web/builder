@@ -28,7 +28,7 @@ interface SelectableConfig {
 
 // Inset rows (mx-1.5 + w-[calc(100%-12px)] + rounded) so the hover fill stays
 // within the dropdown's padding — matches every other native dropdown.
-const MENU_ITEM = 'group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:!bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors border-none bg-transparent whitespace-nowrap';
+const MENU_ITEM = 'group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:!bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors border-none bg-transparent whitespace-nowrap';
 
 export default function PageVariableChip({ name, onRemove, selectable }: { name: string; onRemove?: () => void; selectable?: SelectableConfig }) {
   const openVariableModal = useSetAtom(variableModalRequestAtom);
@@ -61,7 +61,7 @@ export default function PageVariableChip({ name, onRemove, selectable }: { name:
         onClick={handleClick}
         // `min-w-0` lets the label truncate inside the flex row instead of pushing
         // the chip past the panel (a long var name like "searchReadTime" overflowed).
-        className="w-full max-w-full min-w-0 h-8 flex items-center gap-2 pl-1 pr-2 rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium text-[var(--accent-fg)] cursor-pointer transition-colors hover:opacity-90"
+        className="w-full max-w-full min-w-0 h-8 flex items-center gap-2 pl-1 pr-2 cut-corners border border-transparent bg-clip-padding text-xs font-medium text-[var(--accent-fg)] cursor-pointer transition-colors hover:opacity-90"
         style={{ backgroundColor: 'var(--accent)' }}
         title={isMissing ? `Missing variable "${name}" — click to choose or create one` : `Page variable: ${name}`}
       >
@@ -88,7 +88,7 @@ export default function PageVariableChip({ name, onRemove, selectable }: { name:
       {selectable && open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-50 min-w-[180px] max-w-[260px] bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-2xl py-1.5">
+          <div className="absolute right-0 top-full mt-1 z-50 min-w-[180px] max-w-[260px] bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-2xl py-1.5">
             {selectable.options.length === 0 ? (
               <div className="mx-1.5 px-2.5 py-1.5 text-xs text-[var(--text-secondary)]">No matching variables</div>
             ) : selectable.options.map((o) => (

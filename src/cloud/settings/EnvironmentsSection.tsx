@@ -209,7 +209,7 @@ export default function EnvironmentsSection({ websiteId }: EnvironmentsSectionPr
               else void handleCreate('staging');
             }}
             disabled={busyEnvId !== null}
-            className="flex-shrink-0 inline-flex items-center justify-center gap-1 h-8 px-3 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-md cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex-shrink-0 inline-flex items-center justify-center gap-1 h-8 px-3 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 cut-corners cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             + Create environment
           </button>
@@ -230,7 +230,7 @@ export default function EnvironmentsSection({ websiteId }: EnvironmentsSectionPr
                 <Skeleton className="h-4 w-32" />
                 <Skeleton className="h-3 w-48" />
               </div>
-              <Skeleton className="h-[30px] w-[110px] rounded-md" />
+              <Skeleton className="h-[30px] w-[110px] cut-corners" />
             </li>
           ))}
         </ul>
@@ -444,7 +444,7 @@ function ActionConfirmModal({ confirm, onCancel, onRun }: ActionConfirmModalProp
         <button
           onClick={() => { void handleRun(); }}
           disabled={running}
-          className={`relative overflow-hidden flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] transition-colors font-medium flex items-center justify-center text-[var(--accent-fg)] disabled:opacity-100 disabled:cursor-not-allowed cursor-pointer ${
+          className={`relative overflow-hidden flex-1 h-8 px-3 text-xs cut-corners transition-colors font-medium flex items-center justify-center text-[var(--accent-fg)] disabled:opacity-100 disabled:cursor-not-allowed cursor-pointer ${
             isDelete
               ? 'bg-red-500/90 hover:bg-red-500'
               : 'bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))]'
@@ -515,7 +515,7 @@ function CreateEnvironmentModal({ onCancel, onCreate, error }: CreateEnvironment
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.15 }}
-        className="relative w-80 bg-[var(--bg-surface)] rounded-lg shadow-2xl"
+        className="relative w-80 bg-[var(--bg-surface)] cut-corners cut-lg shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-light)]">
@@ -523,7 +523,7 @@ function CreateEnvironmentModal({ onCancel, onCreate, error }: CreateEnvironment
           <button
             onClick={onCancel}
             disabled={submitting}
-            className="p-1 hover:bg-[var(--bg-hover)] rounded-md cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            className="p-1 hover:bg-[var(--bg-hover)] cut-corners cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)]">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -543,21 +543,21 @@ function CreateEnvironmentModal({ onCancel, onCreate, error }: CreateEnvironment
             maxLength={32}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) void handleSubmit(); }}
-            className="w-full h-8 px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] focus:border-[var(--accent)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none"
+            className="w-full h-8 px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] focus:border-[var(--accent)] text-[var(--text-primary)] cut-corners cut-border focus:[--cut-border-color:var(--accent)] focus:outline-none"
           />
           {error && <p className="text-[11px] text-red-400">{error}</p>}
           <div className="flex items-center gap-2">
             <button
               onClick={onCancel}
               disabled={submitting}
-              className="flex-1 h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-30"
+              className="flex-1 h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] cut-corners cursor-pointer disabled:opacity-30"
             >
               Cancel
             </button>
             <button
               onClick={() => { void handleSubmit(); }}
               disabled={submitting || !name.trim()}
-              className="flex-1 h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 cut-corners cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? 'Creating…' : 'Create'}
             </button>

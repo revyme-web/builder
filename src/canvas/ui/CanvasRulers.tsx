@@ -38,6 +38,14 @@ const LEFT_OFFSET = LEFT_MENU_WIDTH + LEFT_PANEL_WIDTH; // 308 — left edge of 
 // keeps the ruler clear of both the panel and the header chrome and
 // makes the visible ruler region == the visible canvas region.
 const RIGHT_OFFSET = RIGHT_PANEL_WIDTH;
+// The chrome's cut-corner notches (left panel bottom-right, right header
+// top-left) look through onto the canvas via a 12px underlap on each side
+// (App.tsx marginLeft 296 + the right sidebar's marginLeft -12). The ruler
+// strips extend INTO those underlaps so a notch reveals continuing ruler
+// chrome instead of a raw canvas wedge squeezed against the ruler's end.
+// Chrome sits at z-5000+/9999 and the rulers at 4900, so everything but
+// the notch triangles stays covered. Keep in sync with the underlaps.
+const CUT_UNDERLAP = 12;
 // Top offset is MEASURED at the component level — see use-top-chrome-height.ts.
 
 // Color tokens — pixel-match the builder repo's `CanvasRulers.tsx`:
@@ -422,7 +430,7 @@ export default function CanvasRulers() {
 
   // Visible canvas-coord range for tick generation.
   const visibleStartX = (LEFT_OFFSET - transform.x) / transform.scale;
-  const visibleEndX = (viewport.w - RIGHT_OFFSET - transform.x) / transform.scale;
+  const visibleEndX = (viewport.w - RIGHT_OFFSET + CUT_UNDERLAP - transform.x) / transform.scale;
   const visibleStartY = (topOffset - transform.y) / transform.scale;
   const visibleEndY = (viewport.h - transform.y) / transform.scale;
 
@@ -448,7 +456,7 @@ export default function CanvasRulers() {
           position: 'fixed',
           top: topOffset,
           left: LEFT_OFFSET + RULER_SIZE,
-          right: RIGHT_OFFSET,
+          right: RIGHT_OFFSET - CUT_UNDERLAP,
           height: RULER_SIZE,
           backgroundColor: RULER_BG,
           borderBottom: `1px solid ${RULER_BORDER}`,
@@ -472,9 +480,9 @@ export default function CanvasRulers() {
         style={{
           position: 'fixed',
           top: topOffset + RULER_SIZE,
-          left: LEFT_OFFSET,
+          left: LEFT_OFFSET - CUT_UNDERLAP,
           bottom: 0,
-          width: RULER_SIZE,
+          width: RULER_SIZE + CUT_UNDERLAP,
           backgroundColor: RULER_BG,
           borderRight: `1px solid ${RULER_BORDER}`,
           zIndex: 4900,
@@ -483,7 +491,10 @@ export default function CanvasRulers() {
           overflow: 'hidden',
         }}
       >
-        <svg width={RULER_SIZE} height="100%" style={{ position: 'absolute', left: 0, top: 0 }}>
+        {/* Ticks keep hugging the ORIGINAL 28px column — the 12px extension
+            to the left is blank chrome that only shows through the panel's
+            bottom notch. */}
+        <svg width={RULER_SIZE} height="100%" style={{ position: 'absolute', left: CUT_UNDERLAP, top: 0 }}>
           <g transform={`translate(0, ${transform.y - topOffset - RULER_SIZE})`}>
             <RulerTicks start={visibleStartY} end={visibleEndY} scale={transform.scale} isHorizontal={false} />
           </g>
@@ -560,10 +571,11 @@ export default function CanvasRulers() {
               width: 1, height: 8, backgroundColor: SELECTION_ACCENT,
               pointerEvents: 'none', zIndex: 4903,
             }} />
-            {/* Left ruler — accent band */}
+            {/* Left ruler — accent band (spans the underlap extension too so
+                the band reads as continuing behind the panel's bottom notch) */}
             <div style={{
-              position: 'fixed', left: LEFT_OFFSET, top: screenTop,
-              width: RULER_SIZE, height: heightScreen,
+              position: 'fixed', left: LEFT_OFFSET - CUT_UNDERLAP, top: screenTop,
+              width: RULER_SIZE + CUT_UNDERLAP, height: heightScreen,
               backgroundColor: SELECTION_ACCENT, opacity: 0.12,
               pointerEvents: 'none', zIndex: 4901,
             }} />

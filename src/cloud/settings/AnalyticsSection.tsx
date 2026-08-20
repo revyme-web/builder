@@ -108,8 +108,8 @@ export default function AnalyticsSection({ websiteId }: AnalyticsSectionProps) {
           const percentage = maxValue > 0 ? (item[countKey] / maxValue) * 100 : 0;
           return (
             <div key={i} className="relative group">
-              <div className="absolute left-0 top-0 h-full bg-white/[0.04] rounded-sm transition-all duration-300" style={{ width: `${percentage}%` }} />
-              <div className="relative flex items-center justify-between py-1.5 px-2 rounded-sm hover:bg-white/5 transition-colors">
+              <div className="absolute left-0 top-0 h-full bg-white/[0.04] cut-corners transition-all duration-300" style={{ width: `${percentage}%` }} />
+              <div className="relative flex items-center justify-between py-1.5 px-2 cut-corners hover:bg-white/5 transition-colors">
                 <span className="text-xs text-[var(--text-primary)] truncate">{item[valueKey]}</span>
                 <span className="text-xs font-medium text-[var(--text-secondary)] ml-2 tabular-nums">{item[countKey]}</span>
               </div>
@@ -179,7 +179,7 @@ export default function AnalyticsSection({ websiteId }: AnalyticsSectionProps) {
                 type="button"
                 onClick={() => locked ? setActiveSection('plans') : setSiteAnalyticsTimeRange(range.value as 7 | 30 | 90)}
                 title={locked ? 'Upgrade to Lite for longer windows' : undefined}
-                className={`h-8 px-3 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                className={`h-8 px-3 text-xs font-medium cut-corners transition-colors cursor-pointer ${
                   active
                     ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
                     : 'bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'
@@ -315,7 +315,7 @@ export default function AnalyticsSection({ websiteId }: AnalyticsSectionProps) {
                 callout layered ON TOP of the dimmed content. The page
                 itself stays flat. */}
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="max-w-md text-center bg-[var(--bg-surface)] border border-[var(--control-border)] rounded-xl px-6 py-5 shadow-xl">
+              <div className="max-w-md text-center bg-[var(--bg-surface)] border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)] cut-lg px-6 py-5 shadow-xl">
                 <div className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-text)] mb-2">
                   Advanced analytics
                 </div>
@@ -328,7 +328,7 @@ export default function AnalyticsSection({ websiteId }: AnalyticsSectionProps) {
                 </p>
                 <button
                   onClick={() => setActiveSection('plans')}
-                  className="h-8 px-4 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-md cursor-pointer"
+                  className="h-8 px-4 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 cut-corners cursor-pointer"
                 >
                   Upgrade to Lite
                 </button>

@@ -66,7 +66,7 @@ export default function LinkRelControl({ value, onChange }: LinkRelControlProps)
       {userTokens.map((tok) => (
         <div
           key={tok}
-          className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 rounded-[var(--radius-lg)] bg-[var(--control-bg)] border border-[var(--control-border)] text-xs text-[var(--text-primary)]"
+          className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 cut-corners cut-border bg-[var(--control-bg)] border border-[var(--control-border)] text-xs text-[var(--text-primary)]"
         >
           <span className="truncate flex-1 min-w-0 text-left">{relLabel(tok)}</span>
           <span
@@ -87,7 +87,7 @@ export default function LinkRelControl({ value, onChange }: LinkRelControlProps)
         <button
           ref={addRef}
           onClick={() => setMenuOpen((o) => !o)}
-          className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 rounded-[var(--radius-lg)] bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-xs text-[var(--text-secondary)] transition-colors cursor-pointer"
+          className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-xs text-[var(--text-secondary)] transition-colors cursor-pointer"
         >
           <span className="w-4 h-4 rounded bg-white/10 flex items-center justify-center shrink-0 text-[10px]">+</span>
           <span className="truncate flex-1 text-left">Add…</span>
@@ -97,7 +97,7 @@ export default function LinkRelControl({ value, onChange }: LinkRelControlProps)
       {menuOpen && menuPos && createPortal(
         <div
           ref={menuRef}
-          className="bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-md py-1.5 space-y-0.5"
+          className="bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-md py-1.5 space-y-0.5"
           style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: menuPos.width, zIndex: 100020 }}
         >
           {/* Only options NOT yet selected — picking one adds it (shown as a
@@ -118,7 +118,7 @@ export default function LinkRelControl({ value, onChange }: LinkRelControlProps)
                   commit([...userTokens, opt.token]);
                   setMenuOpen(false);
                 }}
-                className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
+                className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap"
               >
                 <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">{opt.label}</span>
               </button>

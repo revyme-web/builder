@@ -200,7 +200,7 @@ export default function LocaleBoundPill({ property, propertyLabel, nodeId, baseV
         ref={pillRef}
         onClick={() => { setOpen(true); trace.action('locale-pill:open', { nodeId, property }); }}
         data-locale-pill={property}
-        className="w-full h-8 flex items-center gap-2 pl-1 pr-2 rounded-[var(--radius-lg)] border border-transparent text-xs font-medium text-[var(--accent-fg)] cursor-pointer"
+        className="w-full h-8 flex items-center gap-2 pl-1 pr-2 cut-corners border border-transparent text-xs font-medium text-[var(--accent-fg)] cursor-pointer"
         style={{ backgroundColor: 'var(--accent)' }}
         title={`Localized · ${summary}`}
       >

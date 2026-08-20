@@ -59,7 +59,7 @@ export default function ImagePickerInput({
       <button
         type="button"
         onClick={() => setPickerOpen(true)}
-        className="w-full h-8 flex items-center gap-2 px-1.5 bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] hover:border-[var(--border-focus)] transition-colors cursor-pointer text-left"
+        className="w-full h-8 flex items-center gap-2 px-1.5 bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border hover:border-[var(--border-focus)] hover:[--cut-border-color:var(--border-focus)] transition-colors cursor-pointer text-left"
         title={hasImage ? url : placeholder}
       >
         {/* Thumbnail (or placeholder square when empty) */}

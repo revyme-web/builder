@@ -207,7 +207,7 @@ export default function PageAbTestDetail({ pagePath, tests, onRefresh, onLocalUp
             // layout doesn't jump when the data lands.
             <SkeletonTestCard />
           ) : (
-            <div className="mt-4 px-4 py-6 bg-black/[0.04] dark:bg-white/5 border border-[var(--control-border)] rounded-lg text-center">
+            <div className="mt-4 px-4 py-6 bg-black/[0.04] dark:bg-white/5 border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)] text-center">
               <p className="text-sm text-[var(--text-secondary)]">
                 No A/B tests on this page yet.
               </p>
@@ -341,7 +341,7 @@ function SkeletonToolSection({ title, rows }: { title: string; rows: number }) {
     <ToolSection title={title} collapsible={false}>
       <div className="flex flex-col gap-1.5">
         {Array.from({ length: rows }, (_, i) => (
-          <Skeleton key={i} className="h-7 w-full rounded-md" />
+          <Skeleton key={i} className="h-7 w-full cut-corners" />
         ))}
       </div>
     </ToolSection>
@@ -429,7 +429,7 @@ function Header({ pagePath, count }: { pagePath: string; count: number | null })
 function SkeletonTestActions() {
   return (
     <div className="flex items-center gap-2 shrink-0">
-      <Skeleton className="h-8 w-[88px] rounded-md" />
+      <Skeleton className="h-8 w-[88px] cut-corners" />
     </div>
   );
 }
@@ -479,7 +479,7 @@ function SkeletonTestCard() {
           Events
         </p>
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          <div className="min-w-0 px-4 py-4 border border-[var(--control-border)] rounded-md">
+          <div className="min-w-0 px-4 py-4 border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)]">
             <div className="flex items-center justify-between gap-2 mb-1">
               <Skeleton className="h-5 w-24" />
               <Skeleton className="h-4 w-4 rounded" />
@@ -494,9 +494,9 @@ function SkeletonTestCard() {
           <button
             type="button"
             disabled
-            className="h-full min-h-[140px] px-4 py-6 bg-transparent border border-dashed border-[var(--control-border)] rounded-md flex items-center justify-center opacity-50 cursor-not-allowed"
+            className="h-full min-h-[140px] px-4 py-6 bg-transparent border border-dashed border-[var(--control-border)] cut-corners flex items-center justify-center opacity-50 cursor-not-allowed"
           >
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[var(--bg-hover)] rounded-md text-xs font-medium text-[var(--text-primary)]">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[var(--bg-hover)] cut-corners text-xs font-medium text-[var(--text-primary)]">
               + Create step
             </span>
           </button>
@@ -728,9 +728,9 @@ function TestCard({
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('ab-test:add-event', { detail: { testId: test.id } }))}
-              className="group h-full min-h-[140px] px-4 py-6 bg-transparent border border-dashed border-[var(--control-border)] rounded-md flex items-center justify-center hover:border-[var(--text-tertiary)] transition-colors cursor-pointer"
+              className="group h-full min-h-[140px] px-4 py-6 bg-transparent border border-dashed border-[var(--control-border)] cut-corners flex items-center justify-center hover:border-[var(--text-tertiary)] transition-colors cursor-pointer"
             >
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[var(--bg-hover)] group-hover:bg-[var(--grid-line)] rounded-md text-xs font-medium text-[var(--text-primary)] transition-colors">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[var(--bg-hover)] group-hover:bg-[var(--grid-line)] cut-corners text-xs font-medium text-[var(--text-primary)] transition-colors">
                 + Create step
               </span>
             </button>
@@ -845,7 +845,7 @@ function TestActions({
         <button
           type="button"
           onClick={() => stateChange(test.status === 'paused' ? 'resume' : 'start')}
-          className="h-8 px-4 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-md cursor-pointer"
+          className="h-8 px-4 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 cut-corners cursor-pointer"
         >
           {test.status === 'paused' ? 'Resume test' : 'Start test'}
         </button>
@@ -854,7 +854,7 @@ function TestActions({
         <button
           type="button"
           onClick={() => stateChange('pause')}
-          className="h-8 px-4 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-md cursor-pointer"
+          className="h-8 px-4 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] cut-corners cursor-pointer"
         >
           Pause
         </button>
@@ -904,7 +904,7 @@ function GoalTile({
     // peer cards. Border is the same --control-border the page uses
     // for hairlines elsewhere; padding matches the placeholder so
     // tiles + placeholder line up perfectly.
-    <div className="min-w-0 px-4 py-4 border border-[var(--control-border)] rounded-md">
+    <div className="min-w-0 px-4 py-4 border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)]">
       <div className="flex items-center justify-between gap-2 mb-1">
         <span className="text-sm font-semibold text-[var(--text-primary)] truncate" title={goal.name || target}>
           {goal.name || target}
@@ -1093,7 +1093,7 @@ function StepsPanel({
                 type="button"
                 disabled={!canEdit}
                 onClick={() => { if (canEdit) setEditing(g); }}
-                className={`w-full flex items-center justify-between gap-2 -mx-1 px-1 py-2 rounded-md text-xs transition-colors ${
+                className={`w-full flex items-center justify-between gap-2 -mx-1 px-1 py-2 cut-corners text-xs transition-colors ${
                   canEdit
                     ? 'hover:bg-black/[0.04] dark:hover:bg-white/[0.04] cursor-pointer'
                     : 'cursor-default'
@@ -1179,7 +1179,7 @@ function UpgradeGoalCapPopover({
         <button
           type="button"
           onClick={onUpgrade}
-          className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer"
+          className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 cut-corners cursor-pointer"
         >
           Upgrade
         </button>
@@ -1275,7 +1275,7 @@ function OptionsPanel({
       )}
       {/* Distribution row — ToolRow label + a Make-even button that
           fills the right column like the Edit list button in the
-          Filters popover. Same h-8 / rounded-lg / w-full so the
+          Filters popover. Same h-8 / cut-corners / w-full so the
           Options panel reads at the same visual weight as the rest
           of the rail's controls. */}
       <ToolRow label="Distribution">
@@ -1287,7 +1287,7 @@ function OptionsPanel({
             lockReason
               ?? (isEven ? 'Already even' : 'Reset to an even split across variants')
           }
-          className="w-full h-8 px-2 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] border border-[var(--control-border)] rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full h-8 px-2 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] border border-[var(--control-border)] cut-corners cut-border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Make even
         </button>
@@ -1604,7 +1604,7 @@ function FiltersPanel({
                 type="button"
                 disabled={!canEdit}
                 onClick={() => { if (canEdit) setEditing(r.dimension); }}
-                className={`w-full flex items-center justify-between gap-2 -mx-1 px-1 py-2 rounded-md text-xs transition-colors ${
+                className={`w-full flex items-center justify-between gap-2 -mx-1 px-1 py-2 cut-corners text-xs transition-colors ${
                   canEdit
                     ? 'hover:bg-black/[0.04] dark:hover:bg-white/[0.04] cursor-pointer'
                     : 'cursor-default'
@@ -1680,7 +1680,7 @@ function UpgradeFiltersPopover({
         <button
           type="button"
           onClick={onUpgrade}
-          className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer"
+          className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 cut-corners cursor-pointer"
         >
           Upgrade
         </button>
@@ -1812,7 +1812,7 @@ function EditFilterPopover({
                       if (active) next.delete(d); else next.add(d);
                       setDeviceSet(next);
                     }}
-                    className={`w-full flex items-center gap-2 h-8 px-2 text-xs rounded-md cursor-pointer border transition-colors ${
+                    className={`w-full flex items-center gap-2 h-8 px-2 text-xs cut-corners cursor-pointer border transition-colors ${
                       active
                         ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-[var(--text-primary)]'
                         : 'bg-[var(--grid-line)] border-[var(--control-border)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
@@ -1884,7 +1884,7 @@ function EditFilterPopover({
                 onClick={onDelete}
                 disabled={!!lockReason}
                 title={lockReason ?? undefined}
-                className="w-full h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] cut-corners cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Delete
               </button>
@@ -1892,7 +1892,7 @@ function EditFilterPopover({
               <button
                 type="button"
                 onClick={onCancel}
-                className="w-full h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-lg)] cursor-pointer"
+                className="w-full h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] cut-corners cursor-pointer"
               >
                 Cancel
               </button>
@@ -1904,7 +1904,7 @@ function EditFilterPopover({
               onClick={submit}
               disabled={!valid || !!lockReason}
               title={lockReason ?? undefined}
-              className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 cut-corners cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Save
             </button>
@@ -1960,7 +1960,7 @@ function CountryRow({
         <button
           type="button"
           onClick={openPicker}
-          className="w-full h-8 px-2 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] border border-[var(--control-border)] rounded-[var(--radius-lg)] cursor-pointer flex items-center justify-between"
+          className="w-full h-8 px-2 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] border border-[var(--control-border)] cut-corners cut-border cursor-pointer flex items-center justify-between"
         >
           <span>{codes.length === 0 ? 'Choose…' : 'Edit list'}</span>
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1980,7 +1980,7 @@ function CountryRow({
         <div key={code} className="flex items-center justify-between w-full">
           <div className="w-3/4 select-none" aria-hidden />
           <div className="flex items-center gap-2 w-full min-w-0">
-            <div className="w-full min-w-0 h-8 pl-2 pr-1 flex items-center gap-2 bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-xs text-[var(--text-primary)] overflow-hidden">
+            <div className="w-full min-w-0 h-8 pl-2 pr-1 flex items-center gap-2 bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)] text-xs text-[var(--text-primary)] overflow-hidden">
               <span className="font-mono text-[var(--text-secondary)] w-6 shrink-0">{code}</span>
               <span
                 className="flex-1 min-w-0 truncate"
@@ -2069,7 +2069,7 @@ function CountryPicker({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by name or code…"
-          className="w-full h-8 pl-7 pr-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors"
+          className="w-full h-8 pl-7 pr-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
         />
       </div>
 
@@ -2092,7 +2092,7 @@ function CountryPicker({
                   <button
                     type="button"
                     onClick={() => toggle(c.code)}
-                    className={`w-full flex items-center gap-2 h-7 px-2 text-xs rounded-md cursor-pointer transition-colors ${
+                    className={`w-full flex items-center gap-2 h-7 px-2 text-xs cut-corners cursor-pointer transition-colors ${
                       active
                         ? 'bg-[var(--accent)]/15 text-[var(--text-primary)]'
                         : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
@@ -2265,7 +2265,7 @@ function EditStepPopover({
                 value={trackingId}
                 onChange={(e) => setTrackingId(e.target.value)}
                 placeholder={type === 'click' ? 'cta-hero' : type === 'submit' ? 'signup-form' : 'purchase-complete'}
-                className="w-full h-8 pl-2 pr-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors"
+                className="w-full h-8 pl-2 pr-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
               />
               {trackingIds.length > 0 && (
                 <datalist id={datalistId}>
@@ -2301,7 +2301,7 @@ function EditStepPopover({
                 onClick={() => onDelete(initial.id)}
                 disabled={!!lockReason}
                 title={lockReason ?? undefined}
-                className="w-full h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] cut-corners cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Delete
               </button>
@@ -2309,7 +2309,7 @@ function EditStepPopover({
               <button
                 type="button"
                 onClick={onCancel}
-                className="w-full h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-lg)] cursor-pointer"
+                className="w-full h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] cut-corners cursor-pointer"
               >
                 Cancel
               </button>
@@ -2321,7 +2321,7 @@ function EditStepPopover({
               onClick={submit}
               disabled={!valid || !!lockReason}
               title={lockReason ?? undefined}
-              className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 cut-corners cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Save
             </button>

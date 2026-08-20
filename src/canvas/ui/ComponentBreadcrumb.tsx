@@ -295,16 +295,30 @@ export default function ComponentBreadcrumb() {
   // (z-9999) which need to remain on top of everything in the editor.
   return createPortal(
     <div
-      className="fixed h-[52px] px-4 flex items-center left-[308px] right-[260px] shadow-[var(--shadow-sm)] border-b border-[var(--border-default)] bg-[var(--bg-surface)] z-[9000] top-0"
+      // Full-width top strip between the side chrome (the original layout,
+      // restored 2026-08-20) — with the GLASS surface on a backdrop child.
+      // The glass must NOT sit on the container itself: backdrop-filter
+      // makes an element the containing block for fixed descendants, which
+      // would hijack any fixed-positioned children's viewport coords.
+      className="fixed h-[52px] px-4 flex items-center left-[308px] right-[260px] isolate z-[9000] top-0"
       data-dynamic-toolbar="true"
     >
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10 border-b border-[var(--border-light)]"
+        style={{
+          background: 'color-mix(in srgb, var(--bg-surface) 93%, transparent)',
+          backdropFilter: 'blur(18px) saturate(1.15)',
+          WebkitBackdropFilter: 'blur(18px) saturate(1.15)',
+        } as React.CSSProperties}
+      />
       {overlayEditingId ? (
         /* OVERLAY EDIT — keep the SAME bar (background unchanged); just swap the
            breadcrumb for an accent-secondary "Editing Overlay" pill on the left and
            an "Exit" pill on the right. Both reuse the breadcrumb/Variables pill design. */
         <>
           <div
-            className="px-3 h-7 flex items-center gap-1.5 text-sm font-medium text-[var(--accent-secondary-fg)] rounded-md whitespace-nowrap select-none"
+            className="px-2 h-[30px] flex items-center gap-1.5 text-xs font-medium text-[var(--accent-secondary-fg)] cut-corners whitespace-nowrap select-none"
             style={{ backgroundColor: 'var(--accent-secondary)' }}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
@@ -313,7 +327,7 @@ export default function ComponentBreadcrumb() {
           <div className="flex-1" />
           <button
             onClick={exitOverlayEdit}
-            className="px-3 h-7 flex items-center text-sm font-medium text-[var(--accent-secondary-fg)] rounded-md transition-all hover:brightness-110 whitespace-nowrap"
+            className="px-2 h-[30px] flex items-center text-xs font-medium text-[var(--accent-secondary-fg)] cut-corners transition-all hover:brightness-110 whitespace-nowrap"
             style={{ backgroundColor: 'var(--accent-secondary)' }}
           >
             Exit
@@ -336,7 +350,7 @@ export default function ComponentBreadcrumb() {
                 trace.action('breadcrumb:open-variables', { file: activeFile });
                 setVariablesOpen(true);
               }}
-              className="px-3 h-7 flex items-center text-sm font-medium text-[var(--accent-secondary-fg)] rounded-md transition-all hover:brightness-110 whitespace-nowrap"
+              className="px-2 h-[30px] flex items-center text-xs font-medium text-[var(--accent-secondary-fg)] cut-corners transition-all hover:brightness-110 whitespace-nowrap"
               style={{ backgroundColor: 'var(--accent-secondary)' }}
             >
               Variables

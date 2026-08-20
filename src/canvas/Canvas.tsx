@@ -1214,7 +1214,18 @@ export default function Canvas() {
       onDragStart={(e) => e.preventDefault()}
       onContextMenu={(e) => {
         e.preventDefault();
-        setContextMenu({ show: true, x: e.clientX, y: e.clientY, nodeId: selectedId });
+        // A right-click on a VIEWPORT HEADER opens the same menu, but none
+        // of the node operations apply to a viewport — the flag disables
+        // them (see context-menu-store).
+        const onViewportHeader =
+          (e.target as HTMLElement).closest?.('[data-viewport-header]') != null;
+        setContextMenu({
+          show: true,
+          x: e.clientX,
+          y: e.clientY,
+          nodeId: onViewportHeader ? null : selectedId,
+          viewportHeader: onViewportHeader,
+        });
       }}
       style={{
         flex: 1, overflow: 'hidden', backgroundColor: 'transparent',

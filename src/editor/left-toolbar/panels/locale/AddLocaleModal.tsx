@@ -128,7 +128,7 @@ export default function AddLocaleModal({ isOpen, onClose, existingCodes, existin
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search languages..."
-                className="w-full h-[var(--control-height)] pl-8 pr-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+                className="w-full h-[var(--control-height)] pl-8 pr-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border focus:[--cut-border-color:var(--accent)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:border-[var(--accent)] focus:outline-none transition-colors"
               />
             </div>
           </div>
@@ -183,7 +183,7 @@ export default function AddLocaleModal({ isOpen, onClose, existingCodes, existin
               {/* Form content */}
               <div className="flex-1 p-5 flex flex-col gap-4 overflow-y-auto scrollbar-hide">
                 {/* Preview card */}
-                <div className="flex items-center gap-3 p-3 bg-[var(--grid-line)] rounded-lg border border-[var(--border-light)]">
+                <div className="flex items-center gap-3 p-3 bg-[var(--grid-line)] cut-corners cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)]">
                   <FlagIcon code={emojiFlagToCC(selected.flag)} className="text-2xl" />
                   <div className="flex flex-col">
                     <span className="text-sm font-semibold text-[var(--text-primary)]">{selected.name}</span>
@@ -200,7 +200,7 @@ export default function AddLocaleModal({ isOpen, onClose, existingCodes, existin
                     type="text"
                     value={name}
                     onChange={e => setName(e.target.value)}
-                    className="w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+                    className="w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border focus:[--cut-border-color:var(--accent)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:border-[var(--accent)] focus:outline-none transition-colors"
                   />
                 </div>
 
@@ -213,7 +213,7 @@ export default function AddLocaleModal({ isOpen, onClose, existingCodes, existin
                     type="text"
                     value={slug}
                     onChange={e => handleSlugChange(e.target.value)}
-                    className="w-full h-[var(--control-height)] px-3 text-xs font-mono bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+                    className="w-full h-[var(--control-height)] px-3 text-xs font-mono bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border focus:[--cut-border-color:var(--accent)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:border-[var(--accent)] focus:outline-none transition-colors"
                   />
                   <span className="text-[10px] text-[var(--text-disabled)]">
                     Used in URLs and file names
@@ -229,7 +229,7 @@ export default function AddLocaleModal({ isOpen, onClose, existingCodes, existin
                     <select
                       value={fallback}
                       onChange={e => setFallback(e.target.value)}
-                      className="w-full h-[var(--control-height)] px-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-colors cursor-pointer"
+                      className="w-full h-[var(--control-height)] px-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border focus:[--cut-border-color:var(--accent)] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-colors cursor-pointer"
                     >
                       <option value="">None</option>
                       {existingLocales.map(l => (
@@ -247,14 +247,14 @@ export default function AddLocaleModal({ isOpen, onClose, existingCodes, existin
               <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border-light)]">
                 <button
                   onClick={onClose}
-                  className="h-[var(--control-height)] px-4 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] text-[var(--text-primary)] rounded-[var(--radius-md)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+                  className="h-[var(--control-height)] px-4 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] text-[var(--text-primary)]  hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAdd}
                   disabled={!slug.trim() || !name.trim()}
-                  className="h-8 px-4 text-xs bg-[var(--accent)] text-[var(--accent-fg)] rounded-[var(--radius-md)] hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-medium"
+                  className="h-8 px-4 text-xs bg-[var(--accent)] text-[var(--accent-fg)] cut-corners hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-medium"
                 >
                   Add Language
                 </button>

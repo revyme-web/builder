@@ -50,7 +50,7 @@ export default function MaskEditor({ mask, onChange, onRemove }: {
         </>
       )}
       <ToolRow label="Preview">
-        <div className="w-full h-24 rounded-[var(--radius-md)] overflow-hidden bg-[var(--grid-line)] flex items-center justify-center">
+        <div className="w-full h-24 cut-corners overflow-hidden bg-[var(--grid-line)] flex items-center justify-center">
           <div style={{ width: '100%', height: '100%', backgroundColor: 'var(--accent)', clipPath: clip, WebkitClipPath: clip }} />
         </div>
       </ToolRow>

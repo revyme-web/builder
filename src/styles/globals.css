@@ -59,17 +59,15 @@
        keeps the brighter one for CTAs and the active tool. The gold/brass
        experiment that used to live here is available as a selectable builder
        theme; the shipped default went back to blue. */
-    /* Blue, back as the stock default (2026-08-12, user decision): the SAME
-       blue as the dark-canvas selection stroke (#3388ff), with a WHITE label —
-       the original look, restored over the gold experiment. IDENTICAL in both
-       themes — a brand accent that changes hue between light and dark stops
-       being a brand colour.
-
-       Known trade, accepted deliberately: white on #3388ff is ~3.5:1 (below
-       AA for small text) — the same trade Figma ships on its selection blue.
-       --accent-text below is the exception for the ~54 sites that use the
-       accent as TEXT, where it takes a darkened mix that clears AA. */
-    --accent: #3388ff;
+    /* Magenta, the newdesign2 stock default (2026-08-20, user decision —
+       settled on after cycling orange/deep-blue/blue): #b858a3 with a WHITE
+       label — 4.2:1, clears the 3:1 UI floor (below small-text AA, same
+       trade as the old blue; the builder-themes test pins that floor).
+       IDENTICAL in both themes — a brand accent that changes hue between
+       light and dark stops being a brand colour. Canvas selection stays
+       blue (see --selection): brand lives in the chrome, the canvas stays
+       conventional. */
+    --accent: #b858a3;
     /* DERIVED from --accent, like --accent-text below. These were hand-set
        hexes, so changing --accent alone left hover and CTA surfaces on the
        previous hue — a Publish button that changed colour on hover. */
@@ -93,7 +91,7 @@
     --accent-strong: color-mix(in srgb, var(--accent) 88%, #fff);
     --accent-strong-fg: #ffffff;
     --accent-muted: color-mix(in srgb, var(--accent) 30%, #fff);
-    --accent-surface: rgba(51, 136, 255, 0.12);
+    --accent-surface: rgba(184, 88, 163, 0.12);
     /* Component / master mode — magenta.
        Purple-for-components is the convention Figma set and the other
        builders inherited, so moving off it is one of the more visible ways
@@ -230,6 +228,13 @@
        (user report 2026-07-25). */
     --tool-label-col: 40.2%;
 
+    /* Cut design system — THE two knobs. --cut = slice size, --cut-round =
+       rounding of the uncut corners. Every .cut-* class consumes these via
+       inheritance; element-level overrides (.cut-sm/.cut-lg, inline vars)
+       still win. Change these two lines and the whole chrome follows. */
+    --cut: 9px;
+    --cut-round: 0px;
+
     /* Radius */
     --radius-sm: 4px;
     --radius-md: 6px;
@@ -267,10 +272,9 @@
     --text-tertiary: #666666;
     --text-muted: #848484;
 
-    /* Stock blue restored (2026-08-12) — same value as --selection below, so
-       the chrome accent and the canvas selection read as one blue. White
-       label by explicit user choice (~3.5:1 — the Figma trade). */
-    --accent: #3388ff;
+    /* Stock magenta (2026-08-20, user decision) — see the :root note. White
+       label; the canvas selection stays its own blue below. */
+    --accent: #b858a3;
     --accent-hover: color-mix(in srgb, var(--accent) 82%, #fff);
     --accent-fg: #ffffff;
     /* On #111111 the accent is already legible as text, so this is just the
@@ -280,7 +284,7 @@
     --accent-strong: color-mix(in srgb, var(--accent) 88%, #fff);
     --accent-strong-fg: #ffffff;
     --accent-muted: color-mix(in srgb, var(--accent) 22%, #000);
-    --accent-surface: rgba(51, 136, 255, 0.13);
+    --accent-surface: rgba(184, 88, 163, 0.13);
     /* See the light-theme note. Hue 293 — magenta pulled back toward purple
        without reaching the stock violet at 260.
 
@@ -434,6 +438,153 @@ html.theme-transition *::after {
   &::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* Cut-corner chrome — the angular button treatment: top-left and
+ * bottom-right corners sliced diagonally. THE central definition; apply the
+ * class anywhere a button/chip should read angular. Tune the slice size
+ * per-element with `style={{ '--cut': '6px' }}` (9px default). Deliberately
+ * UNLAYERED so it outranks Tailwind's `rounded-*` utilities (see the
+ * cascade note at the top of this file) — callers keep their radius
+ * classes and this still wins. */
+.cut-corners {
+  /* Cut corners stay sharp; the UNCUT corners keep the app's original
+   * rounding. The rounding is real border-radius (not clip): the clip
+   * polygon is square at those corners, so clip ∩ rounded-box = the arc,
+   * and the rect border's stroke follows the arc natively — no gradient
+   * arc-painting needed. Tune with --cut-round. */
+  border-radius: 0;
+  border-top-right-radius: var(--cut-round);
+  border-bottom-left-radius: var(--cut-round);
+  clip-path: polygon(
+    var(--cut) 0,
+    100% 0,
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    0 100%,
+    0 var(--cut)
+  );
+}
+/* Single-corner variants — same slice, one corner only. For big surfaces
+ * that should echo the cut where they meet the canvas (left panel's
+ * bottom-right, right panel's top-left) without notching all corners. */
+.cut-br {
+  border-radius: var(--cut-round);
+  border-bottom-right-radius: 0;
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    0 100%
+  );
+}
+.cut-tl {
+  border-radius: var(--cut-round);
+  border-top-left-radius: 0;
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--cut));
+}
+.cut-bl {
+  border-radius: var(--cut-round);
+  border-bottom-left-radius: 0;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
+}
+.cut-tr {
+  border-radius: var(--cut-round);
+  border-top-right-radius: 0;
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, 0 100%);
+}
+/* Right-edge pair — top-right AND bottom-right in one polygon (clip-path is
+ * a single property, so corner classes can't stack; pairs get their own). */
+.cut-r {
+  border-radius: 0;
+  border-top-left-radius: var(--cut-round);
+  border-bottom-left-radius: var(--cut-round);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--cut)) 0,
+    100% var(--cut),
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    0 100%
+  );
+}
+
+/* Diagonal border strokes for cut elements. clip-path slices the rect
+ * border off along the cut edges; these two corner-anchored gradient
+ * layers paint the missing segments ON the element (works on form
+ * controls where pseudo-elements can't). Each layer is a --cut × --cut
+ * square whose 135° anti-diagonal IS the cut edge — the stroke runs from
+ * the edge ~1.4px inward (1px perpendicular at 45°), matching the rect
+ * border's inside stroke. Color tracks the standard control trio via
+ * --cut-border-color; override it (inline or arbitrary class) for
+ * elements bordered in something other than --control-border. */
+.cut-border {
+  /* NO --cut-border-color declaration here — this block is UNLAYERED (it
+   * must beat Tailwind's rounded-*), and an unlayered declaration would
+   * out-cascade the per-element pins, which are Tailwind utilities in a
+   * layer (`focus:[--cut-border-color:…]`). The default is a var()
+   * FALLBACK instead, so pins and inline styles win cleanly. */
+  background-image:
+    linear-gradient(
+      135deg,
+      transparent calc(50% - 0.4px),
+      var(--cut-border-color, var(--control-border)) calc(50% - 0.4px),
+      var(--cut-border-color, var(--control-border)) calc(50% + 1px),
+      transparent calc(50% + 1px)
+    ),
+    linear-gradient(
+      135deg,
+      transparent calc(50% - 1px),
+      var(--cut-border-color, var(--control-border)) calc(50% - 1px),
+      var(--cut-border-color, var(--control-border)) calc(50% + 0.4px),
+      transparent calc(50% + 0.4px)
+    );
+  background-size: var(--cut) var(--cut);
+  background-position:
+    top left,
+    bottom right;
+  background-repeat: no-repeat;
+  /* border-box, NOT the padding-box default: clip-path's polygon resolves
+   * against the border-box, so on a 1px-bordered element the default
+   * origin shifts the tiles (1,1) off the clip's diagonal — the stroke
+   * floats with a visible gap at both ends. */
+  background-origin: border-box;
+  background-clip: border-box;
+}
+/* NO state rules here on purpose. A global :hover/:focus/:focus-within
+ * trio lit diagonals on elements whose rect border has no such state
+ * (segmented track focus-within, plus/minus) and out-ranked per-element
+ * pins on specificity. Each element instead mirrors its OWN rect border
+ * states with arbitrary-property variants, e.g.
+ * `hover:[--cut-border-color:var(--control-border-hover)]`. */
+
+/* Top-left-only diagonal stroke — pairs with .cut-tl the way .cut-border
+ * pairs with .cut-corners. (.cut-border always paints BOTH corner strokes,
+ * which leaves a stray line across a square corner when only one is cut.) */
+.cut-border-tl {
+  background-image: linear-gradient(
+    135deg,
+    transparent calc(50% - 0.4px),
+    var(--cut-border-color, var(--control-border)) calc(50% - 0.4px),
+    var(--cut-border-color, var(--control-border)) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
+  background-size: var(--cut) var(--cut);
+  background-position: top left;
+  background-repeat: no-repeat;
+  /* See .cut-border — align with clip-path's border-box reference. */
+  background-origin: border-box;
+  background-clip: border-box;
+}
+
+/* Size modifiers — pair with .cut-corners on the same element. sm for small
+ * chips/thumbs (~24px tall), lg for large containers (~44px+). */
+.cut-sm {
+  --cut: 5px;
+}
+.cut-lg {
+  --cut: 12px;
 }
 
 /* Add-Breakpoint menu rows — CSS hover (replaces brittle JS span-color toggling that left icons

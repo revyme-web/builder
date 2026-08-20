@@ -212,7 +212,7 @@ function MenuPanel({ items, hoverStyle, minWidth, onClose, style, rootRef, searc
         panelRef.current = el;
         if (rootRef) rootRef.current = el;
       }}
-      className="fixed bg-[var(--dropdown-bg,var(--bg-surface))] shadow-[var(--shadow-lg,0_4px_24px_rgba(0,0,0,0.3))] rounded-[var(--radius-md,8px)]"
+      className="fixed bg-[var(--dropdown-bg,var(--bg-surface))] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)]"
       style={{
         ...style,
         minWidth,
@@ -321,7 +321,7 @@ function MenuPanel({ items, hoverStyle, minWidth, onClose, style, rootRef, searc
               disabled={entry.disabled}
               className={`
                 group flex items-center gap-3 mx-1.5 px-2 h-8
-                w-[calc(100%-12px)] rounded-[var(--radius-sm,4px)]
+                w-[calc(100%-12px)] cut-corners
                 text-xs
                 ${entry.disabled
                   // Disabled items: no hover, no pointer, no

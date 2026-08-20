@@ -191,7 +191,7 @@ export default function CropModal({ isOpen, onClose, src, onApply }: CropModalPr
           <button
             onClick={onClose}
             disabled={busy}
-            className="h-[var(--control-height)] px-4 text-xs rounded-[var(--radius-lg)] bg-[var(--grid-line)] border border-[var(--control-border)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer disabled:opacity-50"
+            className="h-[var(--control-height)] px-4 text-xs cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] bg-[var(--grid-line)] border border-[var(--control-border)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer disabled:opacity-50"
           >
             Cancel
           </button>
@@ -199,7 +199,7 @@ export default function CropModal({ isOpen, onClose, src, onApply }: CropModalPr
             onClick={handleApply}
             data-crop-apply
             disabled={busy || loadState !== 'ready'}
-            className="h-8 px-4 text-xs rounded-[var(--radius-lg)] bg-[var(--accent)] text-[var(--accent-fg)] hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+            className="h-8 px-4 text-xs cut-corners bg-[var(--accent)] text-[var(--accent-fg)] hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
           >
             {busy ? 'Applying…' : 'Apply'}
           </button>
@@ -250,7 +250,7 @@ function CropStage({
         src={src}
         alt=""
         draggable={false}
-        className="absolute inset-0 w-full h-full object-fill pointer-events-none rounded-md"
+        className="absolute inset-0 w-full h-full object-fill pointer-events-none cut-corners"
         style={{ width: dispSize.width, height: dispSize.height }}
       />
 
@@ -259,7 +259,7 @@ function CropStage({
           never bleeds over the modal footer. pointer-events-none on the clip so
           it doesn't swallow clicks; the crop-hole re-enables them for the move
           drag. */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-md">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none cut-corners">
         <div
           onPointerDown={onHandleDown('move')}
           className="absolute pointer-events-auto"
@@ -288,7 +288,7 @@ function CropStage({
             key={h}
             data-crop-handle={h}
             onPointerDown={onHandleDown(h)}
-            className="absolute rounded-sm bg-white border border-[rgba(0,0,0,0.35)]"
+            className="absolute cut-corners bg-white border border-[rgba(0,0,0,0.35)]"
             style={{
               left: p.left - HANDLE / 2,
               top: p.top - HANDLE / 2,

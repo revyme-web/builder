@@ -14,11 +14,11 @@ function ZIndexAtom() {
         <ToolInput value={value || 'auto'} onChange={onChange} step={1} />
       </div>
       <button
-        className="shrink-0 w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded-md border border-[var(--control-border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--control-border-hover)] cursor-pointer text-sm"
+        className="shrink-0 w-7 h-[var(--control-height-sm)] flex items-center justify-center cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] border border-[var(--control-border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--control-border-hover)] cursor-pointer text-sm"
         onClick={() => onChange(String(num - 1))}
       >−</button>
       <button
-        className="shrink-0 w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded-md border border-[var(--control-border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--control-border-hover)] cursor-pointer text-sm"
+        className="shrink-0 w-7 h-[var(--control-height-sm)] flex items-center justify-center cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] border border-[var(--control-border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--control-border-hover)] cursor-pointer text-sm"
         onClick={() => onChange(String(num + 1))}
       >+</button>
     </div>

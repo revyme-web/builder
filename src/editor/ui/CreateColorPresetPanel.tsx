@@ -82,7 +82,7 @@ export default function CreateColorPresetPanel({ initialColor, onCreated }: Prop
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="Preset name"
-        className="w-full bg-[var(--grid-line)] border border-[var(--control-border)] focus:border-[var(--border-focus)] rounded-[var(--radius-lg)] px-2.5 py-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-disabled)]"
+        className="w-full bg-[var(--grid-line)] border border-[var(--control-border)] focus:border-[var(--border-focus)] cut-corners cut-border focus:[--cut-border-color:var(--border-focus)] px-2.5 py-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-disabled)]"
       />
 
       {/* Light / Dark toggle */}
@@ -107,7 +107,7 @@ export default function CreateColorPresetPanel({ initialColor, onCreated }: Prop
       <button
         onClick={handleCreate}
         disabled={!name.trim()}
-        className={`w-full h-[var(--control-height)] rounded-[var(--radius-lg)] text-xs font-medium transition-colors ${
+        className={`w-full h-[var(--control-height)] cut-corners text-xs font-medium transition-colors ${
           name.trim()
             ? 'bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer hover:opacity-90'
             : 'bg-[var(--grid-line)] text-[var(--text-disabled)] cursor-not-allowed'

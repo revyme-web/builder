@@ -181,7 +181,7 @@ export default function AbTestsSection({ websiteId }: AbTestsSectionProps) {
         </div>
         <button
           onClick={() => setActiveSection('plans')}
-          className="w-full px-4 py-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg text-sm text-[var(--text-primary)] hover:from-blue-500/15 hover:to-purple-500/15 transition-colors text-left cursor-pointer"
+          className="w-full px-4 py-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 cut-corners text-sm text-[var(--text-primary)] hover:from-blue-500/15 hover:to-purple-500/15 transition-colors text-left cursor-pointer"
         >
           Upgrade to Pro for A/B testing →
         </button>
@@ -231,19 +231,19 @@ export default function AbTestsSection({ websiteId }: AbTestsSectionProps) {
         // Skeleton rows — sized to match a real test row so the layout
         // doesn't jump when the data arrives.
         <ul className="space-y-2">
-          <li className="flex items-center justify-between gap-3 px-4 py-3 bg-black/[0.04] dark:bg-white/5 border border-[var(--control-border)] rounded-lg">
+          <li className="flex items-center justify-between gap-3 px-4 py-3 bg-black/[0.04] dark:bg-white/5 border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)]">
             <div className="flex-1 space-y-2">
               <Skeleton className="h-3 w-40" />
               <Skeleton className="h-2.5 w-56" />
             </div>
-            <Skeleton className="h-[30px] w-[110px] rounded-md" />
+            <Skeleton className="h-[30px] w-[110px] cut-corners" />
           </li>
-          <li className="flex items-center justify-between gap-3 px-4 py-3 bg-black/[0.04] dark:bg-white/5 border border-[var(--control-border)] rounded-lg">
+          <li className="flex items-center justify-between gap-3 px-4 py-3 bg-black/[0.04] dark:bg-white/5 border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)]">
             <div className="flex-1 space-y-2">
               <Skeleton className="h-3 w-32" />
               <Skeleton className="h-2.5 w-48" />
             </div>
-            <Skeleton className="h-[30px] w-[110px] rounded-md" />
+            <Skeleton className="h-[30px] w-[110px] cut-corners" />
           </li>
         </ul>
       ) : tests.length === 0 ? (
@@ -279,7 +279,7 @@ export default function AbTestsSection({ websiteId }: AbTestsSectionProps) {
       {!isStudio && tests.length > 0 && (
         <button
           onClick={() => setActiveSection('plans')}
-          className="w-full px-4 py-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg text-sm text-[var(--text-primary)] hover:from-blue-500/15 hover:to-purple-500/15 transition-colors text-left cursor-pointer"
+          className="w-full px-4 py-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 cut-corners text-sm text-[var(--text-primary)] hover:from-blue-500/15 hover:to-purple-500/15 transition-colors text-left cursor-pointer"
         >
           Upgrade to Studio for unlimited concurrent tests + audience segmentation →
         </button>
@@ -357,7 +357,7 @@ function AbTestRowItem({
   ];
 
   return (
-    <li className="flex items-center justify-between gap-3 px-4 py-3 bg-black/[0.04] dark:bg-white/5 border border-[var(--control-border)] rounded-lg">
+    <li className="flex items-center justify-between gap-3 px-4 py-3 bg-black/[0.04] dark:bg-white/5 border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)]">
       <button
         type="button"
         onClick={onOpenDetail}
@@ -445,19 +445,19 @@ function ActionConfirmModal({ confirm, onCancel, onRun }: ActionConfirmModalProp
       locked={running}
       onCancel={onCancel}
       title={title}
-      closeButtonClassName="p-1 hover:bg-[var(--bg-hover)] rounded-md cursor-pointer disabled:opacity-30"
+      closeButtonClassName="p-1 hover:bg-[var(--bg-hover)] cut-corners cursor-pointer disabled:opacity-30"
     >
       <p className="text-xs leading-relaxed text-[var(--text-secondary)]">{body}</p>
       <div className="flex items-center gap-2">
         <ModalCancelButton
           onClick={onCancel}
           disabled={running}
-          className="flex-1 h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-lg)] cursor-pointer disabled:opacity-30"
+          className="flex-1 h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] cut-corners cursor-pointer disabled:opacity-30"
         />
         <button
           onClick={async () => { setRunning(true); try { await onRun(); } catch { setRunning(false); } }}
           disabled={running}
-          className={`flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center text-[var(--accent-fg)] disabled:opacity-60 cursor-pointer ${
+          className={`flex-1 h-8 px-3 text-xs cut-corners font-medium flex items-center justify-center text-[var(--accent-fg)] disabled:opacity-60 cursor-pointer ${
             k === 'delete' ? 'bg-red-500/90 hover:bg-red-500' : 'bg-[var(--accent)] hover:opacity-90'
           }`}
         >
@@ -508,7 +508,7 @@ function TestDetailModal({ test, onClose }: TestDetailModalProps) {
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
           transition={{ duration: 0.15 }}
-          className="relative w-[720px] max-w-[calc(100vw-2rem)] max-h-[80vh] overflow-hidden bg-[var(--bg-surface)] rounded-lg shadow-2xl flex flex-col"
+          className="relative w-[720px] max-w-[calc(100vw-2rem)] max-h-[80vh] overflow-hidden bg-[var(--bg-surface)] cut-corners cut-lg shadow-2xl flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-light)]">
@@ -525,7 +525,7 @@ function TestDetailModal({ test, onClose }: TestDetailModalProps) {
             </div>
             <button
               onClick={onClose}
-              className="p-1 hover:bg-[var(--bg-hover)] rounded-md cursor-pointer"
+              className="p-1 hover:bg-[var(--bg-hover)] cut-corners cursor-pointer"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)]">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -575,7 +575,7 @@ function TestDetailModal({ test, onClose }: TestDetailModalProps) {
               {test.variants.map((v, i) => (
                 <div
                   key={v.id}
-                  className="grid grid-cols-[1.5fr_repeat(5,1fr)] gap-2 px-3 py-2 bg-black/[0.04] dark:bg-white/5 border border-[var(--control-border)] rounded-md text-xs text-[var(--text-secondary)] tabular-nums"
+                  className="grid grid-cols-[1.5fr_repeat(5,1fr)] gap-2 px-3 py-2 bg-black/[0.04] dark:bg-white/5 border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)] text-xs text-[var(--text-secondary)] tabular-nums"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: variantColors[i % variantColors.length] }} />

@@ -305,7 +305,7 @@ export function RowSelect({
             <div className="fixed inset-0 z-[10010]" onClick={() => setOpen(false)} />
             <div
               ref={popupRef}
-              className="fixed z-[10011] max-h-[280px] overflow-y-auto rounded-lg border border-[var(--border-light)] bg-[var(--dropdown-bg)] shadow-lg py-1"
+              className="fixed z-[10011] max-h-[280px] overflow-y-auto cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] bg-[var(--dropdown-bg)] shadow-lg py-1"
               style={{
                 left: rect.left,
                 top: rect.bottom + 4,
@@ -413,7 +413,7 @@ export function ConfirmModal({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="relative w-80 bg-[var(--bg-surface)] rounded-lg shadow-2xl"
+            className="relative w-80 bg-[var(--bg-surface)] cut-corners cut-lg shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-light)]">
@@ -421,7 +421,7 @@ export function ConfirmModal({
               <button
                 onClick={onCancel}
                 disabled={isLoading}
-                className="p-1 hover:bg-[var(--bg-hover)] rounded-md transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                className="p-1 hover:bg-[var(--bg-hover)] cut-corners transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)]">
                   <line x1="18" y1="6" x2="6" y2="18" />
@@ -435,14 +435,14 @@ export function ConfirmModal({
                 <button
                   onClick={onCancel}
                   disabled={isLoading}
-                  className="flex-1 h-[var(--control-height)] text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-lg)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  className="flex-1 h-[var(--control-height)] text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] cut-corners transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {cancelText}
                 </button>
                 <button
                   onClick={onConfirm}
                   disabled={isLoading}
-                  className={`flex-1 h-8 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center text-[var(--accent-fg)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer ${
+                  className={`flex-1 h-8 px-3 text-xs cut-corners font-medium flex items-center justify-center text-[var(--accent-fg)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer ${
                     variant === 'danger'
                       ? 'bg-red-500/90 hover:bg-red-500'
                       : 'bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))]'

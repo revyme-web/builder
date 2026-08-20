@@ -19,7 +19,7 @@ const BASE =
   // (its `truncate` text has white-space:nowrap → min-content = the whole label). Without min-w-0 the button
   // can't shrink below its text, so in a flex ROW (e.g. InteractionsTool's "Click → Set X") it sizes to content
   // and the pills come out ragged. With it, a `w-full` button shrinks to fill its column AND truncates.
-  'w-full min-w-0 h-8 flex items-center gap-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]';
+  'w-full min-w-0 h-8 flex items-center gap-2 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] cursor-pointer transition-colors text-xs text-[var(--text-primary)]';
 
 export function ControlActionRow({ onClick, children, center, className, ...rest }: ControlActionRowProps) {
   // Extract only data-* attributes from rest

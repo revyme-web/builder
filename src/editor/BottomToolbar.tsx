@@ -56,7 +56,7 @@ function MenuItem({ label, shortcut, icon, active, onClick, disabled }: {
   return (
     <button
       onClick={disabled ? undefined : onClick}
-      className={`flex items-center w-full px-3 py-1.5 text-xs rounded-[var(--radius-sm)] transition-colors gap-2 bg-transparent ${
+      className={`flex items-center w-full px-3 py-1.5 text-xs cut-corners transition-colors gap-2 bg-transparent ${
         disabled
           ? 'text-[var(--text-disabled)] cursor-not-allowed opacity-50'
           : 'text-[var(--text-primary)] hover:bg-[var(--btn-secondary-bg)] cursor-pointer'
@@ -74,7 +74,7 @@ function MenuItem({ label, shortcut, icon, active, onClick, disabled }: {
 
 function DropdownContainer({ children }: { children: React.ReactNode }) {
   return (
-    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 min-w-[180px] bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-lg p-2 z-[100]">
+    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 min-w-[180px] bg-[var(--bg-surface)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-lg p-2 z-[100]">
       {children}
     </div>
   );
@@ -95,7 +95,7 @@ function SplitButton({ active, icon, onClick, onChevronClick, title }: {
       <button
         onClick={onClick}
         title={title}
-        className={`flex items-center justify-center px-1.5 h-[32px] rounded-[var(--radius-sm)] transition-colors ${
+        className={`flex items-center justify-center px-1.5 h-[32px] cut-corners transition-colors ${
           active
             ? 'bg-[var(--accent)] text-[var(--accent-fg)] hover:brightness-110'
             : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
@@ -113,9 +113,11 @@ function SplitButton({ active, icon, onClick, onChevronClick, title }: {
         className={`flex items-center justify-center w-[12px] h-[32px] transition-colors ${
           active
             ? 'text-[var(--accent)] opacity-80 hover:opacity-100'
-            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-sm)]'
+            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] cut-corners'
         }`}
-        style={{ border: 'none', cursor: 'pointer', backgroundColor: 'transparent' }}
+        // 12px-wide sliver — the default 9px cut would eat most of the
+        // shape, so this one runs a smaller slice.
+        style={{ border: 'none', cursor: 'pointer', backgroundColor: 'transparent', '--cut': '4px' } as React.CSSProperties}
       >
         <ChevronDownSvg />
       </button>
@@ -134,7 +136,7 @@ function ToolButton({ active, onClick, title, children, dataTutorial }: {
       onClick={onClick}
       title={title}
       data-tutorial={dataTutorial}
-      className={`flex items-center justify-center px-1.5 h-[32px] rounded-[var(--radius-sm)] transition-colors ${
+      className={`flex items-center justify-center px-1.5 h-[32px] cut-corners transition-colors ${
         active
           ? 'bg-[var(--accent)] text-[var(--accent-fg)] hover:brightness-110'
           : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
@@ -322,10 +324,10 @@ function ZoomDropdown({ selectedId }: { selectedId: string | null }) {
       {/* Zoom % button */}
       <button
         onClick={() => setOpen(!open)}
-        className={`flex items-center justify-center h-[32px] min-w-[50px] px-2.5 rounded-lg text-xs font-medium transition-all ${
+        className={`flex items-center justify-center h-[32px] min-w-[50px] px-2.5 cut-corners cut-border text-xs font-medium transition-all ${
           open
-            ? 'bg-[var(--accent)] text-[var(--accent-fg)] border border-[var(--accent)]'
-            : 'bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--border-focus)] text-[var(--text-secondary)]'
+            ? 'bg-[var(--accent)] text-[var(--accent-fg)] border border-[var(--accent)] [--cut-border-color:var(--accent)]'
+            : 'bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--border-focus)] hover:[--cut-border-color:var(--border-focus)] text-[var(--text-secondary)]'
         }`}
         style={{ cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}
       >
@@ -333,7 +335,7 @@ function ZoomDropdown({ selectedId }: { selectedId: string | null }) {
       </button>
 
       {open && (
-        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 min-w-[200px] bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-lg p-2 z-[100]">
+        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 min-w-[200px] bg-[var(--bg-surface)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-lg p-2 z-[100]">
           <MenuItem label="Fit" shortcut="Shift+1" onClick={() => { const el = getContentEl(); if (el) zoomToFit(el); setOpen(false); }} />
           <MenuItem label="Fit Selection" shortcut="Shift+2" onClick={() => { const el = getContentEl(); if (el) zoomToFitSelection(el, selectedId ? [selectedId] : []); setOpen(false); }} />
           <MenuItem label="Zoom 100%" shortcut="Shift+3" onClick={() => { zoomTo100(); setOpen(false); }} />
@@ -372,12 +374,12 @@ function LocaleDropdown() {
       <button
         onClick={() => setOpen(!open)}
         title="Language"
-        className={`flex items-center gap-1.5 px-2.5 h-[32px] rounded-lg transition-all ${
+        className={`flex items-center gap-1.5 px-2.5 h-[32px] cut-corners cut-border transition-all ${
           !isDefault
-            ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
+            ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40 [--cut-border-color:rgba(249,115,22,0.4)]'
             : open
-              ? 'bg-[var(--accent)] text-[var(--accent-fg)] border border-[var(--accent)]'
-              : 'bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--border-focus)] text-[var(--text-secondary)]'
+              ? 'bg-[var(--accent)] text-[var(--accent-fg)] border border-[var(--accent)] [--cut-border-color:var(--accent)]'
+              : 'bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--border-focus)] hover:[--cut-border-color:var(--border-focus)] text-[var(--text-secondary)]'
         }`}
         style={{ cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}
       >
@@ -536,13 +538,38 @@ export default function BottomToolbar() {
   return (
     <div
       className="fixed left-1/2 -translate-x-1/2 z-[9998] flex justify-center select-none"
-      // Floating pill — detached from the screen edge (was bottom:0 docked
-      // with rounded-top-only), so the toolbar hovers slightly above the
-      // bottom. CommandPalette measures #bottom-toolbar-container's live
-      // rect, so anchored UI tracks the offset automatically.
-      style={{ bottom: 14, willChange: 'transform', isolation: 'isolate' }}
+      // Docked flush to the screen bottom (was a floating pill at bottom:14).
+      // CommandPalette measures #bottom-toolbar-container's live rect, so
+      // anchored UI tracks the offset automatically.
+      style={{ bottom: 0, willChange: 'transform', isolation: 'isolate' }}
     >
-      <div id="bottom-toolbar-container" className="bg-[var(--bg-surface)] flex items-center px-2 p-1.5 rounded-xl border border-[var(--border-light)] shadow-lg gap-0.5">
+      <div
+        id="bottom-toolbar-container"
+        className="relative flex items-center px-2 p-1.5 gap-0.5"
+        // isolation: the cut backdrop below sits at z -1; isolating keeps it
+        // inside this container instead of sliding under the page.
+        style={{ isolation: 'isolate' }}
+      >
+        {/* Cut backdrop — bg, border and clip live on THIS layer, not the
+            container: clip-path clips ALL descendant painting, and every
+            dropdown here opens ABOVE the bar (absolute bottom-full), i.e.
+            entirely outside the hexagon — with the container clipped they
+            rendered invisible. Both signature corners stay cut even though
+            the bar is docked (user call, 2026-08-19); 12px slice to match
+            the 44px height; diagonal stroke matches border-light. */}
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-10 cut-corners cut-border border border-[var(--border-light)]"
+          // Same glass recipe as ChromeIslands — the bar floats 12px off the
+          // bottom edge as its own island.
+          style={{
+            '--cut': '12px',
+            '--cut-border-color': 'var(--border-light)',
+            background: 'color-mix(in srgb, var(--bg-surface) 93%, transparent)',
+            backdropFilter: 'blur(18px) saturate(1.15)',
+            WebkitBackdropFilter: 'blur(18px) saturate(1.15)',
+          } as React.CSSProperties}
+        />
         {/* ── Cursor / Hand ── Always shown, viewers included: a
             read-only seat can't draw, but it CAN still select nodes for
             inspection and pan the canvas, so the cursor/hand tool stays
@@ -664,7 +691,7 @@ export default function BottomToolbar() {
           onClick={togglePalette}
           data-palette-toggle
           data-tutorial="search-tool"
-          className="flex items-center gap-1.5 px-2.5 h-[32px] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--border-focus)] rounded-lg transition-all"
+          className="flex items-center gap-1.5 px-2.5 h-[32px] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--border-focus)] hover:[--cut-border-color:var(--border-focus)] cut-corners cut-border transition-all"
           style={{ cursor: 'pointer' }}
         >
           <SearchIcon className="w-4 h-4 text-[var(--text-tertiary)]" />
@@ -706,7 +733,7 @@ export default function BottomToolbar() {
                 setSettingsSection('plans');
                 setSettingsOpen(true);
               }}
-              className="flex items-center justify-center h-[32px] px-2.5 rounded-lg transition-all text-xs font-medium text-[var(--accent)] hover:brightness-125"
+              className="flex items-center justify-center h-[32px] px-2.5 cut-corners transition-all text-xs font-medium text-[var(--accent)] hover:brightness-125"
               style={{ backgroundColor: 'color-mix(in srgb, var(--accent) 20%, transparent)', cursor: 'pointer', border: 'none' }}
             >
               Upgrade

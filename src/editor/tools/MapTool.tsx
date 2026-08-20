@@ -114,7 +114,7 @@ export default function MapTool() {
           <button
             ref={jsonBtnRef}
             onClick={handleOpenJsonEditor}
-            className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--button-secondary-bg)] text-[var(--text-secondary)] hover:bg-[var(--button-secondary-hover)] hover:text-[var(--text-primary)] border-none cursor-pointer transition-colors"
+            className="text-[10px] px-1.5 py-0.5 cut-corners bg-[var(--button-secondary-bg)] text-[var(--text-secondary)] hover:bg-[var(--button-secondary-hover)] hover:text-[var(--text-primary)] border-none cursor-pointer transition-colors"
             title="Edit map data as JSON"
           >
             ✏ JSON

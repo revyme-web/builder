@@ -66,7 +66,7 @@ export function VariablePresetPillRow({
         <button
           ref={anchorRef}
           onClick={() => { if (canEdit) setEditOpen(true); }}
-          className="w-full h-8 flex items-center justify-between px-2 bg-[var(--accent)] rounded-[var(--radius-lg)] text-xs font-medium text-[var(--accent-fg)] cursor-pointer transition-colors hover:opacity-90 truncate"
+          className="w-full h-8 flex items-center justify-between px-2 bg-[var(--accent)] cut-corners text-xs font-medium text-[var(--accent-fg)] cursor-pointer transition-colors hover:opacity-90 truncate"
           title={`Preset: ${tokenLabel} — click to edit, × to remove`}
         >
           <span className="truncate flex-1 text-left">{tokenLabel}</span>

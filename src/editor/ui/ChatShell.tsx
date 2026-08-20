@@ -252,7 +252,7 @@ export default function ChatShell({
                   <OutOfCreditsCard key={i} />
                 ) : (
                 <div key={i} className="flex justify-start">
-                  <div className={`max-w-[90%] rounded-lg px-2.5 py-1.5 ${
+                  <div className={`max-w-[90%] cut-corners px-2.5 py-1.5 ${
                     msg.error
                       ? 'bg-red-500/10 text-red-400 border border-red-500/20'
                       : 'bg-[var(--control-bg)] text-[var(--text-primary)]'
@@ -272,7 +272,7 @@ export default function ChatShell({
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-[var(--control-bg)] rounded-lg px-2.5 py-1.5">
+                <div className="bg-[var(--control-bg)] cut-corners px-2.5 py-1.5">
                   <p className="text-[11px] text-[var(--text-secondary)]">{loadingLabel}</p>
                 </div>
               </div>
@@ -283,7 +283,7 @@ export default function ChatShell({
 
       {/* Input area */}
       <div className="p-2 shrink-0">
-        <div className="flex items-center gap-2 rounded-lg border border-[var(--border-light)] px-3 py-1.5 bg-[var(--control-bg)]">
+        <div className="flex items-center gap-2 cut-corners cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] px-3 py-1.5 bg-[var(--control-bg)]">
           <input
             ref={inputRef}
             type="text"
@@ -297,7 +297,7 @@ export default function ChatShell({
           {loading ? (
             <button
               onClick={handleStop}
-              className="w-6 h-6 rounded-md flex items-center justify-center transition-colors text-white shrink-0 bg-red-500 hover:bg-red-600 cursor-pointer"
+              className="w-6 h-6 cut-corners flex items-center justify-center transition-colors text-white shrink-0 bg-red-500 hover:bg-red-600 cursor-pointer"
               title="Stop generating"
             >
               <StopIcon />
@@ -306,7 +306,7 @@ export default function ChatShell({
             <button
               onClick={handleSend}
               disabled={!prompt.trim()}
-              className={`w-6 h-6 rounded-md flex items-center justify-center transition-colors text-white shrink-0 ${
+              className={`w-6 h-6 cut-corners flex items-center justify-center transition-colors text-white shrink-0 ${
                 !prompt.trim()
                   ? 'bg-[#7C3AED]/40 cursor-not-allowed'
                   : 'bg-[#7C3AED] hover:bg-[#9333EA] cursor-pointer'

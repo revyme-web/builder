@@ -585,6 +585,7 @@ export default function PreviewOverlay({ open, onClose }: Props) {
             variant={isFullScreen ? 'primary' : 'secondary'}
             size="sm"
             tabIndex={-1}
+            className="cut-corners"
             onClick={() => setIsFullScreen(!isFullScreen)}
             title="Toggle fullscreen"
           >
@@ -661,7 +662,7 @@ export default function PreviewOverlay({ open, onClose }: Props) {
                 title={label}
                 aria-label={label}
                 aria-pressed={active}
-                className="!px-0 !w-[30px]"
+                className="!px-0 !w-[30px] cut-corners"
                 icon={<Icon className="w-[14px] h-[14px]" />}
               />
             );
@@ -682,7 +683,7 @@ export default function PreviewOverlay({ open, onClose }: Props) {
             onClick={handleReload}
             title="Reload preview"
             aria-label="Reload preview"
-            className="!px-0 !w-[30px]"
+            className="!px-0 !w-[30px] cut-corners"
             icon={<ReloadIcon className="w-[14px] h-[14px]" />}
           />
         </div>

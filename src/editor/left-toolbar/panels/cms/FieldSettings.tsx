@@ -267,7 +267,7 @@ function OptionsEditor({ options, onChange }: {
             onChange={(e) => setItems(items.map((o, j) => (j === i ? e.target.value : o)))}
             onBlur={() => commit(items)}
             placeholder={`Option ${i + 1}`}
-            className="flex-1 h-[var(--control-height-sm)] px-2 text-xs bg-[var(--control-bg)] border border-[var(--control-border)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
+            className="flex-1 h-[var(--control-height-sm)] px-2 text-xs bg-[var(--control-bg)] border border-[var(--control-border)] cut-corners cut-border text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
           />
           <button
             onClick={() => {
@@ -275,7 +275,7 @@ function OptionsEditor({ options, onChange }: {
               setItems(next.length ? next : ['']);
               commit(next);
             }}
-            className="w-6 h-6 shrink-0 flex items-center justify-center text-[var(--text-disabled)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors cursor-pointer"
+            className="w-6 h-6 shrink-0 flex items-center justify-center text-[var(--text-disabled)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] cut-corners transition-colors cursor-pointer"
             title="Remove option"
           >
             &times;
@@ -284,7 +284,7 @@ function OptionsEditor({ options, onChange }: {
       ))}
       <button
         onClick={() => setItems([...items, ''])}
-        className="h-[var(--control-height-sm)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--control-bg)] hover:bg-[var(--bg-hover)] border border-dashed border-[var(--control-border)] rounded-md transition-colors cursor-pointer"
+        className="h-[var(--control-height-sm)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--control-bg)] hover:bg-[var(--bg-hover)] border border-dashed border-[var(--control-border)] cut-corners transition-colors cursor-pointer"
       >
         + Add option
       </button>

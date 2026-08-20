@@ -293,7 +293,7 @@ export function ScrollVariantEditor({ nodeId, componentFile, spec }: {
                     // Bound to a template variable — purple pill: click opens the manage
                     // modal (like every variable pill); × unbinds (back to a literal).
                     <button type="button" onClick={() => openSectionVarModal(sec)}
-                      className="w-full max-w-full min-w-0 h-8 flex items-center gap-2 pl-2 pr-1 rounded-[var(--radius-lg)] text-xs font-medium text-[var(--accent-secondary-fg)] cursor-pointer hover:opacity-90 transition-opacity"
+                      className="w-full max-w-full min-w-0 h-8 flex items-center gap-2 pl-2 pr-1 cut-corners text-xs font-medium text-[var(--accent-secondary-fg)] cursor-pointer hover:opacity-90 transition-opacity"
                       style={{ backgroundColor: 'var(--accent-secondary)' }} title={`Variable: ${sectionVarLabel(sec.sectionVar)} — click to manage`}>
                       <span className="truncate flex-1 min-w-0 text-left">{sectionVarLabel(sec.sectionVar)}</span>
                       <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); unbindSectionVar(i); }}
@@ -320,7 +320,7 @@ export function ScrollVariantEditor({ nodeId, componentFile, spec }: {
           ))}
           <div className="sticky bottom-0 -mx-3 px-3 pt-2 pb-1 bg-[var(--bg-surface)] z-10">
             <button onClick={() => write({ sections: [...(spec.sections || []), { sectionId: '', to: '' }] })}
-              className="w-full h-[var(--control-height)] flex items-center justify-center text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors">
+              className="w-full h-[var(--control-height)] flex items-center justify-center text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] cursor-pointer transition-colors">
               Add Section
             </button>
           </div>

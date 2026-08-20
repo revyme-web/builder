@@ -67,7 +67,7 @@ function sidebarSearchInput(value: string, onChange: (v: string) => void, placeh
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full h-[var(--control-height-sm)] px-2.5 text-xs bg-[var(--control-bg)] border border-[var(--control-border)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
+      className="w-full h-[var(--control-height-sm)] px-2.5 text-xs bg-[var(--control-bg)] border border-[var(--control-border)] cut-corners cut-border text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
     />
   );
 }
@@ -347,7 +347,7 @@ export default function CmsEditorOverlay() {
         <button
           onClick={() => setAiPanelOpen(v => !v)}
           title={aiPanelOpen ? 'Hide AI panel' : 'Show AI panel'}
-          className={`flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+          className={`flex items-center gap-1.5 px-2.5 h-7 cut-corners text-xs font-medium transition-colors cursor-pointer ${
             aiPanelOpen
               ? 'bg-[var(--accent)]/15 text-[var(--accent-text)]'
               : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'

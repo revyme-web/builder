@@ -436,7 +436,7 @@ export function BorderGroupRow({ group, isEditing, onEdit, onDelete, usages, onS
   return (
     <SidebarRow
       label={group.label}
-      icon={<span className="w-3.5 h-3.5 rounded-sm bg-transparent block" style={previewStyle} />}
+      icon={<span className="w-3.5 h-3.5 rounded bg-transparent block" style={previewStyle} />}
       isActive={isEditing}
       onClick={(e: React.MouseEvent) => {
         // Shift+click → toggle in the shared multi-select set instead of edit.

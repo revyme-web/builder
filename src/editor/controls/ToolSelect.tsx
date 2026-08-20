@@ -19,7 +19,7 @@ export default function ToolSelect({ value, onChange, options, className, disabl
         value={value}
         disabled={disabled}
         onChange={(e) => { trace.action('tool-select:change', { from: value, to: e.target.value }); onChange(e.target.value); }}
-        className={`w-full h-[var(--control-height)] pl-2 pr-6 text-xs appearance-none bg-[var(--grid-line)] border border-[var(--control-border)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] cursor-pointer'}`}
+        className={`w-full h-[var(--control-height)] pl-2 pr-6 text-xs appearance-none bg-[var(--grid-line)] border border-[var(--control-border)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] cursor-pointer'}`}
       >
         {options.map(opt => (
           <option key={opt.value} value={opt.value} disabled={opt.disabled}>{opt.label}</option>

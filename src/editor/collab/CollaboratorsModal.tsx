@@ -62,7 +62,7 @@ export default function CollaboratorsModal({ isOpen, onClose }: Props) {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.2 }}
-              className="relative w-[90%] max-w-sm rounded-lg shadow-2xl overflow-hidden bg-[var(--bg-surface)]"
+              className="relative w-[90%] max-w-sm cut-corners cut-lg shadow-2xl overflow-hidden bg-[var(--bg-surface)]"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -70,7 +70,7 @@ export default function CollaboratorsModal({ isOpen, onClose }: Props) {
                 <h3 className="text-xs font-bold text-[var(--text-primary)]">Collaborators</h3>
                 <button
                   onClick={onClose}
-                  className="p-1 hover:bg-[var(--bg-hover)] rounded-md transition-colors"
+                  className="p-1 hover:bg-[var(--bg-hover)] cut-corners transition-colors"
                 >
                   <X className="w-4 h-4 text-[var(--text-secondary)]" />
                 </button>
@@ -279,7 +279,7 @@ function CloudBody() {
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
               placeholder="colleague@example.com"
-              className="flex-1 min-w-0 px-3 py-2 text-[11px] bg-[var(--bg-canvas)] border border-[var(--border-light)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] placeholder:opacity-50 focus:outline-none focus:border-[var(--border-focus)] transition-colors"
+              className="flex-1 min-w-0 px-3 py-2 text-[11px] bg-[var(--bg-canvas)] border border-[var(--border-light)] cut-corners cut-border [--cut-border-color:var(--border-light)] focus:[--cut-border-color:var(--border-focus)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] placeholder:opacity-50 focus:outline-none focus:border-[var(--border-focus)] transition-colors"
               disabled={inviting}
             />
             <div className="relative">
@@ -290,7 +290,7 @@ function CloudBody() {
                   setIsRoleDropdownOpen(!isRoleDropdownOpen);
                 }}
                 disabled={inviting}
-                className="flex items-center gap-1.5 px-2.5 py-2 text-[11px] bg-[var(--bg-canvas)] border border-[var(--border-light)] rounded-md text-[var(--text-primary)] hover:border-[var(--border-focus)] focus:outline-none focus:border-[var(--border-focus)] transition-colors cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 px-2.5 py-2 text-[11px] bg-[var(--bg-canvas)] border border-[var(--border-light)] cut-corners cut-border [--cut-border-color:var(--border-light)] hover:[--cut-border-color:var(--border-focus)] focus:[--cut-border-color:var(--border-focus)] text-[var(--text-primary)] hover:border-[var(--border-focus)] focus:outline-none focus:border-[var(--border-focus)] transition-colors cursor-pointer disabled:opacity-50"
               >
                 <span className="capitalize">{inviteRole}</span>
                 <ChevronDown
@@ -300,7 +300,7 @@ function CloudBody() {
                 />
               </button>
               {isRoleDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 w-full bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-md shadow-lg overflow-hidden z-10">
+                <div className="absolute top-full left-0 mt-1 w-full bg-[var(--bg-surface)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-lg overflow-hidden z-10">
                   <button
                     type="button"
                     onClick={() => {
@@ -335,7 +335,7 @@ function CloudBody() {
             <button
               type="submit"
               disabled={inviting || !inviteEmail.trim()}
-              className="px-3 py-2 text-[11px] font-medium text-[var(--accent-fg)] bg-[var(--accent)] rounded-md hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
+              className="px-3 py-2 text-[11px] font-medium text-[var(--accent-fg)] bg-[var(--accent)] cut-corners hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
             >
               {inviting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Invite'}
             </button>
@@ -345,7 +345,7 @@ function CloudBody() {
 
         {/* Error message */}
         {error && (
-          <div className="px-3 py-2 text-[10px] text-red-400 bg-red-500/10 rounded-md border border-red-500/20">
+          <div className="px-3 py-2 text-[10px] text-red-400 bg-red-500/10 cut-corners border border-red-500/20">
             {error}
           </div>
         )}
@@ -361,7 +361,7 @@ function CloudBody() {
               {[1, 2, 3].map((i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-[var(--bg-canvas)] animate-pulse"
+                  className="flex items-center gap-2.5 px-2.5 py-2 cut-corners bg-[var(--bg-canvas)] animate-pulse"
                 >
                   <div className="w-7 h-7 rounded-full bg-white/10 flex-shrink-0" />
                   <div className="flex-1 min-w-0 flex flex-col gap-1.5">
@@ -525,7 +525,7 @@ function MemberRow({
     : 'hover:bg-[var(--bg-canvas)] transition-colors';
 
   return (
-    <div className={`flex items-center gap-2.5 px-2.5 py-2 rounded-md group ${rowChrome}`}>
+    <div className={`flex items-center gap-2.5 px-2.5 py-2 cut-corners group ${rowChrome}`}>
       {/* Avatar — owner uses solid bg-fill, others use bg + colored
           border-2 like the old builder. */}
       <div
@@ -582,7 +582,7 @@ function MemberRow({
                 onOpenDropdown(e.currentTarget.getBoundingClientRect());
               }}
               disabled={removing || updatingRole}
-              className="p-1 mr-1 rounded text-[var(--text-secondary)] opacity-60 group-hover:opacity-100 hover:text-[var(--text-primary)] hover:bg-white/5 transition-all"
+              className="p-1 mr-1 cut-corners text-[var(--text-secondary)] opacity-60 group-hover:opacity-100 hover:text-[var(--text-primary)] hover:bg-white/5 transition-all"
             >
               {removing || updatingRole ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -644,7 +644,7 @@ function CollaboratorDropdown({
   return (
     <div
       data-collab-dropdown
-      className="fixed z-[9999999] min-w-[160px] bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-lg p-1.5"
+      className="fixed z-[9999999] min-w-[160px] bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-lg p-1.5"
       style={{ top: position.top, left: position.left }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -654,7 +654,7 @@ function CollaboratorDropdown({
         onMouseEnter={() => setOpenRoleSubmenu(true)}
         onMouseLeave={() => setOpenRoleSubmenu(false)}
       >
-        <button className="w-full px-3 py-2 text-xs text-left flex items-center justify-between hover:bg-white/10 rounded-[var(--radius-sm)] transition-colors text-[var(--text-primary)]">
+        <button className="w-full px-3 py-2 text-xs text-left flex items-center justify-between hover:bg-white/10 cut-corners transition-colors text-[var(--text-primary)]">
           <span>Change role</span>
           <ChevronRight className="w-3 h-3 text-[var(--text-secondary)]" />
         </button>
@@ -663,10 +663,10 @@ function CollaboratorDropdown({
             className="absolute left-full -top-1.5 pl-3"
             onMouseEnter={() => setOpenRoleSubmenu(true)}
           >
-            <div className="min-w-[120px] bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-lg p-1.5">
+            <div className="min-w-[120px] bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-lg p-1.5">
               <button
                 onClick={() => onChangeRole('editor')}
-                className={`w-full px-3 py-2 text-xs text-left rounded-[var(--radius-sm)] transition-colors text-[var(--text-primary)] ${
+                className={`w-full px-3 py-2 text-xs text-left cut-corners transition-colors text-[var(--text-primary)] ${
                   row.role === 'editor' ? 'bg-[var(--bg-hover)]' : 'hover:bg-white/10'
                 }`}
               >
@@ -674,7 +674,7 @@ function CollaboratorDropdown({
               </button>
               <button
                 onClick={() => onChangeRole('viewer')}
-                className={`w-full px-3 py-2 text-xs text-left rounded-[var(--radius-sm)] transition-colors text-[var(--text-primary)] ${
+                className={`w-full px-3 py-2 text-xs text-left cut-corners transition-colors text-[var(--text-primary)] ${
                   row.role === 'viewer' ? 'bg-[var(--bg-hover)]' : 'hover:bg-white/10'
                 }`}
               >
@@ -688,7 +688,7 @@ function CollaboratorDropdown({
       {/* Remove */}
       <button
         onClick={onRemove}
-        className="w-full px-3 py-2 text-xs text-left text-[var(--text-primary)] hover:bg-white/10 rounded-[var(--radius-sm)] transition-colors"
+        className="w-full px-3 py-2 text-xs text-left text-[var(--text-primary)] hover:bg-white/10 cut-corners transition-colors"
       >
         Remove
       </button>

@@ -585,7 +585,7 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
         </motion.h3>
         <button
           onClick={handleClose}
-          className="p-1 hover:bg-[var(--bg-hover)] rounded-md transition-colors"
+          className="p-1 hover:bg-[var(--bg-hover)] cut-corners transition-colors"
         >
           <XIcon className="w-4 h-4 text-[var(--text-secondary)]" />
         </button>
@@ -632,7 +632,7 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.2, delay: 0.15 }}
-            className="w-full mb-4 rounded-lg"
+            className="w-full mb-4 cut-corners"
           />
         )}
 
@@ -649,7 +649,7 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
             {!isFirstStep && (
               <button
                 onClick={handlePrev}
-                className="flex items-center gap-1 px-3 py-1.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
+                className="flex items-center gap-1 px-3 py-1.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] cut-corners transition-colors"
               >
                 <ChevronLeftIcon className="w-3 h-3" />
                 Back
@@ -657,7 +657,7 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
             )}
             <button
               onClick={handleNext}
-              className="flex items-center gap-1 px-4 py-1.5 text-[11px] text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-md transition-opacity"
+              className="flex items-center gap-1 px-4 py-1.5 text-[11px] text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 cut-corners transition-opacity"
             >
               {isLastStep ? 'Get Started' : 'Next'}
               {!isLastStep && <ChevronRightIcon className="w-3 h-3" />}
@@ -699,14 +699,16 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               onClick={handleOutsideClick}
-              className="absolute rounded-md cursor-not-allowed"
+              className="absolute cut-corners cut-border cursor-not-allowed"
               style={{
                 top: targetRect.top - 4,
                 left: targetRect.left - 4,
                 width: targetRect.width + 8,
                 height: targetRect.height + 8,
                 border: '2px solid var(--accent)',
-                boxShadow: '0 0 0 4px rgba(var(--accent-rgb, 59, 130, 246), 0.2)',
+                // Diagonal strokes match the accent ring; the old glow boxShadow was
+                // silently clipped by the cut polygon, so it is gone rather than dead.
+                ['--cut-border-color' as string]: 'var(--accent)',
               }}
             />
           )}
@@ -719,14 +721,16 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               onClick={handleOutsideClick}
-              className="absolute rounded-md cursor-not-allowed"
+              className="absolute cut-corners cut-border cursor-not-allowed"
               style={{
                 top: secondaryTargetRect.top - 4,
                 left: secondaryTargetRect.left - 4,
                 width: secondaryTargetRect.width + 8,
                 height: secondaryTargetRect.height + 8,
                 border: '2px solid var(--accent)',
-                boxShadow: '0 0 0 4px rgba(var(--accent-rgb, 59, 130, 246), 0.2)',
+                // Diagonal strokes match the accent ring; the old glow boxShadow was
+                // silently clipped by the cut polygon, so it is gone rather than dead.
+                ['--cut-border-color' as string]: 'var(--accent)',
               }}
             />
           )}
@@ -742,13 +746,13 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
               >
-                {renderStepCard("w-80 rounded-lg shadow-2xl overflow-hidden bg-[var(--bg-surface)] pointer-events-auto")}
+                {renderStepCard("w-80 cut-corners cut-lg shadow-2xl overflow-hidden bg-[var(--bg-surface)] pointer-events-auto")}
               </motion.div>
             )}
 
             {/* Positioned modal for cards with a target */}
             {currentStep.target && bubblePosition && renderStepCard(
-              "w-80 rounded-lg shadow-2xl overflow-hidden bg-[var(--bg-surface)] fixed",
+              "w-80 cut-corners cut-lg shadow-2xl overflow-hidden bg-[var(--bg-surface)] fixed",
               {
                 top: bubblePosition.top,
                 bottom: bubblePosition.bottom,

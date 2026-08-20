@@ -57,13 +57,13 @@ export default function CreateVideoPresetPanel({ initialValue, onCreated }: Prop
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="Preset name"
-        className="w-full bg-[var(--grid-line)] border border-[var(--control-border)] focus:border-[var(--border-focus)] rounded-[var(--radius-lg)] px-2.5 py-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-disabled)]"
+        className="w-full bg-[var(--grid-line)] border border-[var(--control-border)] focus:border-[var(--border-focus)] cut-corners cut-border focus:[--cut-border-color:var(--border-focus)] px-2.5 py-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-disabled)]"
       />
 
       {url ? (
         <div className="flex flex-col gap-2">
           <div
-            className="w-full h-28 rounded-lg border border-[var(--border-light)] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity bg-black"
+            className="w-full h-28 cut-corners cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity bg-black"
             onClick={() => setPickerOpen(true)}
           >
             <video
@@ -78,7 +78,7 @@ export default function CreateVideoPresetPanel({ initialValue, onCreated }: Prop
           </div>
           <button
             onClick={() => setPickerOpen(true)}
-            className="w-full h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+            className="w-full h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
           >
             Change Video
           </button>
@@ -86,7 +86,7 @@ export default function CreateVideoPresetPanel({ initialValue, onCreated }: Prop
       ) : (
         <button
           onClick={() => setPickerOpen(true)}
-          className="w-full h-28 rounded-lg border-2 border-dashed border-[var(--control-border)] hover:border-[var(--accent)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+          className="w-full h-28 cut-corners border-2 border-dashed border-[var(--control-border)] hover:border-[var(--accent)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
@@ -98,7 +98,7 @@ export default function CreateVideoPresetPanel({ initialValue, onCreated }: Prop
       <button
         onClick={handleCreate}
         disabled={!name.trim() || !url}
-        className={`w-full h-[var(--control-height)] rounded-[var(--radius-lg)] text-xs font-medium transition-colors ${
+        className={`w-full h-[var(--control-height)] cut-corners text-xs font-medium transition-colors ${
           name.trim() && url
             ? 'bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer hover:opacity-90'
             : 'bg-[var(--grid-line)] text-[var(--text-disabled)] cursor-not-allowed'

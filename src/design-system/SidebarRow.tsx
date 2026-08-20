@@ -135,7 +135,7 @@ const SidebarRow = forwardRef<HTMLDivElement, SidebarRowProps>(
       <div
         ref={ref}
         className={`
-        group flex items-center ${s.row} rounded-md transition-colors select-none
+        group flex items-center ${s.row} cut-corners transition-colors select-none
         ${
           isActive
             ? "bg-[var(--btn-secondary-bg)] text-[var(--text-primary)]"

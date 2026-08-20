@@ -106,12 +106,12 @@ const MenuButton = React.memo(function MenuButton({
       onMouseLeave={disabled ? undefined : tooltip.onLeave}
       // Native browser tooltip removed — we draw our own. Without this,
       // the browser's grey title-bubble fights ours on slow systems.
-      className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+      className={`w-8 h-8 cut-corners flex items-center justify-center transition-colors ${
         disabled
           ? 'text-[var(--text-secondary)] opacity-40 cursor-not-allowed'
           : isActive
             ? 'bg-[var(--btn-secondary-bg)] text-[var(--text-primary)]'
-            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
       }`}
     >
       {children}
@@ -205,10 +205,10 @@ export default function LeftMenu() {
 
   return (
     <div
-      className="left-0 w-[52px] bg-[var(--bg-surface)] fixed z-[5000] flex flex-col justify-between items-center px-[10px] pb-4"
+      className="w-[52px] fixed z-[5000] flex flex-col justify-between items-center px-[10px] pb-4"
       // willChange/isolation: own compositor layer — see LeftPanel (grey
       // checkerboard under the zoom-out re-raster burst).
-      style={{ top: 52, height: 'calc(100vh - 52px)', willChange: 'transform', isolation: 'isolate', paddingTop: 12 }}
+      style={{ left: 0, top: 52, height: 'calc(100vh - 52px)', willChange: 'transform', isolation: 'isolate', paddingTop: 12 }}
     >
       {/* Right border */}
       <div className="absolute right-0 top-4 bottom-0 w-px bg-[var(--border-light)]" />
@@ -235,7 +235,7 @@ export default function LeftMenu() {
                 onClick={isViewer ? undefined : (e) => { togglePanel('vibe'); handleClick('vibe'); e.currentTarget.blur(); }}
                 onMouseEnter={isViewer ? undefined : (e) => handleEnter('vibe', 'Vibe AI', e.currentTarget)}
                 onMouseLeave={isViewer ? undefined : handleLeave}
-                className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors text-[10px] font-bold tracking-wide ${
+                className={`w-8 h-8 cut-corners flex items-center justify-center transition-colors text-[10px] font-bold tracking-wide ${
                   isViewer
                     ? 'bg-[var(--accent)] text-[var(--accent-fg)] opacity-40 cursor-not-allowed'
                     : activePanel === 'vibe'
@@ -260,7 +260,7 @@ export default function LeftMenu() {
           onClick={isViewer ? undefined : (e) => { togglePanel('insert'); handleClick('insert'); e.currentTarget.blur(); }}
           onMouseEnter={isViewer ? undefined : (e) => handleEnter('insert', 'Insert', e.currentTarget)}
           onMouseLeave={isViewer ? undefined : handleLeave}
-          className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+          className={`w-8 h-8 cut-corners flex items-center justify-center transition-colors ${
             isViewer
               ? 'bg-[#0d9668] opacity-40 cursor-not-allowed'
               : activePanel === 'insert'
@@ -327,12 +327,12 @@ export default function LeftMenu() {
           onClick={isViewer ? undefined : (e) => { setCodeOpen(v => !v); handleClick('code'); e.currentTarget.blur(); }}
           onMouseEnter={isViewer ? undefined : (e) => handleEnter('code', 'Code', e.currentTarget)}
           onMouseLeave={isViewer ? undefined : handleLeave}
-          className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+          className={`w-8 h-8 cut-corners flex items-center justify-center transition-colors ${
             isViewer
               ? 'text-[var(--text-secondary)] opacity-40 cursor-not-allowed'
               : codeOpen
                 ? 'bg-[var(--btn-secondary-bg)] text-[var(--text-primary)]'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
           }`}
         >
           <CodeIcon className="w-[18px] h-[18px]" />
@@ -382,7 +382,7 @@ export default function LeftMenu() {
               animate={{ opacity: 1, scale: 1, x: 0, y: '-50%' }}
               exit={{ opacity: 0, scale: 0.92, x: -4, y: '-50%' }}
               transition={{ duration: 0.12, ease: 'easeOut' }}
-              className="fixed px-2 py-1 rounded-md bg-[var(--accent)] shadow-md text-[11px] font-medium text-[var(--accent-fg)] whitespace-nowrap pointer-events-none"
+              className="fixed px-2 py-1 cut-corners bg-[var(--accent)] shadow-md text-[11px] font-medium text-[var(--accent-fg)] whitespace-nowrap pointer-events-none"
               style={{
                 top: tooltip.top,
                 left: tooltip.left,

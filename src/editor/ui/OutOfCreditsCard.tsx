@@ -20,7 +20,7 @@ import { openWorkspaceCreditsPage } from '@/code/stores/credits-store';
 export default function OutOfCreditsCard() {
   return (
     <div className="flex justify-start">
-      <div className="max-w-[90%] w-full rounded-lg border border-[var(--border-light)] bg-[var(--control-bg)] px-3 py-2.5">
+      <div className="max-w-[90%] w-full cut-corners cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] bg-[var(--control-bg)] px-3 py-2.5">
         <div className="flex items-center gap-1.5">
           <svg
             width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -38,7 +38,7 @@ export default function OutOfCreditsCard() {
         <button
           type="button"
           onClick={openWorkspaceCreditsPage}
-          className="mt-2 w-full rounded-md bg-[var(--accent)] px-2 py-1.5 text-[11px] font-medium text-[var(--accent-fg)] transition-[filter] hover:brightness-110 cursor-pointer"
+          className="mt-2 w-full cut-corners bg-[var(--accent)] px-2 py-1.5 text-[11px] font-medium text-[var(--accent-fg)] transition-[filter] hover:brightness-110 cursor-pointer"
         >
           Top up credits
         </button>

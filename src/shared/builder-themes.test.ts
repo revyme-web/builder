@@ -36,11 +36,11 @@ describe('builder themes', () => {
     for (const t of BUILDER_THEMES) {
       for (const mode of ['light', 'dark'] as const) {
         const { accent, accentFg } = t[mode];
-        // DEFAULT is the one deliberate exemption (2026-08-12): white on the
-        // selection blue #3388ff is 3.44:1 — the same trade Figma ships on
-        // its own blue, chosen by explicit product decision so the chrome
-        // accent matches the canvas selection. Held to a 3:1 floor (WCAG
-        // large-text/UI-component bar) so it can't silently degrade further.
+        // DEFAULT is the one deliberate exemption: white on the stock
+        // magenta #b858a3 is 4.2:1 — clears WCAG's 3:1 large-text/UI bar
+        // but not small-text AA, the same trade the old selection-blue
+        // default shipped (white label by explicit user choice). Held to a
+        // 3:1 floor so it can't silently degrade further.
         const floor = t.id === 'default' ? 3 : 4.5;
         expect(ratio(accent, accentFg), `${t.id} (${mode}): ${accentFg} on ${accent}`)
           .toBeGreaterThanOrEqual(floor);
@@ -118,11 +118,12 @@ describe('builder themes', () => {
 
   test('Default matches the shipped globals.css accent', () => {
     // If this drifts, picking Default (which CLEARS the overrides) would land
-    // on a different colour than the menu row implies. Stock blue = the
-    // dark-canvas selection stroke, white label (restored 2026-08-12).
+    // on a different colour than the menu row implies. Stock magenta
+    // #b858a3 with a WHITE label — user decision 2026-08-20, settled after
+    // the accent experiments; see the contrast-floor note above.
     const d = getBuilderThemeById(DEFAULT_BUILDER_THEME_ID)!;
-    expect(d.light.accent).toBe('#3388ff');
-    expect(d.dark.accent).toBe('#3388ff');
+    expect(d.light.accent).toBe('#b858a3');
+    expect(d.dark.accent).toBe('#b858a3');
     expect(d.light.accentFg).toBe('#ffffff');
   });
 

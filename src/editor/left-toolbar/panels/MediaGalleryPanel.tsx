@@ -169,7 +169,7 @@ const MediaTile = React.memo(function MediaTile({ url, kind, mediaKey, isSelecte
       // Selected: border snaps to accent with NO transition — with the base
       // white border + `transition-colors`, every tile joining the selection
       // flashed white→blue under the instant outline (the reported fringe).
-      className={`group relative aspect-square rounded-md overflow-hidden border cursor-grab active:cursor-grabbing ${
+      className={`group relative aspect-square cut-corners overflow-hidden border cursor-grab active:cursor-grabbing ${
         isSelected
           ? 'border-[var(--accent)] transition-none'
           : 'border-[var(--border-light)] hover:border-[var(--accent)] transition-colors'
@@ -198,7 +198,7 @@ const MediaTile = React.memo(function MediaTile({ url, kind, mediaKey, isSelecte
           aria-label="Delete asset"
           onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
           onClick={(e) => { e.stopPropagation(); onRequestDelete(mediaKey); }}
-          className="absolute top-1 right-1 z-10 flex h-5 w-5 items-center justify-center rounded-md bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-black/80 transition-opacity cursor-pointer"
+          className="absolute top-1 right-1 z-10 flex h-5 w-5 items-center justify-center rounded bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-black/80 transition-opacity cursor-pointer"
         >
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
             <path d="M6 6l12 12" />
@@ -475,7 +475,7 @@ export default function MediaGalleryPanel() {
   const storageLabel = storage ? `${storage.currentUsageMB} / ${storage.storageLimitMB} MB` : '0.0 / 500 MB';
 
   return (
-    <div className="flex flex-col h-full bg-[var(--bg-surface)]">
+    <div className="flex flex-col h-full">
       <SectionLabel size="md" right={<span className="text-[11px] text-[var(--text-disabled)]">{storageLabel}</span>}>Media</SectionLabel>
 
       {/* Tabs */}
@@ -486,7 +486,7 @@ export default function MediaGalleryPanel() {
       {/* Error banner (e.g. 402 storage cap reached) */}
       {uploadError && (
         <div className="px-3 mt-3">
-          <div className="px-2.5 py-1.5 rounded-md bg-red-500/10 border border-red-500/20 text-[11px] text-red-500 dark:text-red-400 leading-snug">
+          <div className="px-2.5 py-1.5 cut-corners bg-red-500/10 border border-red-500/20 text-[11px] text-red-500 dark:text-red-400 leading-snug">
             {uploadError}
           </div>
         </div>
@@ -504,7 +504,7 @@ export default function MediaGalleryPanel() {
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-md border border-[var(--border-light)] text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-2 py-2 cut-corners cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer disabled:opacity-50"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -542,7 +542,7 @@ export default function MediaGalleryPanel() {
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className="aspect-square rounded-md border border-[var(--border-light)] bg-[var(--bg-hover)] animate-pulse"
+                className="aspect-square cut-corners cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] bg-[var(--bg-hover)] animate-pulse"
                 style={{ animationDelay: `${i * 90}ms` }}
               />
             ))}

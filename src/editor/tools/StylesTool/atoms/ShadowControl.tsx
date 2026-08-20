@@ -380,7 +380,7 @@ function ShadowPresetPillRow({ tokenName, tokenLabel, currentValue, previewColor
         <ControlLabel label="Shadow" property="boxShadow" />
         <button
           ref={anchorRef}
-          className="w-full h-8 flex items-center gap-2 px-2 bg-[var(--accent)] rounded-[var(--radius-lg)] cursor-pointer transition-colors min-w-0 overflow-hidden hover:opacity-90"
+          className="w-full h-8 flex items-center gap-2 px-2 bg-[var(--accent)] cut-corners cursor-pointer transition-colors min-w-0 overflow-hidden hover:opacity-90"
           onClick={() => setEditOpen(true)}
         >
           <ColorSwatch style={{ backgroundColor: previewColor }} />

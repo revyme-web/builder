@@ -282,7 +282,7 @@ export default function TranslationsOverlay() {
             }}
             disabled={aiState.step === 'estimating' || aiState.step === 'running' || pendingRows.length === 0}
             data-ai-translate
-            className="flex items-center gap-1.5 px-3 h-8 rounded-[var(--radius-lg)] text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] hover:opacity-90 disabled:opacity-40 cursor-pointer disabled:cursor-default transition-opacity"
+            className="flex items-center gap-1.5 px-3 h-8 cut-corners text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] hover:opacity-90 disabled:opacity-40 cursor-pointer disabled:cursor-default transition-opacity"
             title={pendingRows.length === 0 ? 'Everything is translated' : `Translate ${pendingRows.length} missing strings with AI`}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" /></svg>
@@ -293,7 +293,7 @@ export default function TranslationsOverlay() {
           {(aiState.step === 'confirm' || aiState.step === 'error') && (
             <div
               data-ai-translate-confirm
-              className="absolute right-0 top-10 z-[10001] w-[240px] p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-light)] shadow-2xl flex flex-col gap-2.5"
+              className="absolute right-0 top-10 z-[10001] w-[240px] p-3 cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] bg-[var(--bg-surface)] border border-[var(--border-light)] shadow-2xl flex flex-col gap-2.5"
             >
               {aiState.step === 'confirm' ? (
                 <>
@@ -307,8 +307,8 @@ export default function TranslationsOverlay() {
                     )}
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => setAiState({ step: 'idle' })} className="flex-1 h-7 rounded-md text-xs bg-[var(--bg-hover)] text-[var(--text-primary)] cursor-pointer">Cancel</button>
-                    <button onClick={() => void handleAiRun()} data-ai-translate-run className="flex-1 h-7 rounded-md text-xs bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer">Translate</button>
+                    <button onClick={() => setAiState({ step: 'idle' })} className="flex-1 h-7 cut-corners text-xs bg-[var(--bg-hover)] text-[var(--text-primary)] cursor-pointer">Cancel</button>
+                    <button onClick={() => void handleAiRun()} data-ai-translate-run className="flex-1 h-7 cut-corners text-xs bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer">Translate</button>
                   </div>
                 </>
               ) : aiState.outOfCredits ? (
@@ -320,7 +320,7 @@ export default function TranslationsOverlay() {
                   <button
                     onClick={() => { openWorkspaceCreditsPage(); setAiState({ step: 'idle' }); }}
                     data-ai-translate-topup
-                    className="w-full h-7 rounded-md text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] hover:opacity-90 cursor-pointer transition-opacity"
+                    className="w-full h-7 cut-corners text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] hover:opacity-90 cursor-pointer transition-opacity"
                   >
                     Top Up
                   </button>
@@ -335,7 +335,7 @@ export default function TranslationsOverlay() {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search text…"
-          className="w-[220px] h-[var(--control-height)] px-2.5 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] rounded-[var(--radius-lg)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none transition-colors"
+          className="w-[220px] h-[var(--control-height)] px-2.5 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none transition-colors"
         />
       </div>
 
@@ -453,7 +453,7 @@ function TranslationRow({ row, target, onSaved }: { row: Row; target: string; on
             if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) return;
             e.stopPropagation();
           }}
-          className="w-full px-2.5 py-2 text-sm bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] rounded-[var(--radius-lg)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none transition-colors resize-none leading-relaxed"
+          className="w-full px-2.5 py-2 text-sm bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none transition-colors resize-none leading-relaxed"
         />
       </div>
     </div>

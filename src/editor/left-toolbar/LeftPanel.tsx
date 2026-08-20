@@ -4,6 +4,7 @@
 import React from 'react';
 import { useAtomValue } from 'jotai';
 import { leftPanelAtom } from '@/code/stores/left-panel-store';
+import { workspaceOverlayOpenAtom } from '@/code/stores/workspace-overlay-store';
 import PagesLayersPanel from './panels/PagesLayersPanel';
 import InsertPanel from './panels/insert';
 import LibraryPanel from './panels/LibraryPanel';
@@ -43,6 +44,11 @@ const PANEL_WIDTH = 256;
 
 export default function LeftPanel() {
   const activePanel = useAtomValue(leftPanelAtom);
+  // The bottom-right cut is a window onto the CANVAS. While a takeover
+  // overlay (CMS, localization, component/plugin editor) covers the
+  // workspace, the notch would show a triangle of stale canvas through the
+  // overlay's chrome — so the corner squares off for the duration.
+  const overlayOpen = useAtomValue(workspaceOverlayOpenAtom);
   const PanelComponent = PANEL_MAP[activePanel];
   if (!PanelComponent) return null;
 
@@ -57,7 +63,7 @@ export default function LeftPanel() {
       // mouseup over here.
       data-editor-panel="left-primary"
       data-tutorial="left-panel"
-      className="fixed z-[5000] bg-[var(--bg-surface)] border-r border-[var(--border-light)] flex flex-col overflow-hidden"
+      className={`fixed z-[5000] flex flex-col overflow-hidden ${overlayOpen ? '' : 'cut-br cut-lg'}`}
       // willChange/isolation: own compositor layer — during a big zoom-out
       // the sandbox's re-materialise + re-raster burst saturates the shared
       // GPU process; without a persistent texture the panel's invalidated

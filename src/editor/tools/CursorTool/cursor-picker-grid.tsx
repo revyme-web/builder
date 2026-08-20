@@ -20,7 +20,7 @@ export function CursorPickerGrid({ value, onChange }: { value: string; onChange:
             title={cursorLabel(name)}
             style={{ cursor: name }}
             className={`
-              flex flex-col items-center justify-center gap-1 p-2 rounded-md border transition-colors
+              flex flex-col items-center justify-center gap-1 p-2 cut-corners border transition-colors
               ${isSelected
                 ? 'bg-[var(--accent)] border-[var(--accent)] text-[var(--accent-fg)]'
                 : 'bg-[var(--grid-line)] border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)]'

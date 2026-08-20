@@ -40,7 +40,7 @@ export default function Breadcrumb({ segments }: BreadcrumbProps) {
             {i > 0 && <Chevron />}
             <button
               onClick={isClickable ? seg.onClick : undefined}
-              className={`flex items-center gap-1.5 px-2.5 py-1 bg-[var(--button-secondary-bg,rgba(255,255,255,0.06))] rounded-md text-sm font-medium transition-all max-w-[250px] whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-2 h-[30px] bg-[var(--button-secondary-bg,rgba(255,255,255,0.06))] cut-corners text-xs font-medium transition-all max-w-[250px] whitespace-nowrap ${
                 isClickable ? 'hover:brightness-125 cursor-pointer' : 'cursor-default'
               }`}
               style={{ color }}

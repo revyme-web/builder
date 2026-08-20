@@ -177,12 +177,12 @@ const GuideContextMenu: React.FC<GuideContextMenuProps> = ({ x, y, guideId, file
     <div
       ref={menuRef}
       data-ruler-guide-menu
-      className="fixed py-2 min-w-[160px] bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-lg"
+      className="fixed py-2 min-w-[160px] bg-[var(--bg-surface)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-lg"
       style={{ left: x, top: y, zIndex: 99999 }}
     >
       <div
         onClick={handleDelete}
-        className="group flex items-center gap-3 mx-1.5 px-2 py-2 cursor-pointer rounded-[var(--radius-sm)] hover:bg-[var(--accent)]"
+        className="group flex items-center gap-3 mx-1.5 px-2 py-2 cursor-pointer cut-corners hover:bg-[var(--accent)]"
       >
         <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] flex-1">
           Delete Guide

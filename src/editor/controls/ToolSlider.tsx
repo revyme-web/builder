@@ -90,7 +90,9 @@ export default function ToolSlider({ value, min = 0, max = 100, step = 1, onChan
       <SliderPrimitive.Track className="relative h-1 w-full grow overflow-hidden rounded-full bg-[var(--slider-bg)]">
         <SliderPrimitive.Range className="absolute h-full bg-[var(--accent)]" />
       </SliderPrimitive.Track>
-      <SliderPrimitive.Thumb className="block h-4 w-4 rounded-full border border-[var(--slider-thumb-border)] bg-white shadow transition-colors focus-visible:outline-none disabled:pointer-events-none" />
+      {/* cut-sm: a 16px thumb can't carry the default 9px slice — 5px keeps
+          the octagon-ish cut readable at this size. */}
+      <SliderPrimitive.Thumb className="block h-4 w-4 cut-corners cut-border [--cut-border-color:var(--slider-thumb-border)] cut-sm border border-[var(--slider-thumb-border)] bg-white shadow transition-colors focus-visible:outline-none disabled:pointer-events-none" />
     </SliderPrimitive.Root>
   );
 }

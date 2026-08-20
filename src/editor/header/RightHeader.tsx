@@ -203,10 +203,12 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
 
   return (
     <div
-      className={`h-[52px] bg-[var(--bg-surface)] border-b border-l border-[var(--border-light)] fixed top-0 right-0 flex items-center px-2 ${
+      className={`h-[52px] fixed top-0 right-0 flex items-center px-2 ${
         settingsOpen ? 'z-[10001]' : 'z-[9999]'
       }`}
-      style={{ width: 260 }}
+      // Sits on the right ChromeIsland (12px margins) — the island backdrop
+      // carries surface/glass/outer border and the cut corners.
+      style={{ width: 260, top: 0, right: 0, isolation: "isolate" }}
     >
       {/* Settings / Export / Live each `flex-1` so the row fills the
           260 px header width with tight 3 px gaps; Play stays compact at
@@ -220,7 +222,7 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
           variant={settingsOpen ? 'primary' : 'secondary'}
           size="sm"
           tabIndex={-1}
-          className="flex-1"
+          className="flex-1 cut-corners"
           data-tutorial="header-settings-button"
           disabled={isViewer}
           onClick={() => {
@@ -245,7 +247,7 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
             variant={exportOpen ? 'primary' : 'secondary'}
             size="sm"
             tabIndex={-1}
-            className="w-full"
+            className="w-full cut-corners"
             onClick={handleExportToggle}
             disabled={!CLOUD_ENABLED || isViewer || isClosedSource}
             // `data-export-trigger` lets ExportDropdown's outside-click
@@ -258,7 +260,7 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
             Export
           </Button>
           {isClosedSource && exportTipOpen && (
-            <div className="absolute left-1/2 top-full z-[10000] mt-2 w-56 -translate-x-1/2 rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)] px-3 py-2 text-center text-[11px] leading-relaxed text-[var(--text-secondary)] shadow-xl pointer-events-none">
+            <div className="absolute left-1/2 top-full z-[10000] mt-2 w-56 -translate-x-1/2 cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] bg-[var(--bg-surface)] px-3 py-2 text-center text-[11px] leading-relaxed text-[var(--text-secondary)] shadow-xl pointer-events-none">
               Export is unavailable — this template's creator made its code closed source.
             </div>
           )}
@@ -278,6 +280,7 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
           size="sm"
           tabIndex={-1}
           icon={<PlayIcon size={14} />}
+          className="cut-corners"
           data-tutorial="header-preview-button"
           onClick={() => {
             // Closing settings first prevents the takeover from sitting
@@ -304,7 +307,7 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
             // stays plain.
             onClick={handleLiveClick}
             disabled={isViewer}
-            className="w-full relative overflow-hidden"
+            className="w-full relative overflow-hidden cut-corners"
             style={primaryBg}
             // Tag for the dropdown's outside-click filter.
             data-live-trigger

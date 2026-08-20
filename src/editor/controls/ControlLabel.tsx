@@ -140,7 +140,7 @@ function PlainOverrideLabel({ label, subLabel, onReset, cell }: { label: string;
       {open && onReset && (
         <>
           <div className="fixed inset-0 z-[100040]" onClick={() => setOpen(false)} />
-          <div className="absolute left-[18px] top-full mt-1 z-[100041] bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-2xl py-1 min-w-[140px]">
+          <div className="absolute left-[18px] top-full mt-1 z-[100041] bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-2xl py-1 min-w-[140px]">
             <button
               type="button"
               onClick={() => {
@@ -994,7 +994,7 @@ export default function ControlLabel({ label, property, plain, forceShow, hideCr
           {/* Parent menu */}
           <div
             ref={menuPortalRef}
-            className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-1.5 z-[100041] min-w-45 border border-[var(--border-light)] space-y-0.5"
+            className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[100041] min-w-45 border border-[var(--border-light)] space-y-0.5"
             style={{ left: menuPos.x, top: menuPos.y }}
             onMouseLeave={() => {
               // Don't close the submenu if the cursor is moving toward it.
@@ -1026,7 +1026,7 @@ export default function ControlLabel({ label, property, plain, forceShow, hideCr
                       item.onClick();
                       closeMenu();
                     }}
-                    className={`group flex items-center justify-between gap-2 mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer ${
+                    className={`group flex items-center justify-between gap-2 mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer ${
                       item.hoverColor === 'accent-secondary'
                         ? 'hover:bg-[var(--accent-secondary)]'
                         : 'hover:bg-[var(--accent)]'
@@ -1054,7 +1054,7 @@ export default function ControlLabel({ label, property, plain, forceShow, hideCr
           {submenuOpen && (
             <div
               ref={submenuPortalRef}
-              className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-1.5 z-[100042] min-w-[200px] max-h-[320px] overflow-y-auto border border-[var(--border-light)] space-y-0.5"
+              className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[100042] min-w-[200px] max-h-[320px] overflow-y-auto border border-[var(--border-light)] space-y-0.5"
               style={{ left: submenuOpen.pos.x, top: submenuOpen.pos.y }}
               onMouseLeave={() => setSubmenuOpen(null)}
             >
@@ -1069,7 +1069,7 @@ export default function ControlLabel({ label, property, plain, forceShow, hideCr
                   )}
                   <button
                     onClick={() => { sub.onClick(); closeMenu(); }}
-                    className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent)] transition-colors"
+                    className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent)] transition-colors"
                   >
                     <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)] truncate">
                       {sub.label}

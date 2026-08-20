@@ -196,7 +196,7 @@ export function ExportDropdown({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: -10 }}
           transition={{ type: 'spring', stiffness: 400, damping: 22, mass: 0.8 }}
-          className="absolute top-full mt-6 right-0 bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] border border-[var(--border-light)] p-3 z-[10001] min-w-[230px]"
+          className="absolute top-full mt-6 right-0 bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] p-3 z-[10001] min-w-[230px]"
         >
           {/* Format list. Locked options stay visible + clickable —
               clicking them just selects (so the primary button flips
@@ -217,7 +217,7 @@ export function ExportDropdown({
                   key={f.id}
                   type="button"
                   onClick={() => onFormatChange(f.id)}
-                  className={`group flex items-center gap-2 px-2 py-2 rounded-[var(--radius-sm)] text-left cursor-pointer transition-colors ${
+                  className={`group flex items-center gap-2 px-2 py-2 cut-corners text-left cursor-pointer transition-colors ${
                     isActive
                       ? 'bg-black/[0.06] dark:bg-white/[0.08]'
                       : 'hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
@@ -261,7 +261,7 @@ export function ExportDropdown({
                 type="button"
                 onClick={onExport}
                 disabled={exporting}
-                className="w-full h-7 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] transition-colors cursor-pointer disabled:opacity-100 disabled:cursor-not-allowed"
+                className="w-full h-7 px-3 text-xs cut-corners font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] transition-colors cursor-pointer disabled:opacity-100 disabled:cursor-not-allowed"
               >
                 {exporting ? 'Exporting…' : 'Export project'}
               </button>
@@ -270,7 +270,7 @@ export function ExportDropdown({
                 type="button"
                 onClick={onUpgrade}
                 title={`${selected.label} export requires Pro`}
-                className="w-full h-7 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] transition-colors cursor-pointer"
+                className="w-full h-7 px-3 text-xs cut-corners font-medium flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] transition-colors cursor-pointer"
               >
                 Upgrade
               </button>

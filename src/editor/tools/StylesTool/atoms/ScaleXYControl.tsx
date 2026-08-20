@@ -57,7 +57,7 @@ function ScaleXYAtom() {
           onChange={(v) => onChangeMultiple({ scale: v, scaleX: '', scaleY: '' })}
           step={0.05}
         />
-        <div className="flex items-center border border-[var(--control-border)] rounded-md overflow-hidden shrink-0">
+        <div className="flex items-center border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)] overflow-hidden shrink-0">
           <button tabIndex={-1}
             onClick={() => {
               if (showIndividual) {

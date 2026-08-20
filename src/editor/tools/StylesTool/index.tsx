@@ -369,7 +369,7 @@ export default function StylesTool() {
             <>
               <div className="fixed inset-0 z-[10000]" onClick={() => setPickerOpen(false)} />
               <div
-                className={`absolute right-[10px] ${pickerDir === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'} bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-1.5 z-[10001] w-max max-h-[360px] overflow-y-auto border border-[var(--border-light)] space-y-0.5 transition-opacity duration-150`}
+                className={`absolute right-[10px] ${pickerDir === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'} bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[10001] w-max max-h-[360px] overflow-y-auto border border-[var(--border-light)] space-y-0.5 transition-opacity duration-150`}
                 style={{ opacity: pickerVisible ? 1 : 0, scrollbarWidth: 'none' }}
               >
                 {addableSpecs.length === 0 && !showPseudoEntry && (
@@ -381,7 +381,7 @@ export default function StylesTool() {
                   <button
                     key={spec.id}
                     onClick={() => handleAdd(spec)}
-                    className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer whitespace-nowrap hover:bg-[var(--accent)] transition-colors"
+                    className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer whitespace-nowrap hover:bg-[var(--accent)] transition-colors"
                   >
                     <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">
                       {spec.label}
@@ -391,7 +391,7 @@ export default function StylesTool() {
                 {showPseudoEntry && (
                   <button
                     onClick={handleAddPseudo}
-                    className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer whitespace-nowrap hover:bg-[var(--accent)] transition-colors"
+                    className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer whitespace-nowrap hover:bg-[var(--accent)] transition-colors"
                   >
                     <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">
                       Pseudo Element

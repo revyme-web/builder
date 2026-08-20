@@ -118,7 +118,7 @@ export function CmsBoundPill({ property, fallbackValue, onUnbound }: CmsBoundPil
       <button
         ref={btnRef}
         onClick={openPicker}
-        className="w-full min-w-0 h-8 flex items-center gap-1.5 pl-1 pr-2 bg-[var(--accent)] rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium text-[var(--accent-fg)] cursor-pointer transition-colors hover:opacity-90 truncate"
+        className="w-full min-w-0 h-8 flex items-center gap-1.5 pl-1 pr-2 bg-[var(--accent)] cut-corners border border-transparent bg-clip-padding text-xs font-medium text-[var(--accent-fg)] cursor-pointer transition-colors hover:opacity-90 truncate"
         title={`Bound to CMS field: ${fieldName} — click to change`}
       >
         <span className="w-5 h-5 flex items-center justify-center shrink-0 text-[var(--accent-fg)]">
@@ -141,7 +141,7 @@ export function CmsBoundPill({ property, fallbackValue, onUnbound }: CmsBoundPil
         <>
           <div className="fixed inset-0 z-[10000]" onClick={() => setPickerOpen(false)} />
           <div
-            className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-1.5 z-[10001] min-w-[200px] max-h-[320px] overflow-y-auto border border-[var(--border-light)] space-y-0.5"
+            className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[10001] min-w-[200px] max-h-[320px] overflow-y-auto border border-[var(--border-light)] space-y-0.5"
             style={{ left: pickerPos.x, top: pickerPos.y }}
           >
             <div className="px-3 py-1.5 text-[10px] font-bold text-[var(--text-disabled)] uppercase">
@@ -155,7 +155,7 @@ export function CmsBoundPill({ property, fallbackValue, onUnbound }: CmsBoundPil
                   setPickerOpen(false);
                   trace.action('cms-bound-pill:rebind', { property, from: fieldId, to: f.id });
                 }}
-                className={`w-[calc(100%-12px)] mx-1.5 flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] cursor-pointer text-left transition-colors ${
+                className={`w-[calc(100%-12px)] mx-1.5 flex items-center justify-between gap-2 px-2.5 py-1.5 cut-corners cursor-pointer text-left transition-colors ${
                   f.id === fieldId
                     ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
                     : 'hover:bg-[var(--accent)] text-[var(--text-primary)] hover:text-[var(--accent-fg)]'
@@ -197,7 +197,7 @@ export function CmsMissingPill({ field, onClear }: { field: string; onClear: () 
   };
   return (
     <div
-      className="w-full min-w-0 h-8 flex items-center gap-1.5 pl-1 pr-2 bg-[var(--accent)] rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium text-[var(--accent-fg)] truncate"
+      className="w-full min-w-0 h-8 flex items-center gap-1.5 pl-1 pr-2 bg-[var(--accent)] cut-corners border border-transparent bg-clip-padding text-xs font-medium text-[var(--accent-fg)] truncate"
       title={`Was bound to CMS field "${field}" — drop this into a collection list that has this field to reconnect`}
     >
       <span className="w-5 h-5 flex items-center justify-center shrink-0 text-[var(--accent-fg)]">
@@ -235,7 +235,7 @@ export function CmsFieldPill({ field, title, onUnbind, onClick }: { field: strin
   return (
     <div
       onClick={onClick}
-      className={`w-full min-w-0 h-8 flex items-center gap-1.5 pl-1 pr-2 bg-[var(--accent)] rounded-[var(--radius-lg)] border border-transparent bg-clip-padding text-xs font-medium text-[var(--accent-fg)] truncate ${onClick ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
+      className={`w-full min-w-0 h-8 flex items-center gap-1.5 pl-1 pr-2 bg-[var(--accent)] cut-corners border border-transparent bg-clip-padding text-xs font-medium text-[var(--accent-fg)] truncate ${onClick ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
       title={title ?? `Bound to CMS field "${field}" for this viewport`}
     >
       <span className="w-5 h-5 flex items-center justify-center shrink-0 text-[var(--accent-fg)]"><CmsLinkIcon /></span>

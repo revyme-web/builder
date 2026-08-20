@@ -61,7 +61,7 @@ function TypoPresetListPanel({ groups, activeGroupName, onApply, onEdit, onCreat
       {/* Create new — top button (compact, matches color picker) */}
       <button
         onClick={onCreate}
-        className="w-full py-2 mb-0.5 text-xs text-[var(--text-primary)] bg-[var(--bg-hover)] hover:bg-[var(--control-border)] rounded-[var(--radius-md)] transition-colors flex items-center justify-center gap-1"
+        className="w-full py-2 mb-0.5 text-xs text-[var(--text-primary)] bg-[var(--bg-hover)] hover:bg-[var(--control-border)] cut-corners transition-colors flex items-center justify-center gap-1"
       >
         <span className="text-xs leading-none">+</span> Create New Preset
       </button>
@@ -77,7 +77,7 @@ function TypoPresetListPanel({ groups, activeGroupName, onApply, onEdit, onCreat
         return (
           <div
             key={g.name}
-            className={`group flex items-center gap-2 px-2 py-1.5 rounded-[var(--radius-md)] cursor-pointer transition-colors select-none ${
+            className={`group flex items-center gap-2 px-2 py-1.5 cut-corners cursor-pointer transition-colors select-none ${
               isActive ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
             }`}
             style={{ minHeight: '32px', boxSizing: 'border-box' }}
@@ -98,7 +98,7 @@ function TypoPresetListPanel({ groups, activeGroupName, onApply, onEdit, onCreat
                 </span>
               )}
               <button
-                className="absolute right-0 text-[10px] px-2 py-1 rounded-[var(--radius-md)] bg-[var(--bg-active)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute right-0 text-[10px] px-2 py-1 cut-corners bg-[var(--bg-active)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={(e) => { e.stopPropagation(); onEdit(g); }}
               >
                 Edit
@@ -170,7 +170,7 @@ function CreateTypoPresetPanel({ onCreated }: { onCreated: (group: TypoGroup) =>
         />
         <button
           onClick={() => onCreated(createdGroup)}
-          className="w-full h-7 rounded-[var(--radius-lg)] text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer hover:opacity-90 transition-colors"
+          className="w-full h-7 cut-corners text-xs font-medium bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer hover:opacity-90 transition-colors"
         >
           Done
         </button>
@@ -187,12 +187,12 @@ function CreateTypoPresetPanel({ onCreated }: { onCreated: (group: TypoGroup) =>
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
         placeholder="Preset name"
-        className="w-full bg-[var(--grid-line)] border border-[var(--control-border)] focus:border-[var(--border-focus)] rounded-[var(--radius-lg)] px-2.5 py-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-disabled)]"
+        className="w-full bg-[var(--grid-line)] border border-[var(--control-border)] focus:border-[var(--border-focus)] cut-corners cut-border focus:[--cut-border-color:var(--border-focus)] px-2.5 py-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-disabled)]"
       />
       <button
         onClick={handleCreate}
         disabled={!name.trim()}
-        className={`w-full h-[var(--control-height-sm)] rounded-[var(--radius-lg)] text-xs font-medium transition-colors ${
+        className={`w-full h-[var(--control-height-sm)] cut-corners text-xs font-medium transition-colors ${
           name.trim()
             ? 'bg-[var(--accent)] text-[var(--accent-fg)] cursor-pointer hover:opacity-90'
             : 'bg-[var(--grid-line)] text-[var(--text-disabled)] cursor-not-allowed'

@@ -276,7 +276,7 @@ export default function PageChat() {
                 <OutOfCreditsCard key={i} />
               ) : (
                 <div key={i} className="flex justify-start">
-                  <div className={`max-w-[90%] rounded-lg px-2.5 py-1.5 ${
+                  <div className={`max-w-[90%] cut-corners px-2.5 py-1.5 ${
                     msg.error
                       ? 'bg-red-500/10 text-red-400 border border-red-500/20'
                       : 'bg-[var(--control-bg)] text-[var(--text-primary)]'
@@ -303,7 +303,7 @@ export default function PageChat() {
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-[var(--control-bg)] rounded-lg px-2.5 py-1.5 flex items-center gap-1.5">
+                <div className="bg-[var(--control-bg)] cut-corners px-2.5 py-1.5 flex items-center gap-1.5">
                   <Spinner />
                   <p className="text-[11px] text-[var(--text-secondary)]">{activity || 'Cooking…'}</p>
                 </div>
@@ -343,7 +343,7 @@ export default function PageChat() {
               <div style={{ position: 'fixed', inset: 0, zIndex: 100029 }} onMouseDown={() => setModelMenuOpen(false)} />
               <div
                 style={{ position: 'fixed', left: modelMenuPos.left, bottom: modelMenuPos.bottom, maxHeight: modelMenuPos.maxH, zIndex: 100030, width: 200 }}
-                className="bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-2xl py-1 overflow-y-auto"
+                className="bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-2xl py-1 overflow-y-auto"
               >
                 {groupByVendor(modelCatalog).map((group) => (
                   <div key={group.vendor}>
@@ -375,7 +375,7 @@ export default function PageChat() {
             document.body,
           )}
         </div>
-        <div className="flex items-center gap-2 rounded-lg rounded-tl-none border border-[var(--border-light)] px-3 py-1.5 bg-[var(--control-bg)]">
+        <div className="flex items-center gap-2 cut-corners cut-border [--cut-border-color:var(--border-light)] rounded-tl-none border border-[var(--border-light)] px-3 py-1.5 bg-[var(--control-bg)]">
           <input
             ref={inputRef}
             type="text"
@@ -389,7 +389,7 @@ export default function PageChat() {
           {loading ? (
             <button
               onClick={handleStop}
-              className="w-6 h-6 rounded-md flex items-center justify-center transition-colors text-white shrink-0 bg-red-500 hover:bg-red-600 cursor-pointer"
+              className="w-6 h-6 cut-corners flex items-center justify-center transition-colors text-white shrink-0 bg-red-500 hover:bg-red-600 cursor-pointer"
               title="Stop"
             >
               <StopIcon />
@@ -398,7 +398,7 @@ export default function PageChat() {
             <button
               onClick={handleSend}
               disabled={!prompt.trim()}
-              className={`w-6 h-6 rounded-md flex items-center justify-center transition-all text-[var(--accent-fg)] shrink-0 bg-[var(--accent)] ${
+              className={`w-6 h-6 cut-corners flex items-center justify-center transition-all text-[var(--accent-fg)] shrink-0 bg-[var(--accent)] ${
                 !prompt.trim()
                   ? 'opacity-40 cursor-not-allowed'
                   : 'hover:brightness-110 cursor-pointer'

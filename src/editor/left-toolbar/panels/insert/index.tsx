@@ -136,7 +136,7 @@ function GradientCard({ item }: { item: InsertItem }) {
   return (
     <div
       onPointerDown={handlePointerDown}
-      className="flex flex-col items-center gap-2 p-4 rounded-xl cursor-pointer transition-all group hover:scale-[1.03]"
+      className="flex flex-col items-center gap-2 p-4 cut-corners cursor-pointer transition-all group hover:scale-[1.03]"
       style={bgStyle}
     >
       {item.socialNetwork ? (
@@ -158,7 +158,7 @@ function GradientCard({ item }: { item: InsertItem }) {
         // viewBox with `w-full h-12`). Render them full-width — squeezing
         // into a 44px circle compresses the pattern and loses the
         // pixel-perfect look the legacy builder had.
-        <div className="w-full h-14 flex items-center justify-center overflow-hidden rounded-md">
+        <div className="w-full h-14 flex items-center justify-center overflow-hidden cut-corners">
           {IconComponent ? <IconComponent /> : null}
         </div>
       ) : (
@@ -212,7 +212,7 @@ function GridCard({ item }: GridCardProps) {
       // Theme-mirrored subtle fill so each element reads as a distinct
       // tile in both modes — `bg-white/[0.06]` only lifted off the dark
       // panel; on the light panel it was invisible.
-      className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] cursor-pointer transition-all group"
+      className="flex flex-col items-center gap-1.5 p-2.5 cut-corners bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] cursor-pointer transition-all group"
     >
       {/* Icon box fills the card width so it scales down with the grid
           column instead of overflowing a narrow panel. */}
@@ -290,7 +290,7 @@ function SecondaryPanelContent({ category }: SecondaryPanelContentProps) {
             trace.action('insert-panel:empty-collections:open-cms');
             setLeftPanel('cms');
           }}
-          className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold cursor-pointer transition-colors"
+          className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 cut-corners text-[11px] font-semibold cursor-pointer transition-colors"
           style={{
             backgroundColor: 'var(--accent)',
             color: 'var(--accent-fg)',
@@ -611,7 +611,7 @@ export default function InsertOverlay() {
               }}
               onFocus={cancelClose}
               placeholder="Search elements…"
-              className="w-full pl-7 pr-2 py-1.5 text-xs bg-black/[0.06] hover:bg-black/[0.09] focus:bg-black/[0.12] dark:bg-white/[0.1] dark:hover:bg-white/[0.14] dark:focus:bg-white/[0.18] rounded text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] outline-none transition-colors"
+              className="w-full pl-7 pr-2 py-1.5 text-xs bg-black/[0.06] hover:bg-black/[0.09] focus:bg-black/[0.12] dark:bg-white/[0.1] dark:hover:bg-white/[0.14] dark:focus:bg-white/[0.18] cut-corners text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] outline-none transition-colors"
             />
           </div>
         </div>

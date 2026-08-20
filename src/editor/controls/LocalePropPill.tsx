@@ -313,7 +313,7 @@ export function LocalePropPopup({ nodeId, componentName, prop, propLabel, option
           <button
             onClick={() => { setTranslationsOverlayOpen(true); onClose(); }}
             data-locale-variable-pill
-            className="w-full h-8 flex items-center gap-2 pl-1 pr-2 rounded-[var(--radius-lg)] border border-transparent text-xs font-medium text-[var(--accent-fg)] cursor-pointer"
+            className="w-full h-8 flex items-center gap-2 pl-1 pr-2 cut-corners border border-transparent text-xs font-medium text-[var(--accent-fg)] cursor-pointer"
             style={{ backgroundColor: 'var(--accent)' }}
             title="Open Localization"
           >
@@ -375,7 +375,7 @@ export function LocalePropPopup({ nodeId, componentName, prop, propLabel, option
                 if (effectiveFallback) write(nextFree.code, effectiveFallback);
                 setConds((prev) => [...prev, { locale: nextFree.code, value: effectiveFallback }]);
               }}
-              className="w-full h-7 rounded-md text-xs bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+              className="w-full h-7 cut-corners text-xs bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
             >
               Add Condition
             </button>
@@ -424,7 +424,7 @@ export function LocalePropPillOr({ nodeId, componentName, prop, propLabel, optio
         ref={pillRef}
         onClick={() => setOpen(true)}
         data-locale-prop-pill={prop}
-        className="w-full h-8 flex items-center gap-2 pl-1 pr-2 rounded-[var(--radius-lg)] border border-transparent text-xs font-medium text-[var(--accent-fg)] cursor-pointer"
+        className="w-full h-8 flex items-center gap-2 pl-1 pr-2 cut-corners border border-transparent text-xs font-medium text-[var(--accent-fg)] cursor-pointer"
         style={{ backgroundColor: 'var(--accent)' }}
         title={`Localized · ${state.locales.join(', ')}`}
       >

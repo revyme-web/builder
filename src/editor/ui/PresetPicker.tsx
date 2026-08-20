@@ -133,7 +133,7 @@ export default function PresetPicker({ property, tokens, onSelect, isOpen, onClo
       {/* Popup */}
       <div
         ref={popupRef}
-        className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-1.5 z-51 min-w-[220px] max-h-[320px] overflow-y-auto border border-[var(--border-light)]"
+        className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-51 min-w-[220px] max-h-[320px] overflow-y-auto border border-[var(--border-light)]"
         style={{ left: pos.x, top: pos.y }}
       >
         {filteredTokens.length === 0 ? (
@@ -145,7 +145,7 @@ export default function PresetPicker({ property, tokens, onSelect, isOpen, onClo
             <button
               key={token.name}
               onClick={() => handleSelect(token.name)}
-              className="group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent)] transition-colors"
+              className="group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent)] transition-colors"
             >
               {/* Color swatch for color tokens */}
               {token.category === 'color' && (

@@ -312,7 +312,7 @@ function IconCell({ iconData, isDark }: IconCellProps) {
   return (
     <div
       onPointerDown={handlePointerDown}
-      className="aspect-square flex items-center justify-center bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] rounded-md transition-colors cursor-grab active:cursor-grabbing"
+      className="aspect-square flex items-center justify-center bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] cut-corners transition-colors cursor-grab active:cursor-grabbing"
       title={iconData.name}
     >
       <img
@@ -344,7 +344,7 @@ function SearchBar({ value, onChange, placeholder }: SearchBarProps) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full pl-8 pr-2 py-1.5 text-xs bg-[var(--control-bg)] hover:bg-[var(--control-bg-hover)] focus:bg-[var(--control-bg-hover)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none transition-colors"
+        className="w-full pl-8 pr-2 py-1.5 text-xs bg-[var(--control-bg)] hover:bg-[var(--control-bg-hover)] focus:bg-[var(--control-bg-hover)] cut-corners text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none transition-colors"
       />
     </div>
   );
@@ -485,7 +485,7 @@ export function IconPanel() {
         <div className="px-3 py-2 border-b border-[var(--border-light)] flex items-center gap-2">
           <button
             onClick={() => { setSelectedPack(null); setPackSearchQuery(''); }}
-            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+            className="w-7 h-7 flex items-center justify-center cut-corners hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
             aria-label="Back to icon packs"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -544,7 +544,7 @@ export function IconPanel() {
                 <button
                   key={lib.prefix}
                   onClick={() => setSelectedPack(lib.prefix)}
-                  className="group h-[100px] bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] rounded-lg transition-all hover:scale-[1.02] overflow-hidden flex flex-col cursor-pointer border-none"
+                  className="group h-[100px] bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] cut-corners transition-all hover:scale-[1.02] overflow-hidden flex flex-col cursor-pointer border-none"
                 >
                   <div className="flex-1 flex items-center justify-center gap-2 p-3">
                     {previews.map((iconName) => (

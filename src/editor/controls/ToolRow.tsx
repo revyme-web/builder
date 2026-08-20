@@ -144,13 +144,13 @@ export default function ToolRow({ label, children, labelStyle, onResetOverride, 
         <>
           <div className="fixed inset-0 z-[10000]" onClick={() => setMenuOpen(false)} />
           <div
-            className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-1.5 z-[10001] min-w-45 border border-[var(--border-light)] space-y-0.5"
+            className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[10001] min-w-45 border border-[var(--border-light)] space-y-0.5"
             style={{ left: menuPos.x, top: menuPos.y }}
           >
             {onResetOverride && (
               <button
                 onClick={() => { onResetOverride(); setMenuOpen(false); }}
-                className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent)] transition-colors"
+                className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer hover:bg-[var(--accent)] transition-colors"
               >
                 <span className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">
                   Reset Override

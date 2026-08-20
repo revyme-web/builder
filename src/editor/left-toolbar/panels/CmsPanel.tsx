@@ -221,7 +221,7 @@ function CollectionListView({
           onClick={onNewCollection}
           // Accent tokens, not hardcoded blue — --accent-fg is the per-theme
           // "label on accent" pairing (near-black on the gold/Amber themes).
-          className="flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-3 py-1.5 text-[11px] font-medium text-[var(--accent-fg,#0d1017)] transition-[filter] hover:brightness-110 cursor-pointer"
+          className="flex items-center gap-1.5 cut-corners bg-[var(--accent)] px-3 py-1.5 text-[11px] font-medium text-[var(--accent-fg,#0d1017)] transition-[filter] hover:brightness-110 cursor-pointer"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -309,7 +309,7 @@ function DeleteCollectionModal({
             : 'This collection has no usages. The schema and all items will be removed.'}
         </p>
 
-        <div className="rounded-md bg-[var(--bg-elevated)] border border-[var(--border-light)] divide-y divide-[var(--border-light)]">
+        <div className="cut-corners cut-border [--cut-border-color:var(--border-light)] bg-[var(--bg-elevated)] border border-[var(--border-light)] divide-y divide-[var(--border-light)]">
           <div className="flex items-center justify-between px-3 py-2">
             <span className="text-[var(--text-secondary)]">Items</span>
             <span className="font-mono text-[var(--text-primary)]">{usage.itemCount}</span>
@@ -347,7 +347,7 @@ function DeleteCollectionModal({
           <Button variant="secondary" size="sm" onClick={onCancel}>Cancel</Button>
           <button
             onClick={onConfirm}
-            className="px-3 py-1.5 text-[11px] font-medium rounded-md bg-red-600 hover:bg-red-500 text-white transition-colors cursor-pointer"
+            className="px-3 py-1.5 text-[11px] font-medium cut-corners bg-red-600 hover:bg-red-500 text-white transition-colors cursor-pointer"
           >
             Delete
           </button>
@@ -454,7 +454,7 @@ function CollectionSpreadsheetView({ slug }: { slug: string }) {
       <div className="p-3 border-t border-[var(--border-light)]">
         <button
           onClick={handleAddItem}
-          className="w-full flex items-center justify-center gap-1.5 rounded-md bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] px-3 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+          className="w-full flex items-center justify-center gap-1.5 cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] px-3 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
         >
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -583,7 +583,7 @@ function ItemDetailView({ slug, itemId }: { slug: string; itemId: string }) {
         <div className="pt-2">
           <button
             onClick={handleDeleteItem}
-            className="w-full flex items-center justify-center gap-1.5 rounded-md bg-red-600/10 border border-red-500/20 hover:bg-red-600/20 px-3 py-1.5 text-[11px] font-medium text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+            className="w-full flex items-center justify-center gap-1.5 cut-corners bg-red-600/10 border border-red-500/20 hover:bg-red-600/20 px-3 py-1.5 text-[11px] font-medium text-red-400 hover:text-red-300 transition-colors cursor-pointer"
           >
             Delete Item
           </button>
@@ -778,7 +778,7 @@ export default function CmsPanel() {
   }, [refresh, handleClickCollection]);
 
   return (
-    <div className="flex flex-col h-full bg-[var(--bg-surface)]">
+    <div className="flex flex-col h-full">
       {/* Top-of-panel search — matches the Library panel chrome (SearchBar
           + thin divider) so the left-toolbar panels share a consistent
           header pattern. Spacing math mirrors LibraryPanel verbatim:

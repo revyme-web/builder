@@ -40,19 +40,22 @@ export function setCanvasInsets(insets: { left: number; top: number; right: numb
 function getAvailableArea() {
   const w = typeof window !== 'undefined' ? window.innerWidth : 1920;
   const h = typeof window !== 'undefined' ? window.innerHeight : 1080;
-  // The canvas container sits between the sidebars via flex layout, so its
-  // ORIGIN is (insets.left, 0) — horizontally it starts where the left panel
-  // ends, but vertically it spans the FULL window height with the 52px header
-  // floating OVER it. The transform (translate3d) is container-relative:
-  //   centerX: screen center of the available strip minus containerX(=left)
-  //            → width / 2 (the left inset cancels out).
-  //   centerY: screen center of the strip BELOW the header minus containerY(=0)
+  // FULL-BLEED canvas (glass chrome, 2026-08-20): the container's ORIGIN is
+  // (0, 0) — it spans the whole window and BOTH side slabs float OVER it, so
+  // container-relative and screen coordinates are the same thing now.
+  //   centerX: screen center of the visible strip between the slabs
+  //            → left + width / 2. (Before full-bleed the container started
+  //            AT the left panel's edge, the inset cancelled out, and this
+  //            was width / 2 — that stale cancellation shifted every fit
+  //            ~284px left once the origin moved: the "enter master lands
+  //            half behind the left panel" report.)
+  //   centerY: screen center of the strip BELOW the header
   //            → top + height / 2. The old `height / 2` ignored the header,
   //            biasing every fit ~half-a-header too HIGH (part of the
   //            "new site's viewport sits top-right" report, 2026-07-29).
   const width = w - canvasInsets.left - canvasInsets.right;
   const height = h - canvasInsets.top - canvasInsets.bottom;
-  const centerX = width / 2;
+  const centerX = canvasInsets.left + width / 2;
   const centerY = canvasInsets.top + height / 2;
   return { width, height, centerX, centerY };
 }

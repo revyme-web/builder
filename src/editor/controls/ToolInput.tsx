@@ -254,7 +254,7 @@ export default function ToolInput({ value, onChange, onChangeLive, onCommit, ste
         onBlur={() => { setIsFocused(false); commit(localValue); }}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        className={`w-full h-[var(--control-height)] px-[var(--control-pad-x)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] ${isAutoOrFill ? 'text-[var(--text-secondary)]' : 'text-[var(--text-primary)]'} rounded-[var(--radius-lg)] focus:outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+        className={`w-full h-[var(--control-height)] px-[var(--control-pad-x)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] ${isAutoOrFill ? 'text-[var(--text-secondary)]' : 'text-[var(--text-primary)]'} cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
       />
       {/* Chevron label — shown when not hovering/focused, hidden when chevrons appear */}
       {chevronLabel && isNumeric && (
@@ -264,7 +264,10 @@ export default function ToolInput({ value, onChange, onChangeLive, onCommit, ste
       )}
       {/* Chevrons — visible on hover or focus */}
       {isNumeric && (
-        <div className={`absolute right-1 inset-y-0 w-3 ${isFocused ? 'flex' : 'hidden group-hover:flex'} flex-col`}>
+        // inset-y-[3px], not inset-y-0: shrinking the stack pulls the two
+        // chevrons ~3px closer together, keeping the down chevron clear of
+        // the field's bottom-right cut.
+        <div className={`absolute right-1 inset-y-[3px] w-3 ${isFocused ? 'flex' : 'hidden group-hover:flex'} flex-col`}>
           <button
             tabIndex={-1}
             type="button"

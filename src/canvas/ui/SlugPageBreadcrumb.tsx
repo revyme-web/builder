@@ -132,17 +132,27 @@ export default function SlugPageBreadcrumb() {
   };
 
   const pillBase =
-    'flex items-center gap-1.5 px-2.5 py-1 bg-[var(--button-secondary-bg,rgba(255,255,255,0.06))] rounded-md text-sm font-medium transition-all whitespace-nowrap';
+    'flex items-center gap-1.5 px-2 h-[30px] bg-[var(--button-secondary-bg,rgba(255,255,255,0.06))] cut-corners text-xs font-medium transition-all whitespace-nowrap';
 
   return createPortal(
     <>
-      {/* Fixed top bar — same chrome strip as ComponentBreadcrumb (between the
-          left/right sidebars). z below the side headers (9999), above canvas
-          overlays. */}
       <div
-        className="fixed h-[52px] px-4 flex items-center left-[308px] right-[260px] shadow-[var(--shadow-sm)] border-b border-[var(--border-default)] bg-[var(--bg-canvas)] z-[9000] top-0"
+        // Full-width top strip between the side chrome (original layout,
+        // restored 2026-08-20) with the glass surface on a backdrop child —
+        // see ComponentBreadcrumb for why the glass can't live on the
+        // container (fixed-descendant containing block).
+        className="fixed h-[52px] px-4 flex items-center left-[308px] right-[260px] isolate z-[9000] top-0"
         data-dynamic-toolbar="true"
       >
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-10 border-b border-[var(--border-light)]"
+          style={{
+            background: 'color-mix(in srgb, var(--bg-surface) 93%, transparent)',
+            backdropFilter: 'blur(18px) saturate(1.15)',
+            WebkitBackdropFilter: 'blur(18px) saturate(1.15)',
+          } as React.CSSProperties}
+        />
         <div className="flex items-center gap-2 min-w-0">
           {/* Origin segment — back to the page the user came from (or parent route). */}
           {originValid && (
@@ -211,7 +221,7 @@ export default function SlugPageBreadcrumb() {
             onMouseDown={(e) => e.stopPropagation()}
             onMouseUp={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
-            className="fixed z-[9999] rounded-[var(--radius-md)] border border-[var(--border-light)] bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] py-1.5 flex flex-col"
+            className="fixed z-[9999] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] py-1.5 flex flex-col"
             style={{ left: menuPos.left, top: menuPos.top, width: menuPos.width, maxHeight: 420 }}
           >
             {/* Search */}
@@ -225,7 +235,7 @@ export default function SlugPageBreadcrumb() {
                   if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); setQuery(''); }
                   if (e.key === 'Enter' && filtered[0]) pick(filtered[0]._slug);
                 }}
-                className="w-full h-8 px-3 text-xs bg-[var(--grid-line)] text-[var(--text-primary)] border border-[var(--border-light)] rounded-[var(--radius-lg)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)] focus:outline-none transition-colors"
+                className="w-full h-8 px-3 text-xs bg-[var(--grid-line)] text-[var(--text-primary)] border border-[var(--border-light)] cut-corners cut-border [--cut-border-color:var(--border-light)] hover:[--cut-border-color:var(--control-border)] focus:[--cut-border-color:var(--border-focus)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)] focus:outline-none transition-colors"
               />
             </div>
 
@@ -240,7 +250,7 @@ export default function SlugPageBreadcrumb() {
                     <button
                       key={it._slug}
                       onClick={() => pick(it._slug)}
-                      className="group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors"
+                      className="group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors"
                     >
                       <span className="w-3.5 flex-shrink-0 flex items-center justify-center">
                         {isCurrent && (

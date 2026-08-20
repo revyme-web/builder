@@ -14,13 +14,13 @@ import ColorPicker from '../../../ui/ColorPicker';
 // ─── Shared Input Classes ───────────────────────────────────────────────────
 
 const INPUT_BASE =
-  'w-full h-[var(--control-height)] px-3 text-sm bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]';
+  'w-full h-[var(--control-height)] px-3 text-sm bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border focus:[--cut-border-color:var(--accent)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]';
 
 const TEXTAREA_BASE =
-  'w-full px-3 py-2 text-sm bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)] resize-y';
+  'w-full px-3 py-2 text-sm bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border focus:[--cut-border-color:var(--accent)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)] resize-y';
 
 const SELECT_BASE =
-  'w-full h-[var(--control-height)] px-2 text-sm bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-md)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer';
+  'w-full h-[var(--control-height)] px-2 text-sm bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border focus:[--cut-border-color:var(--accent)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -248,7 +248,7 @@ function ColorFieldControl({ value, onChange, name }: { value: string; onChange:
         type="button"
         title={`${name} — pick a colour`}
         onClick={() => setOpen(o => !o)}
-        className="w-8 h-[var(--control-height)] rounded-[var(--radius-md)] border border-[var(--control-border)] hover:border-[var(--border-focus)] shrink-0 cursor-pointer transition-colors"
+        className="w-8 h-[var(--control-height)] cut-corners cut-border hover:[--cut-border-color:var(--border-focus)] border border-[var(--control-border)] hover:border-[var(--border-focus)] shrink-0 cursor-pointer transition-colors"
         style={{ background: shown || '#000' }}
       />
       <input
@@ -307,7 +307,7 @@ function ImageFieldControl({ value, onChange, name }: { value: string; onChange:
         type="button"
         onClick={() => setPickerOpen(true)}
         title={hasImage ? value : 'Choose image…'}
-        className="w-16 h-16 rounded-[var(--radius-md)] border border-[var(--control-border)] hover:border-[var(--border-focus)] overflow-hidden bg-[var(--grid-line)] transition-colors cursor-pointer flex items-center justify-center"
+        className="w-16 h-16 cut-corners cut-border hover:[--cut-border-color:var(--border-focus)] border border-[var(--control-border)] hover:border-[var(--border-focus)] overflow-hidden bg-[var(--grid-line)] transition-colors cursor-pointer flex items-center justify-center"
       >
         {hasImage ? (
           <img

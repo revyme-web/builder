@@ -84,7 +84,7 @@ export function ControlRow({ label, children, plain }: ControlRowProps) {
         <UsedByRow binding={binding} />
       ) : showPresetPill ? (
         <button
-          className="w-full h-8 flex items-center justify-between px-2 bg-[var(--accent)] rounded-[var(--radius-lg)] text-xs font-medium text-[var(--accent-fg)] cursor-pointer transition-colors hover:opacity-90 truncate"
+          className="w-full h-8 flex items-center justify-between px-2 bg-[var(--accent)] cut-corners text-xs font-medium text-[var(--accent-fg)] cursor-pointer transition-colors hover:opacity-90 truncate"
           onClick={() => onChange('')}
           title={`Preset: ${binding.presetRef} — click to remove`}
         >

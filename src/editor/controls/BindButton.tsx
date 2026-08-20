@@ -115,7 +115,7 @@ export function BindButton({ nodeId, property, currentBinding, collectionSlug, i
 
           {/* Menu */}
           <div
-            className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-1.5 z-51 min-w-[160px] border border-[var(--border-light)]"
+            className="fixed bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-51 min-w-[160px] border border-[var(--border-light)]"
             style={{ left: dropdownPos.x, top: dropdownPos.y }}
           >
             {/* Header */}
@@ -128,7 +128,7 @@ export function BindButton({ nodeId, property, currentBinding, collectionSlug, i
               <button
                 key={field.id}
                 onClick={() => handleBind(field.id)}
-                className={`w-[calc(100%-8px)] mx-1 flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-left cursor-pointer transition-colors ${
+                className={`w-[calc(100%-8px)] mx-1 flex items-center gap-2 px-2.5 py-1.5 cut-corners text-left cursor-pointer transition-colors ${
                   currentBinding === field.id
                     ? 'bg-purple-600/20 text-purple-300'
                     : 'hover:bg-[var(--accent)] text-[var(--text-primary)] hover:text-[var(--accent-fg)]'
@@ -145,7 +145,7 @@ export function BindButton({ nodeId, property, currentBinding, collectionSlug, i
                 <div className="h-px bg-white/10 mx-2 my-1" />
                 <button
                   onClick={handleUnbind}
-                  className="w-[calc(100%-8px)] mx-1 flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-left cursor-pointer transition-colors hover:bg-red-600/20 text-red-400"
+                  className="w-[calc(100%-8px)] mx-1 flex items-center gap-2 px-2.5 py-1.5 cut-corners text-left cursor-pointer transition-colors hover:bg-red-600/20 text-red-400"
                 >
                   <span className="text-xs font-medium">Unbind</span>
                 </button>

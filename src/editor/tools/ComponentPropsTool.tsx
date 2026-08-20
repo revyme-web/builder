@@ -2052,7 +2052,7 @@ export default function ComponentPropsTool() {
       <>
       <div
         ref={revealRef}
-        className="rounded-[var(--radius-md)] transition-[box-shadow,background-color] duration-500"
+        className="cut-corners transition-[box-shadow,background-color] duration-500"
         style={revealFlash ? {
           boxShadow: 'inset 0 0 0 1.5px var(--accent-secondary, #a855f7)',
           backgroundColor: 'color-mix(in srgb, var(--accent-secondary, #a855f7) 8%, transparent)',

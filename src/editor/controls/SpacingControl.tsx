@@ -175,7 +175,7 @@ export default function SpacingControl({ values, labels, onChange, onChangeAll, 
         />
 
         {/* Toggle group: uniform shows the static px badge, individual shows uniform icon */}
-        <div className="flex items-center border border-[var(--control-border)] rounded-md overflow-hidden shrink-0">
+        <div className="flex items-center border border-[var(--control-border)] cut-corners cut-border [--cut-border-color:var(--control-border)] overflow-hidden shrink-0">
           {/* Left button: when individual → shows uniform icon, click switches
               back to uniform (consolidates the longhands into shorthand).
               When uniform → a STATIC px badge; spacing is px-only, so there

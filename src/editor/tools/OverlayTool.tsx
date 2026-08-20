@@ -265,7 +265,7 @@ function TriggerOverlayRow({ nodeId, triggerInfo, allOverlays, setEditingOverlay
         <span className="text-[10px] text-red-400">Overlay missing — was it deleted?</span>
         <button
           onClick={handleRemove}
-          className="w-full h-7 flex items-center justify-center text-[11px] text-red-400 hover:text-red-300 bg-red-500/10 border border-red-500/20 rounded-[var(--radius-lg)] cursor-pointer transition-colors"
+          className="w-full h-7 flex items-center justify-center text-[11px] text-red-400 hover:text-red-300 bg-red-500/10 border border-red-500/20 cut-corners cut-border [--cut-border-color:rgba(239,68,68,0.2)] cursor-pointer transition-colors"
         >
           Remove Broken Trigger
         </button>
@@ -559,16 +559,16 @@ function OverlayAddButton({ nodeId, onCreated }: { nodeId: string; onCreated?: (
       {open && (
         <>
           <div className="fixed inset-0 z-50" onClick={() => setOpen(false)} />
-          <div className={`absolute right-0 ${openDir === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'} bg-[var(--dropdown-bg)] shadow-md rounded-[var(--radius-md)] py-1.5 z-[51] w-max border border-[var(--border-light)] transition-opacity duration-150`}
+          <div className={`absolute right-0 ${openDir === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'} bg-[var(--dropdown-bg)] shadow-md cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[51] w-max border border-[var(--border-light)] transition-opacity duration-150`}
             style={{ opacity: visible ? 1 : 0 }}>
             <button type="button"
-              className="group flex flex-col gap-0.5 mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
+              className="group flex flex-col gap-0.5 mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
               onClick={() => handleCreate('relative')}>
               <div className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">Dropdown</div>
               <div className="text-[11px] text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)]/80">Positioned near trigger</div>
             </button>
             <button type="button"
-              className="group flex flex-col gap-0.5 mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
+              className="group flex flex-col gap-0.5 mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none"
               onClick={() => handleCreate('fixed')}>
               <div className="text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]">Modal</div>
               <div className="text-[11px] text-[var(--text-secondary)] group-hover:text-[var(--accent-fg)]/80">Full-screen overlay with backdrop</div>
@@ -628,7 +628,7 @@ function OverlayAppearRows({ overlayId, overlayConfig }: { overlayId: string; ov
           <button
             type="button"
             onClick={toggleLink}
-            className={`p-0.5 hover:bg-[var(--bg-hover)] rounded transition-colors absolute z-10 pointer-events-auto cursor-pointer ${linked ? 'text-[var(--accent-text)]' : 'text-[var(--text-secondary)]'}`}
+            className={`p-0.5 hover:bg-[var(--bg-hover)] cut-corners transition-colors absolute z-10 pointer-events-auto cursor-pointer ${linked ? 'text-[var(--accent-text)]' : 'text-[var(--text-secondary)]'}`}
             style={{ left: -7, top: 2 }}
             title={linked ? 'Exit linked to Enter — unlink to edit separately' : 'Exit unlinked — link to match Enter'}
           >

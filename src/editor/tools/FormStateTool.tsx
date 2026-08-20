@@ -37,7 +37,7 @@ const STATE_LABEL: Record<FormState, string> = {
 };
 
 const ADD_ITEM =
-  'group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 rounded w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
+  'group flex items-center gap-2 mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap';
 const ADD_ITEM_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]';
 
 /** The "+" header action — a native floating dropdown of not-yet-mapped states. */
@@ -65,7 +65,7 @@ function AddStateMenu({ addable, onAdd }: { addable: FormState[]; onAdd: (s: For
       {open && (
         <>
           <div className="fixed inset-0 z-50" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-md rounded-[var(--radius-md)] py-1.5 z-[51] w-max border border-[var(--border-light)]">
+          <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-md cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[51] w-max border border-[var(--border-light)]">
             {addable.map((s) => (
               <button key={s} className={ADD_ITEM} onClick={() => { setOpen(false); onAdd(s); }}>
                 <span className={ADD_ITEM_LABEL}>{STATE_LABEL[s]}</span>

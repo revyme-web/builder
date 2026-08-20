@@ -80,7 +80,7 @@ export default function ReplaceWithMenu({ nodeId, currentFile, width, height, on
       onMouseEnter={() => { setOpen(true); requestAnimationFrame(() => inputRef.current?.focus()); }}
       onMouseLeave={() => setOpen(false)}
     >
-      <button className="group flex items-center gap-3 mx-1.5 px-2 h-8 w-[calc(100%-12px)] rounded-[var(--radius-sm)] text-left text-[13px] text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors">
+      <button className="group flex items-center gap-3 mx-1.5 px-2 h-8 w-[calc(100%-12px)] cut-corners text-left text-[13px] text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors">
         <span className="flex-1">Replace with</span>
         <span className="text-[var(--text-tertiary)] group-hover:text-[var(--accent-fg)]">▸</span>
       </button>
@@ -88,10 +88,10 @@ export default function ReplaceWithMenu({ nodeId, currentFile, width, height, on
         <>
           {/* Hover bridge so crossing the 2px gap doesn't close the flyout. */}
           <div className="absolute left-full top-0 w-1 h-full" aria-hidden="true" />
-          <div className="absolute left-full top-0 ml-0.5 bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-2 w-[244px] border border-[var(--border-light)]">
+          <div className="absolute left-full top-0 ml-0.5 bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-2 w-[244px] border border-[var(--border-light)]">
             {/* Search — same look as the left-header search. */}
             <div className="px-2 pb-1.5">
-              <div className="flex items-center gap-2 px-2 h-7 rounded-[var(--radius-sm)] bg-[var(--control-bg)] border border-[var(--control-border)]">
+              <div className="flex items-center gap-2 px-2 h-7 cut-corners cut-border [--cut-border-color:var(--control-border)] bg-[var(--control-bg)] border border-[var(--control-border)]">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-[var(--text-tertiary)] shrink-0"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
                 <input
                   ref={inputRef}
@@ -113,7 +113,7 @@ export default function ReplaceWithMenu({ nodeId, currentFile, width, height, on
                   key={e.filePath}
                   onClick={() => handleReplace(e)}
                   onMouseDown={(ev) => ev.stopPropagation()}
-                  className="group flex items-center gap-2 mx-1.5 px-2 h-8 w-[calc(100%-12px)] rounded-[var(--radius-sm)] text-left text-[13px] text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors"
+                  className="group flex items-center gap-2 mx-1.5 px-2 h-8 w-[calc(100%-12px)] cut-corners text-left text-[13px] text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors"
                 >
                   <span className="shrink-0 text-[var(--accent-secondary)] group-hover:text-[var(--accent-fg)]">
                     {e.isCode ? <CodeIcon /> : <DiamondIcon />}

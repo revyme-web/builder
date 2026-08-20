@@ -42,7 +42,7 @@ export default function ChatUserMessage({
           <UserAvatar name={displayName} avatarUrl={avatarUrl} color={avatarColor} size={18} />
           <span className="text-[10px] font-medium text-[var(--text-secondary)]">{displayName}</span>
         </div>
-        <div className={`rounded-lg px-2.5 py-1.5 text-white ${accentClass}`}>
+        <div className={`cut-corners px-2.5 py-1.5 text-white ${accentClass}`}>
           <p className="text-[11px] leading-relaxed break-words whitespace-pre-wrap">{content}</p>
         </div>
       </div>

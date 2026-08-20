@@ -161,7 +161,7 @@ export function LiveDropdown({ open, meta, publishing, publishSuccess, progress,
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: -10 }}
       transition={{ type: 'spring', stiffness: 400, damping: 22, mass: 0.8 }}
-      className="absolute top-full mt-6 right-0 bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] border border-[var(--border-light)] py-2 z-[10001] min-w-[220px]"
+      className="absolute top-full mt-6 right-0 bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] py-2 z-[10001] min-w-[220px]"
     >
       <div className="flex flex-col gap-1 px-2">
         {/* URL + last-published rows only render when actually published.
@@ -207,7 +207,7 @@ export function LiveDropdown({ open, meta, publishing, publishSuccess, progress,
               <button
                 type="button"
                 onClick={() => { onOpenBackups(); onClose(); }}
-                className="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-amber-400 border border-amber-400/40 hover:bg-amber-400/10 transition-colors cursor-pointer"
+                className="flex-shrink-0 px-1.5 py-0.5 cut-corners text-[10px] font-medium text-amber-400 border border-amber-400/40 hover:bg-amber-400/10 transition-colors cursor-pointer"
               >
                 Manage
               </button>
@@ -229,7 +229,7 @@ export function LiveDropdown({ open, meta, publishing, publishSuccess, progress,
             <button
               type="button"
               onClick={() => { onAddDomain(); onClose(); }}
-              className="w-full h-7 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] text-[var(--text-primary)] transition-colors cursor-pointer"
+              className="w-full h-7 px-3 text-xs cut-corners font-medium flex items-center justify-center bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] text-[var(--text-primary)] transition-colors cursor-pointer"
             >
               Add domain
             </button>
@@ -244,7 +244,7 @@ export function LiveDropdown({ open, meta, publishing, publishSuccess, progress,
             <button
               type="button"
               onClick={() => { onOpenStaging(); onClose(); }}
-              className="w-full h-7 px-3 text-xs rounded-[var(--radius-lg)] font-medium flex items-center justify-center bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] text-[var(--text-primary)] transition-colors cursor-pointer"
+              className="w-full h-7 px-3 text-xs cut-corners font-medium flex items-center justify-center bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] text-[var(--text-primary)] transition-colors cursor-pointer"
             >
               Manage staging
             </button>
@@ -254,7 +254,7 @@ export function LiveDropdown({ open, meta, publishing, publishSuccess, progress,
             type="button"
             onClick={onPublish}
             disabled={publishing || publishSuccess}
-            className="relative overflow-hidden w-full h-7 px-3 text-xs rounded-[var(--radius-lg)] transition-colors font-medium flex items-center justify-center gap-1.5 bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] disabled:opacity-100 disabled:bg-[var(--accent)] disabled:cursor-not-allowed"
+            className="relative overflow-hidden w-full h-7 px-3 text-xs cut-corners transition-colors font-medium flex items-center justify-center gap-1.5 bg-[var(--accent)] hover:bg-[var(--accent-hover,var(--accent))] text-[var(--accent-fg)] disabled:opacity-100 disabled:bg-[var(--accent)] disabled:cursor-not-allowed"
           >
             {/* Progress fill — sits behind the label, advances 0 → 100% while
                 publishing. Tinted with `--accent-fg`, NOT white: accent-fg is by

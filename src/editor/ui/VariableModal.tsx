@@ -156,7 +156,7 @@ function AutoGrowTextarea({ value, onChange, onBlur, placeholder, minRows = 1 }:
       onInput={fit}
       onBlur={onBlur}
       placeholder={placeholder}
-      className="w-full px-3 py-1.5 text-xs leading-snug bg-[var(--grid-line)] rounded-[var(--radius-lg)] text-[var(--text-primary)] border border-[var(--border-light)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)] focus:outline-none transition-colors resize-none overflow-hidden block"
+      className="w-full px-3 py-1.5 text-xs leading-snug bg-[var(--grid-line)] cut-corners cut-border [--cut-border-color:var(--border-light)] hover:[--cut-border-color:var(--control-border)] focus:[--cut-border-color:var(--border-focus)] text-[var(--text-primary)] border border-[var(--border-light)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)] focus:outline-none transition-colors resize-none overflow-hidden block"
     />
   );
 }
@@ -223,7 +223,7 @@ function NumberMetaFields({ meta, patch }: { meta: PropNumberMeta; patch: (m: Nu
   const numStr = (n: number | undefined) => (n === undefined ? '' : String(n));
   const ClearBtn = ({ onClick }: { onClick: () => void }) => (
     <button type="button" onClick={onClick}
-      className="h-[var(--control-height)] px-3 rounded-[var(--radius-lg)] text-xs font-medium bg-[var(--grid-line)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-light)] shrink-0">
+      className="h-[var(--control-height)] px-3 cut-corners cut-border [--cut-border-color:var(--border-light)] text-xs font-medium bg-[var(--grid-line)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-light)] shrink-0">
       Clear
     </button>
   );
@@ -992,7 +992,7 @@ export default function VariableModal({
           ref={addBtnRef}
           onClick={() => setPickerOpen(o => !o)}
           title="Add a variable"
-          className="p-1 hover:bg-[var(--bg-hover)] rounded-md transition-colors cursor-pointer text-[var(--text-secondary)]"
+          className="p-1 hover:bg-[var(--bg-hover)] cut-corners transition-colors cursor-pointer text-[var(--text-secondary)]"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -1007,7 +1007,7 @@ export default function VariableModal({
       {rowMenu && createPortal(
         <div className="fixed inset-0" style={{ zIndex: 100021 }} onMouseDown={() => setRowMenu(null)}>
           <div
-            className="absolute bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] rounded-[var(--radius-md)] py-1.5 min-w-[160px] border border-[var(--border-light)] space-y-0.5"
+            className="absolute bg-[var(--dropdown-bg)] shadow-[var(--shadow-lg)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 min-w-[160px] border border-[var(--border-light)] space-y-0.5"
             style={{ top: rowMenu.y, left: Math.max(8, rowMenu.x - 160) }}
             onMouseDown={(e) => e.stopPropagation()}
           >
@@ -1020,7 +1020,7 @@ export default function VariableModal({
               <button
                 onClick={() => handleRemoveMany([...selectedNames])}
                 style={{ ['--row-accent' as string]: accentVar } as React.CSSProperties}
-                className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--row-accent)] hover:text-white transition-colors"
+                className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--row-accent)] hover:text-white transition-colors"
               >
                 Remove {rowMenu.count} variables
               </button>
@@ -1029,14 +1029,14 @@ export default function VariableModal({
                 <button
                   onClick={() => handleDuplicateVar(rowMenu.name)}
                   style={{ ['--row-accent' as string]: accentVar } as React.CSSProperties}
-                  className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--row-accent)] hover:text-white transition-colors"
+                  className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--row-accent)] hover:text-white transition-colors"
                 >
                   Duplicate
                 </button>
                 <button
                   onClick={() => handleRemoveVar(rowMenu.name)}
                   style={{ ['--row-accent' as string]: accentVar } as React.CSSProperties}
-                  className="group flex items-center mx-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--row-accent)] hover:text-white transition-colors"
+                  className="group flex items-center mx-1.5 px-2.5 py-1.5 cut-corners w-[calc(100%-12px)] text-left cursor-pointer text-xs text-[var(--text-primary)] hover:bg-[var(--row-accent)] hover:text-white transition-colors"
                 >
                   Remove
                 </button>
@@ -1104,7 +1104,7 @@ export default function VariableModal({
                           setRowMenu({ name: v.name, x: e.clientX + 160, y: e.clientY });
                         }
                       }}
-                      className={`group flex items-center gap-2 px-2 py-1.5 rounded-md mx-2 text-[var(--text-primary)] border cursor-pointer ${
+                      className={`group flex items-center gap-2 px-2 py-1.5 cut-corners mx-2 text-[var(--text-primary)] border cursor-pointer ${
                         isSelected
                           ? 'bg-[var(--bg-hover)] border-[var(--border-light)]'
                           : 'border-transparent hover:bg-[var(--bg-hover)]'
@@ -1128,7 +1128,7 @@ export default function VariableModal({
                           const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
                           setRowMenu({ name: v.name, x: r.right, y: r.bottom + 4 });
                         }}
-                        className={`shrink-0 p-0.5 rounded hover:bg-[var(--bg-active)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-opacity ${
+                        className={`shrink-0 p-0.5 cut-corners hover:bg-[var(--bg-active)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-opacity ${
                           rowMenu?.name === v.name ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                         }`}
                         title="More"
@@ -1202,7 +1202,7 @@ export default function VariableModal({
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="e.g. cardGap"
                     autoFocus
-                    className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] rounded-[var(--radius-lg)] text-[var(--text-primary)] focus:outline-none transition-colors ${
+                    className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] cut-corners text-[var(--text-primary)] focus:outline-none transition-colors ${
                       nameError
                         ? 'border border-red-500 focus:border-red-500'
                         : 'border border-[var(--border-light)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)]'
@@ -1252,14 +1252,14 @@ export default function VariableModal({
               <div className="border-t border-[var(--border-light)] p-4 flex justify-end gap-2">
                 <button
                   onClick={() => { setMode('list'); setSelectedVar(null); }}
-                  className="px-4 h-[var(--control-height-sm)] text-xs bg-[var(--control-bg)] text-[var(--text-primary)] border border-[var(--border-light)] rounded-[var(--radius-lg)] hover:bg-[var(--bg-hover)] transition-colors"
+                  className="px-4 h-[var(--control-height-sm)] text-xs bg-[var(--control-bg)] text-[var(--text-primary)] border border-[var(--border-light)] cut-corners cut-border [--cut-border-color:var(--border-light)] hover:bg-[var(--bg-hover)] transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleCreate}
                   disabled={!isNameValid}
-                  className="px-4 h-7 text-xs text-white rounded-[var(--radius-lg)] hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
+                  className="px-4 h-7 text-xs text-white cut-corners hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100"
                   style={{ backgroundColor: accentVar }}
                 >
                   Create Variable
@@ -1282,7 +1282,7 @@ export default function VariableModal({
                     onBlur={commitName}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitName(); (e.target as HTMLInputElement).blur(); } }}
                     placeholder="Variable name"
-                    className="w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] text-[var(--text-primary)] border border-[var(--border-light)] rounded-[var(--radius-lg)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)] focus:outline-none transition-colors"
+                    className="w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] text-[var(--text-primary)] border border-[var(--border-light)] cut-corners cut-border [--cut-border-color:var(--border-light)] hover:[--cut-border-color:var(--control-border)] focus:[--cut-border-color:var(--border-focus)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)] focus:outline-none transition-colors"
                   />
                 </FieldRow>
 

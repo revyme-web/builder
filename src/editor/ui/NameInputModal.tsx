@@ -83,7 +83,7 @@ export function CompactModalShell({ isOpen, onClose, title, children }: CompactM
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="relative w-64 bg-[var(--bg-surface)] rounded-lg shadow-2xl"
+            className="relative w-64 bg-[var(--bg-surface)] cut-corners cut-lg shadow-2xl"
             onMouseDown={() => { pressStartedInside.current = true; }}
             onClick={e => e.stopPropagation()}
           >
@@ -92,7 +92,7 @@ export function CompactModalShell({ isOpen, onClose, title, children }: CompactM
               <h3 className="text-xs font-bold text-[var(--text-primary)]">{title}</h3>
               <button
                 onClick={onClose}
-                className="p-1 hover:bg-[var(--bg-hover)] rounded-md transition-colors cursor-pointer"
+                className="p-1 hover:bg-[var(--bg-hover)] cut-corners transition-colors cursor-pointer"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)]">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -205,13 +205,13 @@ export default function NameInputModal({
           onKeyDown={e => { if (e.key === 'Enter' && value.trim()) handleSubmit(); }}
           onFocus={e => e.target.select()}
           placeholder={placeholder}
-          className="w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--modal-accent)] text-[var(--text-primary)] rounded-[var(--radius-lg)] focus:outline-none transition-colors"
+          className="w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--modal-accent)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:outline-none transition-colors"
         />
         {error && <span className="text-[10px] text-red-400 -mt-1">{error}</span>}
         <button
           onClick={handleSubmit}
           disabled={!value.trim()}
-          className="w-full h-8 text-xs font-medium rounded-[var(--radius-lg)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 cursor-pointer"
+          className="w-full h-8 text-xs font-medium cut-corners transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 cursor-pointer"
           style={{ backgroundColor: fill, color: fg }}
         >
           {submitLabel}

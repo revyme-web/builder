@@ -129,7 +129,7 @@ export function useLibraryMultiSelect({
           <button
             type="button"
             onClick={() => setPending(null)}
-            className="flex-1 h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--btn-secondary-bg)] hover:bg-[var(--btn-secondary-bg-hover,var(--bg-hover))] rounded-[var(--radius-lg)] cursor-pointer"
+            className="flex-1 h-8 text-xs font-medium text-[var(--text-primary)] bg-[var(--btn-secondary-bg)] hover:bg-[var(--btn-secondary-bg-hover,var(--bg-hover))] cut-corners cursor-pointer"
           >
             Cancel
           </button>
@@ -143,7 +143,7 @@ export function useLibraryMultiSelect({
               for (const p of paths) void onDelete(p);
               trace.action('library-multi-select:confirm-delete', { itemLabel, count: paths.length });
             }}
-            className="flex-1 h-8 text-xs font-medium text-white bg-[var(--accent-danger,#dc2626)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer"
+            className="flex-1 h-8 text-xs font-medium text-white bg-[var(--accent-danger,#dc2626)] hover:opacity-90 cut-corners cursor-pointer"
           >
             Delete
           </button>

@@ -1201,12 +1201,12 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
       {dropdownOpen && (
         <>
           <div className="fixed inset-0 z-[998]" onClick={() => setDropdownOpen(false)} />
-          <div className="absolute right-[10px] top-full mt-1 z-[999] w-max bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] py-1">
+          <div className="absolute right-[10px] top-full mt-1 z-[999] w-max bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-[var(--shadow-lg)] py-1">
             {advancedOptions.map(opt => (
               <div
                 key={opt.key}
                 onClick={() => addProp(opt.key)}
-                className="px-3 py-1.5 text-xs text-[var(--text-primary)] cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] rounded-[var(--radius-sm)] mx-1 whitespace-nowrap"
+                className="px-3 py-1.5 text-xs text-[var(--text-primary)] cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] cut-corners mx-1 whitespace-nowrap"
               >
                 {opt.label}
               </div>
@@ -1310,7 +1310,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
             <button
               type="button"
               onClick={handleAspectRatioToggle}
-              className={`p-0.5 hover:bg-[var(--bg-hover)] rounded transition-colors absolute z-10 pointer-events-auto cursor-pointer ${
+              className={`p-0.5 hover:bg-[var(--bg-hover)] cut-corners transition-colors absolute z-10 pointer-events-auto cursor-pointer ${
                 isAspectRatioLocked ? 'text-[var(--accent-text)]' : 'text-[var(--text-secondary)]'
               }`}
               style={{ left: -7, top: 2 }}

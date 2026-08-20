@@ -563,7 +563,7 @@ function PresetIcon({ preset, onClick, size = 36 }: { preset: GridPreset; onClic
     <button
       onClick={onClick}
       title={preset.label}
-      className="hover:bg-[var(--bg-hover)] rounded-[var(--radius-sm)]"
+      className="hover:bg-[var(--bg-hover)] cut-corners"
       style={{
         width: size + 10, height: size + 10,
         display: 'flex', alignItems: 'center', justifyContent: 'center',

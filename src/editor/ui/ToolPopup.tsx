@@ -412,7 +412,7 @@ export default function ToolPopup({ isOpen, onClose, title, children, anchorRef,
       <motion.div
         ref={popupRef}
         data-tool-popup=""
-        className="fixed bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-2xl flex flex-col overflow-hidden"
+        className="fixed bg-[var(--bg-surface)] border border-[var(--border-light)] cut-corners cut-lg cut-border shadow-2xl flex flex-col overflow-hidden"
         // initial ensures the very first paint is invisible — prevents the
         // one-frame flash at left:0/top:0 before recalcPosition runs.
         // initial: first paint is invisible — prevents the one-frame flash at
@@ -421,7 +421,10 @@ export default function ToolPopup({ isOpen, onClose, title, children, anchorRef,
         // zIndex: 100001 normally; 100020 when triggered from inside a modal (the modal root is
         // 100010) so the popup — e.g. the Border / Shadow / Color editor in the variable modal's
         // default-value section — renders OVER the modal instead of buried behind it. See `inModal`.
-        style={{ width, zIndex }}
+        // --cut-border-color pinned to border-light: the popup's rect border
+        // is border-light, not the control-border the .cut-border fallback
+        // assumes.
+        style={{ width, zIndex, '--cut-border-color': 'var(--border-light)' } as React.CSSProperties}
         // Entrance: fade + subtle scale + slide from the anchor side.
         // left/top always snap instantly; animateTop enables spring for top only.
         animate={positioned ? {

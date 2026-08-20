@@ -1784,7 +1784,7 @@ function ConfirmDeleteModal({
         <button
           type="button"
           onClick={onConfirm}
-          className="w-full h-8 text-xs font-medium text-white bg-red-500 hover:bg-red-500/90 rounded-[var(--radius-lg)] cursor-pointer"
+          className="w-full h-8 text-xs font-medium text-white bg-red-500 hover:bg-red-500/90 cut-corners cursor-pointer"
         >
           {confirmText}
         </button>
@@ -1824,7 +1824,7 @@ function UpgradePlanModal({
         <button
           type="button"
           onClick={onUpgrade}
-          className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 rounded-[var(--radius-lg)] cursor-pointer"
+          className="w-full h-8 text-xs font-medium text-[var(--accent-fg)] bg-[var(--accent)] hover:opacity-90 cut-corners cursor-pointer"
         >
           Upgrade
         </button>
@@ -2167,7 +2167,7 @@ const TreeRow = React.memo(function TreeRow({
           <button
             onClick={(e) => { e.stopPropagation(); onAddPageToGroup!(entry.group!); }}
             title="Add page to group"
-            className="shrink-0 opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded transition-opacity border-none bg-transparent cursor-pointer"
+            className="shrink-0 opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 cut-corners transition-opacity border-none bg-transparent cursor-pointer"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />

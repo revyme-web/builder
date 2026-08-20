@@ -163,14 +163,14 @@ function VideoToolInner({
         {src ? (
           <div className="flex flex-col gap-2">
             <div
-              className="w-full h-28 rounded-lg border border-[var(--border-light)] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity bg-[var(--control-bg)]"
+              className="w-full h-28 cut-corners cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity bg-[var(--control-bg)]"
               onClick={() => setVideoModalOpen(true)}
             >
               <video src={src} className="w-full h-full object-cover" muted playsInline preload="metadata" />
             </div>
             <button
               onClick={() => setVideoModalOpen(true)}
-              className="w-full h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+              className="w-full h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
             >
               Change
             </button>
@@ -178,7 +178,7 @@ function VideoToolInner({
         ) : (
           <button
             onClick={() => setVideoModalOpen(true)}
-            className="w-full h-20 rounded-lg border-2 border-dashed border-[var(--control-border)] hover:border-[var(--accent)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+            className="w-full h-20 cut-corners border-2 border-dashed border-[var(--control-border)] hover:border-[var(--accent)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
@@ -193,7 +193,7 @@ function VideoToolInner({
           {poster ? (
             <button
               onClick={() => setPosterModalOpen(true)}
-              className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-xs text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+              className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] text-xs text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
             >
               <div
                 className="w-6 h-6 rounded shrink-0 border border-[var(--border-light)]"
@@ -204,7 +204,7 @@ function VideoToolInner({
           ) : (
             <button
               onClick={() => setPosterModalOpen(true)}
-              className="w-full h-[var(--control-height)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] rounded-[var(--radius-lg)] text-[var(--text-secondary)] hover:border-[var(--control-border-hover)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              className="w-full h-[var(--control-height)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] text-[var(--text-secondary)] hover:border-[var(--control-border-hover)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
             >
               Choose
             </button>

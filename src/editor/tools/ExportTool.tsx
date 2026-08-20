@@ -231,12 +231,12 @@ export default function ExportTool() {
       </button>
 
       {showPreview && (
-        <div className="w-full rounded-[var(--radius-md)] border border-[var(--control-border)] overflow-hidden bg-[var(--grid-line)] p-2" style={{ height: '120px' }}>
+        <div className="w-full cut-corners cut-border [--cut-border-color:var(--control-border)] border border-[var(--control-border)] overflow-hidden bg-[var(--grid-line)] p-2" style={{ height: '120px' }}>
           {preview ? (
-            <img src={preview} alt="Export preview" className="w-full h-full object-contain rounded-[var(--radius-sm)]" />
+            <img src={preview} alt="Export preview" className="w-full h-full object-contain cut-corners" />
           ) : (
             // Pulsating skeleton while the capture is generating.
-            <div className="w-full h-full animate-pulse bg-[var(--text-primary)]/[0.06] rounded-[var(--radius-sm)]" />
+            <div className="w-full h-full animate-pulse bg-[var(--text-primary)]/[0.06] cut-corners" />
           )}
         </div>
       )}
@@ -245,7 +245,7 @@ export default function ExportTool() {
       <button
         onClick={handleExport}
         disabled={exporting || !nodeId}
-        className={`w-full h-[var(--control-height)] rounded-[var(--radius-lg)] text-xs font-medium transition-colors border ${
+        className={`w-full h-[var(--control-height)] cut-corners text-xs font-medium transition-colors border ${
           exporting || !nodeId
             ? 'bg-[var(--grid-line)] border-[var(--control-border)] text-[var(--text-disabled)] cursor-not-allowed'
             : 'bg-[var(--grid-line)] border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] cursor-pointer'

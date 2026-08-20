@@ -65,7 +65,7 @@ const EXTRA_DEFS: Array<{ kind: ExtraKind; label: string; toggle?: boolean; nume
   { kind: 'value', label: 'Value' },
 ];
 
-const ADD_ITEM = 'group flex items-center mx-1 px-2.5 py-1.5 rounded w-[calc(100%-8px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap disabled:opacity-40';
+const ADD_ITEM = 'group flex items-center mx-1 px-2.5 py-1.5 cut-corners w-[calc(100%-8px)] text-left cursor-pointer bg-transparent hover:!bg-[var(--accent)] border-none whitespace-nowrap disabled:opacity-40';
 const ADD_LABEL = 'text-xs font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-fg)]';
 
 function AddPropMenu({ available, onAdd }: { available: typeof EXTRA_DEFS; onAdd: (k: ExtraKind) => void }) {
@@ -84,7 +84,7 @@ function AddPropMenu({ available, onAdd }: { available: typeof EXTRA_DEFS; onAdd
       {open && (
         <>
           <div className="fixed inset-0 z-50" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-md rounded-[var(--radius-md)] py-1.5 z-[51] w-max border border-[var(--border-light)] space-y-0.5">
+          <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-md cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[51] w-max border border-[var(--border-light)] space-y-0.5">
             {available.map((d) => (
               <button key={d.kind} type="button" className={ADD_ITEM} onClick={() => { onAdd(d.kind); setOpen(false); }}>
                 <span className={ADD_LABEL}>{d.label}</span>

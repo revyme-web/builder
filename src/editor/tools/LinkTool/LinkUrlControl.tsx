@@ -294,7 +294,7 @@ export function LinkUrlField({
             else if (e.key === 'Escape') { setDraftValue(null); (e.target as HTMLInputElement).blur(); }
           }}
           placeholder="/page or https://..."
-          className={`w-full h-[var(--control-height-sm)] px-2 text-xs border rounded-[var(--radius-lg)] focus:outline-none transition-colors ${
+          className={`w-full h-[var(--control-height-sm)] px-2 text-xs border cut-corners focus:outline-none transition-colors ${
             disabled
               ? 'bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-disabled)] cursor-default'
               : 'bg-[var(--control-bg)] border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)]'
@@ -304,7 +304,7 @@ export function LinkUrlField({
         {isDropdownOpen && !disabled && menuPos && createPortal(
           <div
             ref={dropdownRef}
-            className="bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-md shadow-[var(--shadow-lg)] overflow-hidden flex flex-col transition-opacity duration-150 ease-out"
+            className="bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-[var(--shadow-lg)] overflow-hidden flex flex-col transition-opacity duration-150 ease-out"
             style={{
               position: 'fixed', left: menuPos.left, width: menuPos.width, maxHeight: menuPos.maxHeight, zIndex: 100020,
               opacity: menuVisible ? 1 : 0,
@@ -317,7 +317,7 @@ export function LinkUrlField({
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Search…"
-                className="w-full px-2 py-1.5 text-xs bg-white/[0.1] hover:bg-white/[0.14] focus:bg-white/[0.18] rounded text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] outline-none transition-colors"
+                className="w-full px-2 py-1.5 text-xs bg-white/[0.1] hover:bg-white/[0.14] focus:bg-white/[0.18] cut-corners text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] outline-none transition-colors"
               />
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto py-1">

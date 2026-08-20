@@ -48,7 +48,7 @@ const CopyButton = ({ content }: { content: string }) => {
   return (
     <button
       onClick={() => { navigator.clipboard.writeText(content); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-      className="p-1 hover:bg-[var(--bg-hover)] rounded transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+      className="p-1 hover:bg-[var(--bg-hover)] cut-corners transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
       title="Copy"
     >
       {copied ? <CheckIcon size={12} className="text-green-500" /> : (
@@ -569,7 +569,7 @@ export default function DomainSection({ websiteId }: DomainSectionProps) {
                     onClick={() => checkCustomDomainDns(customDomainInDb)}
                     disabled={customDomainDnsStatus === 'checking'}
                     title="Re-check DNS"
-                    className="ml-auto shrink-0 p-1.5 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50"
+                    className="ml-auto shrink-0 p-1.5 cut-corners text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50"
                   >
                     <RefreshIcon
                       className={`w-3.5 h-3.5 ${customDomainDnsStatus === 'checking' ? 'animate-spin' : ''}`}
@@ -630,7 +630,7 @@ export default function DomainSection({ websiteId }: DomainSectionProps) {
               {/* DNS instructions — only while the domain isn't pointing here yet */}
               {customDomainInDb &&
                 (customDomainDnsStatus === 'not-connected' || customDomainDnsStatus === null) && (
-                <div className="mt-1 rounded-lg border border-[var(--border-light)] bg-[var(--bg-hover)]/40 p-3 space-y-3">
+                <div className="mt-1 cut-corners cut-border [--cut-border-color:var(--border-light)] border border-[var(--border-light)] bg-[var(--bg-hover)]/40 p-3 space-y-3">
                   <p className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
                     <GlobeIcon className="w-3.5 h-3.5 text-[var(--accent-text)]" />
                     Point your domain at Revyme

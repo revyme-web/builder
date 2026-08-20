@@ -165,7 +165,7 @@ export default function LinkSlugControl({
         {bound ? (
           // Variable-bound — blue chip with the direction + an ✕ to clear.
           <div
-            className="w-full h-7 flex items-center gap-1.5 px-2 rounded-md text-xs font-medium text-[var(--accent-fg)]"
+            className="w-full h-7 flex items-center gap-1.5 px-2 cut-corners text-xs font-medium text-[var(--accent-fg)]"
             style={{ backgroundColor: 'var(--accent)' }}
             title="CMS navigation variable"
           >
@@ -193,12 +193,12 @@ export default function LinkSlugControl({
                 if (e.key === 'Enter') { onLiteralSlugChange(query.trim()); setOpen(false); }
                 else if (e.key === 'Escape') { setOpen(false); }
               }}
-              className="w-full h-[var(--control-height-sm)] px-2 text-xs bg-[var(--control-bg)] border border-[var(--control-border)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
+              className="w-full h-[var(--control-height-sm)] px-2 text-xs bg-[var(--control-bg)] border border-[var(--control-border)] cut-corners cut-border focus:[--cut-border-color:var(--accent)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
             />
             {open && filtered.length > 0 && menuPos && createPortal(
               <div
                 ref={menuRef}
-                className="overflow-y-auto bg-[var(--dropdown-bg)] border border-[var(--border-light)] rounded-md shadow-[var(--shadow-lg)] py-1.5 space-y-0.5 transition-opacity duration-150 ease-out"
+                className="overflow-y-auto bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-[var(--shadow-lg)] py-1.5 space-y-0.5 transition-opacity duration-150 ease-out"
                 style={{
                   position: 'fixed', left: menuPos.left, width: menuPos.width, maxHeight: menuPos.maxHeight, zIndex: 100020,
                   opacity: menuVisible ? 1 : 0,
@@ -209,7 +209,7 @@ export default function LinkSlugControl({
                   <button
                     key={s}
                     onMouseDown={(e) => { e.preventDefault(); onLiteralSlugChange(s); setQuery(s); setOpen(false); }}
-                    className={`w-[calc(100%-12px)] mx-1.5 flex items-center px-2.5 py-1.5 text-xs font-medium rounded-[var(--radius-sm)] text-left cursor-pointer transition-colors ${
+                    className={`w-[calc(100%-12px)] mx-1.5 flex items-center px-2.5 py-1.5 text-xs font-medium cut-corners text-left cursor-pointer transition-colors ${
                       s === literalSlug
                         ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
                         : 'text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)]'

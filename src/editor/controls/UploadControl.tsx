@@ -147,7 +147,7 @@ export default function UploadControl({
         }}
         disabled={uploading}
         title={value || undefined}
-        className="w-full h-8 flex items-center gap-2 px-1 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] rounded-[var(--radius-lg)] cursor-pointer transition-colors min-w-0 overflow-hidden disabled:opacity-60"
+        className="w-full h-8 flex items-center gap-2 px-1 bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] cursor-pointer transition-colors min-w-0 overflow-hidden disabled:opacity-60"
       >
         <ColorSwatch
           style={firstUrl
