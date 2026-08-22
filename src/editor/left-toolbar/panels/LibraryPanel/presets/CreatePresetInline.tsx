@@ -29,7 +29,7 @@ export function CreatePresetInline({ category, onSubmit, onCancel }: CreatePrese
         onKeyDown={handleKeyDown}
         onBlur={() => { if (!name.trim()) onCancel(); }}
         placeholder={`New ${category.label.toLowerCase()} name...`}
-        className="flex-1 bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border focus:[--cut-border-color:var(--border-focus)] px-2 py-1 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] outline-none focus:border-[var(--border-focus)]"
+        className="flex-1 bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border focus:[--cut-border-color:var(--border-focus)] px-2 py-1 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] outline-none focus:border-[var(--border-focus)]"
       />
       <button
         onClick={() => name.trim() && onSubmit(name.trim())}

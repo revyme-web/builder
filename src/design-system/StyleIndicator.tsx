@@ -46,9 +46,11 @@ export function measurementColors(isComponentFile: boolean): { color: string; fg
     : { color: 'var(--selection)', fg: '#ffffff' };
 }
 
+// Cut tiers, not radii: the md pill takes the default --cut, the compact sm
+// labels the .cut-sm tier so the notch stays proportional at 10px type.
 const sizes = {
-  sm: { borderRadius: 5, padding: '2px 6px', fontWeight: 500, fontSize: 10 },
-  md: { borderRadius: 8, padding: '4px 12px', fontWeight: 600, fontSize: 13 },
+  sm: { cutClass: 'cut-corners cut-sm', padding: '2px 6px', fontWeight: 500, fontSize: 10 },
+  md: { cutClass: 'cut-corners', padding: '4px 12px', fontWeight: 600, fontSize: 13 },
 };
 
 /**
@@ -59,6 +61,10 @@ export default function StyleIndicator({ x, y, children, color = 'var(--accent)'
   const s = sizes[size];
   return createPortal(
     <div
+      className={s.cutClass}
+      // No boxShadow: clip-path clips shadows at the notches, and a
+      // partially-clipped shadow reads as a rendering glitch. The solid
+      // accent fill separates fine from canvas content on its own.
       style={{
         position: 'fixed',
         left: x,
@@ -66,7 +72,6 @@ export default function StyleIndicator({ x, y, children, color = 'var(--accent)'
         transform: 'translate(-50%, -50%)',
         zIndex: 4999,
         backgroundColor: color,
-        borderRadius: s.borderRadius,
         padding: s.padding,
         fontWeight: s.fontWeight,
         fontSize: s.fontSize,
@@ -74,7 +79,6 @@ export default function StyleIndicator({ x, y, children, color = 'var(--accent)'
         color: fg,
         pointerEvents: 'none',
         whiteSpace: 'nowrap',
-        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.2)',
       }}
     >
       {children}

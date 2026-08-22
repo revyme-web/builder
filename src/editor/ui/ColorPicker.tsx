@@ -13,6 +13,7 @@ import {
   parseColor, formatColor,
 } from './color-utils';
 import { clamp } from '@/canvas/canvas-math';
+import { ColorSwatch } from '@/editor/controls/ColorSwatch';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -622,15 +623,12 @@ export default function ColorPicker({ value, onChange, onChangeEnd, showAlpha = 
                           onEditPreset(preset.name);
                           trace.action('color-picker:edit-preset', { name: preset.name });
                         }}
-                        className="opacity-0 group-hover:opacity-100 text-[10px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border px-2 py-0.5 transition-all cursor-pointer"
+                        className="opacity-0 group-hover:opacity-100 text-[10px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border px-2 py-0.5 transition-all cursor-pointer"
                       >
                         Edit
                       </button>
                     )}
-                    <div
-                      className="w-5 h-5 rounded border border-white/10 flex-shrink-0"
-                      style={{ backgroundColor: preset.value }}
-                    />
+                    <ColorSwatch style={{ backgroundColor: preset.value }} />
                   </div>
                 );
               })}

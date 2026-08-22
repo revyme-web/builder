@@ -207,7 +207,7 @@ export function LiveDropdown({ open, meta, publishing, publishSuccess, progress,
               <button
                 type="button"
                 onClick={() => { onOpenBackups(); onClose(); }}
-                className="flex-shrink-0 px-1.5 py-0.5 cut-corners text-[10px] font-medium text-amber-400 border border-amber-400/40 hover:bg-amber-400/10 transition-colors cursor-pointer"
+                className="flex-shrink-0 px-1.5 py-0.5 cut-corners cut-border text-[10px] font-medium text-amber-400 border border-amber-400/40 hover:bg-amber-400/10 transition-colors cursor-pointer"
               >
                 Manage
               </button>

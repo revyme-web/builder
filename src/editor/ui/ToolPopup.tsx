@@ -412,7 +412,7 @@ export default function ToolPopup({ isOpen, onClose, title, children, anchorRef,
       <motion.div
         ref={popupRef}
         data-tool-popup=""
-        className="fixed bg-[var(--bg-surface)] border border-[var(--border-light)] cut-corners cut-lg cut-border shadow-2xl flex flex-col overflow-hidden"
+        className="fixed bg-[var(--bg-surface)] border border-[var(--border-light)] [--cut-border-color:var(--border-light)] cut-corners cut-lg cut-border shadow-2xl flex flex-col overflow-hidden"
         // initial ensures the very first paint is invisible — prevents the
         // one-frame flash at left:0/top:0 before recalcPosition runs.
         // initial: first paint is invisible — prevents the one-frame flash at

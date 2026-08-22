@@ -89,7 +89,7 @@ export function LinkVariableInstanceRow({
         <div className="flex items-center gap-2 w-full min-w-0">
           <button
             onClick={() => setOpen(true)}
-            className="w-full min-w-0 h-[var(--control-height)] flex items-center gap-2 pl-1 pr-2 cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-xs text-[var(--text-primary)] transition-colors cursor-pointer"
+            className="w-full min-w-0 h-[var(--control-height)] flex items-center gap-2 pl-1 pr-2 cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] bg-[var(--control-bg)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] text-xs text-[var(--text-primary)] transition-colors cursor-pointer"
             title={value || 'Add link'}
           >
             {/* Accent swatch ONLY when a link is set; empty "Add link" shows a

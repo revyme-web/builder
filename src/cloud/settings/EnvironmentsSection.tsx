@@ -543,7 +543,7 @@ function CreateEnvironmentModal({ onCancel, onCreate, error }: CreateEnvironment
             maxLength={32}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) void handleSubmit(); }}
-            className="w-full h-8 px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] focus:border-[var(--accent)] text-[var(--text-primary)] cut-corners cut-border focus:[--cut-border-color:var(--accent)] focus:outline-none"
+            className="w-full h-8 px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] focus:border-[var(--accent)] text-[var(--text-primary)] cut-corners cut-border focus:[--cut-border-color:var(--accent)] focus:outline-none"
           />
           {error && <p className="text-[11px] text-red-400">{error}</p>}
           <div className="flex items-center gap-2">

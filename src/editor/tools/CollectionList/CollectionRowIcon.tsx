@@ -5,6 +5,7 @@
 
 import { useAtomValue } from 'jotai';
 import { isComponentFileAtom } from '@/code/stores/store';
+import { ColorSwatch } from '@/editor/controls/ColorSwatch';
 
 export type RowGlyph = 'filter' | 'sort' | 'spinner';
 
@@ -25,13 +26,10 @@ export default function CollectionRowIcon({ glyph, active }: { glyph: RowGlyph; 
     : 'var(--grid-line)';
   const stroke = active ? '#ffffff' : 'var(--text-secondary)';
   return (
-    <span
-      className="flex items-center justify-center w-5 h-5 rounded border border-white/10 flex-shrink-0"
-      style={{ backgroundColor: bg }}
-    >
+    <ColorSwatch style={{ backgroundColor: bg }}>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
         {GLYPH[glyph]}
       </svg>
-    </span>
+    </ColorSwatch>
   );
 }

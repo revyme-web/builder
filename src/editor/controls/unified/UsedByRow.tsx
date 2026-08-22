@@ -25,7 +25,7 @@ export function UsedByRow({ binding }: { binding: ControlBinding }) {
           binding.onNavigate();
         }
       }}
-      className={`w-full h-8 flex items-center justify-between px-2 bg-[var(--grid-line)] border border-[var(--control-border)] cut-border ${binding.onNavigate ? 'hover:border-[var(--accent)] hover:[--cut-border-color:var(--accent)] cursor-pointer' : 'cursor-default'} cut-corners transition-colors text-xs`}
+      className={`w-full h-8 flex items-center justify-between px-2 bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-border ${binding.onNavigate ? 'hover:border-[var(--accent)] hover:[--cut-border-color:var(--accent)] cursor-pointer' : 'cursor-default'} cut-corners transition-colors text-xs`}
     >
       <span className="text-[var(--text-primary)] truncate">{binding.boundBy}</span>
       {binding.onNavigate && (

@@ -313,7 +313,7 @@ export function buildThemeSubmenu(current: string, set: (id: string) => void): D
       <span className="flex items-center gap-2">
         <span
           aria-hidden
-          className="h-3.5 w-3.5 rounded-[4px] border border-black/25 dark:border-white/25"
+          className="h-3.5 w-3.5 cut-corners cut-sm cut-border [--cut-border-color:rgba(0,0,0,0.25)] dark:[--cut-border-color:rgba(255,255,255,0.25)] border border-black/25 dark:border-white/25"
           style={{ backgroundColor: (dark ? t.dark : t.light).accent }}
         />
         {/* Fixed-width cell so the swatches stay on one column whether or not

@@ -131,7 +131,7 @@ export function AssetValueEditor({ value, type, onChange }: {
       ) : (
         <button
           onClick={() => setPickerOpen(true)}
-          className="w-full h-28 cut-corners border-2 border-dashed border-[var(--control-border)] hover:border-[var(--accent)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center"
+          className="w-full h-28 cut-corners cut-border border-2 border-dashed border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--accent)] hover:[--cut-border-color:var(--accent)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center"
         >
           Choose {type === 'image' ? 'Image' : 'Video'}
         </button>
@@ -139,7 +139,7 @@ export function AssetValueEditor({ value, type, onChange }: {
       {url && (
         <button
           onClick={() => setPickerOpen(true)}
-          className="w-full h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+          className="w-full h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
         >
           Change {type === 'image' ? 'Image' : 'Video'}
         </button>

@@ -254,7 +254,7 @@ export default function ToolInput({ value, onChange, onChangeLive, onCommit, ste
         onBlur={() => { setIsFocused(false); commit(localValue); }}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        className={`w-full h-[var(--control-height)] px-[var(--control-pad-x)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] ${isAutoOrFill ? 'text-[var(--text-secondary)]' : 'text-[var(--text-primary)]'} cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+        className={`w-full h-[var(--control-height)] px-[var(--control-pad-x)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] ${isAutoOrFill ? 'text-[var(--text-secondary)]' : 'text-[var(--text-primary)]'} cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
       />
       {/* Chevron label — shown when not hovering/focused, hidden when chevrons appear */}
       {chevronLabel && isNumeric && (

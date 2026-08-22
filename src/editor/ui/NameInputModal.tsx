@@ -205,7 +205,7 @@ export default function NameInputModal({
           onKeyDown={e => { if (e.key === 'Enter' && value.trim()) handleSubmit(); }}
           onFocus={e => e.target.select()}
           placeholder={placeholder}
-          className="w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--modal-accent)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:outline-none transition-colors"
+          className="w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--modal-accent)] text-[var(--text-primary)] cut-corners cut-border focus:[--cut-border-color:var(--modal-accent)] hover:[--cut-border-color:var(--control-border-hover)] focus:outline-none transition-colors"
         />
         {error && <span className="text-[10px] text-red-400 -mt-1">{error}</span>}
         <button

@@ -396,7 +396,7 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
       </div>
 
       {subscribeError && (
-        <div className="px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs cut-corners">
+        <div className="px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs cut-corners cut-border">
           {subscribeError}
         </div>
       )}
@@ -418,7 +418,7 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
           return (
             <div
               key={plan.id}
-              className={`flex flex-col justify-between items-start gap-8 px-6 pt-8 pb-4 cut-corners relative overflow-hidden ${
+              className={`flex flex-col justify-between items-start gap-8 px-6 pt-8 pb-4 cut-corners cut-border relative overflow-hidden ${
                 plan.premium
                   // Tailwind 4 dropped --tw-gradient-stops; use literal hex
                   // for the radial. neutral-900 = #171717, neutral-950 = #0a0a0a.
@@ -511,11 +511,11 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
                   plan.id === 'free' ||
                   checkoutLoading === plan.id
                 }
-                className={`mt-4 w-full px-4 py-2.5 cut-corners text-sm font-medium transition-all duration-200 min-h-[40px] flex items-center justify-center cursor-pointer ${
+                className={`mt-4 w-full px-4 py-2.5 cut-corners cut-border text-sm font-medium transition-all duration-200 min-h-[40px] flex items-center justify-center cursor-pointer ${
                   plan.comingSoon
                     ? 'bg-white/5 text-white/60 cursor-not-allowed border border-white/10'
                     : isCurrent || plan.id === 'free'
-                      ? 'bg-black/[0.04] dark:bg-white/5 text-[var(--text-tertiary)] cursor-not-allowed border border-[var(--control-border)]'
+                      ? 'bg-black/[0.04] dark:bg-white/5 text-[var(--text-tertiary)] cursor-not-allowed border border-[var(--control-border)] [--cut-border-color:var(--control-border)]'
                       : plan.premium
                         ? 'bg-white text-black hover:bg-white/90'
                         : 'bg-neutral-800 dark:bg-white/10 hover:bg-neutral-700 dark:hover:bg-white/20 text-white'

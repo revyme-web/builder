@@ -494,12 +494,12 @@ function ImagePickerField({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className={`group relative w-28 h-28 shrink-0 cut-corners overflow-hidden flex items-center justify-center cursor-pointer transition-colors ${
+          className={`group relative w-28 h-28 shrink-0 cut-corners cut-border overflow-hidden flex items-center justify-center cursor-pointer transition-colors ${
             hasImage && !loadFailed
-              ? 'border border-[var(--border-light)]'
+              ? 'border border-[var(--border-light)] [--cut-border-color:var(--border-light)]'
               : hasImage && loadFailed
                 ? 'border border-red-500/40 bg-red-500/5'
-                : 'border border-dashed border-[var(--control-border)] hover:border-[var(--text-tertiary)] bg-[var(--bg-hover)]/30'
+                : 'border border-dashed border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--text-tertiary)] hover:[--cut-border-color:var(--text-tertiary)] bg-[var(--bg-hover)]/30'
           }`}
           title={hasImage ? (loadFailed ? 'Saved URL did not load — click to replace' : 'Replace image') : 'Choose image'}
         >

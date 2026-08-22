@@ -216,7 +216,7 @@ export function updateViewportHeaderPositions(container: HTMLElement): void {
     // transform, so the slice (like every other px here) divides by scale
     // to stay constant on screen. Custom props need setProperty — they
     // don't apply through style-object assignment.
-    header.style.setProperty("--cut", `${9 / scale}px`);
+    header.style.setProperty("--cut", `${6 / scale}px`);
     header.style.setProperty('--cut-border-color', 'var(--canvas-chrome-border)');
 
     // Update inner text sizes
@@ -237,7 +237,7 @@ export function updateViewportHeaderPositions(container: HTMLElement): void {
     if (addBtn) {
       addBtn.style.width = `${24 / scale}px`;
       addBtn.style.height = `${24 / scale}px`;
-      addBtn.style.setProperty('--cut', `${5 / scale}px`);
+      addBtn.style.setProperty("--cut", `${4 / scale}px`);
       addBtn.style.fontSize = `${14 / scale}px`;
       // Keep the viewer check in sync with the creation-time style
       // below — this per-transform update would otherwise re-show the

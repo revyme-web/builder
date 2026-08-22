@@ -283,10 +283,10 @@ export default function PageVariablesModal() {
                   onChange={(e) => setDraftName(e.target.value)}
                   placeholder="e.g. opacity"
                   autoFocus={mode === 'create'}
-                  className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] cut-corners text-[var(--text-primary)] focus:outline-none transition-colors ${
+                  className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] cut-corners cut-border text-[var(--text-primary)] focus:outline-none transition-colors ${
                     nameError
-                      ? 'border border-red-500 focus:border-red-500'
-                      : 'border border-[var(--border-light)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)]'
+                      ? 'border border-red-500 [--cut-border-color:#ef4444] focus:border-red-500 focus:[--cut-border-color:#ef4444]'
+                      : 'border border-[var(--border-light)] [--cut-border-color:var(--border-light)] hover:border-[var(--control-border)] hover:[--cut-border-color:var(--control-border)] focus:border-[var(--border-focus)] focus:[--cut-border-color:var(--border-focus)]'
                   }`}
                 />
               </Field>
@@ -321,10 +321,10 @@ export default function PageVariablesModal() {
                   value={draftQueryParam}
                   onChange={(e) => setDraftQueryParam(e.target.value)}
                   placeholder="e.g. tab"
-                  className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] cut-corners text-[var(--text-primary)] focus:outline-none transition-colors ${
+                  className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] cut-corners cut-border text-[var(--text-primary)] focus:outline-none transition-colors ${
                     queryParamError
-                      ? 'border border-red-500 focus:border-red-500'
-                      : 'border border-[var(--border-light)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)]'
+                      ? 'border border-red-500 [--cut-border-color:#ef4444] focus:border-red-500 focus:[--cut-border-color:#ef4444]'
+                      : 'border border-[var(--border-light)] [--cut-border-color:var(--border-light)] hover:border-[var(--control-border)] hover:[--cut-border-color:var(--control-border)] focus:border-[var(--border-focus)] focus:[--cut-border-color:var(--border-focus)]'
                   }`}
                 />
               </Field>

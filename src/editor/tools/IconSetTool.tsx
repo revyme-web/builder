@@ -278,9 +278,9 @@ export default function IconSetTool() {
                 key={entry.id}
                 onClick={() => handlePickIcon(entry.id)}
                 title={entry.displayName}
-                className={`flex items-center justify-center aspect-square cut-corners border ${
+                className={`flex items-center justify-center aspect-square cut-corners cut-border border ${
                   entry.id === currentIconId
-                    ? 'border-[var(--accent)] bg-[var(--accent)]/10'
+                    ? 'border-[var(--accent)] [--cut-border-color:var(--accent)] bg-[var(--accent)]/10'
                     : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.08]'
                 } cursor-pointer transition-colors`}
               >

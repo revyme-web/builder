@@ -66,7 +66,7 @@ export default function LinkRelControl({ value, onChange }: LinkRelControlProps)
       {userTokens.map((tok) => (
         <div
           key={tok}
-          className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 cut-corners cut-border bg-[var(--control-bg)] border border-[var(--control-border)] text-xs text-[var(--text-primary)]"
+          className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 cut-corners cut-border bg-[var(--control-bg)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] text-xs text-[var(--text-primary)]"
         >
           <span className="truncate flex-1 min-w-0 text-left">{relLabel(tok)}</span>
           <span
@@ -87,7 +87,7 @@ export default function LinkRelControl({ value, onChange }: LinkRelControlProps)
         <button
           ref={addRef}
           onClick={() => setMenuOpen((o) => !o)}
-          className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-xs text-[var(--text-secondary)] transition-colors cursor-pointer"
+          className="w-full h-[var(--control-height)] flex items-center gap-2 px-2 cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] bg-[var(--control-bg)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] text-xs text-[var(--text-secondary)] transition-colors cursor-pointer"
         >
           <span className="w-4 h-4 rounded bg-white/10 flex items-center justify-center shrink-0 text-[10px]">+</span>
           <span className="truncate flex-1 text-left">Add…</span>

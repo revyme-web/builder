@@ -235,7 +235,7 @@ export default function OverlayTool() {
 // accent (user report 2026-08-10). The back square keeps its 55% tint, now as
 // a lighter pass of the same colour rather than a different one.
 const OverlayPillIcon = (
-  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-[var(--accent)]">
+  <span className="flex h-5 w-5 shrink-0 items-center justify-center cut-corners cut-sm bg-[var(--accent)]">
     <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
       <rect x="2" y="2" width="8" height="8" rx="1.5" fill="var(--accent-fg)" fillOpacity="0.55" />
       <rect x="5" y="5" width="8" height="8" rx="1.5" fill="var(--accent-fg)" />

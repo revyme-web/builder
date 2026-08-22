@@ -44,7 +44,10 @@ export default function ToolSection({ title, children, defaultOpen = true, colla
           // than the rows it heads. The recession comes from size, case and
           // tracking instead — 10px uppercase tracked against 12px sentence
           // case is unmistakably a different role at the same colour.
-          className={`text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--text-primary)] ${collapsible ? 'cursor-pointer select-none' : ''} ${collapsible && !isOpen ? 'opacity-50' : ''}`}
+          // Sentence case in the default UI stack (the display-font experiment
+          // was retired 2026-08-20) — same face as the row labels, one size up
+          // and semibold so the heading role still reads.
+          className={`text-xs font-semibold text-[var(--text-primary)] ${collapsible ? 'cursor-pointer select-none' : ''} ${collapsible && !isOpen ? 'opacity-50' : ''}`}
         >
           {title}
         </span>

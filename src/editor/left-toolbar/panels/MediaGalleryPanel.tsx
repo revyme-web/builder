@@ -169,10 +169,10 @@ const MediaTile = React.memo(function MediaTile({ url, kind, mediaKey, isSelecte
       // Selected: border snaps to accent with NO transition — with the base
       // white border + `transition-colors`, every tile joining the selection
       // flashed white→blue under the instant outline (the reported fringe).
-      className={`group relative aspect-square cut-corners overflow-hidden border cursor-grab active:cursor-grabbing ${
+      className={`group relative aspect-square cut-corners cut-border overflow-hidden border cursor-grab active:cursor-grabbing ${
         isSelected
-          ? 'border-[var(--accent)] transition-none'
-          : 'border-[var(--border-light)] hover:border-[var(--accent)] transition-colors'
+          ? 'border-[var(--accent)] [--cut-border-color:var(--accent)] transition-none'
+          : 'border-[var(--border-light)] [--cut-border-color:var(--border-light)] hover:border-[var(--accent)] hover:[--cut-border-color:var(--accent)] transition-colors'
       }`}
       style={isSelected ? MULTI_SELECT_OUTLINE : undefined}
       title="Drag to canvas"
@@ -486,7 +486,7 @@ export default function MediaGalleryPanel() {
       {/* Error banner (e.g. 402 storage cap reached) */}
       {uploadError && (
         <div className="px-3 mt-3">
-          <div className="px-2.5 py-1.5 cut-corners bg-red-500/10 border border-red-500/20 text-[11px] text-red-500 dark:text-red-400 leading-snug">
+          <div className="px-2.5 py-1.5 cut-corners cut-border bg-red-500/10 border border-red-500/20 text-[11px] text-red-500 dark:text-red-400 leading-snug">
             {uploadError}
           </div>
         </div>

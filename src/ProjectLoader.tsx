@@ -563,8 +563,11 @@ function CanvasReadyShellOverlay() {
 function BuilderLoadingShell() {
   const surface = 'var(--bg-surface, #16161d)';
   const border = '1px solid var(--border-light, rgba(255,255,255,0.08))';
-  const ph = (w: number | string, h: number, r = 6): React.CSSProperties => ({
-    width: w, height: h, borderRadius: r,
+  // Placeholder chips take the cut classes, not radii — the shell must preview
+  // the exact chrome language the loaded editor draws (cut-corners default for
+  // 28px+ chips, cut-sm for the 12px text lines). Circles stay circles.
+  const ph = (w: number | string, h: number): React.CSSProperties => ({
+    width: w, height: h,
     background: 'var(--bg-hover, rgba(255,255,255,0.06))',
     animation: 'rvy-shell-pulse 1.4s ease-in-out infinite',
   });
@@ -575,67 +578,72 @@ function BuilderLoadingShell() {
         @keyframes rvy-shell-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
       `}</style>
 
-      {/* Top-left header — 52px tall, 52+256 wide, real logo already loaded */}
-      <div style={{ position: 'absolute', top: 0, left: 0, width: 308, height: 52, background: surface, borderBottom: border, borderRight: border, display: 'flex', alignItems: 'center' }}>
-        <div style={{ width: 51, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 779.79 1578.33" width={14} height={22} style={{ color: 'var(--text-primary, #eee)' }}>
-            <polygon fill="currentColor" points="0 0 0 464.88 779.79 922.26 779.79 461.13 0 0" />
-            <polygon fill="currentColor" points="779.79 1357.14 0 899.76 0 1357.14 408.64 1578.33 779.79 1357.14" />
-            <polygon fill="currentColor" points="402.21 700.79 402.21 1135.67 779.79 922.26 402.21 700.79" />
-          </svg>
+      {/* Left slab — 308px full height, bottom-right cut, mirroring the
+          ChromeIslands docked island. Header, icon rail and panel are drawn
+          INSIDE it so the outer silhouette matches the loaded chrome. */}
+      <div className="cut-br cut-lg" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 308, background: surface, borderRight: border }}>
+        {/* Header row — real logo already loaded */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 52, borderBottom: border, display: 'flex', alignItems: 'center' }}>
+          <div style={{ width: 51, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 779.79 1578.33" width={14} height={22} style={{ color: 'var(--text-primary, #eee)' }}>
+              <polygon fill="currentColor" points="0 0 0 464.88 779.79 922.26 779.79 461.13 0 0" />
+              <polygon fill="currentColor" points="779.79 1357.14 0 899.76 0 1357.14 408.64 1578.33 779.79 1357.14" />
+              <polygon fill="currentColor" points="402.21 700.79 402.21 1135.67 779.79 922.26 402.21 700.79" />
+            </svg>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 12 }}>
+            <div className="cut-corners cut-sm" style={ph(90, 12)} />
+            <div className="cut-corners cut-sm" style={ph(44, 12)} />
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 12 }}>
-          <div style={ph(90, 12)} />
-          <div style={ph(44, 12)} />
+
+        {/* Icon rail — w-52, px-10 py-16, 32px buttons gap-8; bottom: 20px rule,
+            28px + circle, 28px avatar circle (CollaboratorsSection geometry). */}
+        <div style={{ position: 'absolute', top: 52, bottom: 0, left: 0, width: 52, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'center', padding: '16px 10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
+              <div key={i} className="cut-corners" style={{ ...ph(32, 32), animationDelay: `${i * 80}ms` }} />
+            ))}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 20, height: 1, background: 'var(--border-light, rgba(255,255,255,0.08))' }} />
+            <div style={{ ...ph(28, 28), borderRadius: 14, animationDelay: '200ms' }} />
+            <div style={{ ...ph(28, 28), borderRadius: 14, animationDelay: '300ms' }} />
+          </div>
         </div>
       </div>
 
-      {/* Icon rail — w-52, px-10 py-16, 32px buttons gap-8; bottom: 20px rule,
-          28px + circle, 28px avatar circle (CollaboratorsSection geometry). */}
-      <div style={{ position: 'absolute', top: 52, bottom: 0, left: 0, width: 52, background: surface, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'center', padding: '16px 10px', borderRight: border }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
-            <div key={i} style={{ ...ph(32, 32, 6), animationDelay: `${i * 80}ms` }} />
-          ))}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 20, height: 1, background: 'var(--border-light, rgba(255,255,255,0.08))' }} />
-          <div style={{ ...ph(28, 28, 14), animationDelay: '200ms' }} />
-          <div style={{ ...ph(28, 28, 14), animationDelay: '300ms' }} />
-        </div>
-      </div>
-
-      {/* Left panel — 256px, empty surface */}
-      <div style={{ position: 'absolute', top: 52, bottom: 0, left: 52, width: 256, background: surface, borderRight: border }} />
-
-      {/* Bottom toolbar — same geometry as the real pill (see BottomToolbar) */}
-      <div style={{ position: 'fixed', bottom: 14, left: '50%', transform: 'translateX(-50%)' }}>
-        <div style={{
+      {/* Bottom toolbar — docked flush to the bottom like the real bar, with
+          the same cut-lg backdrop signature (no boxShadow: clip-path clips it). */}
+      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)' }}>
+        <div className="cut-corners cut-lg cut-border" style={{
           display: 'flex', alignItems: 'center', gap: 2,
           background: surface, border,
-          borderRadius: 12, padding: '6px 8px',
-          boxShadow: '0 8px 30px rgba(0,0,0,0.35)',
+          padding: '6px 8px',
+          ['--cut-border-color' as string]: 'var(--border-light)',
         }}>
-          <div style={{ ...ph(48, 32, 8) }} />
-          <div style={{ ...ph(34, 32, 8), animationDelay: '90ms' }} />
-          <div style={{ ...ph(34, 32, 8), animationDelay: '180ms' }} />
-          <div style={{ ...ph(48, 32, 8), animationDelay: '270ms' }} />
-          <div style={{ ...ph(48, 32, 8), animationDelay: '360ms' }} />
+          <div className="cut-corners" style={{ ...ph(48, 32) }} />
+          <div className="cut-corners" style={{ ...ph(34, 32), animationDelay: '90ms' }} />
+          <div className="cut-corners" style={{ ...ph(34, 32), animationDelay: '180ms' }} />
+          <div className="cut-corners" style={{ ...ph(48, 32), animationDelay: '270ms' }} />
+          <div className="cut-corners" style={{ ...ph(48, 32), animationDelay: '360ms' }} />
           <div style={sep} />
-          <div style={{ ...ph(52, 32, 8), animationDelay: '450ms' }} />
+          <div className="cut-corners" style={{ ...ph(52, 32), animationDelay: '450ms' }} />
           <div style={sep} />
-          <div style={{ ...ph(64, 32, 8), animationDelay: '540ms' }} />
-          <div style={{ ...ph(56, 32, 8), animationDelay: '630ms' }} />
+          <div className="cut-corners" style={{ ...ph(64, 32), animationDelay: '540ms' }} />
+          <div className="cut-corners" style={{ ...ph(56, 32), animationDelay: '630ms' }} />
           <div style={sep} />
-          <div style={{ ...ph(34, 32, 8), animationDelay: '720ms' }} />
-          <div style={{ ...ph(34, 32, 8), animationDelay: '810ms' }} />
+          <div className="cut-corners" style={{ ...ph(34, 32), animationDelay: '720ms' }} />
+          <div className="cut-corners" style={{ ...ph(34, 32), animationDelay: '810ms' }} />
           <div style={sep} />
-          <div style={{ ...ph(72, 32, 8), animationDelay: '900ms' }} />
+          <div className="cut-corners" style={{ ...ph(72, 32), animationDelay: '900ms' }} />
         </div>
       </div>
 
-      {/* Right panel — empty surface (PropertiesPanel width) */}
-      <div style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: 260, background: surface, borderLeft: border }} />
+      {/* Right chrome — header slab with the top-left cut + body slab below,
+          mirroring the two ChromeIslands pieces. */}
+      <div className="cut-tl cut-lg" style={{ position: 'absolute', top: 0, right: 0, width: 260, height: 52, background: surface, borderBottom: border, borderLeft: border }} />
+      <div style={{ position: 'absolute', top: 52, bottom: 0, right: 0, width: 260, background: surface, borderLeft: border }} />
     </div>
   );
 }

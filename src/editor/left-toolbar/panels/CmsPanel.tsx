@@ -454,7 +454,7 @@ function CollectionSpreadsheetView({ slug }: { slug: string }) {
       <div className="p-3 border-t border-[var(--border-light)]">
         <button
           onClick={handleAddItem}
-          className="w-full flex items-center justify-center gap-1.5 cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] px-3 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+          className="w-full flex items-center justify-center gap-1.5 cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] px-3 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
         >
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -583,7 +583,7 @@ function ItemDetailView({ slug, itemId }: { slug: string; itemId: string }) {
         <div className="pt-2">
           <button
             onClick={handleDeleteItem}
-            className="w-full flex items-center justify-center gap-1.5 cut-corners bg-red-600/10 border border-red-500/20 hover:bg-red-600/20 px-3 py-1.5 text-[11px] font-medium text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+            className="w-full flex items-center justify-center gap-1.5 cut-corners cut-border bg-red-600/10 border border-red-500/20 hover:bg-red-600/20 px-3 py-1.5 text-[11px] font-medium text-red-400 hover:text-red-300 transition-colors cursor-pointer"
           >
             Delete Item
           </button>

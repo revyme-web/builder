@@ -232,7 +232,7 @@
        rounding of the uncut corners. Every .cut-* class consumes these via
        inheritance; element-level overrides (.cut-sm/.cut-lg, inline vars)
        still win. Change these two lines and the whole chrome follows. */
-    --cut: 9px;
+    --cut: 6px;
     --cut-round: 0px;
 
     /* Radius */
@@ -581,10 +581,10 @@ html.theme-transition *::after {
 /* Size modifiers — pair with .cut-corners on the same element. sm for small
  * chips/thumbs (~24px tall), lg for large containers (~44px+). */
 .cut-sm {
-  --cut: 5px;
+  --cut: 4px;
 }
 .cut-lg {
-  --cut: 12px;
+  --cut: 8px;
 }
 
 /* Add-Breakpoint menu rows — CSS hover (replaces brittle JS span-color toggling that left icons

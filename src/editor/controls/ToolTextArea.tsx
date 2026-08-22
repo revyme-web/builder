@@ -26,7 +26,7 @@ export default function ToolTextArea({ value, onChange, placeholder, rows = 3, m
       placeholder={placeholder}
       rows={rows}
       disabled={disabled}
-      className={`w-full p-2 text-xs ${mono ? 'font-mono' : ''} bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors resize-none scrollbar-hide ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      className={`w-full p-2 text-xs ${mono ? 'font-mono' : ''} bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors resize-none scrollbar-hide ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     />
   );
 }

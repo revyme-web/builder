@@ -82,7 +82,7 @@ export default function CreateColorPresetPanel({ initialColor, onCreated }: Prop
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="Preset name"
-        className="w-full bg-[var(--grid-line)] border border-[var(--control-border)] focus:border-[var(--border-focus)] cut-corners cut-border focus:[--cut-border-color:var(--border-focus)] px-2.5 py-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-disabled)]"
+        className="w-full bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] focus:border-[var(--border-focus)] cut-corners cut-border focus:[--cut-border-color:var(--border-focus)] px-2.5 py-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-disabled)]"
       />
 
       {/* Light / Dark toggle */}

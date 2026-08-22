@@ -64,7 +64,7 @@ export default function ToolSegmentedControl({ value, onChange, options, size = 
     // Outlined like the inputs and selects: the track was a bare fill with no
     // border, so when the other controls moved to outlined-and-recessed this
     // one stayed a filled slab and stood out as the odd control.
-    <div ref={containerRef} className="relative flex w-full bg-[var(--choice-bg)] border border-[var(--control-border)] cut-corners cut-border p-0.5">
+    <div ref={containerRef} className="relative flex w-full bg-[var(--choice-bg)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border p-0.5">
       {/* Animated highlight */}
       <div
         className="absolute cut-corners cut-sm"

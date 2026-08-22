@@ -188,7 +188,7 @@ export default function VideoSearchModal({ isOpen, onClose, onSelect }: VideoSea
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Search videos... (Enter to search)"
-              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
+              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
             />
           )}
         </div>
@@ -253,7 +253,7 @@ export default function VideoSearchModal({ isOpen, onClose, onSelect }: VideoSea
         {tab === 'upload' && (
           <div className="flex flex-col gap-4 min-h-[400px]">
             {/* Upload drop zone */}
-            <label className="flex-shrink-0 h-32 cut-corners bg-[var(--bg-surface)] border-2 border-dashed border-[var(--control-border)] flex flex-col items-center justify-center gap-2 hover:bg-[var(--bg-hover)] cursor-pointer transition-colors">
+            <label className="flex-shrink-0 h-32 cut-corners cut-border bg-[var(--bg-surface)] border-2 border-dashed border-[var(--control-border)] [--cut-border-color:var(--control-border)] flex flex-col items-center justify-center gap-2 hover:bg-[var(--bg-hover)] cursor-pointer transition-colors">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)]">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
               </svg>
@@ -277,7 +277,7 @@ export default function VideoSearchModal({ isOpen, onClose, onSelect }: VideoSea
                 onChange={(e) => setUrlInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && urlInput.trim()) handleSelect(urlInput.trim()); }}
                 placeholder="Or paste a video URL..."
-                className="flex-1 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
+                className="flex-1 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
               />
               {urlInput.trim() && (
                 <button

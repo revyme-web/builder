@@ -245,10 +245,10 @@ export default function ExportTool() {
       <button
         onClick={handleExport}
         disabled={exporting || !nodeId}
-        className={`w-full h-[var(--control-height)] cut-corners text-xs font-medium transition-colors border ${
+        className={`w-full h-[var(--control-height)] cut-corners cut-border text-xs font-medium transition-colors border ${
           exporting || !nodeId
-            ? 'bg-[var(--grid-line)] border-[var(--control-border)] text-[var(--text-disabled)] cursor-not-allowed'
-            : 'bg-[var(--grid-line)] border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] cursor-pointer'
+            ? 'bg-[var(--grid-line)] border-[var(--control-border)] [--cut-border-color:var(--control-border)] text-[var(--text-disabled)] cursor-not-allowed'
+            : 'bg-[var(--grid-line)] border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] hover:[--cut-border-color:var(--control-border-hover)] text-[var(--text-primary)] cursor-pointer'
         }`}
       >
         {exporting ? 'Exporting...' : `Export ${nodeName}`}

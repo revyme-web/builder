@@ -248,7 +248,7 @@ function ColorFieldControl({ value, onChange, name }: { value: string; onChange:
         type="button"
         title={`${name} — pick a colour`}
         onClick={() => setOpen(o => !o)}
-        className="w-8 h-[var(--control-height)] cut-corners cut-border hover:[--cut-border-color:var(--border-focus)] border border-[var(--control-border)] hover:border-[var(--border-focus)] shrink-0 cursor-pointer transition-colors"
+        className="w-8 h-[var(--control-height)] cut-corners cut-border hover:[--cut-border-color:var(--border-focus)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--border-focus)] shrink-0 cursor-pointer transition-colors"
         style={{ background: shown || '#000' }}
       />
       <input
@@ -307,7 +307,7 @@ function ImageFieldControl({ value, onChange, name }: { value: string; onChange:
         type="button"
         onClick={() => setPickerOpen(true)}
         title={hasImage ? value : 'Choose image…'}
-        className="w-16 h-16 cut-corners cut-border hover:[--cut-border-color:var(--border-focus)] border border-[var(--control-border)] hover:border-[var(--border-focus)] overflow-hidden bg-[var(--grid-line)] transition-colors cursor-pointer flex items-center justify-center"
+        className="w-16 h-16 cut-corners cut-border hover:[--cut-border-color:var(--border-focus)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--border-focus)] overflow-hidden bg-[var(--grid-line)] transition-colors cursor-pointer flex items-center justify-center"
       >
         {hasImage ? (
           <img

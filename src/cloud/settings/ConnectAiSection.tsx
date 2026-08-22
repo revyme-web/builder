@@ -82,7 +82,7 @@ export default function ConnectAiSection() {
           onChange={(e) => setToken(e.target.value)}
           placeholder={TOKEN_PLACEHOLDER}
           spellCheck={false}
-          className="w-full h-9 px-3 text-xs font-mono bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none transition-colors"
+          className="w-full h-9 px-3 text-xs font-mono bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none transition-colors"
         />
         <p className="text-[11px] text-[var(--text-disabled)]">
           One account-level token works for all your projects — create it with

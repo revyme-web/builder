@@ -37,7 +37,7 @@ import { buildComponentRegistry, type ComponentProp } from '@/code/components/co
 import { parseChildEventFires, type EventFireTrigger } from '@/code/generation/event-fire-gen';
 import { parseInstanceEventBindings } from '@/code/generation/instance-event-gen';
 import { overlayCloseSetter } from '@/code/generation/close-overlay-gen';
-import { ToolSection, ToolRow, ToolSelect, ToolInput, ToolSlider, ToolSegmentedControl, ToolPlusMinus, ColorInput, ControlActionRow, RemoveButton, ControlLabel } from '../controls';
+import { ToolSection, ToolRow, ToolSelect, ToolInput, ToolSlider, ToolSegmentedControl, ToolPlusMinus, ColorInput, ControlActionRow, RemoveButton, ControlLabel, ColorSwatch } from '../controls';
 import type { MenuItem } from '../controls/control-menu-items';
 import ImagePickerInput from '../controls/ImagePickerInput';
 import ToolPopup from '../ui/ToolPopup';
@@ -224,9 +224,7 @@ function ComponentInstanceEventInteractions({ selectedId, componentFile }: { sel
               <span className="w-3/4 min-w-0 text-[11px] font-bold text-[var(--text-secondary)]">Click</span>
               <ControlActionRow className="!pr-2" onClick={() => setEditProp(p.name)}>
                 {/* Event swatch matches the master-side event-fire row. */}
-                <span className="flex items-center justify-center w-5 h-5 rounded border border-white/10 flex-shrink-0" style={{ backgroundColor: 'var(--accent-secondary, #a855f7)' }}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="var(--accent-secondary-fg)"><path d="M13 2 L4 14 h6 l-1 8 9-12 h-6 z" /></svg>
-                </span>
+                <ZapSwatch secondary />
                 <span className="truncate flex-1 min-w-0">{p.label ?? p.name}</span>
               </ControlActionRow>
             </div>
@@ -238,9 +236,7 @@ function ComponentInstanceEventInteractions({ selectedId, componentFile }: { sel
               ref={el => { if (el) rowRefs.current.set(p.name, el); }}>
               <span className="w-3/4 min-w-0 text-[11px] font-bold text-[var(--text-secondary)]">{p.label ?? p.name}</span>
               <ControlActionRow className="!pr-2" onClick={() => setEditProp(p.name)}>
-                <span className="flex items-center justify-center w-5 h-5 rounded border border-white/10 flex-shrink-0" style={{ backgroundColor: 'var(--accent-secondary, #a855f7)' }}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="var(--accent-secondary-fg)"><path d="M13 2 L4 14 h6 l-1 8 9-12 h-6 z" /></svg>
-                </span>
+                <ZapSwatch secondary />
                 <span className="truncate flex-1 min-w-0">Close Overlay</span>
                 <RemoveButton onClick={() => unbind(p.name)} />
               </ControlActionRow>
@@ -491,10 +487,8 @@ function ComponentInteractions({ selectedId, isRoot }: { selectedId: string; isR
               ref={el => { if (el) fireRefs.current.set(b.trigger, el); }}>
               <span className="w-3/4 min-w-0 text-[11px] font-bold text-[var(--text-secondary)]">{formatTrigger(b.trigger)}</span>
               <ControlActionRow onClick={() => setEditFire(b.trigger)} className="!pr-2">
-                {/* Swatch matches the Fill tool's ColorSwatch (sm): w-5 h-5 rounded border-white/10. */}
-                <span className="flex items-center justify-center w-5 h-5 rounded border border-white/10 flex-shrink-0" style={{ backgroundColor: 'var(--accent-secondary, #a855f7)' }}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="var(--accent-secondary-fg)"><path d="M13 2 L4 14 h6 l-1 8 9-12 h-6 z" /></svg>
-                </span>
+                {/* Same ColorSwatch the Fill tool uses — see ZapSwatch below. */}
+                <ZapSwatch secondary />
                 <span className="truncate flex-1 min-w-0">{eventVars.find(v => v.name === b.eventVar)?.label ?? b.eventVar}</span>
                 <RemoveButton onClick={() => removeFire(b.trigger)} />
               </ControlActionRow>
@@ -605,13 +599,13 @@ const CLOSE_TRIGGER_OPTIONS = [
 // (purple) inside a template or component master/instance.
 function ZapSwatch({ secondary }: { secondary?: boolean }) {
   return (
-    <span className="flex items-center justify-center w-5 h-5 rounded border border-white/10 flex-shrink-0" style={{ backgroundColor: secondary ? 'var(--accent-secondary)' : 'var(--accent)' }}>
+    <ColorSwatch style={{ backgroundColor: secondary ? 'var(--accent-secondary)' : 'var(--accent)' }}>
       {/* The glyph tracks whichever fill the badge took — the two accents
           don't share a foreground (purple wants white, the brand accent
           wants its own --accent-fg, which is near-black or white depending
           on the accent). */}
       <svg width="11" height="11" viewBox="0 0 24 24" fill={secondary ? 'var(--accent-secondary-fg)' : 'var(--accent-fg)'}><path d="M13 2 L4 14 h6 l-1 8 9-12 h-6 z" /></svg>
-    </span>
+    </ColorSwatch>
   );
 }
 
@@ -686,7 +680,7 @@ function CloseOverlayForm({ co, onChangeTrigger, onChangeDelay, onRemove }: {
       </ToolRow>
       <button
         onClick={onRemove}
-        className="h-[var(--control-height-sm)] px-3 flex items-center justify-center text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border transition-colors cursor-pointer hover:bg-[var(--control-border)]"
+        className="h-[var(--control-height-sm)] px-3 flex items-center justify-center text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border transition-colors cursor-pointer hover:bg-[var(--control-border)]"
       >
         Remove
       </button>
@@ -921,7 +915,7 @@ function EditInteractionForm({ conn, variants, onUpdate, onRemove }: {
       <div className="flex gap-2">
         <button
           onClick={onRemove}
-          className="h-[var(--control-height-sm)] px-3 flex items-center justify-center text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border transition-colors cursor-pointer hover:bg-[var(--control-border)]"
+          className="h-[var(--control-height-sm)] px-3 flex items-center justify-center text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border transition-colors cursor-pointer hover:bg-[var(--control-border)]"
         >
           Remove
         </button>
@@ -1116,7 +1110,7 @@ function EditPageInteractionForm({
       </ToolRow>
       <button
         onClick={onRemove}
-        className="w-full h-[var(--control-height-sm)] flex items-center justify-center text-xs font-medium text-red-400 hover:text-red-300 bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border transition-colors cursor-pointer"
+        className="w-full h-[var(--control-height-sm)] flex items-center justify-center text-xs font-medium text-red-400 hover:text-red-300 bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border transition-colors cursor-pointer"
       >
         Remove
       </button>

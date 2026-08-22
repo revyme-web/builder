@@ -90,7 +90,7 @@ export default function EditAssetPresetPanel({ presetName, type, initialValue, o
       ) : (
         <button
           onClick={() => setPickerOpen(true)}
-          className="w-full h-28 cut-corners border-2 border-dashed border-[var(--control-border)] hover:border-[var(--accent)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center"
+          className="w-full h-28 cut-corners cut-border border-2 border-dashed border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--accent)] hover:[--cut-border-color:var(--accent)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center"
         >
           Choose {type === 'image' ? 'Image' : 'Video'}
         </button>
@@ -99,13 +99,13 @@ export default function EditAssetPresetPanel({ presetName, type, initialValue, o
       <div className="flex gap-1.5">
         <button
           onClick={() => setPickerOpen(true)}
-          className="flex-1 h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
+          className="flex-1 h-[var(--control-height-sm)] text-xs bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] text-[var(--text-primary)] hover:border-[var(--control-border-hover)] transition-colors cursor-pointer"
         >
           Change
         </button>
         <button
           onClick={handleDelete}
-          className="h-[var(--control-height-sm)] px-3 text-xs text-red-400 hover:text-red-300 border border-[var(--control-border)] cut-corners cut-border transition-colors cursor-pointer"
+          className="h-[var(--control-height-sm)] px-3 text-xs text-red-400 hover:text-red-300 border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border transition-colors cursor-pointer"
         >
           Delete
         </button>

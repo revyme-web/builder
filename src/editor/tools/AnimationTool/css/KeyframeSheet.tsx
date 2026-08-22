@@ -508,7 +508,7 @@ export default function KeyframeSheet() {
             <div className="flex items-center gap-1 shrink-0">
               <span className="text-[10px] text-[var(--text-secondary)]">Duration</span>
               <input
-                className="w-12 h-5 px-1 text-[10px] bg-[var(--bg-input)] border border-[var(--control-border)] cut-corners cut-sm cut-border focus:[--cut-border-color:var(--accent)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] tabular-nums"
+                className="w-12 h-5 px-1 text-[10px] bg-[var(--bg-input)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-sm cut-border focus:[--cut-border-color:var(--accent)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] tabular-nums"
                 type="number" min={0} step={0.1}
                 value={animData.duration}
                 onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) writeAnimData({ ...animData, duration: v }); }}
@@ -518,7 +518,7 @@ export default function KeyframeSheet() {
             <div className="flex items-center gap-1 shrink-0">
               <span className="text-[10px] text-[var(--text-secondary)]">Ease</span>
               <select
-                className="h-5 px-1 text-[10px] bg-[var(--bg-input)] border border-[var(--control-border)] cut-corners cut-sm cut-border text-[var(--text-primary)] focus:outline-none cursor-pointer"
+                className="h-5 px-1 text-[10px] bg-[var(--bg-input)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-sm cut-border text-[var(--text-primary)] focus:outline-none cursor-pointer"
                 value={animData.easing}
                 onChange={(e) => writeAnimData({ ...animData, easing: e.target.value })}
               >
@@ -528,7 +528,7 @@ export default function KeyframeSheet() {
             <div className="flex items-center gap-1 shrink-0">
               <span className="text-[10px] text-[var(--text-secondary)]">Repeat</span>
               <select
-                className="h-5 px-1 text-[10px] bg-[var(--bg-input)] border border-[var(--control-border)] cut-corners cut-sm cut-border text-[var(--text-primary)] focus:outline-none cursor-pointer"
+                className="h-5 px-1 text-[10px] bg-[var(--bg-input)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-sm cut-border text-[var(--text-primary)] focus:outline-none cursor-pointer"
                 value={animData.iterationCount}
                 onChange={(e) => writeAnimData({ ...animData, iterationCount: e.target.value })}
               >
@@ -538,7 +538,7 @@ export default function KeyframeSheet() {
             <div className="flex items-center gap-1 shrink-0">
               <span className="text-[10px] text-[var(--text-secondary)]">Fill</span>
               <select
-                className="h-5 px-1 text-[10px] bg-[var(--bg-input)] border border-[var(--control-border)] cut-corners cut-sm cut-border text-[var(--text-primary)] focus:outline-none cursor-pointer"
+                className="h-5 px-1 text-[10px] bg-[var(--bg-input)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-sm cut-border text-[var(--text-primary)] focus:outline-none cursor-pointer"
                 value={animData.fillMode}
                 onChange={(e) => writeAnimData({ ...animData, fillMode: e.target.value })}
               >
@@ -616,7 +616,7 @@ export default function KeyframeSheet() {
             {/* Footer */}
             <div className="shrink-0 flex items-center justify-between px-3 py-2 border-t border-[var(--border-light)]">
               <button
-                className="h-6 px-2 text-[11px] text-[var(--text-secondary)] border border-dashed border-[var(--control-border)] cut-corners hover:border-[var(--accent)] hover:text-[var(--accent-text)] transition-colors cursor-pointer bg-transparent"
+                className="h-6 px-2 text-[11px] text-[var(--text-secondary)] border border-dashed border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border hover:border-[var(--accent)] hover:[--cut-border-color:var(--accent)] hover:text-[var(--accent-text)] transition-colors cursor-pointer bg-transparent"
                 onClick={handleAddStop}
               >
                 + Add Stop

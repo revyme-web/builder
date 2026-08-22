@@ -292,7 +292,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
               // immediately without clearing first.
               onFocus={(e) => e.currentTarget.select()}
               placeholder="Search images... (Enter to search)"
-              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
+              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
             />
           )}
 
@@ -304,7 +304,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
               onChange={(e) => setQuery3d(e.target.value)}
               onFocus={(e) => e.currentTarget.select()}
               placeholder="Search 3D assets..."
-              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
+              className="w-64 h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
             />
           )}
         </div>
@@ -353,7 +353,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
                   so the file lands in the project's R2 bucket (cloud) or
                   local backend store and shows up in the LeftPanel media
                   gallery alongside every other upload. */}
-              <label className={`aspect-square cut-corners bg-[var(--bg-surface)] border-2 border-dashed border-[var(--control-border)] flex flex-col items-center justify-center gap-2 transition-colors ${uploading ? 'opacity-60 cursor-progress' : 'hover:bg-[var(--bg-hover)] cursor-pointer'}`}>
+              <label className={`aspect-square cut-corners cut-border bg-[var(--bg-surface)] border-2 border-dashed border-[var(--control-border)] [--cut-border-color:var(--control-border)] flex flex-col items-center justify-center gap-2 transition-colors ${uploading ? 'opacity-60 cursor-progress' : 'hover:bg-[var(--bg-hover)] cursor-pointer'}`}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)]">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
                 </svg>
@@ -388,7 +388,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSelect }: ImageSea
               ))}
             </div>
             {uploadError && (
-              <div className="px-2.5 py-1.5 cut-corners bg-red-500/10 border border-red-500/20 text-[11px] text-red-500 dark:text-red-400 leading-snug">
+              <div className="px-2.5 py-1.5 cut-corners cut-border bg-red-500/10 border border-red-500/20 text-[11px] text-red-500 dark:text-red-400 leading-snug">
                 {uploadError}
               </div>
             )}

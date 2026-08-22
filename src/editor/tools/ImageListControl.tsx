@@ -61,7 +61,7 @@ export default function ImageListControl({ label, value, onChange }: ImageListCo
       <button
         ref={btnRef}
         onClick={() => setOpen((o) => !o)}
-        className="w-full h-[var(--control-height-sm)] px-1 flex items-center gap-2 text-xs cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] bg-[var(--control-bg)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] transition-colors min-w-0 overflow-hidden"
+        className="w-full h-[var(--control-height-sm)] px-1 flex items-center gap-2 text-xs cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] bg-[var(--control-bg)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] text-[var(--text-primary)] transition-colors min-w-0 overflow-hidden"
       >
         <ColorSwatch
           style={urls[0]
@@ -85,7 +85,7 @@ export default function ImageListControl({ label, value, onChange }: ImageListCo
               title="Replace image"
             >
               <div
-                className="w-8 h-[var(--control-height)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] border border-[var(--control-border)] group-hover:border-[var(--control-border-hover)] flex-shrink-0 transition-colors"
+                className="w-8 h-[var(--control-height)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] group-hover:border-[var(--control-border-hover)] flex-shrink-0 transition-colors"
                 style={{ backgroundColor: '#ffffff', backgroundImage: `url("${url}")`, backgroundSize: 'cover', backgroundPosition: 'center' }}
               />
               <span className="flex-1 text-left text-xs text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] truncate transition-colors">Image {idx + 1}</span>

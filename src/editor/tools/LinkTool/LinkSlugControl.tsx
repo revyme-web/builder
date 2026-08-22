@@ -193,7 +193,7 @@ export default function LinkSlugControl({
                 if (e.key === 'Enter') { onLiteralSlugChange(query.trim()); setOpen(false); }
                 else if (e.key === 'Escape') { setOpen(false); }
               }}
-              className="w-full h-[var(--control-height-sm)] px-2 text-xs bg-[var(--control-bg)] border border-[var(--control-border)] cut-corners cut-border focus:[--cut-border-color:var(--accent)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
+              className="w-full h-[var(--control-height-sm)] px-2 text-xs bg-[var(--control-bg)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border focus:[--cut-border-color:var(--accent)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--accent)]"
             />
             {open && filtered.length > 0 && menuPos && createPortal(
               <div

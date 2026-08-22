@@ -12,7 +12,7 @@ interface Props {
 
 export default function ToolPlusMinus({ value, onChange, min = 0, max = 10000, step = 1 }: Props) {
   return (
-    <div className="flex w-full items-center border border-[var(--control-border)] cut-corners cut-border overflow-hidden">
+    <div className="flex w-full items-center border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border overflow-hidden">
       <button
         onClick={() => { const v = Math.max(min, value - step); trace.action('tool-plus-minus:decrement', { from: value, to: v }); onChange(v); }}
         className="flex-1 flex items-center justify-center h-[var(--control-height-sm)] transition-colors bg-[var(--choice-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--control-bg-hover)]"

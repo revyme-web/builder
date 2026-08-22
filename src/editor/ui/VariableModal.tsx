@@ -1104,10 +1104,10 @@ export default function VariableModal({
                           setRowMenu({ name: v.name, x: e.clientX + 160, y: e.clientY });
                         }
                       }}
-                      className={`group flex items-center gap-2 px-2 py-1.5 cut-corners mx-2 text-[var(--text-primary)] border cursor-pointer ${
+                      className={`group flex items-center gap-2 px-2 py-1.5 cut-corners cut-border mx-2 text-[var(--text-primary)] border cursor-pointer ${
                         isSelected
-                          ? 'bg-[var(--bg-hover)] border-[var(--border-light)]'
-                          : 'border-transparent hover:bg-[var(--bg-hover)]'
+                          ? 'bg-[var(--bg-hover)] border-[var(--border-light)] [--cut-border-color:var(--border-light)]'
+                          : 'border-transparent [--cut-border-color:transparent] hover:bg-[var(--bg-hover)]'
                       }`}
                     >
                       {/* Presentational wrapper — fills the row and pushes ⋯ to the
@@ -1202,10 +1202,10 @@ export default function VariableModal({
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="e.g. cardGap"
                     autoFocus
-                    className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] cut-corners text-[var(--text-primary)] focus:outline-none transition-colors ${
+                    className={`w-full h-[var(--control-height)] px-3 text-xs bg-[var(--grid-line)] cut-corners cut-border text-[var(--text-primary)] focus:outline-none transition-colors ${
                       nameError
-                        ? 'border border-red-500 focus:border-red-500'
-                        : 'border border-[var(--border-light)] hover:border-[var(--control-border)] focus:border-[var(--border-focus)]'
+                        ? 'border border-red-500 [--cut-border-color:#ef4444] focus:border-red-500 focus:[--cut-border-color:#ef4444]'
+                        : 'border border-[var(--border-light)] [--cut-border-color:var(--border-light)] hover:border-[var(--control-border)] hover:[--cut-border-color:var(--control-border)] focus:border-[var(--border-focus)] focus:[--cut-border-color:var(--border-focus)]'
                     }`}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && isNameValid) handleCreate();

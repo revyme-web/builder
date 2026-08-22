@@ -128,7 +128,7 @@ export function SaveButton({
     <button
       onClick={onClick}
       disabled={!enabled}
-      className={`px-4 rounded-full text-xs font-medium min-w-[72px] h-[30px] flex items-center justify-center transition-all ${
+      className={`px-4 cut-corners text-xs font-medium min-w-[72px] h-[30px] flex items-center justify-center transition-all ${
         saving
           ? 'bg-[var(--accent)]/50 text-[var(--accent-fg)] cursor-not-allowed'
           : enabled

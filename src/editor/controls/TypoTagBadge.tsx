@@ -19,7 +19,9 @@ export function TypoTagBadge({ tag = 'p', active, card }: Props) {
   const label = (tag || 'p').toUpperCase();
   if (card) {
     return (
-      <span className="shrink-0 w-5 h-5 rounded-[5px] bg-[var(--text-primary)] text-[var(--bg-panel)] text-[9px] font-bold flex items-center justify-center leading-none select-none">
+      // cut-sm, matching ColorSwatch at the same 20px footprint — the two chips
+      // sit on adjacent preset rows, so they have to slice identically.
+      <span className="shrink-0 w-5 h-5 cut-corners cut-sm bg-[var(--text-primary)] text-[var(--bg-panel)] text-[9px] font-bold flex items-center justify-center leading-none select-none">
         {label}
       </span>
     );

@@ -50,7 +50,7 @@ export default function ChromeIslands() {
       />
       <div
         aria-hidden
-        className={`fixed z-[4998] border-b border-l border-[var(--border-light)] ${overlayOpen || topBarPresent ? '' : 'cut-tl cut-lg'}`}
+        className={`fixed z-[4998] border-b border-l border-[var(--border-light)] [--cut-border-color:var(--border-light)] ${overlayOpen || topBarPresent ? '' : 'cut-tl cut-border cut-lg'}`}
         style={{ right: 0, top: 0, width: 260, height: 52, ...GLASS }}
       />
       <div

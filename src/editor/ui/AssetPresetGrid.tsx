@@ -6,6 +6,7 @@
 
 import type { PresetToken } from '@/shared/types';
 import { trace } from '@/shared/debug-trace';
+import { ColorSwatch } from '@/editor/controls/ColorSwatch';
 
 interface Props {
   /** Preset tokens to render. Caller filters by category before passing. */
@@ -83,7 +84,7 @@ export default function AssetPresetGrid({
                       trace.action('asset-preset-grid:edit-click', { type, name: preset.name });
                       onEditPreset(preset.name);
                     }}
-                    className="opacity-0 group-hover:opacity-100 text-[10px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] cut-corners cut-border px-2 py-0.5 transition-all cursor-pointer"
+                    className="opacity-0 group-hover:opacity-100 text-[10px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border px-2 py-0.5 transition-all cursor-pointer"
                   >
                     Edit
                   </button>
@@ -91,16 +92,16 @@ export default function AssetPresetGrid({
                 {/* Thumbnail swatch — same w-5 h-5 footprint as the color
                     swatch, image bg or muted-loop <video> for the media. */}
                 {type === 'image' ? (
-                  <div
-                    className="w-5 h-5 rounded border border-white/10 flex-shrink-0 bg-[var(--grid-line)]"
+                  <ColorSwatch
+                    className="bg-[var(--grid-line)]"
                     style={url ? { backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
                   />
                 ) : (
-                  <div className="w-5 h-5 rounded border border-white/10 flex-shrink-0 bg-black overflow-hidden flex items-center justify-center">
+                  <ColorSwatch className="bg-black overflow-hidden">
                     {url ? (
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21" /></svg>
                     ) : null}
-                  </div>
+                  </ColorSwatch>
                 )}
               </div>
             );

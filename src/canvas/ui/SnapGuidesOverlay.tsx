@@ -44,12 +44,12 @@ export default function SnapGuidesOverlay() {
                 {/* Pink band */}
                 <div style={{ position: 'absolute', left, top, width, height, backgroundColor: 'rgba(244, 114, 182, 0.12)' }} />
                 {/* Distance label */}
-                <div style={{
+                <div className="cut-corners cut-sm" style={{
                   position: 'absolute', left: left + width / 2, top: top + height / 2,
                   transform: 'translate(-50%, -50%)',
                   backgroundColor: 'rgba(244, 114, 182, 0.85)', color: '#fff',
                   padding: '1px 5px', fontSize: 10, fontFamily: 'monospace',
-                  borderRadius: 3, whiteSpace: 'nowrap',
+                  whiteSpace: 'nowrap',
                 }}>
                   {Math.round(sg.distance)}px
                 </div>

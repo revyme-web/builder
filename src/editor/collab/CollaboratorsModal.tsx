@@ -345,7 +345,7 @@ function CloudBody() {
 
         {/* Error message */}
         {error && (
-          <div className="px-3 py-2 text-[10px] text-red-400 bg-red-500/10 cut-corners border border-red-500/20">
+          <div className="px-3 py-2 text-[10px] text-red-400 bg-red-500/10 cut-corners cut-border border border-red-500/20">
             {error}
           </div>
         )}

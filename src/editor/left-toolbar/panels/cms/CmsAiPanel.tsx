@@ -214,7 +214,7 @@ export default function CmsAiPanel({ collectionName, onClose }: {
                   />
                 ) : (
                   <div key={i} className="flex justify-start">
-                    <div className={`max-w-[90%] cut-corners px-2.5 py-1.5 ${
+                    <div className={`max-w-[90%] cut-corners cut-border px-2.5 py-1.5 ${
                       msg.error
                         ? 'bg-red-500/10 text-red-400 border border-red-500/20'
                         : 'bg-[var(--control-bg)] text-[var(--text-primary)]'

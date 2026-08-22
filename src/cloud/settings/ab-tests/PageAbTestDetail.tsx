@@ -494,7 +494,7 @@ function SkeletonTestCard() {
           <button
             type="button"
             disabled
-            className="h-full min-h-[140px] px-4 py-6 bg-transparent border border-dashed border-[var(--control-border)] cut-corners flex items-center justify-center opacity-50 cursor-not-allowed"
+            className="h-full min-h-[140px] px-4 py-6 bg-transparent border border-dashed border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border flex items-center justify-center opacity-50 cursor-not-allowed"
           >
             <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[var(--bg-hover)] cut-corners text-xs font-medium text-[var(--text-primary)]">
               + Create step
@@ -728,7 +728,7 @@ function TestCard({
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('ab-test:add-event', { detail: { testId: test.id } }))}
-              className="group h-full min-h-[140px] px-4 py-6 bg-transparent border border-dashed border-[var(--control-border)] cut-corners flex items-center justify-center hover:border-[var(--text-tertiary)] transition-colors cursor-pointer"
+              className="group h-full min-h-[140px] px-4 py-6 bg-transparent border border-dashed border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border flex items-center justify-center hover:border-[var(--text-tertiary)] hover:[--cut-border-color:var(--text-tertiary)] transition-colors cursor-pointer"
             >
               <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[var(--bg-hover)] group-hover:bg-[var(--grid-line)] cut-corners text-xs font-medium text-[var(--text-primary)] transition-colors">
                 + Create step
@@ -1287,7 +1287,7 @@ function OptionsPanel({
             lockReason
               ?? (isEven ? 'Already even' : 'Reset to an even split across variants')
           }
-          className="w-full h-8 px-2 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] border border-[var(--control-border)] cut-corners cut-border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full h-8 px-2 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Make even
         </button>
@@ -1812,10 +1812,10 @@ function EditFilterPopover({
                       if (active) next.delete(d); else next.add(d);
                       setDeviceSet(next);
                     }}
-                    className={`w-full flex items-center gap-2 h-8 px-2 text-xs cut-corners cursor-pointer border transition-colors ${
+                    className={`w-full flex items-center gap-2 h-8 px-2 text-xs cut-corners cut-border cursor-pointer border transition-colors ${
                       active
-                        ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-[var(--text-primary)]'
-                        : 'bg-[var(--grid-line)] border-[var(--control-border)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+                        ? 'bg-[var(--accent)]/15 border-[var(--accent)] [--cut-border-color:var(--accent)] text-[var(--text-primary)]'
+                        : 'bg-[var(--grid-line)] border-[var(--control-border)] [--cut-border-color:var(--control-border)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                     }`}
                   >
                     <span
@@ -1960,7 +1960,7 @@ function CountryRow({
         <button
           type="button"
           onClick={openPicker}
-          className="w-full h-8 px-2 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] border border-[var(--control-border)] cut-corners cut-border cursor-pointer flex items-center justify-between"
+          className="w-full h-8 px-2 text-xs font-medium text-[var(--text-primary)] bg-[var(--grid-line)] hover:bg-[var(--bg-hover)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] cut-corners cut-border cursor-pointer flex items-center justify-between"
         >
           <span>{codes.length === 0 ? 'Choose…' : 'Edit list'}</span>
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -2069,7 +2069,7 @@ function CountryPicker({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by name or code…"
-          className="w-full h-8 pl-7 pr-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
+          className="w-full h-8 pl-7 pr-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
         />
       </div>
 
@@ -2265,7 +2265,7 @@ function EditStepPopover({
                 value={trackingId}
                 onChange={(e) => setTrackingId(e.target.value)}
                 placeholder={type === 'click' ? 'cta-hero' : type === 'submit' ? 'signup-form' : 'purchase-complete'}
-                className="w-full h-8 pl-2 pr-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
+                className="w-full h-8 pl-2 pr-2 text-xs bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] text-[var(--text-primary)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] focus:outline-none transition-colors"
               />
               {trackingIds.length > 0 && (
                 <datalist id={datalistId}>

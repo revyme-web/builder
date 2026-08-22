@@ -181,7 +181,7 @@ export default function AbTestsSection({ websiteId }: AbTestsSectionProps) {
         </div>
         <button
           onClick={() => setActiveSection('plans')}
-          className="w-full px-4 py-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 cut-corners text-sm text-[var(--text-primary)] hover:from-blue-500/15 hover:to-purple-500/15 transition-colors text-left cursor-pointer"
+          className="w-full px-4 py-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 cut-corners cut-border text-sm text-[var(--text-primary)] hover:from-blue-500/15 hover:to-purple-500/15 transition-colors text-left cursor-pointer"
         >
           Upgrade to Pro for A/B testing →
         </button>
@@ -279,7 +279,7 @@ export default function AbTestsSection({ websiteId }: AbTestsSectionProps) {
       {!isStudio && tests.length > 0 && (
         <button
           onClick={() => setActiveSection('plans')}
-          className="w-full px-4 py-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 cut-corners text-sm text-[var(--text-primary)] hover:from-blue-500/15 hover:to-purple-500/15 transition-colors text-left cursor-pointer"
+          className="w-full px-4 py-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 cut-corners cut-border text-sm text-[var(--text-primary)] hover:from-blue-500/15 hover:to-purple-500/15 transition-colors text-left cursor-pointer"
         >
           Upgrade to Studio for unlimited concurrent tests + audience segmentation →
         </button>

@@ -117,7 +117,7 @@ function SplitButton({ active, icon, onClick, onChevronClick, title }: {
         }`}
         // 12px-wide sliver — the default 9px cut would eat most of the
         // shape, so this one runs a smaller slice.
-        style={{ border: 'none', cursor: 'pointer', backgroundColor: 'transparent', '--cut': '4px' } as React.CSSProperties}
+        style={{ border: 'none', cursor: 'pointer', backgroundColor: 'transparent', '--cut': '3px' } as React.CSSProperties}
       >
         <ChevronDownSvg />
       </button>
@@ -559,11 +559,10 @@ export default function BottomToolbar() {
             the 44px height; diagonal stroke matches border-light. */}
         <div
           aria-hidden
-          className="absolute inset-0 -z-10 cut-corners cut-border border border-[var(--border-light)]"
+          className="absolute inset-0 -z-10 cut-corners cut-lg cut-border border border-[var(--border-light)] [--cut-border-color:var(--border-light)]"
           // Same glass recipe as ChromeIslands — the bar floats 12px off the
           // bottom edge as its own island.
           style={{
-            '--cut': '12px',
             '--cut-border-color': 'var(--border-light)',
             background: 'color-mix(in srgb, var(--bg-surface) 93%, transparent)',
             backdropFilter: 'blur(18px) saturate(1.15)',
@@ -691,7 +690,7 @@ export default function BottomToolbar() {
           onClick={togglePalette}
           data-palette-toggle
           data-tutorial="search-tool"
-          className="flex items-center gap-1.5 px-2.5 h-[32px] bg-[var(--grid-line)] border border-[var(--control-border)] hover:border-[var(--border-focus)] hover:[--cut-border-color:var(--border-focus)] cut-corners cut-border transition-all"
+          className="flex items-center gap-1.5 px-2.5 h-[32px] bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--border-focus)] hover:[--cut-border-color:var(--border-focus)] cut-corners cut-border transition-all"
           style={{ cursor: 'pointer' }}
         >
           <SearchIcon className="w-4 h-4 text-[var(--text-tertiary)]" />

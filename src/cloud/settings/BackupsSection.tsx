@@ -313,7 +313,7 @@ export default function BackupsSection({ websiteId }: BackupsSectionProps) {
             <div className="text-[10px] text-[var(--text-secondary)] mt-0.5">{timePart}</div>
           </div>
           {isLive ? (
-            <span className="inline-flex items-center justify-center gap-1.5 w-[110px] h-[30px] cut-corners text-[11px] font-semibold border bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
+            <span className="inline-flex items-center justify-center gap-1.5 w-[110px] h-[30px] cut-corners cut-border text-[11px] font-semibold border bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
               <span className="relative flex w-1.5 h-1.5">
                 <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping bg-emerald-400" />
                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
