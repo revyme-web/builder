@@ -41,7 +41,7 @@ dynamic routes. Bind any field to any element by pointing at it.
 **Motion that feels designed.** Spring physics, easing curves, scroll-linked transforms, text
 effects and per-character reveals — all tuned visually with live preview.
 
-![Spring transition editor and the Animation triggers menu](docs/readme/motion.webp)
+![The Transition editor with its easing curve, beside the animation trigger menu](docs/readme/motion.webp)
 
 **Multiple languages.** Add a locale, translate inline, and every visitor gets the right
 content, URLs and SEO metadata. Right-to-left included.
@@ -49,7 +49,7 @@ content, URLs and SEO metadata. Right-to-left included.
 **Forms, plugins, and more.** A visual form builder with a self-hostable submit relay, plus a
 plugin SDK if you want to extend the editor itself.
 
-![CMS collections bound to the canvas](docs/readme/cms.webp)
+![Editing a CMS item - typed fields on the left, content and meta on the right](docs/readme/cms.webp)
 
 ## The code is yours
 
@@ -59,7 +59,7 @@ Next.js project — `app/`, `components/`, `cms/` — that any React developer c
 Deploy it to Vercel, Netlify, your own server, anywhere. Hand it to a developer. Fork it and
 never open Revyme again. It's your code.
 
-![Exported Next.js code beside the rendered page](docs/readme/code-export.webp)
+![The code editor open over the canvas, showing the generated page source](docs/readme/code-export.webp)
 
 ## Quickstart
 
@@ -92,7 +92,7 @@ Everything is optional — see [`.env.example`](./.env.example) for the annotate
 | `VITE_REVYME_CLOUD` | set to `true` only when running against the hosted cloud backend |
 | `VITE_CDN_HOST` / `VITE_PLATFORM_HOST` | point a self-hosted fork at your own asset CDN / platform |
 
-![Add Language dialog](docs/readme/localization.webp)
+![The Add Language dialog - locale search, display name, slug and fallback](docs/readme/localization.webp)
 
 ## How it works
 
