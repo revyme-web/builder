@@ -1,7 +1,7 @@
 // size-helpers.test.ts — Coverage for SizeTool's px → unit conversion math.
 
 import { describe, it, expect } from 'vitest';
-import { convertPxToDimUnit, estimatedVpHeight, isRelativeUnit, dimUnitOf, pickLiveDim, fitSizeRedirectTarget, exitFillFlexPatch, isAutoDim } from './size-helpers';
+import { convertPxToDimUnit, estimatedVpHeight, isRelativeUnit, dimUnitOf, pickLiveDim, fitSizeRedirectTarget, exitFillFlexPatch, isAutoDim, resolveUnitChangePx } from './size-helpers';
 
 describe('estimatedVpHeight', () => {
   it('uses 16:10 ratio for desktop (>= 1024)', () => {
@@ -261,5 +261,30 @@ describe('isAutoDim', () => {
     const styles = { width: '717px', height: undefined as string | undefined };
     expect(isAutoDim(styles.width)).toBe(false); // width may backfill
     expect(isAutoDim(styles.height)).toBe(true); // height must not
+  });
+});
+
+describe('resolveUnitChangePx', () => {
+  it('uses the TYPED number when the user typed into an auto field', () => {
+    expect(resolveUnitChangePx('px', 300, 174)).toBe(300);
+  });
+
+  it('uses the computed size when the unit dropdown drove the change', () => {
+    // No typed number → the user picked "px" from the dropdown, meaning
+    // "freeze what is rendered right now".
+    expect(resolveUnitChangePx('px', undefined, 174)).toBe(174);
+  });
+
+  it('typing 0 is a real value, not a missing one', () => {
+    expect(resolveUnitChangePx('px', 0, 174)).toBe(0);
+  });
+
+  it('ignores a typed number for non-px targets — % / vh convert from rendered px', () => {
+    expect(resolveUnitChangePx('%', 300, 174)).toBe(174);
+    expect(resolveUnitChangePx('vh', 300, 174)).toBe(174);
+  });
+
+  it('falls back to computed on NaN', () => {
+    expect(resolveUnitChangePx('px', NaN, 174)).toBe(174);
   });
 });

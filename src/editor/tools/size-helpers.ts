@@ -141,3 +141,27 @@ export function fitSizeRedirectTarget(
   const wrapper = nodes.get(`${nodeId}-svg`);
   return wrapper?.type === 'svg' ? `${nodeId}-svg` : null;
 }
+
+/**
+ * The px value a `→ px` unit change should commit.
+ *
+ * Two very different gestures reach the same handler:
+ *
+ *   1. Picking "px" from the UNIT DROPDOWN — the user is converting the
+ *      current size, so the rendered px is what they mean.
+ *   2. TYPING a number into the value input while the unit is `auto` — the
+ *      input shows the computed size as a faded placeholder, and typing over
+ *      it switches to px. Here the typed number IS the intent.
+ *
+ * Case 2 used to fall through to the computed size, so typing `300` into an
+ * auto height committed whatever the element happened to measure (e.g.
+ * `174px`) and threw the input away. `typedNum` is only present for case 2.
+ */
+export function resolveUnitChangePx(
+  toUnit: string,
+  typedNum: number | undefined,
+  computedPx: number,
+): number {
+  if (toUnit === 'px' && typedNum != null && Number.isFinite(typedNum)) return typedNum;
+  return computedPx;
+}

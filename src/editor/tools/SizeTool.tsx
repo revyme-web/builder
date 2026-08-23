@@ -23,7 +23,7 @@ import { getInsetState, computeDimensionInsetStyles, parsePx } from '@/shared/pi
 import { findNodeSize, findNodeParentInnerSize, findNodeComputedStyles, forceCanvasRender, getInteractingViewport } from '@/canvas/node-ops';
 import { beginViewportWidthScrub, type ViewportWidthScrub } from '@/canvas/resize/viewport-width-scrub';
 import { canUseFill, isMainAxis, isFillMode, getFillMultiplier, makeFillFlex, parseFlex, formatFlex, crossAxisFillPatch } from '@/shared/flex-helpers';
-import { convertPxToDimUnit, estimatedVpHeight, pickLiveDim, fitSizeRedirectTarget, exitFillFlexPatch, isAutoDim } from './size-helpers';
+import { convertPxToDimUnit, estimatedVpHeight, pickLiveDim, fitSizeRedirectTarget, exitFillFlexPatch, isAutoDim, resolveUnitChangePx } from './size-helpers';
 import { resizeLiveOps } from '@/canvas/resize/resize-live-store';
 import { trace } from '@/shared/debug-trace';
 
@@ -81,7 +81,10 @@ function DimensionRow({ label, property, value, onChange, onChangeLive, onUnitCh
    *  Without it, the ToolInput scrubber falls back to onChange every frame (modifyProjectFile → reparse →
    *  re-render) which tanks FPS on Min/Max/Width/Height drags (the user-reported lag vs the gap handle). */
   onChangeLive?: (v: string) => void;
-  onUnitChange: (fromUnit: DimUnit, toUnit: DimUnit, currentNum: number) => void;
+  /** `typedNum` is set ONLY when the change came from typing into the value
+   *  input (auto → px). A unit-dropdown pick omits it, meaning "convert the
+   *  currently rendered size". See resolveUnitChangePx. */
+  onUnitChange: (fromUnit: DimUnit, toUnit: DimUnit, typedNum?: number) => void;
   computedSize: number;
   parentSize: number;
   unitOptions: { value: string; label: string; disabled?: boolean }[];
@@ -149,8 +152,9 @@ function DimensionRow({ label, property, value, onChange, onChangeLive, onUnitCh
     const u = newUnit as DimUnit;
     if (u === activeUnit) return;
 
-    // Delegate unit switching to parent via onUnitChange
-    onUnitChange(activeUnit, u, parsed.num);
+    // Delegate unit switching to parent via onUnitChange. No third arg: this
+    // is a dropdown pick, so the parent converts the RENDERED size.
+    onUnitChange(activeUnit, u);
   };
 
   return (
@@ -554,9 +558,13 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     };
   }, [nodeId, vpId]);
 
-  const handleViewportHeightUnitChange = useCallback((_from: DimUnit, to: DimUnit) => {
+  const handleViewportHeightUnitChange = useCallback((_from: DimUnit, to: DimUnit, typedNum?: number) => {
     if (to === 'auto') {
       handleViewportHeightChange('');
+    } else if (to === 'px' && typedNum != null && Number.isFinite(typedNum)) {
+      // The user TYPED over the auto placeholder — commit that number rather
+      // than re-freezing the measured height (same fix as the node height row).
+      handleViewportHeightChange(String(Math.round(typedNum)));
     } else if (to === 'px') {
       // Switching auto → px: seed with the viewport root's actual rendered
       // content height so the viewport stays the same size after the swap.
@@ -898,7 +906,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     freezeParentRelativeChildrenForAuto(nodeId, axis, getNodesSnapshot(), vpId);
   }, [nodeId, vpId]);
 
-  const handleWidthUnitChange = useCallback((fromUnit: DimUnit, toUnit: DimUnit) => {
+  const handleWidthUnitChange = useCallback((fromUnit: DimUnit, toUnit: DimUnit, typedNum?: number) => {
     // Switching TO fill
     if (toUnit === 'fill') {
       trace.action('size:width-fill', { nodeId, isMainAxis: widthIsMainAxis });
@@ -921,7 +929,9 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     // treated as 50px) and the % branch recomputed via parent×ratio,
     // both of which diverge from the real rendered px when the source
     // unit is anything other than what the math expects.
-    const currentPx = computed.width;
+    // EXCEPT when the user typed a number over the auto placeholder: that
+    // number is the intent, not the size the element happens to have.
+    const currentPx = resolveUnitChangePx(toUnit, typedNum, computed.width);
     const { vpWidth: simVpWidth } = getInteractingViewport();
     const simVpHeight = estimatedVpHeight(simVpWidth);
     if (toUnit === 'auto') {
@@ -1067,7 +1077,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     }
   }, [isHeightFill, inset, styles, nodeId, computed.parentHeight, computed.height, computed.width, computed.parentWidth, aspectRatioNum, onUpdate, onUpdateMultiple]);
 
-  const handleHeightUnitChange = useCallback((fromUnit: DimUnit, toUnit: DimUnit) => {
+  const handleHeightUnitChange = useCallback((fromUnit: DimUnit, toUnit: DimUnit, typedNum?: number) => {
     // Switching TO fill
     if (toUnit === 'fill') {
       trace.action('size:height-fill', { nodeId, isMainAxis: heightIsMainAxis });
@@ -1082,7 +1092,9 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     }
     // Source-of-truth: the actual rendered CSS px from the bridge — see
     // handleWidthUnitChange for rationale. Same fix mirrored here.
-    const currentPx = computed.height;
+    // EXCEPT when the user typed a number over the auto placeholder: that
+    // number is the intent, not the size the element happens to have.
+    const currentPx = resolveUnitChangePx(toUnit, typedNum, computed.height);
     const { vpWidth: simVpWidth } = getInteractingViewport();
     const simVpHeight = estimatedVpHeight(simVpWidth);
     if (toUnit === 'auto') {
