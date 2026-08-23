@@ -180,7 +180,17 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
       } else {
         trace.error('header:publish-failed', json);
         setProgress(0);
-        alert(json.error || json.details || 'Publish failed');
+        // The API serializes failures as `{ error: { code, message } }`, so
+        // alerting `json.error` printed "[object Object]" and threw away the
+        // reason — including the plan-limit message, which is the one publish
+        // error the user can actually act on. Older paths return a bare
+        // string, hence the typeof check.
+        const e = json?.error;
+        alert(
+          (typeof e === 'string' ? e : e?.message) ||
+          json?.details ||
+          'Publish failed',
+        );
       }
     } catch (err) {
       trace.error('header:publish-error', err);

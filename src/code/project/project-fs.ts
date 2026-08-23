@@ -1129,17 +1129,24 @@ export default function Page() {
 /** Create the default project file map */
 // ─── Default i18n Config ─────────────────────────────────────────────────────
 
+// ENGLISH ONLY. This used to seed en + fr + es, which meant every project
+// ever created started with two languages nobody asked for: empty override
+// files, empty message dictionaries, a LocaleSwitcher offering them, and a
+// generated route wrapper per page per locale in the published build — all
+// for content that was never written. Measured on production 2026-08-23,
+// 69 of 82 published sites carried a multi-locale config and only 13 had
+// translated anything.
+//
+// Adding a language is one click and fully self-provisioning: `addLocale`
+// (locale-ops.ts) writes the config entry, creates `i18n/<code>.json`,
+// regenerates `app/providers.tsx`, creates `messages/<code>.json`, and syncs
+// the route wrappers. Nothing here needs to pre-create any of it.
 const DEFAULT_I18N_CONFIG = JSON.stringify({
   defaultLocale: 'en',
   locales: [
     { code: 'en', label: 'English' },
-    { code: 'fr', label: 'Français' },
-    { code: 'es', label: 'Español' },
   ],
 }, null, 2);
-
-const DEFAULT_FR_OVERRIDES = JSON.stringify({ pages: {}, collections: {} }, null, 2);
-const DEFAULT_ES_OVERRIDES = JSON.stringify({ pages: {}, collections: {} }, null, 2);
 
 // next-intl messages — namespaced by page slug: { home: { title: "..." } }.
 // Pages call `useTranslations('home')` then `t('title')`. Empty by default;
@@ -1147,8 +1154,6 @@ const DEFAULT_ES_OVERRIDES = JSON.stringify({ pages: {}, collections: {} }, null
 // the JSX is rewritten to `{t('id')}` and the original copy moves to the
 // default-locale messages file as the fallback).
 const DEFAULT_EN_MESSAGES = JSON.stringify({}, null, 2);
-const DEFAULT_FR_MESSAGES = JSON.stringify({}, null, 2);
-const DEFAULT_ES_MESSAGES = JSON.stringify({}, null, 2);
 
 // ─── Default CMS Collections ─────────────────────────────────────────────────
 
@@ -1364,12 +1369,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 // `<html lang>` attribute) so the LocaleSwitcher Code component can flip it without
 // a server round-trip. Each `messages/{locale}.json` is bundled at build
 // time (Next.js + Vite/Webpack handle the JSON imports natively).
+// English only — see DEFAULT_I18N_CONFIG. Must stay in step with it: providers
+// imports one `messages/<code>.json` per configured locale, so listing a locale
+// here that the config doesn't seed would emit an import for a missing file.
 export const DEFAULT_PROVIDERS = buildProvidersSource({
   defaultLocale: 'en',
   locales: [
     { code: 'en', label: 'English' },
-    { code: 'fr', label: 'Français' },
-    { code: 'es', label: 'Español' },
   ],
 });
 
@@ -1449,8 +1455,6 @@ export function createEmptyProject(): Map<string, string> {
     ['app/providers.tsx', DEFAULT_PROVIDERS],
     ['i18n/config.json', DEFAULT_I18N_CONFIG],
     ['messages/en.json', '{}'],
-    ['messages/fr.json', '{}'],
-    ['messages/es.json', '{}'],
     // `app/layout.tsx` imports `./globals.css`; seed it so the import
     // resolves (modern reset + design tokens). The preview tolerates a
     // missing CSS file, but a real Next build would error without it.
@@ -1497,20 +1501,13 @@ export function createDefaultProject(): Map<string, string> {
     // drop via `installBuiltInCodeComponent()` — keeps a fresh project file tree
     // empty until the user actually uses something. User-created design /
     // code components also land in `components/` when added from the Library.
-    // i18n — 3 locales (EN default + FR + ES)
+    // i18n — English only. Additional languages are created on demand by
+    // `addLocale`, which writes the config entry, the `i18n/<code>.json`
+    // override map (the canvas-fast-render path: text/style/prop overrides
+    // keyed by file path + node id) and the `messages/<code>.json` next-intl
+    // dictionary consumed by `useTranslations()`.
     ['i18n/config.json', DEFAULT_I18N_CONFIG],
-    // Override system (canvas-fast-render path) — text/style/prop overrides
-    // keyed by file path + node id. Used by the canvas Renderer for
-    // instant locale preview without going through React's render cycle.
-    ['i18n/fr.json', DEFAULT_FR_OVERRIDES],
-    ['i18n/es.json', DEFAULT_ES_OVERRIDES],
-    // next-intl messages (production runtime) — flat JSON dictionaries
-    // imported by `app/providers.tsx` and consumed via `useTranslations()`.
-    // Editor populates these on text edits so the live website translates
-    // natively at render time without depending on the override map.
     ['messages/en.json', DEFAULT_EN_MESSAGES],
-    ['messages/fr.json', DEFAULT_FR_MESSAGES],
-    ['messages/es.json', DEFAULT_ES_MESSAGES],
     // CMS — 3 collections (Team, Blog, Testimonials)
     ['cms/team.schema.json', TEAM_SCHEMA],
     ['cms/team.json', TEAM_DATA],

@@ -2,21 +2,32 @@
 //
 // Card design copied 1:1 from revyme-old/builder/src/components/settings/
 // PlansSettings.tsx — including the meteor `<Beam>` animation on the
-// premium/high-end card. Tier data follows the new plans model:
+// premium/high-end card. Tiers: Free €0 (banner, not a card), Lite €10,
+// Pro €30, Studio €60, Enterprise (banner below the grid).
 //
-//   Free €0         — standard card
-//   Pro €10/mo      — standard card
-//   Business €30/mo — premium card with Beam, "Coming soon"
-//   Enterprise      — banner below the grid, not a card
-//
-// Per-site billing. Everything content-wise unlimited on every tier.
-// Collaboration is unlimited & free, never a billing axis.
+// Per-site billing. Content is unlimited on every PAID tier — that's the
+// pricing page's promise and it must stay true. Free is capped on scale
+// (pages / collections / items / languages), enforced at publish; see
+// FREE_PUBLISH_LIMITS below. Collaboration is never a plan axis.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { trace } from '@/shared/debug-trace';
 import { Skeleton } from '@/editor/overlays/settings-shared';
 import Beam from './Beam';
 import { ConfirmModalShell, ModalCancelButton, useEscapeToClose } from './shared';
+
+// What a Free site may PUBLISH. Enforced server-side at publish time —
+// mirror of PLAN_LIMITS.free in backend/src/services/plan.ts. Paid tiers are
+// uncapped on all four axes, which is the pricing page's whole promise.
+// "200 items EACH", never a site-wide total: the API caps items per
+// collection, so "1,000 items" would promise something publish rejects — one
+// collection of 900 is over the cap even though the site total is under it.
+const FREE_PUBLISH_LIMITS = [
+  '10 pages',
+  '5 CMS collections with 200 items each',
+  '1 language',
+  '500 MB storage',
+] as const;
 
 // ─── Inline SVG icons ──────────────────────────────────────────────────────
 
@@ -77,7 +88,12 @@ const PLANS: PlanDef[] = [
     annualTotal: 100,
     // 'No watermark' removed 2026-08-19 — the badge is a free per-site
     // choice now (Website settings → Branding), not a paid perk.
+    // Lifting the Free caps is the FIRST reason to pay, so it leads. Free is
+    // capped on scale (see FREE_PUBLISH_LIMITS); every paid tier is uncapped
+    // on all four axes — that's the pricing page's promise and PLAN_LIMITS in
+    // backend/src/services/plan.ts keeps it true.
     features: [
+      'Unlimited pages, CMS & languages',
       'Custom domain',
       'Advanced analytics',
       '10 GB storage',
@@ -300,8 +316,15 @@ export default function PlansSection({ websiteId }: PlansSectionProps) {
               Current plan
             </p>
             <h4 className="text-base font-semibold text-[var(--text-primary)]">Free</h4>
+            {/* The publish caps, verbatim — this banner is where someone
+                looks after a publish is rejected, so it has to state the
+                same numbers the API enforces (PLAN_LIMITS.free in
+                backend/src/services/plan.ts). */}
             <p className="text-xs text-[var(--text-secondary)] mt-1">
-              revyme.app subdomain · Basic analytics · 500 MB storage
+              {FREE_PUBLISH_LIMITS.join(' · ')}
+            </p>
+            <p className="text-xs text-[var(--text-tertiary)] mt-1">
+              revyme.app subdomain · Basic analytics · Unlimited visitors
             </p>
           </div>
           <div className="flex items-center gap-1.5 px-2 py-1 bg-green-500/10 cut-corners shrink-0">

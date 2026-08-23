@@ -7,18 +7,18 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](./LICENSE)
 [![Website](https://img.shields.io/badge/revyme.com-visit-black)](https://revyme.com)
 
-Revyme is an open-source visual website builder. You design on a canvas — drag, resize, build components, animate — and you get a clean Next.js project you can read, edit, deploy anywhere, and keep forever.
+Revyme is an open-source visual website builder. You design on a canvas - drag, resize, build components, animate - and you get a clean Next.js project you can read, edit, deploy anywhere, and keep forever.
 
 No proprietary file format. No export step that mangles your work. No lock-in.
 
 > **Questions, ideas, or want to show what you built?**
-> [Join the Revyme Discord](https://discord.gg/8f6UpuQHRN) — it's the fastest way to get help.
+> [Join the Revyme Discord](https://discord.gg/8f6UpuQHRN) - it's the fastest way to get help.
 
 ![The Revyme editor](docs/readme/builder-preview.webp)
 
 ## Who it's for
 
-- **Designers** who want real control — precise layout, motion and typography — without writing code
+- **Designers** who want real control - precise layout, motion and typography - without writing code
 - **Developers** who want to build UI visually and still own clean, readable source
 - **Agencies and teams** who need to hand off a project a client can actually keep
 - **Anyone leaving a hosted builder** and tired of paying rent on their own website
@@ -29,7 +29,7 @@ this fills.
 ## What you can build
 
 **Components and variants.** Turn any selection into a reusable component. Give it visual
-states — default, hover, open, whatever you need — and wire them together with clicks, hovers
+states - default, hover, open, whatever you need - and wire them together with clicks, hovers
 and scroll triggers. No state machines to hand-write.
 
 **Genuinely responsive layouts.** Design on desktop, then adjust tablet and mobile directly.
@@ -39,7 +39,7 @@ Add custom breakpoints whenever you want. Overrides are real CSS, not approximat
 dynamic routes. Bind any field to any element by pointing at it.
 
 **Motion that feels designed.** Spring physics, easing curves, scroll-linked transforms, text
-effects and per-character reveals — all tuned visually with live preview.
+effects and per-character reveals - all tuned visually with live preview.
 
 ![The Transition editor with its easing curve, beside the animation trigger menu](docs/readme/motion.webp)
 
@@ -54,7 +54,7 @@ plugin SDK if you want to extend the editor itself.
 ## The code is yours
 
 Every edit writes real source. Open the code panel at any moment and you'll find an ordinary
-Next.js project — `app/`, `components/`, `cms/` — that any React developer can pick up.
+Next.js project - `app/`, `components/`, `cms/` - that any React developer can pick up.
 
 Deploy it to Vercel, Netlify, your own server, anywhere. Hand it to a developer. Fork it and
 never open Revyme again. It's your code.
@@ -70,7 +70,7 @@ npm run dev
 
 Then open **http://localhost:3333**.
 
-`npm run dev` starts three Vite servers — all are required:
+`npm run dev` starts three Vite servers - all are required:
 
 | Port | What it serves |
 |------|----------------|
@@ -83,7 +83,7 @@ network required.
 
 ### Optional configuration
 
-Everything is optional — see [`.env.example`](./.env.example) for the annotated list.
+Everything is optional - see [`.env.example`](./.env.example) for the annotated list.
 
 | Variable | Purpose |
 |----------|---------|
@@ -120,17 +120,17 @@ VITE_REVYME_CLOUD= npx playwright test   # e2e against the dev servers
 ```
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contributor guide. Issues and pull requests
-are welcome — bug reports with a reproduction are especially useful.
+are welcome - bug reports with a reproduction are especially useful.
 
 ## License
 
-[AGPL-3.0](./LICENSE), with an additional notice-preservation term under AGPL section 7(b) —
+[AGPL-3.0](./LICENSE), with an additional notice-preservation term under AGPL section 7(b) -
 see [NOTICE](./NOTICE).
 
 In short: you're free to use, modify, and self-host Revyme. If you offer a modified version to
 others over a network (e.g. run it as a service), the AGPL requires you to publish the source
 of your modified version. The copyright notices and the NOTICE file must stay intact, and the
-Revyme name and logo are trademarks — forks need their own branding.
+Revyme name and logo are trademarks - forks need their own branding.
 
 **Commercial licensing.** If your organization can't accept the AGPL's obligations
 (proprietary modifications, embedding Revyme in a closed-source product, or offering it as a

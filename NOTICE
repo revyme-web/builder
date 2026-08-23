@@ -1,4 +1,4 @@
-Revyme — open-source visual web builder
+Revyme - open-source visual web builder
 Copyright © 2026 Nikita Kofman
 
 This work is licensed under the GNU Affero General Public License,
@@ -62,8 +62,8 @@ Portions of this software are derived from third-party open-source work:
     (sun, moon) built-in code components
     (src/code/project/default-code-components/).
 
-Because that work is redistributed as part of this software — and is written
-into projects created with it — the MIT permission notice is reproduced here
+Because that work is redistributed as part of this software - and is written
+into projects created with it - the MIT permission notice is reproduced here
 in full, and repeated in the header of each affected source file:
 
   Permission is hereby granted, free of charge, to any person obtaining a

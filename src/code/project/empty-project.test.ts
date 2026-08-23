@@ -36,9 +36,28 @@ describe('createEmptyProject', () => {
       'app/providers.tsx',
       'i18n/config.json',
       'messages/en.json',
-      'messages/es.json',
-      'messages/fr.json',
     ]);
+  });
+
+  it('seeds exactly ONE language', () => {
+    // A project used to start with en + fr + es configured and empty message
+    // files for each — two languages nobody asked for, which also emitted a
+    // route wrapper per page per locale in the published build. `addLocale`
+    // provisions everything a real language needs, so the seed carries none.
+    const config = JSON.parse(files.get('i18n/config.json')!);
+    expect(config.locales).toEqual([{ code: 'en', label: 'English' }]);
+    expect(config.defaultLocale).toBe('en');
+    expect([...files.keys()].filter(k => k.startsWith('messages/'))).toEqual(['messages/en.json']);
+    expect([...files.keys()].some(k => /^i18n\/(?!config)/.test(k))).toBe(false);
+  });
+
+  it('providers imports only the seeded locale', () => {
+    // providers.tsx does one `import ... from '@/messages/<code>.json'` per
+    // configured locale, so a drift here is a build error on a missing file.
+    const providers = files.get('app/providers.tsx')!;
+    expect(providers).toContain('messages/en.json');
+    expect(providers).not.toContain('messages/fr.json');
+    expect(providers).not.toContain('messages/es.json');
   });
 
   it('omits demo content (no about page, no CMS, no components) but keeps the i18n runtime', () => {
