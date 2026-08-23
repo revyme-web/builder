@@ -17,6 +17,7 @@ import { exportDropdownOpenAtom } from '@/code/stores/editor-store';
 import { PlayIcon } from '@/shared/icons';
 import { trace } from '@/shared/debug-trace';
 import Button from '@/design-system/Button';
+import ConfirmDialog from '@/design-system/ConfirmDialog';
 import { settingsOverlayOpenAtom, settingsSectionAtom, websiteMetaAtom } from '@/code/stores/website-settings-store';
 import { isComponentFileAtom } from '@/code/stores/store';
 import { LiveDropdown } from './LiveDropdown';
@@ -46,6 +47,11 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
   const [exportTipOpen, setExportTipOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
+  // Publish failures used to go through window.alert(), which is unstyled,
+  // blocks the tab, and gives a plan-limit rejection no way to act on itself.
+  // `upgradable` marks the PAYMENT_REQUIRED case so the dialog can offer the
+  // plans overlay instead of a dead OK button.
+  const [publishError, setPublishError] = useState<{ message: string; upgradable: boolean } | null>(null);
   const [meta, setMeta] = useState<WebsiteMeta | null>(null);
   const [open, setOpen] = useState(false);
   // ─── Fake progress ticker ────────────────────────────────────────────
@@ -180,22 +186,22 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
       } else {
         trace.error('header:publish-failed', json);
         setProgress(0);
-        // The API serializes failures as `{ error: { code, message } }`, so
-        // alerting `json.error` printed "[object Object]" and threw away the
-        // reason — including the plan-limit message, which is the one publish
-        // error the user can actually act on. Older paths return a bare
-        // string, hence the typeof check.
+        // The API serializes failures as `{ error: { code, message, details } }`.
+        // Older paths return a bare string, hence the typeof check.
         const e = json?.error;
-        alert(
-          (typeof e === 'string' ? e : e?.message) ||
-          json?.details ||
-          'Publish failed',
-        );
+        // Plan-limit rejections carry a structured `violations` array — render
+        // those one per line instead of the flattened sentence, so a site over
+        // on three axes reads as three lines rather than a paragraph.
+        const violations = e?.details?.violations;
+        const body = Array.isArray(violations) && violations.length > 0
+          ? violations.map((v: { message: string }) => v.message).join('\n')
+          : (typeof e === 'string' ? e : e?.message) || json?.details || 'Publish failed';
+        setPublishError({ message: body, upgradable: e?.code === 'PAYMENT_REQUIRED' });
       }
     } catch (err) {
       trace.error('header:publish-error', err);
       setProgress(0);
-      alert('Publish failed — check console');
+      setPublishError({ message: 'Something went wrong while publishing. Check the console for details.', upgradable: false });
     } finally {
       stopProgress();
       setPublishing(false);
@@ -367,6 +373,26 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
           />
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={!!publishError}
+        onClose={() => setPublishError(null)}
+        onConfirm={() => {
+          const upgrade = publishError?.upgradable;
+          setPublishError(null);
+          if (upgrade) {
+            trace.action('header:publish-blocked-upgrade');
+            setSettingsSection('plans');
+            setSettingsOpen(true);
+          } else {
+            void handlePublish();
+          }
+        }}
+        title={publishError?.upgradable ? 'Upgrade to publish' : 'Publish failed'}
+        message={publishError?.message ?? ''}
+        confirmLabel={publishError?.upgradable ? 'See plans' : 'Try again'}
+        cancelLabel={publishError?.upgradable ? 'Not now' : 'Close'}
+      />
     </div>
   );
 }

@@ -25,7 +25,7 @@ import { ConfirmModalShell, ModalCancelButton, useEscapeToClose } from './shared
 const FREE_PUBLISH_LIMITS = [
   '10 pages',
   '5 CMS collections with 200 items each',
-  '1 language',
+  '2 languages',
   '500 MB storage',
 ] as const;
 
