@@ -8,6 +8,7 @@ import { ToolSection, ToolRow, ToolDivider, ControlLabel, ControlActionRow, Remo
 import ToolPopup from '../../ui/ToolPopup';
 import { useControl } from '../../controls/ControlProvider';
 import { keyframesBumpAtom, scrollAnimDataAtom, activeKeyframeSheetAtom, selectedKeyframeStopAtom, textAnimCallsAtom, cssHoverStylesAtom } from '@/code/stores/animation-store';
+import { expediteStableAtomSync } from '@/canvas/hooks/useStableAtomSync';
 import { codeAtom, getNodeFromCache, selectedIdsAtom } from '@/code/stores/store';
 import { overlayCallsAtom } from '@/code/stores/overlay-store';
 import { getScrollDataForNode, getMultiSectionForNode, parseScrollDirection } from '@/code/parsing/scroll-parser';
@@ -658,6 +659,14 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
   // ─── Handlers ──────────────────────────────────────────
   const handleAdd = useCallback((type: AddActionType) => {
     trace.action('animation:add', { nodeId, type });
+    // Panel-originated: the row has to appear/disappear the moment it's
+    // clicked, not after the stable mirror's canvas-paint budget. Measured
+    // 2026-08-23 on a text effect: codegen finished in 30ms and the source
+    // reparsed in 11ms, but the Animation row landed 572ms later because
+    // `textAnimCallsAtom` derives from the mirrored code atom, which waits
+    // out the full 450ms defer (useStableAtomSync). There is no canvas paint
+    // to protect here — the effect only changes what the panel lists.
+    expediteStableAtomSync();
     // Scope the new effect to the tile/variant being worked on (null = base/all).
     // VALUE props (whileHover/whileTap/initial/whileInView/animate) get scoped;
     // structural props (viewport/transition) don't.
@@ -791,6 +800,14 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
 
   const handleRemove = useCallback((type: AnimEntryType, entry?: DetectedEntry) => {
     trace.action('animation:remove', { nodeId, type });
+    // Panel-originated: the row has to appear/disappear the moment it's
+    // clicked, not after the stable mirror's canvas-paint budget. Measured
+    // 2026-08-23 on a text effect: codegen finished in 30ms and the source
+    // reparsed in 11ms, but the Animation row landed 572ms later because
+    // `textAnimCallsAtom` derives from the mirrored code atom, which waits
+    // out the full 450ms defer (useStableAtomSync). There is no canvas paint
+    // to protect here — the effect only changes what the panel lists.
+    expediteStableAtomSync();
     // Component-instance effects live in the data-instance-fx spec — drop the one key.
     if (isInstance && (entry?.data as any)?.instanceFx) {
       const key = (type === 'scrollSpeed' ? 'speed' : type === 'scrollTransform' ? 'transform'

@@ -5,6 +5,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { CanvasNode } from '@/code/parsing/parser';
 import { isFrameTag, isTextTag } from '@/shared/constants';
+import { layerAcceptsInsideDrop } from './drag';
 import { useIsViewer } from '@/code/stores/viewer-mode-store';
 import { isVectorSetComponentFile } from '@/code/project/active-file-store';
 import { DesktopViewportIcon, TabletViewportIcon, MobileViewportIcon, ComponentClusterIcon, CmsIcon, CmsItemIcon, FrameToolbarIcon } from '@/shared/icons';
@@ -790,7 +791,7 @@ export const LayerRow = React.memo(function LayerRow({
         data-layer-id={id}
         data-layer-node-id={layer.nodeId || ''}
         data-layer-depth={depth}
-        data-layer-is-frame={isFrameTag(node.type) ? 'true' : ''}
+        data-layer-is-frame={layerAcceptsInsideDrop(node.type, { isCmsRowTemplate: layer.isCmsItem }) ? 'true' : ''}
         onMouseDown={(e) => { if (!isViewer && !isVpHeader && layer.nodeId && e.button === 0) onDragStart(e, layer.id, layer.nodeId); }}
         onContextMenu={(e) => { e.preventDefault(); if (!isViewer && layer.nodeId) onContextMenu(e, layer.nodeId); }}
         onClick={(e) => {

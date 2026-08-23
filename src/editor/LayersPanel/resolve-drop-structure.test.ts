@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { CanvasNode } from '@/code/parsing/parser';
-import { resolveLayerDropStructure } from './drag';
+import { resolveLayerDropStructure, layerAcceptsInsideDrop } from './drag';
 
 function nodeMap(entries: Record<string, { parentId?: string | null; children?: string[] }>): Map<string, CanvasNode> {
   const map = new Map<string, CanvasNode>();
@@ -96,5 +96,33 @@ describe('resolveLayerDropStructure — null cases', () => {
 
   it('target without a parent returns null', () => {
     expect(resolveLayerDropStructure(TEMPLATED, { nodeId: 'root', position: 'before' }, 'stats')).toBeNull();
+  });
+});
+
+describe('layerAcceptsInsideDrop', () => {
+  it('frame tags accept an inside drop', () => {
+    for (const t of ['div', 'section', 'li', 'button', 'motion.div']) {
+      expect(layerAcceptsInsideDrop(t)).toBe(true);
+    }
+  });
+
+  it('text tags do NOT — dropping a frame into a text run is what TEXT_TAGS prevents', () => {
+    for (const t of ['p', 'span', 'h3', 'a']) {
+      expect(layerAcceptsInsideDrop(t)).toBe(false);
+    }
+  });
+
+  it('a CMS row template accepts inside even when its root is a link', () => {
+    // The reported bug: a collection-list row rooted at <Link>/<a> could be
+    // dropped into on the CANVAS but not from the Layers panel, because the
+    // layers test was tag-only and `a` is classified TEXT.
+    expect(layerAcceptsInsideDrop('a', { isCmsRowTemplate: true })).toBe(true);
+    expect(layerAcceptsInsideDrop('Link', { isCmsRowTemplate: true })).toBe(true);
+    expect(layerAcceptsInsideDrop('div', { isCmsRowTemplate: true })).toBe(true);
+  });
+
+  it('the CMS exemption does not leak to ordinary links', () => {
+    expect(layerAcceptsInsideDrop('a', { isCmsRowTemplate: false })).toBe(false);
+    expect(layerAcceptsInsideDrop('a', {})).toBe(false);
   });
 });

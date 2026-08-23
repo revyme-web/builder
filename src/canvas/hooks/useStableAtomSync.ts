@@ -111,10 +111,25 @@ export function useStableAtomSync() {
     // values at fire time (via ref); drags stay paused — if an interaction
     // is live when the timer fires, we skip and the drag-end effect run
     // reschedules.
-    if (pendingRef.current !== null) return;
     // Panel-originated edit → no canvas paint to protect, so don't make the
     // user wait out the canvas budget to see their own click land.
-    const delay = consumeExpedite() ? 0 : 450;
+    //
+    // Read the flag BEFORE the pending-timer check. It used to be read after,
+    // which meant an expedite arriving while a mirror was already pending was
+    // both IGNORED (the panel still waited out the old deadline) and LEAKED —
+    // the flag stayed set and expedited whatever wrote next, skipping a canvas
+    // paint budget that write did need. Reading it here consumes it exactly
+    // once per run that has real work to do.
+    const expedited = consumeExpedite();
+    if (pendingRef.current !== null) {
+      // MAX-LATENCY: a pending timer keeps its ORIGINAL deadline so a burst of
+      // writes can't postpone the mirror indefinitely. An expedite may pull it
+      // EARLIER — never later — so the contract still holds.
+      if (!expedited) return;
+      clearTimeout(pendingRef.current);
+      pendingRef.current = null;
+    }
+    const delay = expedited ? 0 : 450;
     pendingRef.current = setTimeout(() => {
       pendingRef.current = null;
       const L = liveRef.current;

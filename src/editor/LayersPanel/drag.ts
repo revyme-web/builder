@@ -16,6 +16,7 @@ import { queueReplicaCreationUnhide } from '@/canvas/creators/creator-utils';
 import { detectParentLayoutById, getFlexDirectionById } from '@/canvas/drag/types';
 import { queuePendingUpdates } from '@/canvas/arrow-nudge';
 import { trace } from '@/shared/debug-trace';
+import { isFrameTag } from '@/shared/constants';
 
 export type DropIndicator = { layerId: string; nodeId: string; position: 'before' | 'after' | 'inside'; depth: number };
 
@@ -64,6 +65,31 @@ export function computeEdgeAutoScrollDelta(
  *  `insertBeforeId` mirrors the canvas drag's anchor
  *  (computeLayoutInsertAnchorId): the sibling the node must land BEFORE, or
  *  undefined to append / defer to the index. */
+/**
+ * Can this layer row accept a drop INSIDE it (vs only before/after)?
+ *
+ * Tag alone is not enough. A CMS collection-list ROW TEMPLATE is a container by
+ * construction — the list renders its children once per record — but its root
+ * is frequently a link-style element (`<Link>` / `<a>`), which the shared tag
+ * table classifies as TEXT so that double-click edits the label. The tag-only
+ * test therefore refused an inside-drop that the CANVAS happily allows: the
+ * canvas layout drop gates on component-instance-ness and geometry, never on
+ * the tag. That asymmetry is the bug — dragging a component into a collection
+ * row worked by mouse on the canvas and silently did nothing from the Layers
+ * panel (2026-08-23).
+ *
+ * Deliberately NOT widened to "any node with element children": a <p> carrying
+ * rich-text mark spans would become a drop target, and dropping a frame into a
+ * text run is exactly what TEXT_TAGS exists to prevent.
+ */
+export function layerAcceptsInsideDrop(
+  nodeType: string,
+  opts?: { isCmsRowTemplate?: boolean },
+): boolean {
+  if (isFrameTag(nodeType)) return true;
+  return !!opts?.isCmsRowTemplate;
+}
+
 export function resolveLayerDropStructure(
   nodes: Map<string, CanvasNode>,
   indicator: { nodeId: string; position: 'before' | 'after' | 'inside' },
