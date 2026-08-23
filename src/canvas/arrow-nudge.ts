@@ -136,6 +136,40 @@ function effectiveStylesFor(node: CanvasNode, vpId: string): Record<string, stri
  * along the main axis. Returns null when the arrow is cross-axis, the node is
  * already at the edge, or the node isn't in the sibling list.
  */
+/**
+ * The siblings that actually occupy a slot in the parent's flow, in visual
+ * order along the main axis.
+ *
+ * OUT-OF-FLOW CHILDREN TAKE NO SLOT. `order` has no effect on an absolutely
+ * positioned box, so if one is allowed to sit in this list, nudging past it
+ * renumbers everything but produces the *same* arrangement on screen — the
+ * node reads as "stuck" and pressing the key again never helps, because the
+ * geometry that produced the list didn't change either.
+ *
+ * The case that surfaced it: a Hero column whose first flow child had a
+ * rotated, absolutely-positioned label sitting between it and the next
+ * section. Up was a no-op (already index 0) and Down only swapped with the
+ * label, so that one child could not be moved by keyboard at all while its
+ * siblings could, and dragging it worked fine.
+ *
+ * Pure over its inputs so the rule is testable without a canvas bridge.
+ */
+export function computeFlowSiblingOrder(
+  children: { id: string; rect: { left: number; top: number }; position: string | null | undefined }[],
+  flexDirection: 'row' | 'column',
+): string[] {
+  return children
+    // TEMPLATE CHROME excluded: on a templated page the flat merge makes
+    // `layout::` nodes siblings of the sections — including them here made an
+    // arrow reorder renumber the template footer/nav in SECTION space (the
+    // band-corruption commitOrderAssignments now also guards against).
+    .filter(c => !c.id.startsWith('layout::') && c.id !== 'children-slot')
+    .filter(c => c.position !== 'absolute' && c.position !== 'fixed')
+    .slice()
+    .sort((a, b) => (flexDirection === 'row' ? a.rect.left - b.rect.left : a.rect.top - b.rect.top))
+    .map(c => c.id);
+}
+
 export function computeOrderNudge(
   selectedId: string,
   visualOrderIds: string[],
@@ -280,14 +314,14 @@ function nudgeOrder(
   }
 
   const flexDir = getFlexDirectionById(parentId, vpId);
-  // TEMPLATE CHROME excluded: on a templated page the flat merge makes
-  // `layout::` nodes siblings of the sections — including them here made an
-  // arrow reorder renumber the template footer/nav in SECTION space (the
-  // band-corruption commitOrderAssignments now also guards against).
-  const visualOrderIds = findChildRects(parentId, vpId)
-    .filter(c => !c.id.startsWith('layout::') && c.id !== 'children-slot')
-    .sort((a, b) => (flexDir === 'row' ? a.rect.left - b.rect.left : a.rect.top - b.rect.top))
-    .map(c => c.id);
+  const visualOrderIds = computeFlowSiblingOrder(
+    findChildRects(parentId, vpId).map(c => ({
+      id: c.id,
+      rect: c.rect,
+      position: findNodeComputedStyle(c.id, vpId, 'position'),
+    })),
+    flexDir,
+  );
 
   const assignments = computeOrderNudge(id, visualOrderIds, direction, flexDir);
   if (!assignments) {

@@ -13,7 +13,7 @@ vi.mock('@/shared/debug-trace', () => ({
   trace: { action: vi.fn(), fn: vi.fn(), dom: vi.fn(), error: vi.fn() },
 }));
 
-import { computeAbsoluteNudge, computeOrderNudge, queuePendingUpdates } from './arrow-nudge';
+import { computeAbsoluteNudge, computeOrderNudge, computeFlowSiblingOrder, queuePendingUpdates } from './arrow-nudge';
 import { queueMutation } from '@/code/mutation/mutation-queue';
 import { trace } from '@/shared/debug-trace';
 import type { PendingUpdate } from '@/shared/types';
@@ -286,5 +286,75 @@ describe('mergeVariantEffectiveStyles', () => {
   it('no variant data → plain base styles', () => {
     const node = nodeWith({ styles: { top: '5px' } });
     expect(mergeVariantEffectiveStyles(node, 'variant-1')).toEqual({ top: '5px' });
+  });
+});
+
+
+describe('computeFlowSiblingOrder', () => {
+  const at = (id: string, top: number, position: string | null = 'relative') =>
+    ({ id, rect: { left: 0, top }, position });
+
+  it('drops absolutely-positioned siblings — they occupy no flow slot', () => {
+    // The reported page: a Hero column whose first flow child (`fk`) had a
+    // rotated absolute label (`d9`) landing between it and the next section.
+    const children = [
+      at('fk', 160),
+      at('d9', 226, 'absolute'),
+      at('d6', 300),
+      at('df', 700),
+      at('marquee', 900),
+    ];
+    expect(computeFlowSiblingOrder(children, 'column')).toEqual(['fk', 'd6', 'df', 'marquee']);
+  });
+
+  it('drops fixed siblings too', () => {
+    expect(computeFlowSiblingOrder([at('a', 0), at('nav', 10, 'fixed'), at('b', 20)], 'column'))
+      .toEqual(['a', 'b']);
+  });
+
+  it('keeps relative, static and sticky — those are in flow', () => {
+    const children = [at('a', 0, 'static'), at('b', 10, 'sticky'), at('c', 20, 'relative')];
+    expect(computeFlowSiblingOrder(children, 'column')).toEqual(['a', 'b', 'c']);
+  });
+
+  it('still excludes template chrome and the children slot', () => {
+    const children = [at('layout::footer', 0), at('children-slot', 5), at('real', 10)];
+    expect(computeFlowSiblingOrder(children, 'column')).toEqual(['real']);
+  });
+
+  it('sorts by left on a row, by top on a column', () => {
+    const row = [
+      { id: 'r', rect: { left: 300, top: 0 }, position: 'relative' },
+      { id: 'l', rect: { left: 100, top: 0 }, position: 'relative' },
+    ];
+    expect(computeFlowSiblingOrder(row, 'row')).toEqual(['l', 'r']);
+    expect(computeFlowSiblingOrder(row, 'column')).toEqual(['r', 'l']);
+  });
+
+  it('REGRESSION: the first flow child can move down past an absolute label', () => {
+    // Before the fix the list was [fk, d9, d6, …]; nudging `fk` down swapped
+    // it with the out-of-flow `d9` and renumbered to exactly the orders the
+    // page already had (d9:0, fk:1, d6:2 …) — zero visual change, forever.
+    const children = [
+      at('fk', 160),
+      at('d9', 226, 'absolute'),
+      at('d6', 300),
+      at('df', 700),
+    ];
+    const ids = computeFlowSiblingOrder(children, 'column');
+    expect(ids[0]).toBe('fk');
+
+    const assignments = computeOrderNudge('fk', ids, 'down', 'column');
+    expect(assignments).not.toBeNull();
+    // fk actually ends up AFTER d6 now, not merely renumbered around d9.
+    const orderOf = (id: string) => assignments!.find(a => a.nodeId === id)!.order;
+    expect(orderOf('fk')).toBeGreaterThan(orderOf('d6'));
+    // …and the out-of-flow node is not renumbered at all.
+    expect(assignments!.some(a => a.nodeId === 'd9')).toBe(false);
+  });
+
+  it('the first flow child still cannot move up past the start', () => {
+    const ids = computeFlowSiblingOrder([at('fk', 160), at('d6', 300)], 'column');
+    expect(computeOrderNudge('fk', ids, 'up', 'column')).toBeNull();
   });
 });
