@@ -14,7 +14,7 @@ import type { ViewportConfig, CollectionItem, NodeOverride, FilterGroup, FilterC
 import { resolveOverlayConfig } from '@/code/parsing/overlay-parser';
 import { trace, pauseDOMObserver, resumeDOMObserver } from '@/shared/debug-trace';
 import { jsxStyleToHTML, coerceCssNumberToPx, mergeStyleLayers } from '@/shared/css-utils';
-import { isSvgTag, isTextTag, WRAPPER_ONLY_STYLE_PROPS, isFitSize } from '@/shared/constants';
+import { isSvgTag, isTextTag, WRAPPER_ONLY_STYLE_PROPS, isFitSize, isInlineLevelTag } from '@/shared/constants';
 import { resolveResponsiveUnits, resolveContainerQueryUnits } from '@/shared/responsive-units';
 import { hasMotionTransformProp, motionPropsToCSSTransform, MOTION_TRANSFORM_PROPS } from '@/shared/motion-transform';
 import { simpleHash } from '@/shared/hash-utils';
@@ -1347,10 +1347,16 @@ export function renderNodes(
       // text and collapse to just the padding. So for a Fit-width master root,
       // skip inline containment (we lose width-based @container queries on that
       // root, which is meaningless for a content-sized component anyway).
+      // A HUGGING root (no width key, or `auto`) is the same situation reached
+      // by a different route, and needs the same escape: it is stamped
+      // `width: max-content` below, which inline containment would resolve
+      // against no contents at all — a zero-wide tile.
       let masterFitWidth = false;
+      let masterHugWidth = false;
       if (isComponentMaster && variantName !== undefined) {
         const rwv = resolveVariantStyles(rootNode, variantName, vp.width).width ?? rootNode.styles?.width;
         masterFitWidth = isFitSize(rwv);
+        masterHugWidth = !rwv || rwv === 'auto';
       }
       // Viewport-drag pin: while THIS tile's width is being dragged, its
       // container queries are silenced (containerType normal) so foreign
@@ -1360,7 +1366,7 @@ export function renderNodes(
       // injected stylesheet or one-shot patch is overwritten by the next
       // render (the "no difference, still flips to desktop mid-drag" report).
       const bandPinnedTile = viewportBandPinOps.get()?.vpId === vp.id;
-      rootEl.style.containerType = (masterFitWidth || bandPinnedTile) ? 'normal' : 'inline-size';
+      rootEl.style.containerType = (masterFitWidth || masterHugWidth || bandPinnedTile) ? 'normal' : 'inline-size';
       if (bandPinnedTile) trace.action('renderer:band-pin-container-off', { vpId: vp.id });
       rootEl.style.position = 'absolute';
       rootEl.style.left = `${vp.x}px`;
@@ -1404,6 +1410,18 @@ export function renderNodes(
           if (resolved.width) rootEl.style.width = resolved.width;
           if (resolved.height) rootEl.style.height = resolved.height;
         }
+        // A HUGGING root has no width to stamp, and every tile is
+        // `position: absolute` (above) inside #content-root — which is itself an
+        // absolute box with no width and no insets, so it computes to ZERO.
+        // Shrink-to-fit against zero available space collapses to MIN-content,
+        // so a button reading 203px on the page wrapped mid-label at 133px on
+        // its own artboard while the live site rendered it fine (reported
+        // 2026-08-24). There is no parent to fit into on an artboard, so
+        // max-content IS the hug. Height needs no equivalent: an auto height on
+        // an absolute box is already its content height, with nothing to clamp
+        // it. Only reachable since hug roots stopped being frozen to measured px
+        // ([[feedback_make_component_hug_vs_parent_sized]]).
+        if (masterHugWidth) rootEl.style.width = 'max-content';
       }
       // Store viewport width as data attribute for VW/VH resolution in patchElement
       rootEl.setAttribute('data-viewport-width', String(vp.width));
@@ -2421,6 +2439,30 @@ function patchElement(
     if (v !== '' && readStyle(key) !== coerceCssNumberToPx(key, v)) setElStyle(el, key, v);
   }
 
+  // BLOCKIFY the inner root of an instance. On the live site the component's
+  // single element IS the flex/grid item — or is absolutely positioned — and
+  // either of those blockifies it, an `<a>`/`<button>` pill included. The canvas
+  // two-div model hands that role to the WRAPPER, so the root lands as an
+  // ordinary child of a block container and an inline tag STAYS inline: its
+  // padding paints outside the line box and the wrapper measures one
+  // line-height instead of the root's border box. That is the instance reading
+  // 203×17 around a pill 36px tall, with the parent row too short and the
+  // button overflowing it (reported 2026-08-24). Invisible until hug roots
+  // stopped being frozen to measured px
+  // ([[feedback_make_component_hug_vs_parent_sized]]) — the wrapper used to
+  // adopt the master's baked height, which papered over the collapse.
+  //
+  // Only when the root declares no display of its own: an authored
+  // `inline-flex` is a deliberate choice. MUST run after the style pass AND the
+  // stale-clear above — stamping earlier meant the clear removed the very
+  // `display` key it had just written, the moment an authored one was deleted.
+  if (isComponentRootInInstance && !resolvedStyles.display && isInlineLevelTag(el.tagName)) {
+    if (el.style.display !== 'block') {
+      trace.dom('renderer:instance-root-blockify', { nodeId: node.id, tag: el.tagName.toLowerCase() });
+      el.style.display = 'block';
+    }
+  }
+
   // Next.js <Image fill> → width:100% height:100%
   if ((node.type === 'Image' || node.type === 'img' || node.type === 'motion.img') && node.attrs?.fill !== undefined) {
     if (!resolvedStyles.width && el.style.width !== '100%') el.style.width = '100%';
@@ -3435,6 +3477,12 @@ function buildNodeElement(
     const rv = (vpWidth != null ? node.responsiveVariantMap?.[vpWidth] : undefined)
       ?? node.componentVariant ?? 'default';
     el.setAttribute('data-variant', rv);
+  }
+  // BLOCKIFY an inline-level instance root on the FIRST paint too — same
+  // reasoning (and same authored-display deference) as patchElement's stamp.
+  if (buildIsComponentRootInInstance && !resolvedStyles.display && isInlineLevelTag(el.tagName)) {
+    el.style.display = 'block';
+    trace.dom('renderer:instance-root-blockify', { nodeId: node.id, tag: el.tagName.toLowerCase(), phase: 'build' });
   }
   // Viewport width for vw/vh (and clamp(…vw…)) resolution on the FIRST paint.
   // The element isn't in the DOM yet, so we can't read `data-viewport-width` off an

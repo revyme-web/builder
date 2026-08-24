@@ -196,6 +196,21 @@ export function isLinkTag(tag: string): boolean {
   return tag === 'a' || tag === 'Link' || tag === 'MotionLink';
 }
 
+/** HTML tags whose UA default `display` is inline-level, so their padding
+ *  paints OUTSIDE the line box and their parent measures a line-height rather
+ *  than their border box. Layout normally blockifies them anyway — as a flex or
+ *  grid item, or when absolutely positioned — so this matters only where a box
+ *  lands as an ordinary child of a block container. Tag names are the RENDERED
+ *  element's (`MotionLink`/`Link` reach the DOM as `a`). */
+const INLINE_LEVEL_TAGS = new Set([
+  'a', 'span', 'button', 'label', 'img', 'svg', 'strong', 'em', 'b', 'i',
+  's', 'u', 'small', 'code', 'mark', 'sub', 'sup', 'input', 'select', 'textarea',
+]);
+
+export function isInlineLevelTag(tag: string): boolean {
+  return INLINE_LEVEL_TAGS.has(tag.toLowerCase());
+}
+
 /**
  * Whether a NODE can take dropped children — the tag test plus the link
  * exception.

@@ -110,3 +110,95 @@ function CC({ style, initialVariant = 'default', ...rest }: { style?: any; initi
     }
   });
 });
+
+// ─── Event props ───────────────────────────────────────────────────────────
+// The reported bug: a node carrying `onClick={event1}` was extracted into a new
+// component, but `event1` is declared on the parent WITHOUT a default (a callback
+// has nothing to default to), so the "required prop, not a variable" gate skipped
+// it. The component referenced an identifier it never declared and the instance
+// passed nothing — ReferenceError at render, interaction silently lost.
+//
+// Mirrors the Header/HuPoPo case: `event1` is an event prop, `content` is an
+// ordinary defaulted prop, and only `event1` is referenced by the extracted node.
+const EVENT_PARENT = `'use client';
+/** @propMeta {"event1":{"type":"event","label":"Modal"},"content":{"type":"plainText","label":"Copy"}} */
+export default function Header({ style, initialVariant = 'default', event1, content = "AI Intelligence" }) {
+  return <div data-id="r" />;
+}`;
+const EVENT_PARENT_PATH = 'components/Header.tsx';
+
+const EVENT_BUILT = `import React from 'react';
+import { motion, LayoutGroup } from 'framer-motion';
+import { withResponsiveProps } from '@revyme/runtime';
+
+/** @name "Find Advisor" */
+
+function HuPoPo({ style, initialVariant = 'default', ...rest }: { style?: React.CSSProperties; initialVariant?: string; [key: string]: any }) {
+  return (
+    <LayoutGroup>
+    <MotionLink data-id="find-btn" onClick={event1}>Find an advisor</MotionLink>
+    </LayoutGroup>
+  );
+}
+
+export default withResponsiveProps(HuPoPo);`;
+
+describe('event props transfer', () => {
+  it('collects an event prop even though it has no default', () => {
+    const { vars } = collectTransferableVariables(EVENT_BUILT, EVENT_PARENT, EVENT_PARENT_PATH);
+    const names = vars.map(v => v.name);
+    expect(names).toContain('event1');
+    // `content` is defaulted but NOT referenced by the extracted subtree.
+    expect(names).not.toContain('content');
+  });
+
+  it('renames it on the CHILD after the trigger, not the parent meaning', () => {
+    // The child publishes "I was clicked"; only the parent knows that means Modal.
+    const { vars } = collectTransferableVariables(EVENT_BUILT, EVENT_PARENT, EVENT_PARENT_PATH);
+    const ev = vars.find(v => v.name === 'event1')!;
+    expect(ev.metaType).toBe('event');
+    expect(ev.childName).toBe('click');
+    expect(ev.label).toBe('Click');
+    expect(ev.literal).toBeNull();
+  });
+
+  it('keeps the parent name when the var is NOT purely a handler', () => {
+    // Also forwarded into a nested instance → no single trigger to name it after,
+    // and renaming would silently repoint that other usage.
+    const mixed = EVENT_BUILT.replace('<MotionLink data-id="find-btn"', '<Inner someProp={event1} /><MotionLink data-id="find-btn"');
+    const { vars } = collectTransferableVariables(mixed, EVENT_PARENT, EVENT_PARENT_PATH);
+    const ev = vars.find(v => v.name === 'event1');
+    expect(ev?.childName).toBeUndefined();
+  });
+
+  it('emits the param BARE under the child name, and repoints the handler', () => {
+    const { vars } = collectTransferableVariables(EVENT_BUILT, EVENT_PARENT, EVENT_PARENT_PATH);
+    const out = applyVariableTransfer(EVENT_BUILT, 'HuPoPo', vars, []);
+    expect(out).toContain("initialVariant = 'default', click, ...rest");
+    expect(out).toContain('onClick={click}');
+    // The parent's identifier must not survive inside the child — that was the crash.
+    expect(out).not.toContain('onClick={event1}');
+    expect(out).not.toMatch(/click\s*=\s*['"]/);
+    expect(out).toMatch(/@propMeta[^*]*"click":\{"type":"event","label":"Click"\}/);
+  });
+
+  it('the instance wires childProp={parentEvent} — behaviour preserved', () => {
+    const { vars } = collectTransferableVariables(EVENT_BUILT, EVENT_PARENT, EVENT_PARENT_PATH);
+    expect(buildInstanceVariableAttrs(vars)).toContain('click={event1}');
+  });
+
+  it('an event prop the subtree does NOT reference is not transferred', () => {
+    const noRef = EVENT_BUILT.replace('onClick={event1}', '');
+    const { vars } = collectTransferableVariables(noRef, EVENT_PARENT, EVENT_PARENT_PATH);
+    expect(vars.map(v => v.name)).not.toContain('event1');
+  });
+
+  it('ordinary defaulted props still transfer WITH their literal', () => {
+    const built = EVENT_BUILT.replace('>Find an advisor<', '>{content}<');
+    const { vars } = collectTransferableVariables(built, EVENT_PARENT, EVENT_PARENT_PATH);
+    const c = vars.find(v => v.name === 'content')!;
+    expect(c.literal).toBe('"AI Intelligence"');
+    const out = applyVariableTransfer(built, 'HuPoPo', vars, []);
+    expect(out).toContain('content = "AI Intelligence"');
+  });
+});

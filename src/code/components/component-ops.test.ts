@@ -2563,3 +2563,193 @@ export default function Page() {
     parseJSX(master);
   });
 });
+
+// ─── Event props survive extraction (Framer parity: port + hoist) ──────────
+// A node carrying `onClick={event1}` — where `event1` is an EVENT prop of the
+// enclosing component — must not be copied verbatim into the new component:
+// `event1` would be undefined there. The prop PORTS into the child (param +
+// @propMeta type 'event') and the instance HOISTS the parent's event into it,
+// which is exactly the chain the Interactions panel already reads.
+describe('makeComponent — event props', () => {
+  const PARENT = `import React from 'react';
+/** @propMeta {"event1":{"type":"event","label":"Modal"},"content":{"type":"plainText","label":"Copy"}} */
+function Header({ style, initialVariant = 'default', event1, content = "AI Intelligence" }) {
+  return (
+    <div data-id="root" style={{ display: 'flex' }}>
+      <a data-id="find-btn" data-name="Find Advisor" style={{ order: '0', flex: '0 0 auto', width: '138px', height: '37px' }} onClick={event1}>Find an advisor</a>
+    </div>
+  );
+}
+export default Header;`;
+
+  function extract() {
+    mockFS.readFile.mockReturnValue(PARENT);
+    mockFS.exists.mockReturnValue(false);
+    const result = makeComponent('components/Header.tsx', 'find-btn', 'FindAdvisor') as
+      { updatedPageCode: string; componentFilePath: string } | null;
+    // The component file is written through projectFS.writeFile.
+    const written = mockFS.writeFile.mock.calls
+      .filter((c: any[]) => String(c[0]).endsWith('.tsx'))
+      .map((c: any[]) => String(c[1]));
+    return { page: result!.updatedPageCode, component: written[written.length - 1] ?? '' };
+  }
+
+  it('PORTS the event as a TRIGGER-named prop the child owns', () => {
+    const { component } = extract();
+    // Declared as a real named param — NOT left to `...rest`, which would spread
+    // it onto the DOM node as an attribute and never fire.
+    expect(component).toMatch(/function \w+\(\{ style, initialVariant = 'default', click, \.\.\.rest \}/);
+    // Handler repointed at the child's own prop.
+    expect(component).toContain('onClick={click}');
+    // The parent's identifier must NOT appear in the child — that was the crash.
+    expect(component).not.toContain('event1');
+    // No literal default on a callback.
+    expect(component).not.toMatch(/click\s*=\s*['"]/);
+  });
+
+  it('records it as an EVENT in @propMeta so the child reads Click → Click', () => {
+    const { component } = extract();
+    expect(component).toMatch(/@propMeta[^*]*"click":\{"type":"event","label":"Click"\}/);
+  });
+
+  it('HOISTS the parent event into the child prop — the interaction keeps firing', () => {
+    const { page } = extract();
+    const inst = page.split('\n').find(l => /data-id="find-btn"/.test(l)) || '';
+    // childProp={parentEvent}: the parent still owns the meaning.
+    expect(inst).toContain('click={event1}');
+  });
+
+  it('does not transfer props the extracted node never referenced', () => {
+    const { component } = extract();
+    expect(component).not.toContain('content');
+  });
+});
+
+// ─── Hug roots must not be frozen to a measured size ───────────────────────
+// A node with no width key hugs its content. The master artboard has no parent
+// layout, so `replaceNonPxDimensions` injects the measured px — correct for a
+// grid/fill child, WRONG for an element sized BY its own text: frozen at its
+// measured width, the label is one rounding short of fitting and wraps.
+describe('replaceNonPxDimensions — text roots keep hugging', () => {
+  const pill = (tag: string) =>
+    `<${tag} data-id="b" style={{ padding: '10px 18px', borderRadius: '999px' }} onClick={click}>Find an advisor</${tag}>`;
+
+  it('does NOT freeze a MotionLink pill — motion.create(Link) renders an <a>', () => {
+    // The reported case: extracted at 138px with 18px side padding, the label
+    // no longer fit its own box and wrapped to two lines.
+    const out = replaceNonPxDimensions(pill('MotionLink'), 138, 36);
+    expect(out).not.toContain("width: '138px'");
+    expect(out).not.toContain("height: '36px'");
+  });
+
+  it('does NOT freeze Link, button, or a plain anchor', () => {
+    for (const tag of ['Link', 'button', 'motion.a', 'motion.button']) {
+      expect(replaceNonPxDimensions(pill(tag), 138, 36), tag).not.toContain('138px');
+    }
+  });
+
+  it('STILL freezes a frame — a div is sized by its parent, not its text', () => {
+    // Tag-based on purpose: parent-sized-master.test.ts asserts a grid child
+    // written as `<motion.div>x</motion.div>` DOES take the measured px, so
+    // "contains text" cannot be the discriminator.
+    const frame = `<motion.div data-id="b" style={{ padding: '4px' }}><motion.p data-id="t">Hi</motion.p></motion.div>`;
+    const out = replaceNonPxDimensions(frame, 300, 80);
+    expect(out).toContain("width: '300px'");
+    expect(out).toContain("height: '80px'");
+  });
+
+  it('the `hug` flags beat the tag list in BOTH directions', () => {
+    // The tag list is only the fallback. A frame the caller knows hugs must be
+    // left alone, and a text root the caller knows is parent-sized keeps its
+    // own exemption (a text container is never frozen — see
+    // [[feedback_text_containers_never_fixed_size]]).
+    const frame = `<motion.div data-id="b" style={{ padding: '4px' }}>x</motion.div>`;
+    const bothHug = replaceNonPxDimensions(frame, 300, 80, { width: true, height: true });
+    expect(bothHug).not.toContain('300px');
+    expect(bothHug).not.toContain('80px');
+
+    const onlyWidthHugs = replaceNonPxDimensions(frame, 300, 80, { width: true, height: false });
+    expect(onlyWidthHugs).not.toContain("width: '300px'");
+    expect(onlyWidthHugs).toContain("height: '80px'");
+  });
+
+  it('a HUG axis keeps an explicit `auto`, but a percentage still freezes', () => {
+    // `auto` means hug in one parent and fill in another, so it defers to the
+    // flags. `100%` is parent-relative by name — there is no parent left.
+    const auto = `<motion.div data-id="b" style={{ width: 'auto', height: 'auto' }}>x</motion.div>`;
+    expect(replaceNonPxDimensions(auto, 300, 80, { width: true, height: true }))
+      .toContain("width: 'auto'");
+    const pct = `<motion.div data-id="b" style={{ width: '100%' }}>x</motion.div>`;
+    expect(replaceNonPxDimensions(pct, 300, 80, { width: true, height: true }))
+      .toContain("width: '300px'");
+  });
+});
+
+// ─── The reported shape, end to end ─────────────────────────────────────────
+//
+// A pill button that hugs its label, sitting in a header's flex row. Reported
+// 2026-08-24: extraction froze it at the measured 138×36, and inside a
+// border-box with 18px of side padding the label came up a rounding short of
+// its own width — "Find an advisor" wrapped to two lines and spilled out of the
+// pill, on the canvas and on the published page alike.
+describe('makeComponent — a hug button keeps hugging', () => {
+  const HEADER = `import React from 'react';
+export default function Page() {
+  return (
+    <div data-id="root" style={{ display: 'flex' }}>
+      <div data-id="nav" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px' }}>
+        <MotionLink data-id="find-btn" data-name="Find Advisor" href="#" style={{ position: 'relative', order: '0', flex: '0 0 auto', padding: '10px 18px', borderRadius: '999px' }}>Find an advisor</MotionLink>
+      </div>
+    </div>
+  );
+}`;
+  const dims = [{ vpId: 'desktop', vpLabel: 'Desktop', width: 138, height: 36, vpWidth: 1440 }];
+
+  function extract(page = HEADER) {
+    vi.clearAllMocks();
+    mockFS.readFile.mockReturnValue(page);
+    mockFS.exists.mockReturnValue(false);
+    const r = makeComponent('app/page.tsx', 'find-btn', 'FindAdvisor', false, dims)!;
+    return {
+      master: getWrittenComponentCode(),
+      instance: r.updatedPageCode.split('\n').find((l) => /<\w+\s[^>]*data-id="find-btn"/.test(l)) || '',
+    };
+  }
+
+  test('THE BUG: the master root is not frozen to the measured size', () => {
+    const { master } = extract();
+    expect(master).not.toContain("width: '138px'");
+    expect(master).not.toContain("height: '36px'");
+  });
+
+  test('and the instance is not handed a width: 100% to compensate with', () => {
+    // The compensation exists to undo a bake. With no bake it would widen a
+    // button that is meant to shrink to its label.
+    expect(extract().instance).not.toContain("width: '100%'");
+  });
+
+  test('a FILL sibling in the same row still bakes — the row sized it', () => {
+    const fill = HEADER.replace("flex: '0 0 auto'", "flex: '1 0 0px'");
+    expect(extract(fill).master).toContain("width: '138px'");
+  });
+
+  test('a stretched CROSS axis still bakes — only the hug axis is spared', () => {
+    // Drop alignItems: center and the row stretches its children's height. On a
+    // FRAME, not the pill: a text root's height is never frozen whatever sized
+    // it (the case below), which would hide the cross-axis behaviour here.
+    const frame = HEADER
+      .replace('<MotionLink', '<motion.div').replace('</MotionLink>', '</motion.div>')
+      .replace(", alignItems: 'center'", '');
+    const { master } = extract(frame);
+    expect(master).not.toContain("width: '138px'");
+    expect(master).toContain("height: '36px'");
+  });
+
+  test('a text root keeps its height free even when the row stretched it', () => {
+    // [[feedback_text_containers_never_fixed_size]] — the copy reflows to an
+    // extra line on a narrower replica, and a px box clips it. That outranks
+    // the measurement.
+    const stretched = HEADER.replace(", alignItems: 'center'", '');
+    expect(extract(stretched).master).not.toContain("height: '36px'");
+  });
+});

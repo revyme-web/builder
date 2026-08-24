@@ -26,6 +26,7 @@ import { ensureResponsiveTextHook } from '../generation/text-override-gen';
 import { rehydrateScrollVariant, setScrollVariantInCode } from '../generation/scroll-variant-gen';
 import { healMissingFormStateDeclarations } from '../generation/form-state-gen';
 import { collectTransferableVariables, applyVariableTransfer, buildInstanceVariableAttrs } from './component-variable-transfer';
+import { detectHugAxes, type HugAxes, type StyleMap } from './master-root-sizing';
 import { hoistMapBindingsToProps, createLinkAttrVariableInCode } from '../features/variable-ops';
 import { addPageVariableInCode } from '../features/page-variables';
 import { transferRootOverlayToInstanceInCode, transferDescendantOverlaysToMasterInCode } from '../generation/overlay-gen';
@@ -507,6 +508,46 @@ function readRootInlineDim(jsx: string, prop: 'width' | 'height'): string | unde
   return m?.[1];
 }
 
+/** An element's inline `style={{ … }}` as a flat map. Only literal values —
+ *  an expression (`width: pageW`) is a value we cannot reason about, and
+ *  omitting it lets the caller's defaults apply instead of a wrong answer. */
+function readInlineStyleMap(opening: t.JSXOpeningElement): StyleMap {
+  const out: StyleMap = {};
+  const styleAttr = findAttribute(opening, 'style') as t.JSXAttribute | null;
+  if (!styleAttr || styleAttr.value?.type !== 'JSXExpressionContainer') return out;
+  const expr = styleAttr.value.expression;
+  if (!t.isObjectExpression(expr)) return out;
+  for (const prop of expr.properties) {
+    if (!t.isObjectProperty(prop)) continue;
+    const key = t.isIdentifier(prop.key) ? prop.key.name
+              : t.isStringLiteral(prop.key) ? prop.key.value
+              : null;
+    if (!key) continue;
+    if (t.isStringLiteral(prop.value)) out[toCamel(key)] = prop.value.value;
+    else if (t.isNumericLiteral(prop.value)) out[toCamel(key)] = String(prop.value.value);
+  }
+  return out;
+}
+
+/** The inline style of the nearest ancestor that is an actual LAYOUT BOX.
+ *
+ *  Walking to the nearest JSXElement is not enough: `<AnimatePresence>`,
+ *  `<LayoutGroup>` and fragments are ancestors that render no box, and reading
+ *  their (absent) display would report block flow for a node whose real parent
+ *  is a flex row. Every box Revyme lays out carries a `data-id`, so that is the
+ *  test. Null when the node is the file's root element. */
+function nearestBoxParentStyle(path: any): StyleMap | null {
+  let cursor = path?.parentPath;
+  for (let hops = 0; cursor && hops < 24; hops++, cursor = cursor.parentPath) {
+    if (!t.isJSXElement(cursor.node)) continue;
+    const opening = cursor.node.openingElement;
+    const idAttr = findAttribute(opening, 'data-id');
+    if (!idAttr) continue;
+    return readInlineStyleMap(opening);
+  }
+  return null;
+}
+
 export function makeComponent(
   pageFilePath: string,
   nodeId: string,
@@ -553,6 +594,10 @@ export function makeComponent(
     // style object literal verbatim.
     let rootHasWidthKey = false;
     let rootHugsContent = false;
+    // Which axes the node sized from its own CONTENT rather than from the parent
+    // it is about to lose. Default to neither, so a node we cannot read stays on
+    // the old freeze-everything behaviour.
+    let hugAxes: HugAxes = { width: false, height: false };
     const wrapperStyleEntries: Array<{ key: string; jsx: string }> = [];
 
     findFirstElementByDataId(ast, nodeId, (path) => {
@@ -562,6 +607,10 @@ export function makeComponent(
         nodeEnd = node.end;
         nodeJSX = pageCode.substring(nodeStart, nodeEnd);
       }
+
+      // Read BEFORE the style-attr guard below returns: the answer depends on
+      // the PARENT's layout, which a node with no style of its own still has.
+      hugAxes = detectHugAxes(readInlineStyleMap(node.openingElement), nearestBoxParentStyle(path));
 
       // Extract wrapper-only style props from the original element's
       // `style={{ ... }}`. We slice the SOURCE TEXT of each property's value
@@ -638,7 +687,8 @@ export function makeComponent(
     }
     const primaryDims = viewportDimensions?.find(v => v.vpId === 'desktop') ?? viewportDimensions?.[0];
     if (primaryDims) {
-      processedJSX = replaceNonPxDimensions(processedJSX, primaryDims.width, primaryDims.height);
+      processedJSX = replaceNonPxDimensions(processedJSX, primaryDims.width, primaryDims.height, hugAxes);
+      trace.action('make-component:root-sizing', { nodeId, hugWidth: hugAxes.width, hugHeight: hugAxes.height });
     }
 
     // NO WIDTH KEY AT ALL — the parent's layout was sizing it (a grid cell, a
@@ -649,13 +699,14 @@ export function makeComponent(
     // that parent, and it beats the master's px because the instance style
     // spreads LAST.
     //
-    // Gated on the bake actually having happened: with no measurement the
-    // master keeps no width either, so there is nothing to compensate for and
-    // the instance must stay clean. Skipped for a NON-growing `flex`
-    // (`0 0 auto`), the deliberate hug-your-content shape where no width key
-    // means shrink-to-fit and 100% would visibly widen it; a growing flex
-    // (`1 0 0px`) already rides the instance and wins on its own.
-    if (primaryDims && primaryDims.width > 0 && !rootHasWidthKey && !rootHugsContent
+    // Gated on the bake actually having happened: with no measurement — or on
+    // an axis the CONTENT sizes, which is never baked — the master keeps no
+    // width either, so there is nothing to compensate for and the instance must
+    // stay clean. Skipped for a NON-growing `flex` (`0 0 auto`), the deliberate
+    // hug-your-content shape where no width key means shrink-to-fit and 100%
+    // would visibly widen it; a growing flex (`1 0 0px`) already rides the
+    // instance and wins on its own.
+    if (primaryDims && primaryDims.width > 0 && !rootHasWidthKey && !rootHugsContent && !hugAxes.width
       && !wrapperStyleEntries.some((e) => e.key === 'width')) {
       wrapperStyleEntries.push({ key: 'width', jsx: "width: '100%'" });
     }
@@ -1854,8 +1905,24 @@ export function deleteComponent(componentFilePath: string): string[] {
 /**
  * Replace non-px dimension values (100%, auto, fill) in the root element's style
  * with computed pixel values. Only affects width and height on the FIRST style={{ block.
+ *
+ * `hug` marks the axes the node's own CONTENT sizes (see
+ * master-root-sizing.ts). Those are left exactly as authored: hugging is the one
+ * sizing mode that needs no parent, so it survives the move to an artboard
+ * intact, and freezing it stops the root growing with its content. Omitted →
+ * every ambiguous axis is treated as parent-sized, which is what this did before
+ * the distinction existed.
+ *
+ * A `%` or `fill` width is parent-relative BY NAME and freezes either way — the
+ * flag only governs `auto` and the missing-key case, where the same declaration
+ * means hug in one parent and fill in another.
  */
-export function replaceNonPxDimensions(jsx: string, computedWidth: number, computedHeight: number): string {
+export function replaceNonPxDimensions(
+  jsx: string,
+  computedWidth: number,
+  computedHeight: number,
+  hug?: Partial<HugAxes>,
+): string {
   const styleIdx = jsx.indexOf('style={{');
   if (styleIdx === -1) return jsx;
 
@@ -1871,11 +1938,26 @@ export function replaceNonPxDimensions(jsx: string, computedWidth: number, compu
 
   let newStyleContent = styleContent;
 
+  // An element whose own text sizes it. The list is the FALLBACK verdict for
+  // callers that pass no `hug` at all — deliberately TAG-based, since a grid
+  // child written as `<motion.div>x</motion.div>` is sized by its cell and DOES
+  // want the measured px (parent-sized-master.test.ts), so "contains a text
+  // node" cannot be the test.
+  const isTextRoot = /^<\s*(?:motion\.)?(?:p|h[1-6]|span|a|li|blockquote|figcaption|label|button|MotionLink|Link)[\s>]/
+    .test(jsx.trimStart());
+  // `hug` is measured from the real layout, so it outranks the tag guess where
+  // both have an opinion — EXCEPT on a text root's height, which is never
+  // frozen whatever sized it: the copy reflows to an extra line on a narrower
+  // replica and a px box clips it ([[feedback_text_containers_never_fixed_size]]).
+  const hugWidth = hug?.width ?? isTextRoot;
+  const hugHeight = isTextRoot || (hug?.height ?? false);
+
   // Replace width if it's not a fixed px value
   const widthMatch = newStyleContent.match(/(width\s*:\s*)'([^']*?)'/);
   if (widthMatch) {
     const val = widthMatch[2];
-    if (val === '100%' || val === 'auto' || val === 'fill' || val.endsWith('%')) {
+    const fluid = val === '100%' || val === 'fill' || val.endsWith('%');
+    if (fluid || (val === 'auto' && !hugWidth)) {
       newStyleContent = newStyleContent.replace(widthMatch[0], `${widthMatch[1]}'${computedWidth}px'`);
     }
   }
@@ -1884,7 +1966,8 @@ export function replaceNonPxDimensions(jsx: string, computedWidth: number, compu
   const heightMatch = newStyleContent.match(/(height\s*:\s*)'([^']*?)'/);
   if (heightMatch) {
     const val = heightMatch[2];
-    if (val === '100%' || val === 'auto' || val === 'fill' || val.endsWith('%')) {
+    const fluid = val === '100%' || val === 'fill' || val.endsWith('%');
+    if (fluid || (val === 'auto' && !hugHeight)) {
       newStyleContent = newStyleContent.replace(heightMatch[0], `${heightMatch[1]}'${computedHeight}px'`);
     }
   }
@@ -1900,17 +1983,15 @@ export function replaceNonPxDimensions(jsx: string, computedWidth: number, compu
   // master Width 0). Inject the COMPUTED px for whichever axis has no key so
   // the artboard matches what the page showed.
   //
-  // Text roots are exempt: a text container frozen to a measured size stops
-  // growing with its own content ([[feedback_text_containers_never_fixed_size]]).
-  const isTextRoot = /^<\s*(?:motion\.)?(?:p|h[1-6]|span|a|li|blockquote|figcaption|label)[\s>]/
-    .test(jsx.trimStart());
-  if (!isTextRoot) {
-    if (!/(?<![\w-])width\s*:/.test(newStyleContent) && computedWidth > 0) {
-      newStyleContent = ` width: '${computedWidth}px',` + newStyleContent;
-    }
-    if (!/(?<![\w-])height\s*:/.test(newStyleContent) && computedHeight > 0) {
-      newStyleContent = ` height: '${computedHeight}px',` + newStyleContent;
-    }
+  // Only for the axes the PARENT was sizing, though — a hugging axis already
+  // produces the right number on the artboard, and freezing it is how a pill
+  // button ended up too narrow for its own label (see hugWidth/hugHeight above
+  // and master-root-sizing.ts for how the two are told apart).
+  if (!hugWidth && !/(?<![\w-])width\s*:/.test(newStyleContent) && computedWidth > 0) {
+    newStyleContent = ` width: '${computedWidth}px',` + newStyleContent;
+  }
+  if (!hugHeight && !/(?<![\w-])height\s*:/.test(newStyleContent) && computedHeight > 0) {
+    newStyleContent = ` height: '${computedHeight}px',` + newStyleContent;
   }
 
   // FILL nodes additionally resolve the fill itself — see below. The instance

@@ -14,7 +14,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useAnchoredMenu } from '../hooks/useAnchoredMenu';
 import { createPortal } from 'react-dom';
 import { useAtomValue, useSetAtom } from 'jotai';
-import { isComponentFileAtom, selectedNodeAtom, codeAtom, variableModalRequestAtom } from '@/code/stores/store';
+import { isComponentFileAtom, selectedNodeAtom, codeAtom, variableModalRequestAtom, getNodesSnapshot } from '@/code/stores/store';
 import { useNode } from '@/code/stores/node-family';
 import { activeFilePathAtom, isLayoutFile } from '@/code/project/active-file-store';
 import { interactingViewportIdAtom } from '@/code/stores/viewport-store';
@@ -463,7 +463,37 @@ function ComponentInteractions({ selectedId, isRoot }: { selectedId: string; isR
     setVariableModalRequest({ property: '', propertyLabel: 'Event', currentValue: '', variableRef: name, nameEditable: true });
   }, [setVariableModalRequest]);
 
-  const hasRows = connections.length > 0 || eventFires.length > 0;
+  // NESTED INSTANCE forwarded events. A child component declares its own event
+  // props (`click`), and the instance wires one of THIS master's events into it
+  // — `<Child click={event1} />`. That is a different encoding from the
+  // event-FIRE above (`onClick={() => event1()}` on the node), so `eventFires`
+  // can't see it and the row went missing entirely: the interaction still ran,
+  // but selecting the instance showed an empty Interactions section after Make
+  // Component (reported 2026-08-24).
+  //
+  // Reads as the same row: the CHILD's prop label is the trigger ("Click"), the
+  // bound identifier resolves to THIS master's event label ("Modal").
+  const forwardedEvents = useMemo(() => {
+    const node = getNodesSnapshot().get(selectedId);
+    const file = node?.componentFile;
+    if (!file) return [] as Array<{ propName: string; triggerLabel: string; eventVar: string }>;
+    const reg = buildComponentRegistry(projectFS);
+    let childEventProps: ComponentProp[] = [];
+    for (const info of reg.values()) if (info.filePath === file) childEventProps = info.props.filter(p => p.varType === 'event');
+    if (childEventProps.length === 0) return [];
+    const names = new Set(eventNames);
+    return parseInstanceEventBindings(code ?? '', selectedId, childEventProps.map(p => p.name))
+      // Only a BARE identifier naming one of this master's events is a forward.
+      // An arrow handler is someone else's wiring (Close Overlay, Load More).
+      .filter(b => b.bound && b.handler != null && names.has(b.handler.trim()))
+      .map(b => ({
+        propName: b.propName,
+        triggerLabel: childEventProps.find(p => p.name === b.propName)?.label ?? b.propName,
+        eventVar: b.handler!.trim(),
+      }));
+  }, [selectedId, code, eventNames]);
+
+  const hasRows = connections.length > 0 || eventFires.length > 0 || forwardedEvents.length > 0;
 
   return (
     <>
@@ -479,6 +509,15 @@ function ComponentInteractions({ selectedId, isRoot }: { selectedId: string; isR
               <ControlActionRow onClick={() => setEditIdx(i)}>
                 <span className="truncate flex-1 min-w-0">{getVariantLabel(conn.to)}</span>
                 <RemoveButton onClick={() => handleRemove(conn)} />
+              </ControlActionRow>
+            </div>
+          ))}
+          {forwardedEvents.map(f => (
+            <div key={`fe-${f.propName}`} className="flex items-center justify-between w-full">
+              <span className="w-3/4 min-w-0 text-[11px] font-bold text-[var(--text-secondary)]">{f.triggerLabel}</span>
+              <ControlActionRow onClick={() => openVariable(f.eventVar)} className="!pr-2">
+                <ZapSwatch secondary />
+                <span className="truncate flex-1 min-w-0">{eventVars.find(v => v.name === f.eventVar)?.label ?? f.eventVar}</span>
               </ControlActionRow>
             </div>
           ))}
