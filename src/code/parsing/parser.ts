@@ -2605,8 +2605,18 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
           && SAFE.has(cur.callee.property.name)) {
           cur = cur.callee.object;
         }
-        // Mirror the enter-visitor's __applyListConfig unwrap so the stack balances
-        // for responsive-upgraded lists.
+        // Mirror the enter-visitor's head unwraps, IN THE SAME ORDER, so the
+        // stack balances. localizeRows was added to enter() but not here, and an
+        // unbalanced push is not a local bug: the stack never returns to 0, so
+        // EVERY node parsed after a localized list — siblings of the `.map()`,
+        // and whole unrelated sections further down the file — came back with
+        // `isCollectionTemplate = true`. That flag is what gates CMS field
+        // binding, so a component dropped anywhere below the list was offered
+        // `item.field` bindings that cannot resolve (reported 2026-08-24).
+        if (cur && cur.type === 'CallExpression'
+          && cur.callee?.type === 'Identifier' && cur.callee.name === 'localizeRows') {
+          cur = cur.arguments?.[0];
+        }
         if (cur && cur.type === 'CallExpression'
           && cur.callee?.type === 'Identifier' && cur.callee.name === '__applyListConfig') {
           cur = cur.arguments?.[0];

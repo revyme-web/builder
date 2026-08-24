@@ -44,6 +44,7 @@ const AUTO_CLEAR_LONGHANDS_BY_PROPERTY: Record<string, string[]> = {
   border: BORDER_LONGHANDS,
 };
 import type { CanvasNode } from '@/code/parsing/parser';
+import { findCmsListScope } from './cms-binding-scope';
 import type { FieldDefinition } from '@/shared/types';
 import { collectionSchemasAtom, collectionDataAtom } from '@/code/stores/cms-store';
 import { cmsPageMetaAtom } from '@/code/stores/cms-page-store';
@@ -1321,16 +1322,9 @@ export function ControlProvider({ children }: { children: ReactNode }) {
   // CMS binding context that needs the node MAP (unbounded ancestor walk), so
   // it gets its own fine-grained computed subscription; the memo below builds
   // the callback surface from its plain result.
-  const cmsListAncestor = useNodesComputed((nodes) => {
-    let cursor: CanvasNode | undefined = node ?? undefined;
-    while (cursor) {
-      if (cursor.collectionList && !cursor.collectionList.source.startsWith('__inline:')) break;
-      cursor = cursor.parentId ? nodes.get(cursor.parentId) : undefined;
-    }
-    return cursor?.collectionList
-      ? { slug: cursor.collectionList.source, itemVar: cursor.collectionList.itemVar }
-      : null;
-  }, [node]);
+  // Scope rule lives in findCmsListScope — see that file for why being a mere
+  // DESCENDANT of the collection-list container is not enough.
+  const cmsListAncestor = useNodesComputed((nodes) => findCmsListScope(node, nodes), [node]);
   const cmsBindingCtx = useMemo<ControlContextValue['cmsBinding']>(() => {
     if (!selectedId || !node) return null;
 
