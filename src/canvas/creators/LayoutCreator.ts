@@ -15,6 +15,7 @@ import { el, attachDragListeners } from '@/shared/dom-utils';
 import {
   findParentAtPoint,
   getInsertionMode,
+  ensureAbsChildContainingBlock,
   getFlexInsertIndex,
   queueCreatorFlexOrder,
   queueReplicaCreationUnhide,
@@ -351,6 +352,9 @@ export function startLayoutCreation(
 
         const insertMode = getInsertionMode(parentId, vpId);
         if (insertMode === 'absolute') {
+          // The left/top below are relative to THIS parent, so the parent has
+          // to be the containing block that resolves them.
+          ensureAbsChildContainingBlock(parentId, vpId, contentEl);
           // Local-space committed left/top is already parent-relative.
           // Skip AABB subtraction (which assumes axis-aligned parent).
           if (useLocalSpace) {

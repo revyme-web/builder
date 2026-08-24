@@ -13,6 +13,7 @@ import type { DragContext, DragStrategy, DragMoveResult } from '../types';
 import { detectParentLayoutById, getFlexDirectionById } from '../types';
 import { getCanvasDelta, getAbsoluteCanvasRectById, getParentCanvasOffsetById } from '@/canvas/canvas-math';
 import { calculateSnap, getMouseVelocity } from '../handlers/snap-handler';
+import { snapCorrection } from '../snap-precision';
 import { getActiveRulerGuideSnapLines } from '@/code/stores/ruler-guides-store';
 import { SNAP_THRESHOLD, nodeAcceptsChildren } from '@/shared/constants';
 import { updateNodeStyles, isPrimaryViewport, vpIdFromPrefix, getActiveFilePath, patchNodeStyles, findNodeRect, findNodeComputedStyle, findNodeComputedStyles, findChildRects, getNodeHitsAtPoint, findRootHitAtPoint, forceCanvasRender, getViewportPrefix, parseRectCacheKey, forceCanvasRenderDeferredDuringDrag } from '@/canvas/node-ops';
@@ -672,9 +673,16 @@ export class CanvasDragStrategy implements DragStrategy {
       if (isOverlayNode(context.nodes.get(siblingRects[i].id))) siblingRects.splice(i, 1);
     }
 
-    // Calculate new position (parent-relative)
-    const newLeft = Math.round(primary.startLeft + dx);
-    const newTop = Math.round(primary.startTop + dy);
+    // Calculate new position (parent-relative). UNROUNDED on purpose — see the
+    // matching note in AbsoluteInFrameStrategy.onMove: rounding here and then
+    // measuring the snap correction against the rounded value leaks the
+    // rounding residue into a position that should be EXACTLY the snap target,
+    // so a snapped element wobbles ±0.5px with every sub-pixel mouse move and
+    // the per-node `Math.round` below turns it into a 1px sawtooth. Only
+    // visible once the canvas is zoomed past 1:1, where one mouse pixel is a
+    // fraction of a CSS pixel. Each node's write rounds for itself.
+    const rawLeft = primary.startLeft + dx;
+    const rawTop = primary.startTop + dy;
 
     // Snap in ABSOLUTE canvas space (matches sibling rects and guide rendering).
     // primary.width/height come from findNodeRect → SCREEN pixels (post-zoom).
@@ -684,8 +692,8 @@ export class CanvasDragStrategy implements DragStrategy {
     const dragCssWidth = primary.width / transform.scale;
     const dragCssHeight = primary.height / transform.scale;
     const draggedRect: Rect = {
-      left: parentOffsetX + newLeft,
-      top: parentOffsetY + newTop,
+      left: parentOffsetX + rawLeft,
+      top: parentOffsetY + rawTop,
       width: dragCssWidth,
       height: dragCssHeight,
     };
@@ -704,8 +712,8 @@ export class CanvasDragStrategy implements DragStrategy {
       // Lift-time corners (canvas-space, captured once in onStart) shifted by
       // the cumulative drag delta. Translation is rotation-agnostic, so this
       // gives accurate projected corner positions for rotated/skewed elements.
-      const dxCss = newLeft - primary.startLeft;
-      const dyCss = newTop - primary.startTop;
+      const dxCss = rawLeft - primary.startLeft;
+      const dyCss = rawTop - primary.startTop;
       dragCorners = {
         TL: { x: liftedC.TL.x + dxCss, y: liftedC.TL.y + dyCss },
         TR: { x: liftedC.TR.x + dxCss, y: liftedC.TR.y + dyCss },
@@ -763,10 +771,8 @@ export class CanvasDragStrategy implements DragStrategy {
     // Convert snapped absolute positions back to parent-relative for style.left/top
     const finalAbsLeft = snap.snappedX ? snap.x : draggedRect.left;
     const finalAbsTop = snap.snappedY ? snap.y : draggedRect.top;
-    const finalRelLeft = finalAbsLeft - parentOffsetX;
-    const finalRelTop = finalAbsTop - parentOffsetY;
-    const snapOffsetX = finalRelLeft - newLeft;
-    const snapOffsetY = finalRelTop - newTop;
+    const snapOffsetX = snapCorrection(rawLeft, finalAbsLeft, parentOffsetX, snap.snappedX);
+    const snapOffsetY = snapCorrection(rawTop, finalAbsTop, parentOffsetY, snap.snappedY);
 
     // Per-frame cache of parent-transform inverses. Multi-drag with each
     // node potentially in a different parent + same parent appearing on

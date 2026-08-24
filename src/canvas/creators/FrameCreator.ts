@@ -17,6 +17,7 @@ import { el, attachDragListeners } from '@/shared/dom-utils';
 import {
   findParentAtPoint,
   getInsertionMode,
+  ensureAbsChildContainingBlock,
   getFlexInsertIndex,
   queueCreatorFlexOrder,
   nextFrameColor,
@@ -434,6 +435,9 @@ export function startFrameCreation(
 
         const mode = getInsertionMode(parentId, vpId);
         if (mode === 'absolute') {
+          // The left/top below are relative to THIS parent, so the parent has
+          // to be the containing block that resolves them.
+          ensureAbsChildContainingBlock(parentId, vpId, contentEl);
           // `useLocalSpace` already produced parent-local left/top —
           // skip the AABB-based conversion (which only handles
           // translate, not rotation). Otherwise fall back to the

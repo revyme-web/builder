@@ -14,6 +14,7 @@ import { flushNow, setForceRender } from '@/code/mutation/mutation-queue';
 import {
   findParentAtPoint,
   getInsertionMode,
+  ensureAbsChildContainingBlock,
   getFlexInsertIndex,
   queueCreatorFlexOrder,
   queueReplicaCreationUnhide,
@@ -342,6 +343,9 @@ export function startTextCreation(
 
         const mode = getInsertionMode(parentId, vpId);
         if (mode === 'absolute') {
+          // The left/top below are relative to THIS parent, so the parent has
+          // to be the containing block that resolves them.
+          ensureAbsChildContainingBlock(parentId, vpId, contentEl);
           styles.position = 'absolute';
           // `useLocalSpace` already produced parent-local left/top.
           // The AABB-based subtraction below only handles plain

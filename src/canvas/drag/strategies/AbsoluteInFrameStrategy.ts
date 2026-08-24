@@ -14,6 +14,7 @@ import { buildCanvasCloneDescriptor, dropDynamicStyleBindings } from '../clone-d
 import type { DragContext, DragStrategy, DragMoveResult } from '../types';
 import { getParentCanvasOffsetById, getAbsoluteCanvasRectById } from '@/canvas/canvas-math';
 import { calculateSnap, getMouseVelocity } from '../handlers/snap-handler';
+import { snapCorrection } from '../snap-precision';
 import { getActiveRulerGuideSnapLines } from '@/code/stores/ruler-guides-store';
 import { containerOverridesAtom } from '@/code/stores/container-query-store';
 import { viewportsConfigAtom } from '@/code/stores/viewport-store';
@@ -823,10 +824,27 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
     }
 
     const parentOffset = this.parentId ? getParentCanvasOffsetById(this.parentId, this.vpId, transform) : { x: 0, y: 0 };
-    const newLeft = Math.round(primary.startLeft + delta.x);
-    const newTop = Math.round(primary.startTop + delta.y);
-    const absLeft = parentOffset.x + newLeft;
-    const absTop = parentOffset.y + newTop;
+    // UNROUNDED through the whole snap chain. Rounding here first and then
+    // measuring the snap correction against the rounded value leaks the
+    // rounding residue into a position that is supposed to be EXACTLY the snap
+    // target: `newLeftCss` came out as `target + (raw - round(raw))`, so while
+    // the element sat locked on a guide it still wobbled ±0.5px with every
+    // sub-pixel mouse move, and `Math.round` at the write turned that into a
+    // visible 1px sawtooth. Worse, the same residue swung the dynamic-pin
+    // right-edge test across its 1px threshold, flipping the Position panel
+    // L/R/L/R while the element was demonstrably snapped (reported 2026-08-24).
+    //
+    // Invisible at 100% zoom — one mouse pixel is one CSS pixel there, so the
+    // residue is constant. It only sweeps once a mouse pixel is a FRACTION of a
+    // CSS pixel, which is why this reads as a zoom bug.
+    //
+    // Nothing needs the rounded value: the un-snapped path already cancels
+    // (`snapOffset` is 0 either way) and every CSS write below rounds for
+    // itself.
+    const rawLeft = primary.startLeft + delta.x;
+    const rawTop = primary.startTop + delta.y;
+    const absLeft = parentOffset.x + rawLeft;
+    const absTop = parentOffset.y + rawTop;
 
     const draggedIds = new Set(draggedNodes.map(n => n.id));
     const excludedIds = new Set(draggedIds);
@@ -947,8 +965,8 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
     let aifDragCorners: import('../handlers/snap-handler').ScreenCorners | null = null;
     const liftedAifC = this.liftCorners.get(primary.id);
     if (liftedAifC) {
-      const dxCss = newLeft - primary.startLeft;
-      const dyCss = newTop - primary.startTop;
+      const dxCss = rawLeft - primary.startLeft;
+      const dyCss = rawTop - primary.startTop;
       aifDragCorners = {
         TL: { x: liftedAifC.TL.x + dxCss, y: liftedAifC.TL.y + dyCss },
         TR: { x: liftedAifC.TR.x + dxCss, y: liftedAifC.TR.y + dyCss },
@@ -1001,8 +1019,8 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
     // (which are already in css coords).
     const finalAbsLeft = snap.snappedX ? (snap.x - tOffset.x) : absLeft;
     const finalAbsTop = snap.snappedY ? (snap.y - tOffset.y) : absTop;
-    const snapOffsetX = (finalAbsLeft - parentOffset.x) - newLeft;
-    const snapOffsetY = (finalAbsTop - parentOffset.y) - newTop;
+    const snapOffsetX = snapCorrection(rawLeft, finalAbsLeft, parentOffset.x, snap.snappedX);
+    const snapOffsetY = snapCorrection(rawTop, finalAbsTop, parentOffset.y, snap.snappedY);
 
     for (const node of draggedNodes) {
       const dx = delta.x + snapOffsetX;

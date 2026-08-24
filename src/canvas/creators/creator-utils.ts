@@ -6,7 +6,7 @@ import { getDefaultStore } from 'jotai';
 import { toKebab } from '@/shared/css-utils';
 import { generateNodeId } from '@/shared/id-utils';
 import { getAbsoluteCanvasRectById } from '@/canvas/canvas-math';
-import { getNodeHitsAtPoint, findChildRects, findNodeComputedStyles, findRootHitAtPoint, findNodeRect } from '@/canvas/node-ops';
+import { getNodeHitsAtPoint, findChildRects, findNodeComputedStyles, findRootHitAtPoint, findNodeRect, patchNodeStyles, getViewportPrefix } from '@/canvas/node-ops';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import type { PostMessageBridge } from '@/canvas-sandbox/bridge-host';
 import { getScreenCornersById } from '@/canvas/resize/geometry-utils';
@@ -125,6 +125,70 @@ export function getInsertionMode(parentId: string, vpId: string): InsertionMode 
   }
   if (display === 'grid' || display === 'inline-grid') return 'grid';
   return 'absolute';
+}
+
+/**
+ * Does `position` already make an element a containing block for its
+ * absolutely-positioned descendants? Anything but `static` does.
+ */
+function positionEstablishesContainingBlock(position: string): boolean {
+  const p = position.trim();
+  return p !== '' && p !== 'static';
+}
+
+/** These make an element a containing block for abspos descendants even while
+ *  it is `position: static`, so it needs no `relative` written to it. */
+const CONTAINING_BLOCK_PROPS = ['transform', 'filter', 'perspective', 'contain'] as const;
+
+/**
+ * Decide whether a parent needs `position: relative` before it can hold an
+ * ABSOLUTELY positioned child. Pure — takes the parent's computed styles.
+ *
+ * The left/top a creator measures are relative to the PARENT it drew inside.
+ * CSS resolves them against the nearest POSITIONED ancestor instead, so a
+ * `static` parent silently hands the offsets to some ancestor further up and
+ * the new node lands somewhere else entirely — the frame drawn inside a chart
+ * bar that jumped to the card's top-left (reported 2026-08-24). The bar carried
+ * `order`/`flex`/`width`/`height` and no `position` at all.
+ *
+ * Writing `relative` is visually inert: with no offsets of its own the parent
+ * stays exactly where flow put it. It only makes the element the containing
+ * block it was already assumed to be. See [[feedback_always_position_on_nodes]]
+ * — the invariant every node carries a position holds for authored content, but
+ * legacy and AI-written nodes predate it, so the transforms that DEPEND on it
+ * have to uphold it.
+ */
+export function needsRelativeForAbsChild(computed: Record<string, string>): boolean {
+  if (positionEstablishesContainingBlock(computed.position || '')) return false;
+  // A transform/filter/perspective/contain already establishes one — don't
+  // touch the source to say something the element is doing anyway.
+  return !CONTAINING_BLOCK_PROPS.some((p) => {
+    const v = (computed[p] || '').trim();
+    return v !== '' && v !== 'none';
+  });
+}
+
+/**
+ * Give `parentId` `position: relative` when an absolutely positioned child is
+ * about to be added and nothing else makes it a containing block. Patches the
+ * DOM immediately (the creators' instant-feel path paints before the re-render)
+ * and queues the source write. No-op when the parent already qualifies.
+ */
+export function ensureAbsChildContainingBlock(
+  parentId: string,
+  vpId: string,
+  contentEl: HTMLElement | null,
+): boolean {
+  const computed = findNodeComputedStyles(parentId, vpId, ['position', ...CONTAINING_BLOCK_PROPS]);
+  // An empty read means the bridge cache is cold, not that the parent is
+  // static — writing on a guess would mutate the user's source for nothing.
+  if (!computed.position) return false;
+  if (!needsRelativeForAbsChild(computed)) return false;
+
+  trace.action('creator:parent-needs-relative', { parentId, vpId, position: computed.position });
+  if (contentEl) patchNodeStyles(contentEl, parentId, getViewportPrefix(vpId), { position: 'relative' });
+  queuePendingUpdates([{ type: 'style', nodeId: parentId, styles: { position: 'relative' } }]);
+  return true;
 }
 
 /**

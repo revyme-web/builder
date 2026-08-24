@@ -13,6 +13,7 @@ import { transformManager } from '@/canvas/transform';
 import { nodeOrAncestorHasRotationOrSkewById } from '@/canvas/resize/geometry-utils';
 import { SELECTION_COLOR, isFitSize } from '@/shared/constants';
 import { styleHelperOps } from './style-helper-store';
+import { displayEstablishesLayout } from './handle-gates';
 import { useRafForceRenderTick } from '@/canvas/hooks/useRafForceRenderTick';
 import { trace } from '@/shared/debug-trace';
 
@@ -232,7 +233,14 @@ export default function PaddingHandles({ nodeId, vpId, onInteracting }: Props) {
   // tilts the children away from the AABB axes the handle math assumes.
   if (nodeOrAncestorHasRotationOrSkewById(nodeId, vpId)) return null;
 
-  const computedStyles = findNodeComputedStyles(nodeId, vpId, ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left']);
+  const computedStyles = findNodeComputedStyles(nodeId, vpId, ['display', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left']);
+  // LAYOUT ONLY — the panel's PaddingControl lives inside the Layout section
+  // and only renders when the node has one, so the canvas handles were the sole
+  // surface disagreeing with it. See displayEstablishesLayout for the reasoning.
+  if (!displayEstablishesLayout(computedStyles['display'] || '')) {
+    trace.fn('padding-handles:no-layout', { nodeId, display: computedStyles['display'] || '' });
+    return null;
+  }
   // `getPaddingBands` returns the padding in CSS/canvas px, but `frameRect` (and all
   // the handle/overlay geometry below) is SCREEN px — already multiplied by the
   // canvas zoom. Scale the padding to screen px so they match; otherwise at any

@@ -35,6 +35,7 @@ import { getStroke } from 'perfect-freehand';
 import {
   findParentAtPoint,
   getInsertionMode,
+  ensureAbsChildContainingBlock,
   getFlexInsertIndex,
   queueCreatorFlexOrder,
   queueReplicaCreationUnhide,
@@ -398,6 +399,9 @@ export function startSketchCreation(
         const t2 = transformManager.getTransform();
         const mode = getInsertionMode(parentId, vpId);
         if (mode === 'absolute') {
+          // The left/top below are relative to THIS parent, so the parent has
+          // to be the containing block that resolves them.
+          ensureAbsChildContainingBlock(parentId, vpId, contentEl);
           // When points were captured in parent-local space, the
           // bbox-derived `canvasLeft/canvasTop` are ALREADY parent-
           // relative — no subtraction needed (the variable name is
