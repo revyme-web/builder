@@ -31,6 +31,8 @@ import { findNodeRect, vpIdFromPrefix, findNodeComputedStyles } from '@/canvas/n
 import { getIframeOffset } from './helpers/coords';
 import { getNodeFromCache } from '@/code/stores/store';
 import { getDefaultStore } from 'jotai';
+import { getNodesSnapshot } from '@/code/stores/store';
+import { visibleViewportsAtom, interactingViewportIdAtom } from '@/code/stores/viewport-store';
 import { isDefaultLocaleAtom } from '@/code/stores/locale-store';
 import { getScreenCornersById, getElementCenter } from '@/canvas/resize/geometry-utils';
 import { buildDuplicateDescriptor, queueBorderOverlayDuplicates, queueReplicaCreationUnhide } from '@/canvas/creators/creator-utils';
@@ -545,6 +547,87 @@ export class DragCoordinator {
     // Get pending updates from strategy
     const updates = this.activeStrategy.onEnd(this.context);
     trace.fn('strategy.onEnd', { updates });
+
+    // A node that ended up on the CANVAS lives in no viewport, but
+    // `interactingViewportIdAtom` still names the tile the drag STARTED in
+    // (e.g. `tablet`). The selection overlay resolves the selected id under
+    // that viewport's prefix, so it looks for a tablet copy that no longer
+    // exists: `selection-overlay:poll-resolve … found: false`, a box painted
+    // from the last cached rect, Layers showing nothing selected, and style
+    // edits landing nowhere (reported 2026-08-24, three times — the first two
+    // fixes addressed the grid exit, but the trace shows `strategy: canvas`
+    // with zero grid actions, so the culprit was never the strategy).
+    //
+    // Re-point the viewport at the primary — the prefix a canvas node renders
+    // under — so the overlay, the Layers panel and every tool resolve the same
+    // element the user is looking at.
+    {
+      const nodes = getNodesSnapshot();
+      // Two shapes of canvas drop, and the REPLICA one is not visible in
+      // `selectedIds`:
+      //  • PRIMARY drag-out is a `move` — the dragged id itself becomes a
+      //    canvas node, so looking it up in the node map answers the question.
+      //  • REPLICA drag-out is `hideInThis` + `add` — the SOURCE stays in its
+      //    parent (merely hidden on this replica) and the canvas node is a
+      //    CLONE with a fresh id, which the orchestrator selects. Checking only
+      //    `selectedIds` therefore said "not a canvas drop", the viewport stayed
+      //    on `tablet`, and the overlay resolved the freshly-selected clone
+      //    under a prefix it does not render in — a ghost box drawn from stale
+      //    corners while the panel showed the clone's real values (reported
+      //    2026-08-24; this is what the earlier attempts missed).
+      //  • MOVE INTO a canvas-rooted parent — entering a new parent mid-drag
+      //    hands off to CanvasDragStrategy, which emits a plain `move` with a
+      //    `newParentId`. The node map still holds the PRE-move parent at this
+      //    point, so the destination has to come from the update itself.
+      const landsOnCanvas = (parentId: string | null | undefined): boolean => {
+        if (parentId === null) return true;      // canvas root
+        if (!parentId) return false;             // undefined → not a move
+        let cursor: string | null | undefined = parentId;
+        for (let hops = 0; cursor && hops < 50; hops++) {
+          const n = nodes.get(cursor);
+          if (!n) return false;
+          if (n.isCanvasNode) return true;       // inside a free canvas frame
+          cursor = n.parentId;
+        }
+        return false;                            // reached a viewport root
+      };
+      const droppedOnCanvas =
+        updates.some((u) => u.type === 'add' && !!u.descriptor)
+        || updates.some((u) => u.type === 'move' && landsOnCanvas(u.newParentId))
+        || (this.context?.selectedIds ?? []).some((id) => {
+          const n = nodes.get(id);
+          return !!n && n.parentId === null;
+        });
+      // INBOUND: dropped INTO a viewport. `context.viewportPrefix` is where the
+      // drag STARTED — exactly wrong here — so the destination comes from the
+      // strategy.
+      const ctx = this.context;
+      const dropVpId = ctx
+        ? (this.activeStrategy as { getDropViewportId?: (c: DragContext) => string | undefined })
+            .getDropViewportId?.(ctx)
+        : undefined;
+      if (!droppedOnCanvas && dropVpId) {
+        const store = getDefaultStore();
+        if (store.get(interactingViewportIdAtom) !== dropVpId) {
+          trace.action('drag:viewport-drop-adopt-viewport', {
+            from: store.get(interactingViewportIdAtom), to: dropVpId,
+          });
+          store.set(interactingViewportIdAtom, dropVpId);
+        }
+      }
+      if (droppedOnCanvas) {
+        const store = getDefaultStore();
+        const vps = store.get(visibleViewportsAtom);
+        const primaryId = (vps.find((v) => v.isPrimary) ?? vps[0])?.id;
+        if (primaryId && store.get(interactingViewportIdAtom) !== primaryId) {
+          trace.action('drag:canvas-drop-reset-viewport', {
+            from: store.get(interactingViewportIdAtom), to: primaryId,
+            nodeIds: this.context?.selectedIds,
+          });
+          store.set(interactingViewportIdAtom, primaryId);
+        }
+      }
+    }
 
     // Clear visual helpers
     this.callbacks.onSnapGuidesChange([]);

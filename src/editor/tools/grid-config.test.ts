@@ -225,6 +225,70 @@ describe('gridChildFillStyles', () => {
   });
 });
 
+// ─── The children must fill a container that HAS a height ───────────────────
+//
+// Reported 2026-08-24: switching a 701px-tall frame from flex to grid set every
+// child to `width: 100%` but left `height: 300px` — the old flex main-axis size.
+// Two auto rows of 300 left 101px of the container empty.
+//
+// Both halves of the fix key off the same question: does this container have a
+// height to divide? With one, the rows become 1fr and the children's leftover
+// heights are cleared so `align-self: stretch` fills the cell. Without one,
+// nothing changes — a 1fr row in an auto-height container sizes to its child's
+// min-content and collapses it, which is the older bug this file already pins.
+describe('flex → grid fills the cells when the container has a height', () => {
+  test('THE BUG: a definite-height parent gets 1fr rows', () => {
+    const p = flexToGridParentStyles('701px');
+    expect(p.gridAutoRows).toBe('minmax(0, 1fr)');
+    // Still IMPLICIT rows — an explicit repeat(n) template would freeze the row
+    // count, so a 5th child added later would land in a content-sized row.
+    expect(p.gridTemplateRows).toBe('');
+  });
+
+  test('and its children fill the cell instead of keeping their flex height', () => {
+    const s = gridChildFillStyles({ position: 'relative', height: '300px' }, '701px');
+    expect(s.width).toBe('100%');
+    // Explicit `100%`, not a cleared key: `align-self: stretch` would fill the
+    // same cell, but the panel would read Height `auto` and the user could not
+    // see that the child is filling. Safe here ONLY because the rows the parent
+    // just got are 1fr of a definite height.
+    expect(s.height).toBe('100%');
+  });
+
+  test('an AUTO-height parent is untouched — the collapse guard still stands', () => {
+    const p = flexToGridParentStyles('auto');
+    expect(p.gridAutoRows).toBe('');
+    expect(p.gridTemplateRows).toBe('');
+    const s = gridChildFillStyles({ height: '300px' }, 'auto');
+    expect('height' in s).toBe(false); // the card keeps its own height
+  });
+
+  test('every indefinite height counts as auto', () => {
+    for (const h of ['auto', '', 'min-content', 'max-content', 'fit-content(200px)', undefined]) {
+      expect(flexToGridParentStyles(h).gridAutoRows, String(h)).toBe('');
+      expect('height' in gridChildFillStyles({ height: '300px' }, h), String(h)).toBe(false);
+    }
+  });
+
+  test('percentages and viewport units are definite too', () => {
+    for (const h of ['100%', '80vh', '50svh', 'calc(100vh - 40px)']) {
+      expect(flexToGridParentStyles(h).gridAutoRows, h).toBe('minmax(0, 1fr)');
+      expect(gridChildFillStyles({ height: '300px' }, h).height, h).toBe('100%');
+    }
+  });
+
+  test('a stale injected fill-height is still cleared under an auto parent', () => {
+    // Unchanged from the original guard — a re-toggle must not leave `100%`.
+    expect(gridChildFillStyles({ height: '100%' }, 'auto').height).toBe('');
+  });
+
+  test('the parent stays overflow-safe either way', () => {
+    for (const h of ['701px', 'auto']) {
+      expect(flexToGridParentStyles(h).gridTemplateColumns).toBe('repeat(2, minmax(0, 1fr))');
+    }
+  });
+});
+
 // ─── Rows in fit-content mode — the "Rows +/- does nothing" bug (2026-08-11) ─
 //
 // In `fit` height mode the serializer emits NO row template (rows are

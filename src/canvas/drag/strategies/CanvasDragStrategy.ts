@@ -20,6 +20,7 @@ import { updateNodeStyles, isPrimaryViewport, vpIdFromPrefix, getActiveFilePath,
 import { isFullyInsideQuad, cornersFromRect, pointInQuad , matrixHasRotationSkewOrFlip } from '@/canvas/resize/geometry-utils';
 import { repositionSignalOps } from '../reposition-signal';
 import { dropLineOps } from '@/canvas/selection/drop-line-store';
+import { hasReorderableChildren } from '../reorderable-children';
 import { parentHighlightOps } from '@/canvas/selection/parent-highlight-store';
 import { trace } from '@/shared/debug-trace';
 import { calculateLayoutInsertIndexById, computeLayoutInsertOrderUpdates, computeLayoutInsertAnchorId, computeReplicaOrderMirrorUpdates, buildDesiredVisualOrder, applyLayoutEdgeMagnet, flexForFlowChildEnteringFlex } from '../reparent-utils';
@@ -914,8 +915,8 @@ export class CanvasDragStrategy implements DragStrategy {
       const candidateVpId = this.lastHoverVpId || vpIdFromPrefix(context.viewportPrefix);
       const candidateLayout = detectParentLayoutById(this.candidateParentId, candidateVpId);
       if (candidateLayout === 'flex' || candidateLayout === 'grid') {
-        const hasChildren = findChildRects(this.candidateParentId, candidateVpId)
-          .some(c => !draggedIds.has(c.id));
+        const hasChildren = hasReorderableChildren(
+          findChildRects(this.candidateParentId, candidateVpId), draggedIds);
         if (hasChildren) highlightId = null;
       }
     }
@@ -2429,9 +2430,10 @@ export class CanvasDragStrategy implements DragStrategy {
         // shows a single empty-layout drop affordance (the `{children}` slot)
         // instead of phantom drop-lines between the locked template nodes.
         const childRects = findChildRects(this.enteredParentId, vpId);
-        const hasChildren = childRects.some(
-          (c) => !draggedIds.has(c.id) && !c.id.startsWith('layout::') && c.id !== 'children-slot',
-        );
+        // Visible ON THIS VIEWPORT — a per-replica hide leaves the child in the
+        // DOM measuring 0x0, which used to read as a reorder anchor and drew a
+        // line between boxes the user cannot see. See reorderable-children.ts.
+        const hasChildren = hasReorderableChildren(childRects, draggedIds);
         if (hasChildren) {
           dropLineOps.show({ parentId: this.enteredParentId, insertIndex, vpId });
           this.dropLineActive = true;

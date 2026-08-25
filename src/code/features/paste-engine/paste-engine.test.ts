@@ -561,3 +561,68 @@ describe('makeRelative (paste → relative conversion)', () => {
     expect(out).toEqual(once);
   });
 });
+
+// ─── Duplicate keeps the source's pin configuration ─────────────────────────
+//
+// Reported 2026-08-24: a node pinned TOP + LEFT-in-PERCENT came back from
+// Cmd+D as `left: '32.5826px'` — same number, wrong unit — and the panel read
+// it as a px pin.
+//
+// `at-selected-position` rebuilds the position as NUMERIC left/top from
+// `parseFloat(sel.styles.left|top)`, which discards both the unit and the
+// anchor SIDE (a right/bottom-anchored node has no `left` at all, so it
+// resolved to 0). The clone already carries the source's own anchors, and for
+// a duplicate-in-place those ARE the answer.
+describe('paste-at-abs-in-canvas-frame keeps the source anchors', () => {
+  test('THE BUG: the rule no longer rebuilds the position numerically', () => {
+    const rule = getRuleById('paste-at-abs-in-canvas-frame');
+    expect(rule).toBeTruthy();
+    expect(rule!.config.positioning).not.toBe('at-selected-position');
+    // `preserve` computes no override, so the node's own left/top pass through.
+    expect(rule!.config.positioning).toBe('preserve');
+  });
+
+  test('its viewport twin already avoided the same trap', () => {
+    // Fixed earlier for the right/bottom-anchor half of the defect; the canvas
+    // variant was missed. Pinned here so they can't drift apart again.
+    expect(getRuleById('paste-at-abs-in-frame')!.config.positioning).not.toBe('at-selected-position');
+  });
+
+  test('`preserve` yields no position override for a frame-child target', () => {
+    // The override is computed ONLY for at-selected-position / center-in-parent
+    // (executor.ts). This pins the pairing the rule now depends on.
+    const sel = makeCanvasNode('kid', {
+      parentId: 'frame',
+      styles: { position: 'absolute', left: '32.5826%', top: '77px' },
+    });
+    const ctx = makeContext({
+      selectedIds: ['kid'],
+      nodes: new Map([['kid', sel]]),
+      clipboardNodes: [makeClipboardNode('kid', {
+        styles: { position: 'absolute', left: '32.5826%', top: '77px' },
+      })],
+    });
+    // The old mode flattens the percent to a bare number — the actual defect.
+    expect(calculatePosition(ctx, 'at-selected-position').x).toBe(32.5826);
+    // `preserve` reads the CLIPBOARD root, and nothing consumes it for a
+    // frame-child target, so the styles survive verbatim.
+    expect(calculatePosition(ctx, 'preserve').x).toBe(32.5826);
+  });
+
+  test('ensureDefaultAnchors leaves a percent anchor alone', () => {
+    // The one thing `to-absolute-in-frame` still does to the styles. It may
+    // only fill an axis with NO anchor on either side.
+    const out: Record<string, string> = { position: 'absolute', left: '32.5826%', top: '77px' };
+    ensureDefaultAnchors(out);
+    expect(out.left).toBe('32.5826%');
+    expect(out.top).toBe('77px');
+  });
+
+  test('and leaves a RIGHT/BOTTOM anchored node on its own sides', () => {
+    const out: Record<string, string> = { position: 'absolute', right: '10%', bottom: '20px' };
+    ensureDefaultAnchors(out);
+    expect('left' in out).toBe(false);
+    expect('top' in out).toBe(false);
+    expect(out.right).toBe('10%');
+  });
+});

@@ -43,6 +43,13 @@ import { parentHighlightOps } from '@/canvas/selection/parent-highlight-store';
 import { dropLineOps } from '@/canvas/selection/drop-line-store';
 import { trace } from '@/shared/debug-trace';
 import { parseGridInfo, type GridInfo } from './grid-cell-resolver';
+import { isReplicaOnlyOnViewport } from '../replica-exit';
+import { getReplicaContext } from '../replica-context';
+import { buildCanvasCloneForLayoutDrop } from './LayoutLiftedStrategy';
+import { getViewportWidths } from '@/code/stores/viewport-store';
+import { parseVariantConfig } from '@/code/variants/variant-config';
+import { projectFS } from '@/code/project/project-fs';
+import { isComponentFilePath } from '@/code/project/active-file-store';
 import { queueMutation, flushNow, flushNowDeferredDuringDrag } from '@/code/mutation/mutation-queue';
 import { moveNodeInCache, updateNodeInCache, getNodeFromCache } from '@/code/stores/store';
 import { nodeAcceptsChildren } from '@/shared/constants';
@@ -166,6 +173,12 @@ export class GridDragStrategy implements DragStrategy {
    *  the new strategy (CanvasDragStrategy) owns the element. */
   private handedOffToCanvas = false;
 
+  /** Replica drag-out work (hide source on this viewport + add the canvas
+   *  clone) queued at exit time and returned from `onEnd`. The orchestrator
+   *  drains `add` / `setConditionalStyle` PendingUpdates; `queueMutation`
+   *  has no channel for either. */
+  private replicaExitUpdates: PendingUpdate[] = [];
+
   /** Alt-duplicate node IDs added mid-drag. Tracked so
    *  `refreshDragLockSet` includes them in the renderer drag-lock set
    *  (preserves the replica-aware inline `display: 'none'` baseline
@@ -218,6 +231,7 @@ export class GridDragStrategy implements DragStrategy {
     this.vpId = vpIdFromPrefix(context.viewportPrefix);
     this.vpPrefix = getViewportPrefix(this.vpId);
     this.handedOffToCanvas = false;
+    this.replicaExitUpdates = [];
     this.lastTargetId = '';
     this.isOverViewport = true;
     this.prevMouse = { x: startMouse.x, y: startMouse.y };
@@ -669,7 +683,15 @@ export class GridDragStrategy implements DragStrategy {
   }
 
   onEnd(context: DragContext): PendingUpdate[] {
-    if (this.handedOffToCanvas) return [];
+    // Even after the mid-drag handoff to CanvasDragStrategy this runs (that is
+    // what the guard is for) — and it is the ONLY channel for the replica exit's
+    // work: `hideInThis` can return any of three PendingUpdate shapes and the
+    // clone is an `add`, none of which `queueMutation` accepts directly.
+    if (this.handedOffToCanvas) {
+      const pending = this.replicaExitUpdates;
+      this.replicaExitUpdates = [];
+      return pending;
+    }
 
     const primary = context.draggedNodes[0];
     const updates: PendingUpdate[] = [];
@@ -682,11 +704,14 @@ export class GridDragStrategy implements DragStrategy {
     // startIndex — exactly the opposite of what the user just did.
     if (!this.isOverViewport) {
       this.commitExitToCanvas('grid-drop-outside-viewport', context);
-      // commitExitToCanvas queued the move/clearContainerStyles + flushed
-      // — nothing left for the coordinator to emit. Return [] so the
-      // coordinator doesn't double-commit a grid reorder on top.
+      // commitExitToCanvas queued the move/clearContainerStyles + flushed —
+      // nothing left for the coordinator to emit EXCEPT a replica exit's
+      // hide+clone, which has no queueMutation channel. Never a grid reorder,
+      // so the coordinator can't double-commit on top.
+      const pending = this.replicaExitUpdates;
+      this.replicaExitUpdates = [];
       this.resetState();
-      return [];
+      return pending;
     }
 
     // Same fade as a layout-drag commit: the selection overlay mounts on
@@ -1140,16 +1165,66 @@ export class GridDragStrategy implements DragStrategy {
       });
     }
 
-    queueMutation({ type: 'clearContainerStyles', nodeId: this.liftedNodeId });
-    queueMutation({
-      type: 'move',
-      nodeId: this.liftedNodeId,
-      newParentId: null,
-      canvasNode: true,
-      styles: exitStyles,
+    // REPLICA / VARIANT EXIT. Every tile renders the SAME JSX element, so a
+    // `move` deletes it from the primary and every sibling too — dragging a
+    // grid child out of one variant emptied all of them (reported 2026-08-24).
+    // `LayoutLiftedStrategy` has always split this in two; the grid strategy
+    // never did. Same decision, same two paths, shared predicate.
+    const activeFile = getActiveFilePath();
+    const rctx = getReplicaContext(this.vpId, activeFile, getViewportWidths());
+    const isOnComponentMaster = isComponentFilePath(activeFile);
+    const otherVpIds = isOnComponentMaster
+      ? parseVariantConfig(projectFS.readFile(activeFile) ?? '')
+          .map((v: { name: string }) => (v.name === 'default' ? 'desktop' : v.name))
+      : Object.keys(getViewportWidths());
+    const soloHere = rctx.isPrimary || isReplicaOnlyOnViewport({
+      dropVpId: this.vpId,
+      otherVpIds,
+      isComponentMaster: isOnComponentMaster,
+      hiddenOnVariants: context.nodes.get(this.liftedNodeId)?.hiddenOnVariants,
+      inlineDisplay: context.nodes.get(this.liftedNodeId)?.styles?.display,
+      readDisplay: (vpId) => findNodeComputedStyles(this.liftedNodeId, vpId, ['display']).display ?? '',
     });
-    moveNodeInCache(this.liftedNodeId, null);
-    updateNodeInCache(this.liftedNodeId, exitStyles);
+
+    queueMutation({ type: 'clearContainerStyles', nodeId: this.liftedNodeId });
+
+    if (!soloHere) {
+      // Other tiles still show it: CLONE to canvas with fresh ids and hide the
+      // SOURCE on this viewport only. Fresh ids matter — reusing the source's
+      // would let its @media/variant rules follow the clone out.
+      const idMap = new Map<string, string>();
+      const desc = buildCanvasCloneForLayoutDrop(
+        this.liftedNodeId, context.nodes, exitStyles,
+        isOnComponentMaster ? this.vpId : undefined,
+        isOnComponentMaster ? undefined : (getViewportWidths()[this.vpId] ?? undefined),
+        idMap,
+      );
+      if (desc) {
+        // A source carrying the replica-only `display:'none'` baseline would
+        // hand the clone an invisible canvas node — there is no @media context
+        // at canvas root to flip it back on.
+        if (desc.styles?.display === 'none') desc.styles.display = '';
+        this.replicaExitUpdates = [
+          rctx.hideInThis(this.liftedNodeId),
+          { nodeId: desc.id!, type: 'add', descriptor: desc },
+        ];
+        trace.action('grid-drag:exit-to-canvas-replica-clone', {
+          srcId: this.liftedNodeId, cloneId: desc.id, vpId: this.vpId,
+        });
+      } else {
+        trace.error('grid-drag:clone-descriptor-failed', { nodeId: this.liftedNodeId });
+      }
+    } else {
+      queueMutation({
+        type: 'move',
+        nodeId: this.liftedNodeId,
+        newParentId: null,
+        canvasNode: true,
+        styles: exitStyles,
+      });
+      moveNodeInCache(this.liftedNodeId, null);
+      updateNodeInCache(this.liftedNodeId, exitStyles);
+    }
 
     flushNowDeferredDuringDrag();
     forceCanvasRenderDeferredDuringDrag();
@@ -1164,6 +1239,24 @@ export class GridDragStrategy implements DragStrategy {
     // Hand control over. CanvasDragStrategy reads the committed position
     // from the cache as its baseline — `skipRebuild` keeps the iframe
     // alive without a full re-render across the switch.
+    // CLONE PATH — do NOT hand off. The handoff points CanvasDragStrategy at
+    // `liftedNodeId`, which on this path is the SOURCE: it stays in the tree,
+    // now hidden on this viewport. Dragging and committing THAT is what left
+    // the canvas node "selected but fake" — the overlay tracked the hidden
+    // original at a stale rect, Layers showed nothing selected (a hidden node
+    // cannot be), and style edits wrote to something invisible (reported
+    // 2026-08-24).
+    //
+    // The clone does not exist yet — it is created when `onEnd` returns the
+    // `add` update and the orchestrator flushes. That branch already does the
+    // right thing afterwards: `flushNow()` so the parser produces the canonical
+    // node, then `setSelectedIds([newId])` (CanvasDragOrchestrator ~1091). So
+    // keep ownership of the drag and let mouseup do the work.
+    if (this.replicaExitUpdates.length > 0) {
+      trace.action('grid-drag:exit-clone-no-handoff', { srcId: this.liftedNodeId });
+      return { snap: null, dropTarget: null, highlightParentId: null, axisLock: null };
+    }
+
     const exitOverrides = new Map<string, { startLeft: number; startTop: number; startParentId: string | null }>();
     exitOverrides.set(this.liftedNodeId, {
       startLeft: Math.round(canvasLeft),

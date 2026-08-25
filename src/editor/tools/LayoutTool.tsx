@@ -1122,16 +1122,16 @@ export default function LayoutTool({ styles, nodeId, onUpdate, onUpdateMultiple,
       // against that indefinite track (height:100%, or an inner flex:1 fill)
       // collapses to ~0. Fill rows are one click away in the panel (Height →
       // Fill Container) for anyone who wants them.
-      const gridStyles = { ...flexToGridParentStyles(), ...clearFlex };
+      // Both halves key off whether THIS container has a height to divide: with
+      // a definite one the rows become 1fr and each child's leftover flex
+      // height is cleared so `align-self: stretch` fills the cell; with an auto
+      // height the rows stay fit-content and child heights are untouched (a 1fr
+      // row in an auto-height container collapses — see grid-config.ts).
+      const gridStyles = { ...flexToGridParentStyles(styles.height), ...clearFlex };
       onUpdateMultiple(isHidden ? gridStyles : { display: 'grid', ...gridStyles });
-      // Make each in-flow child fill its column and strip leftover flex-child
-      // props. `gridChildFillStyles` injects width:100% only (NOT height:100% —
-      // see its doc: a percentage height collapses against a content/1fr row in
-      // an auto-height container and overrides a card's master height) and
-      // clears any stale injected fill-height.
-      cleanChildren((child) => gridChildFillStyles(child.styles), clearFlexChildProps);
+      cleanChildren((child) => gridChildFillStyles(child.styles, styles.height), clearFlexChildProps);
     }
-  }, [hasGrid, nodeId, onUpdateMultiple, styles.display]);
+  }, [hasGrid, nodeId, onUpdateMultiple, styles.display, styles.height]);
 
   // Grid track parsing / preset handlers retained for the preset apply
   // below (still wired into the old Presets popup which has been

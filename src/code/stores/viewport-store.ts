@@ -129,8 +129,11 @@ export const viewportPositionsAtom = atom(
 );
 
 // Which viewport the user is currently interacting with (clicked in)
-// This determines whether style updates go to inline styles or @container rules
-export const interactingViewportIdAtom = atom<string>('desktop');
+// This determines whether style updates go to inline styles or @container rules.
+//
+// RAW — read through `interactingViewportIdAtom` below, which clamps it to a
+// viewport that still exists.
+const interactingViewportIdRawAtom = atom<string>('desktop');
 
 // Viewport widths — writable so viewport root resize can update breakpoints.
 // When changed, the generator reads these for @container breakpoint ranges.
@@ -274,3 +277,40 @@ export const visibleViewportsAtom = atom<ViewportConfig[]>((get) => {
   const widths = get(viewportWidthsAtom);
   return configs.map(v => ({ ...v, width: widths[v.id] ?? v.width }));
 });
+
+/**
+ * The interacting viewport, CLAMPED to one that is actually on canvas.
+ *
+ * The raw value is a plain id set on click, and nothing revoked it when the
+ * viewport it names went away. Undo a "duplicate variant" and the file is back
+ * to one variant while this still said `variant-1`: the selection overlay went
+ * on asking for that tile's rect, got a stale CACHED entry for a tile that no
+ * longer renders, and painted a selection box over empty canvas (reported
+ * 2026-08-24 — the box stayed while the Layers panel correctly showed the
+ * surviving variant).
+ *
+ * Worse than the ghost box: `activeComponentVariantAtom` and
+ * `isComponentVariantViewportAtom` derive the WRITE TARGET from this id, so the
+ * next style edit would have been routed into a variant object that no longer
+ * exists.
+ *
+ * Clamping on READ rather than reconciling on change is deliberate — there is
+ * no ordering to get wrong and nothing to forget to call. Every path that can
+ * remove a viewport (undo, redo, delete-variant, file switch, a template's
+ * viewport set) is covered by construction. Same reasoning as the file-scoped
+ * width override above.
+ */
+export const interactingViewportIdAtom = atom(
+  (get): string => {
+    const raw = get(interactingViewportIdRawAtom);
+    const visible = get(visibleViewportsAtom);
+    // No viewports parsed yet (boot, mid-rebuild) — keep the raw value rather
+    // than inventing a fallback that a later render would have to undo.
+    if (visible.length === 0) return raw;
+    if (visible.some((v) => v.id === raw)) return raw;
+    const fallback = (visible.find((v) => v.isPrimary) ?? visible[0]).id;
+    trace.fn('viewport-store:interacting-vp-gone', { raw, fallback });
+    return fallback;
+  },
+  (_get, set, next: string) => { set(interactingViewportIdRawAtom, next); },
+);

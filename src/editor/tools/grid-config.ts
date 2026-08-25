@@ -326,36 +326,73 @@ export function formatGridConfig(c: GridConfig): Record<string, string> {
 // extracted as pure helpers so the behaviour is unit-pinned (the call site is a
 // React useCallback in LayoutTool).
 
-/**
- * Parent track defaults when a container is switched from flex to grid:
- * 2 COLUMNS (reads unmistakably as a grid the moment you toggle) and
- * FIT-CONTENT rows (empty `gridTemplateRows`) so each row hugs its children's
- * natural height. The old `repeat(2, 1fr)` ROWS default collapsed children: in
- * an auto-height container a 1fr row sizes to its child's MIN-content, and a
- * child whose height resolves against that indefinite track (height:100%, or an
- * inner flex:1 fill) shrinks to ~0. Fill rows stay one click away in the panel
- * (Height → Fill Container).
- */
-export function flexToGridParentStyles(): Record<string, string> {
-  // minmax(0, 1fr) — NOT plain `1fr` (= minmax(auto, 1fr), whose `auto` min is
-  // the item's content min-size and can blow the grid past its container) and
-  // NOT a px floor (overflows a fixed count) — so the grid can never overflow.
-  return { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gridTemplateRows: '' };
+/** Sizes a percentage or a `1fr` track can actually resolve against. `auto` and
+ *  the fit family are INDEFINITE — a 1fr row inside one collapses to its
+ *  content, which is the whole reason the row default is conditional below. */
+const INDEFINITE_HEIGHT = /^(?:auto|min-content|max-content|fit-content(?:\(.*\))?)$/;
+
+export function heightIsDefinite(height?: string): boolean {
+  const v = (height ?? '').trim();
+  return v !== '' && !INDEFINITE_HEIGHT.test(v);
 }
 
 /**
- * Per-child style patch applied to each in-flow child on flex → grid. Fill the
- * column horizontally (`width: 100%` — overrides a component master's fixed
- * artboard width so the card spans its track), but NEVER force `height: 100%`:
- * a grid item with a percentage height collapses against a content-sized / 1fr
- * row in an auto-height container, and it overrides a card's definite master
- * height (killing any inner flex:1 fill). The grid item's default
- * `align-self: stretch` already fills the row when the row is definite. A STALE
- * injected fill-height (`height: '100%'`, from a pre-fix grid or a re-toggle) is
- * cleared so it can't keep collapsing.
+ * Parent track defaults when a container is switched from flex to grid:
+ * 2 COLUMNS (reads unmistakably as a grid the moment you toggle), and rows that
+ * depend on whether the container HAS a height to divide.
+ *
+ * • Definite height (px / % / vh …) → `gridAutoRows: minmax(0, 1fr)`: the rows
+ *   split the container evenly and every child fills its cell, which is what
+ *   "make it a grid" is understood to mean (reported 2026-08-24: the children
+ *   kept their old flex heights and left a gap under the last row).
+ *   `gridAutoRows` rather than a `repeat(n, …)` TEMPLATE on purpose — an
+ *   explicit template freezes the row count at conversion time, so a child
+ *   added later would land in an implicit content-sized row and collapse.
+ * • Indefinite height (auto / fit) → fit-content rows, exactly as before. A 1fr
+ *   row in an auto-height container sizes to its child's MIN-content, and a
+ *   child whose height resolves against that indefinite track (height:100%, or
+ *   an inner flex:1 fill) shrinks to ~0 — the original "everything collapses
+ *   when I switch to grid" bug. Fill rows stay one click away in the panel
+ *   (Height → Fill Container).
  */
-export function gridChildFillStyles(childStyles?: Record<string, string>): Record<string, string> {
+export function flexToGridParentStyles(parentHeight?: string): Record<string, string> {
+  // minmax(0, 1fr) — NOT plain `1fr` (= minmax(auto, 1fr), whose `auto` min is
+  // the item's content min-size and can blow the grid past its container) and
+  // NOT a px floor (overflows a fixed count) — so the grid can never overflow.
+  return {
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gridTemplateRows: '',
+    gridAutoRows: heightIsDefinite(parentHeight) ? 'minmax(0, 1fr)' : '',
+  };
+}
+
+/**
+ * Per-child style patch applied to each in-flow child on flex → grid.
+ *
+ * Width always fills the column (`width: 100%` overrides a component master's
+ * fixed artboard width so the card spans its track).
+ *
+ * Height becomes `100%` when the parent has a definite height — the case where
+ * the rows above became `1fr`, so the percentage has a definite track to
+ * resolve against. A height left over from the flex layout (`300px`, the
+ * child's old main-axis size) would otherwise dictate the row and leave the
+ * container short, which is the reported bug. `align-self: stretch` would fill
+ * the same cell with no height key at all, but the panel then reads Height
+ * `auto`, and "fill the cell" is a state the user should be able to SEE and
+ * change — so the explicit value is written.
+ *
+ * That `100%` is only safe because the rows are definite. Against a
+ * content-sized or auto row a percentage height collapses to ~0, which is why
+ * the indefinite branch below writes nothing: with an auto-height parent
+ * nothing is touched except a STALE injected fill-height (`height: '100%'`,
+ * from a pre-fix grid or a re-toggle), cleared so it can't keep collapsing.
+ */
+export function gridChildFillStyles(
+  childStyles?: Record<string, string>,
+  parentHeight?: string,
+): Record<string, string> {
   const out: Record<string, string> = { width: '100%' };
-  if (childStyles?.height === '100%') out.height = '';
+  if (heightIsDefinite(parentHeight)) out.height = '100%';
+  else if (childStyles?.height === '100%') out.height = '';
   return out;
 }

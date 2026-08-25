@@ -9,6 +9,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { getDefaultStore } from 'jotai';
 import { interactingViewportIdAtom } from '@/code/stores/viewport-store';
+import { activeFilePathAtom } from '@/code/project/active-file-store';
+import { projectFS, projectVersionAtom } from '@/code/project/project-fs';
 
 // Controllable bridge: rectCache holds the keys (`vpPrefix:dataId`), getRect
 // returns the matching rect. Tests populate both before calling getNodeBounds.
@@ -47,8 +49,30 @@ function rect(left: number, width: number): DOMRect {
   return { left, top: 0, width, height: 148, right: left + width, bottom: 148, x: left, y: 0, toJSON() {} } as DOMRect;
 }
 
+const COMPONENT = 'components/Tiles.tsx';
+
+/** The component file whose `variantConfig` DECLARES the three tiles below.
+ *  `interactingViewportIdAtom` clamps to a viewport that actually exists, so
+ *  seeding rects alone is not enough — without the file the store would fall
+ *  the id back to the primary and every variant assertion would read desktop. */
+function seedVariantFile() {
+  projectFS.writeFile(COMPONENT, `
+import React from 'react';
+const variantConfig = [
+  { name: 'default', label: 'Desktop', x: 0, y: 0, isPrimary: true },
+  { name: 'variant-1', label: 'V1', x: 1480, y: 0 },
+  { name: 'variant-2', label: 'V2', x: 2288, y: 0 },
+];
+export default function Tiles() { return <div data-id="frame-root" /> }
+`);
+  const store = getDefaultStore();
+  store.set(activeFilePathAtom, COMPONENT);
+  store.set(projectVersionAtom, (v) => v + 1);
+}
+
 /** Three variant tiles sharing ROOT id: desktop@0(1440), variant-1@1480(768), variant-2@2288(375). */
 function seedThreeVariants() {
+  seedVariantFile();
   rectCache.clear();
   rects.clear();
   const tiles: Array<[string, number, number]> = [

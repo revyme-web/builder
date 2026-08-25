@@ -87,7 +87,19 @@ const PASTE_RULES: PasteRule[] = [
     conditions: ['ABSOLUTE_IN_CANVAS_FRAME_SELECTED'],
     config: {
       targetMode: 'canvas-frame-children',
-      positioning: 'at-selected-position',
+      // `preserve`, for the same reason the viewport twin below uses
+      // `after-selected`: `at-selected-position` REBUILDS the position as
+      // numeric left/top out of `parseFloat(sel.styles.left|top)`, which throws
+      // away both the unit and the anchor SIDE. A node pinned `top` + `left` in
+      // PERCENT came back `left: '32.5826px'` — same number, wrong unit, and
+      // the panel read it as a px pin (reported 2026-08-24); a right/bottom
+      // anchored node loses its side entirely. The clone already carries the
+      // source's own anchors, and for a duplicate-in-place those ARE the answer
+      // — whatever units and sides the user pinned. `preserve` computes no
+      // override, so `to-absolute-in-frame` passes them through untouched.
+      // Target is unaffected: resolveCanvasFrameChildren appends into the same
+      // frame regardless of positioning.
+      positioning: 'preserve',
       styleTransform: 'to-absolute-in-frame',
     },
   },

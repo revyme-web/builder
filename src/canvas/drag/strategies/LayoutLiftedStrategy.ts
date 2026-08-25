@@ -25,6 +25,7 @@ import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { getIframeOffset } from '../helpers/coords';
 import type { PostMessageBridge } from '@/canvas-sandbox/bridge-host';
 import { getNodeFromCache } from '@/code/stores/store';
+import { isReplicaOnlyOnViewport } from '../replica-exit';
 import { getReplicaContext } from '../replica-context';
 import { getViewportWidths } from '@/code/stores/viewport-store';
 import { containerOverridesAtom, getOverrideValue, resolveEffectiveStylesForViewport, type ContainerOverrideMap } from '@/code/stores/container-query-store';
@@ -73,7 +74,7 @@ const PLACEHOLDER_COOLDOWN_MS = 0; // instant reorder detection
  * branch — which is often the `\u200b` zero-width placeholder. Bake in the
  * source variant's value when present.
  */
-function buildCanvasCloneForLayoutDrop(
+export function buildCanvasCloneForLayoutDrop(
   nodeId: string,
   nodes: Map<string, import('@/code/parsing/parser').CanvasNode>,
   rootStyles: Record<string, string>,
@@ -2446,38 +2447,16 @@ export class LayoutLiftedStrategy implements DragStrategy {
             ? parseVariantConfig(projectFS.readFile(getActiveFilePath()) ?? '')
                 .map(v => v.name === 'default' ? 'desktop' : v.name)
             : Object.keys(getViewportWidths());
-          const isReplicaOnly = (() => {
-            // Component master: with the AnimatePresence + conditional-
-            // render pattern, visibility lives on `hiddenOnVariants`
-            // (NOT inline `display`). The legacy `display: 'none'`
-            // baseline is no longer written for component variants, so
-            // the old inline-display check always returned false and
-            // exit-from-solo-variant kept producing `{false && <el/>}`
-            // wrappers instead of a full remove. Check the hidden set
-            // directly: the element is solo on `dropVpId` iff every
-            // OTHER variant is in `hiddenOnVariants`.
-            if (isOnComponentMaster) {
-              const draggedNode = context.nodes.get(node.id);
-              const hidden = draggedNode?.hiddenOnVariants;
-              if (!hidden || hidden.size === 0) return false;
-              const currentVariant = dropVpId === 'desktop' ? 'default' : dropVpId;
-              for (const otherVpId of otherVpIds) {
-                const variantName = otherVpId === 'desktop' ? 'default' : otherVpId;
-                if (variantName === currentVariant) continue;
-                if (!hidden.has(variantName)) return false;
-              }
-              return true;
-            }
-            // Page replicas: keep the legacy inline-display baseline
-            // check — pages don't use AnimatePresence wrapping.
-            if (inlineDisplay !== 'none') return false;
-            for (const otherVpId of otherVpIds) {
-              if (otherVpId === dropVpId) continue;
-              const otherDisplay = findNodeComputedStyle(node.id, otherVpId, 'display');
-              if (otherDisplay && otherDisplay !== 'none') return false;
-            }
-            return true;
-          })();
+          // Shared with GridDragStrategy — see drag/replica-exit.ts for why the
+          // two file kinds read different visibility channels.
+          const isReplicaOnly = isReplicaOnlyOnViewport({
+            dropVpId,
+            otherVpIds,
+            isComponentMaster: isOnComponentMaster,
+            hiddenOnVariants: context.nodes.get(node.id)?.hiddenOnVariants,
+            inlineDisplay,
+            readDisplay: (vpId) => findNodeComputedStyle(node.id, vpId, 'display'),
+          });
           trace.action('layout-lifted:drop-canvas-replica-visibility', {
             nodeId: node.id, dropVpId, inlineDisplay, isReplicaOnly,
           });

@@ -30,19 +30,28 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 const AI_SERVICE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8082';
 const MAX_ATTEMPTS = 3;
-// Sized against the SERVER's budget, not against a guess at "reasonable".
-// A whole-file rewrite of a big page can exceed the model's output ceiling,
-// in which case the provider resumes and concatenates (see the continuation
-// loop in ai-generator/src/providers/openrouter.ts) — so one attempt is now
-// several model calls and minutes of real work. The old 120s aborted a live
-// 116KB rewrite 3.6 SECONDS before the server had an answer, showed "The
-// request timed out.", and still billed all three attempts (2026-08-25).
+
+// A turn is submitted as a JOB and polled, not held open on one request.
 //
-// The ladder, outermost last: server gives up at 280s with a readable error,
-// this fires at 295s so that error actually arrives, nginx 504s at 300s
-// (proxy_read_timeout on the /api/(freeform|…) block). Raising this past 300s
-// buys nothing until nginx moves too.
-const ATTEMPT_TIMEOUT_MS = 295_000;
+// Why the old shape had to go: a whole-file rewrite legitimately runs 2-2.5
+// minutes, and when the provider stalls the server's retry pushes the total
+// past seven. No timeout value survives that — the browser, nginx, and any
+// proxy between them all abandon a socket that has been silent for minutes.
+// A 120s limit once aborted a live rewrite 3.6 SECONDS before the answer
+// arrived; raising it to 295s then lost a PERFECT generation that landed at
+// 7m06s, having already charged 103 credits for it (both 2026-08-25).
+//
+// Polling makes every request milliseconds long, so no timeout in the stack
+// can fire, and a dropped connection is survivable: the job keeps running
+// server-side and the same id still yields the result that was paid for.
+
+/** Per-HTTP-request cap. These are tiny calls; anything slower is a network fault. */
+const REQUEST_TIMEOUT_MS = 30_000;
+/** Gap between polls. Fast enough to feel responsive, idle enough to be free. */
+const POLL_INTERVAL_MS = 1_500;
+/** Ceiling on ONE attempt's generation. Well past the observed worst case
+ *  (7m06s) because nothing here is holding a connection open to wait it out. */
+const JOB_TIMEOUT_MS = 12 * 60 * 1000;
 
 export interface FreeformEditRequest {
   prompt: string;
@@ -349,6 +358,97 @@ export function commitTurnFiles(files: TurnFile[]): string[] {
   return written;
 }
 
+type JobOutcome =
+  | { ok: true; data: any }
+  | { ok: false; error: string };
+
+/** Sleep that wakes early (and reports it) when the caller aborts. */
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const t = setTimeout(done, ms);
+    function done() {
+      clearTimeout(t);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    }
+    signal?.addEventListener('abort', done, { once: true });
+  });
+}
+
+/** Read `{ error }` off a failed response without letting a non-JSON body
+ *  (an nginx 502 page, say) throw over the top of the real status. */
+async function errorFrom(res: Response): Promise<string> {
+  const body = await res.json().catch(() => null);
+  return body?.error || `Request failed: ${res.status}`;
+}
+
+/**
+ * Submit one turn as a server-side job and poll it to completion.
+ *
+ * The turn used to be a single POST held open for the whole generation, which
+ * cannot work: the work runs 2-7 minutes and every timeout in the stack is
+ * shorter than that. Here the POST returns immediately with an id and the
+ * generation continues server-side, so nothing is waiting on a silent socket.
+ *
+ * The property that matters beyond timeouts: the job is not owned by this
+ * connection. A blip mid-poll is retried on the next tick rather than
+ * destroying a generation the user has already been charged for.
+ */
+async function runTurnAsJob(payload: object, signal?: AbortSignal): Promise<JobOutcome> {
+  let jobId: string;
+  try {
+    const res = await fetch(`${AI_SERVICE_URL}/api/freeform/job`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return { ok: false, error: await errorFrom(res) };
+    const body = await res.json();
+    if (!body.jobId) return { ok: false, error: body.error || 'The server did not start the generation.' };
+    jobId = body.jobId;
+  } catch (err) {
+    if (signal?.aborted) return { ok: false, error: 'Stopped.' };
+    return { ok: false, error: String((err as Error)?.message ?? err) };
+  }
+
+  trace.action('freeform:job-accepted', { jobId });
+
+  const deadline = Date.now() + JOB_TIMEOUT_MS;
+  // Transient poll failures must not kill a job that is still generating —
+  // only a run of them means the server is genuinely unreachable.
+  let consecutiveFailures = 0;
+
+  while (Date.now() < deadline) {
+    await delay(POLL_INTERVAL_MS, signal);
+    if (signal?.aborted) return { ok: false, error: 'Stopped.' };
+
+    let res: Response;
+    try {
+      res = await fetch(`${AI_SERVICE_URL}/api/freeform/job/${jobId}`, {
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      if (++consecutiveFailures >= 5) return { ok: false, error: 'Lost contact with the AI service.' };
+      continue;
+    }
+    consecutiveFailures = 0;
+
+    // 404 means swept or lost to a restart — it will never settle, so stop.
+    if (res.status === 404) return { ok: false, error: await errorFrom(res) };
+    if (!res.ok) return { ok: false, error: await errorFrom(res) };
+
+    const data = await res.json().catch(() => null);
+    if (!data) continue;
+    if (data.status === 'running') continue;
+    if (data.status === 'error') return { ok: false, error: data.error || 'turn failed' };
+    return { ok: true, data };
+  }
+
+  return { ok: false, error: 'The generation took too long. Please try again.' };
+}
+
 export async function runFreeformEdit(req: FreeformEditRequest): Promise<FreeformEditResult> {
   const { prompt, activeFilePath, kind, history = [], workspaceId, model, signal, isStillActive = () => true, onAttempt } = req;
   trace.action('freeform:start', { activeFilePath, kind, model, prompt: prompt.slice(0, 80) });
@@ -363,40 +463,22 @@ export async function runFreeformEdit(req: FreeformEditRequest): Promise<Freefor
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     trace.action('freeform:turn', { attempt, violations: violations.map((v) => v.code) });
 
-    // per-attempt timeout composed with the caller's abort signal
-    const timeout = AbortSignal.timeout(ATTEMPT_TIMEOUT_MS);
-    const composed = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    const outcome = await runTurnAsJob({
+      prompt,
+      kind,
+      currentCode,
+      // the file's REAL path — without it the model invents one and the
+      // page update lands on a phantom file (live failure 2026-06-10)
+      currentPath: activeFilePath,
+      previousAttempt,
+      violations: violations.length ? formatBounce(violations) : undefined,
+      history,
+      workspaceId,
+      model,
+    }, signal);
 
-    let res: Response;
-    try {
-      res = await fetch(`${AI_SERVICE_URL}/api/freeform/turn`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: composed,
-        body: JSON.stringify({
-          prompt,
-          kind,
-          currentCode,
-          // the file's REAL path — without it the model invents one and the
-          // page update lands on a phantom file (live failure 2026-06-10)
-          currentPath: activeFilePath,
-          previousAttempt,
-          violations: violations.length ? formatBounce(violations) : undefined,
-          history,
-          workspaceId,
-          model,
-        }),
-      });
-    } catch (err) {
-      if (signal?.aborted) return { success: false, attempts: attempt, error: 'Stopped.' };
-      return { success: false, attempts: attempt, error: timeout.aborted ? 'The request timed out.' : String((err as Error).message ?? err) };
-    }
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-      return { success: false, attempts: attempt, error: err.error || `Request failed: ${res.status}` };
-    }
-    const data = await res.json();
+    if (!outcome.ok) return { success: false, attempts: attempt, error: outcome.error };
+    const data = outcome.data;
     if (!data.success) return { success: false, attempts: attempt, error: data.error || 'turn failed' };
 
     usage.inputTokens += data.usage?.inputTokens ?? 0;
