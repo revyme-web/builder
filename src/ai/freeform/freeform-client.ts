@@ -30,7 +30,19 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 const AI_SERVICE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8082';
 const MAX_ATTEMPTS = 3;
-const ATTEMPT_TIMEOUT_MS = 120_000;
+// Sized against the SERVER's budget, not against a guess at "reasonable".
+// A whole-file rewrite of a big page can exceed the model's output ceiling,
+// in which case the provider resumes and concatenates (see the continuation
+// loop in ai-generator/src/providers/openrouter.ts) — so one attempt is now
+// several model calls and minutes of real work. The old 120s aborted a live
+// 116KB rewrite 3.6 SECONDS before the server had an answer, showed "The
+// request timed out.", and still billed all three attempts (2026-08-25).
+//
+// The ladder, outermost last: server gives up at 280s with a readable error,
+// this fires at 295s so that error actually arrives, nginx 504s at 300s
+// (proxy_read_timeout on the /api/(freeform|…) block). Raising this past 300s
+// buys nothing until nginx moves too.
+const ATTEMPT_TIMEOUT_MS = 295_000;
 
 export interface FreeformEditRequest {
   prompt: string;
