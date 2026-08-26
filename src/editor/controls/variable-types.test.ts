@@ -29,3 +29,18 @@ describe('getVariableType normalizes page-var primitives → editor typeDef', ()
     expect(getVariableType('nope')).toBeUndefined();
   });
 });
+
+describe('noDefault types — the modal hides their Default row', () => {
+  // A link's value only means something per-instance ("where does THIS card
+  // go"), so a default is noise (user report 2026-08-26); cursors never had
+  // one. Every other type keeps its Default editor.
+  it('link and componentCursor are noDefault', () => {
+    expect(getVariableType('link')?.noDefault).toBe(true);
+    expect(getVariableType('componentCursor')?.noDefault).toBe(true);
+  });
+  it('value-carrying types are NOT noDefault', () => {
+    for (const id of ['plainText', 'number', 'color', 'toggle', 'option', 'image', 'border', 'shadow']) {
+      expect(getVariableType(id)?.noDefault ?? false).toBe(false);
+    }
+  });
+});

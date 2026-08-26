@@ -9,6 +9,7 @@
 
 import { parseJSX, findFirstElementByDataId, findAttribute, traverse } from '../parsing/ast-utils';
 import { updateBorderOverlayStyle } from '../generation/generator-styles';
+import { ensureCanonicalMotionLinkDecl } from '../generation/generator-attrs';
 import { isStructuralProp } from '../components/component-registry';
 import { removePropMetaInCode } from '../components/prop-meta';
 import * as t from '@babel/types';
@@ -992,7 +993,12 @@ export function createLinkAttrVariableInCode(
   let defaultExpr: t.Expression;
   if (opts.kind === 'string') {
     attrValueExpr = propIdent;
-    defaultExpr = t.stringLiteral(opts.defaultValue);
+    // A LINK variable has NO default (product rule, 2026-08-26): seeding the
+    // prop default with the element's creation-time href made every instance
+    // that never set the variable NAVIGATE to that leftover value ("still
+    // defaults to a Home link"). Empty default + the href-aware MotionLink
+    // wrapper = no value → no anchor at all.
+    defaultExpr = t.stringLiteral(opts.attrName === 'href' ? '' : opts.defaultValue);
   } else if (opts.kind === 'newTab') {
     attrValueExpr = t.conditionalExpression(propIdent, t.stringLiteral('_blank'), t.identifier('undefined'));
     defaultExpr = t.booleanLiteral(opts.defaultValue === 'true' || opts.defaultValue === '_blank');
@@ -1016,11 +1022,35 @@ export function createLinkAttrVariableInCode(
   if (!touched) return code;
 
   addPropExprToFunction(ast, opts.propName, defaultExpr);
+  // BINDING an href is what makes a variable a LINK variable — and link
+  // variables have no default (2026-08-26). `addPropExprToFunction` is
+  // idempotent for a pre-existing prop, so a variable unbound (× keeps the
+  // prop + its old default) and re-bound kept navigating to that leftover
+  // URL. Force the EXISTING default empty too.
+  if (opts.attrName === 'href') {
+    traverse(ast, {
+      Function(fnPath: any) {
+        const first = fnPath.node.params?.[0];
+        if (!first || !t.isObjectPattern(first)) return;
+        for (const p of first.properties) {
+          if (!t.isObjectProperty(p) || !t.isIdentifier(p.key) || p.key.name !== opts.propName) continue;
+          if (t.isAssignmentPattern(p.value) && !(t.isStringLiteral(p.value.right) && p.value.right.value === '')) {
+            p.value.right = t.stringLiteral('');
+            trace.action('variable-ops:link-default-forced-empty', { propName: opts.propName });
+          }
+        }
+      },
+    });
+  }
 
   try {
     const output = generate(ast, { retainLines: true }, code);
     trace.action('variable-ops:create-link-attr-variable', { nodeId, attr: opts.attrName, propName: opts.propName, kind: opts.kind });
-    return output.code;
+    // Touching a link keeps its dialect current: create AND Set-Variable
+    // (which reuses this generator) upgrade a legacy MotionLink declaration
+    // in place, so an empty link variable renders no anchor immediately —
+    // not after some unrelated later edit (2026-08-26).
+    return ensureCanonicalMotionLinkDecl(output.code);
   } catch (err) {
     trace.error('variable-ops:createLinkAttrVariable-generate-failed', { nodeId, error: err instanceof Error ? err.message : String(err) });
     return code;
@@ -1099,7 +1129,8 @@ export function removeLinkAttrVariableInCode(
     // explicit delete is the only thing that drops it). Default (undefined/true) still drops the prop.
     const final = opts.deleteProp === false ? generated : removeBarePropFromFunctionInCode(generated, opts.propName);
     trace.action('variable-ops:remove-link-attr-variable', { nodeId, attr: opts.attrName, propName: opts.propName, kind: opts.kind, deleteProp: opts.deleteProp !== false });
-    return final;
+    // Unbinding is a link operation too — leave the declaration canonical.
+    return ensureCanonicalMotionLinkDecl(final);
   } catch (err) {
     trace.error('variable-ops:removeLinkAttrVariable-generate-failed', { nodeId, error: err instanceof Error ? err.message : String(err) });
     return code;

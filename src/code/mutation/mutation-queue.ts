@@ -129,6 +129,9 @@ import {
   stripDataResponsiveInSubtree,
   changeTagInCode,
   convertToMotionLinkInCode,
+  MOTION_LINK_DECL,
+  MOTION_LINK_DECL_ANY_RE,
+  MOTION_LINK_DECL_LEGACY_LINE_RE,
 } from '../generation/generator-attrs';
 import {
   updateHoverStyleInCode,
@@ -1720,10 +1723,19 @@ export function syncImports(code: string): string {
   // buildAutoImports(body) runs so `motion.create` → `import { motion }` and
   // `MotionLink` → `import Link from 'next/link'` are both detected below.
   let injectedMotionLinkConst = false;
-  if (/<MotionLink\b/.test(body) && !/\bconst\s+MotionLink\s*=\s*motion\.create\(\s*Link\s*\)/.test(body)) {
-    body = `const MotionLink = motion.create(Link);\n${body}`;
-    injectedMotionLinkConst = true;
-    trace.action('syncImports:inject-motionlink-const', {});
+  if (/<MotionLink\b/.test(body)) {
+    if (MOTION_LINK_DECL_LEGACY_LINE_RE.test(body)) {
+      // UPGRADE in place: the legacy `motion.create(Link)` renders an `<a>`
+      // even when href resolves empty (an unset link variable navigated to
+      // the prop default — "still defaults to a Home link", 2026-08-26).
+      // The href-aware wrapper renders no anchor for a falsy href.
+      body = body.replace(MOTION_LINK_DECL_LEGACY_LINE_RE, MOTION_LINK_DECL);
+      trace.action('syncImports:upgrade-motionlink-const', {});
+    } else if (!MOTION_LINK_DECL_ANY_RE.test(body)) {
+      body = `${MOTION_LINK_DECL}\n${body}`;
+      injectedMotionLinkConst = true;
+      trace.action('syncImports:inject-motionlink-const', {});
+    }
   }
 
   // Build new import block: framework imports (React/framer-motion/
@@ -2095,17 +2107,21 @@ function processQueue(): void {
   // lifecycle useState is gone (instance dragged out of its form) → strip the
   // dangling binding so it stops blocking every later mutation. Keeps the spec.
   if (codeChanged) {
-    code = healOrphanedFormStateBindings(code);
     // A DUPLICATE `const [formState<X>, …]` is a SyntaxError that takes the whole
     // component off the canvas — and once it's on disk the UI can't reach it to
     // fix it. Runs before the missing-declaration healer so a file that is both
     // duplicated here and missing one elsewhere lands with exactly one of each.
     code = dedupeFormStateDeclarations(code);
-    // Re-declare a formState<X> that's referenced (onSubmit setter / FormSubmit
-    // binding) but undeclared in its function — e.g. a form made into a component
-    // whose lifecycle useState stayed in the page. Heals the active file (page or
-    // master). No-op when every referenced var is already declared.
+    // Re-declare a formState<X> that's referenced (onSubmit setter — INCLUDING
+    // setter-only files — or a FormSubmit binding) but undeclared — e.g. a form
+    // made into a component whose lifecycle useState stayed in the page. Runs
+    // BEFORE the orphan strip: declaring is the convergent repair (the binding
+    // keeps working at 'idle'), whereas stripping the binding first used to
+    // leave a setter-only onSubmit this healer couldn't see — a dangling
+    // identifier that blocked every later mutation (2026-08-26).
     code = healMissingFormStateDeclarations(code);
+    // Orphan strip is now the backstop for shapes the re-declare can't reach.
+    code = healOrphanedFormStateBindings(code);
     // Same shape for the locale hook: pasting a localized collection list
     // carries `{localizeRows(coll, __activeLocale).map(…)}` to a page that
     // never declared it. The orphan sweep already handles the reverse.
@@ -3009,18 +3025,26 @@ function applyMutationCore(code: string, mutation: Mutation): string {
         // scrolls — the static setSmoothScrollInCode can't bake in a section id
         // it doesn't know. Runs for every kind so a later href var also updates
         // the handler's href reference.
-        return syncLinkHandlerInCode(
-          addPageVariableInCode(
-            createLinkAttrVariableInCode(code, mutation.nodeId, {
-              attrName: mutation.attrName,
-              propName: mutation.propName,
-              kind: mutation.kind,
-              defaultValue: mutation.defaultValue,
-            }),
-            { name: mutation.propName, type: mutation.variableType, default: mutation.defaultValue },
-          ),
-          mutation.nodeId,
+      {
+        // href → EMPTY default in BOTH channels (link variables have no
+        // default, 2026-08-26). The annotation is what the instance panel/
+        // picker read — seeding it with the creation-time href made a fresh
+        // variable display "Home". `addPageVariableInCode` no-ops for an
+        // EXISTING variable, so re-binding one (Set Variable after ×) kept
+        // its old annotation default — update it explicitly for href.
+        const isHref = mutation.attrName === 'href';
+        let next = addPageVariableInCode(
+          createLinkAttrVariableInCode(code, mutation.nodeId, {
+            attrName: mutation.attrName,
+            propName: mutation.propName,
+            kind: mutation.kind,
+            defaultValue: mutation.defaultValue,
+          }),
+          { name: mutation.propName, type: mutation.variableType, default: isHref ? '' : mutation.defaultValue },
         );
+        if (isHref) next = updatePageVariableInCode(next, mutation.propName, { default: '' });
+        return syncLinkHandlerInCode(next, mutation.nodeId);
+      }
       case 'removeLinkAttrVariable':
         // Rewrite the attr back to a literal + drop the prop, then remove the
         // @pageVariables annotation. syncPageVariableHooks clears any orphan

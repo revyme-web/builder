@@ -1,3 +1,4 @@
+import { MOTION_LINK_DECL } from '@/code/generation/generator-attrs';
 import { describe, test, expect } from 'vitest';
 import { syncImports } from './mutation-queue';
 
@@ -288,7 +289,9 @@ const canvasNodes = <><OnCanvas data-id="oc" data-canvas-node="true" /></>;`;
       '<MotionLink data-id="x" href="/a" />',
     );
     const result = syncImports(code);
-    expect(result).toContain('const MotionLink = motion.create(Link);');
+    // Legacy `motion.create(Link)` is UPGRADED to the href-aware wrapper —
+    // syncImports owns the declaration and keeps it canonical.
+    expect(result).toContain(MOTION_LINK_DECL);
     expect(result).toContain("import Link from 'next/link';");
     // The const must be on its own line now, not glued to an import.
     const declLine = result.split('\n').find((l) => l.includes('const MotionLink'))!;
@@ -306,11 +309,11 @@ const canvasNodes = <><OnCanvas data-id="oc" data-canvas-node="true" /></>;`;
       '<div data-id="footer"><MotionLink data-id="l0" href="#">Advisors</MotionLink></div>',
     );
     const result = syncImports(code);
-    expect(result).toContain('const MotionLink = motion.create(Link);');
+    expect(result).toContain(MOTION_LINK_DECL);
     expect(result).toContain("import Link from 'next/link';");
     expect(result).toContain("import { motion } from 'framer-motion';");
     // const declared exactly once, on its own line, after the imports.
-    expect((result.match(/const MotionLink = motion\.create\(Link\);/g) || []).length).toBe(1);
+    expect((result.match(/const MotionLink = motion\.create\(/g) || []).length).toBe(1);
     const declIdx = result.indexOf('const MotionLink');
     const lastImportIdx = result.lastIndexOf('import ');
     expect(declIdx).toBeGreaterThan(lastImportIdx);
@@ -323,7 +326,7 @@ const canvasNodes = <><OnCanvas data-id="oc" data-canvas-node="true" /></>;`;
       '<div><Link href="/a">A</Link><MotionLink data-id="l0" href="#">B</MotionLink></div>',
     );
     const result = syncImports(code);
-    expect(result).toContain('const MotionLink = motion.create(Link);');
+    expect(result).toContain(MOTION_LINK_DECL);
   });
 
   test('does NOT duplicate the const when it already exists', () => {
@@ -332,7 +335,9 @@ const canvasNodes = <><OnCanvas data-id="oc" data-canvas-node="true" /></>;`;
       '<MotionLink data-id="x" href="/a" />',
     );
     const result = syncImports(code);
-    expect((result.match(/const MotionLink = motion\.create\(Link\);/g) || []).length).toBe(1);
+    // The legacy line upgrades to the wrapper — still exactly ONE declaration.
+    expect((result.match(/const MotionLink = motion\.create\(/g) || []).length).toBe(1);
+    expect(result).toContain(MOTION_LINK_DECL);
   });
 
   // ─── CDN URL imports (cross-project linked components) ────────────

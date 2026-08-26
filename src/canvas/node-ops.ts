@@ -957,6 +957,33 @@ export function findRootHitAtPoint(x: number, y: number): { id: string; vpPrefix
   return best ? { id: best.id, vpPrefix: best.vpPrefix } : null;
 }
 
+/**
+ * Every viewport prefix whose tile currently PAINTS this node.
+ *
+ * The rectCache doubles as the host's registry of "which viewports render a
+ * node" (see the fan-out in `updateNodeStyles`) — a copy with no cache entry
+ * is not on screen. Exposed for callers that must measure a node whose live
+ * element is not where the node MODEL says it is: after a mid-drag handoff
+ * the node is already canvas-rooted (`vpPrefix: ''`) while its DOM element
+ * still sits in the origin replica's tile, so a lookup under the model's
+ * prefix reads the wrong copy — or a hidden one.
+ */
+export function viewportPrefixesForNode(nodeId: string): string[] {
+  const bridge = getCanvasBridge();
+  if (!('rectCache' in bridge)) return [];
+  const cache = (bridge as any).rectCache as Map<string, DOMRect>;
+  const prefixes: string[] = [];
+  const seen = new Set<string>();
+  for (const key of cache.keys()) {
+    const parsed = parseRectCacheKey(key);
+    if (!parsed || parsed.nodeId !== nodeId) continue;
+    if (seen.has(parsed.vpPrefix)) continue;
+    seen.add(parsed.vpPrefix);
+    prefixes.push(parsed.vpPrefix);
+  }
+  return prefixes;
+}
+
 // ─── Element Relationships ──────────────────────────────────────────────────
 
 /**

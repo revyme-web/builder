@@ -231,23 +231,77 @@ export function convertToMotionLinkInCode(code: string, nodeId: string): string 
     return code;
   }
 
-  // Inject the declaration via a STRING op on its own line — NOT a babel
-  // splice. With `retainLines`, a spliced top-level node has no source line so
-  // babel squishes it onto the preceding import (`…'@revyme/runtime';const
-  // MotionLink = …`). syncImports would then treat that whole line as the
-  // framework import and drop it — taking the const with it.
-  if (!/\bconst\s+MotionLink\s*=/.test(out)) {
-    out = injectMotionLinkConst(out);
-  }
+  // Inject/upgrade the declaration via a STRING op on its own line — NOT a
+  // babel splice. With `retainLines`, a spliced top-level node has no source
+  // line so babel squishes it onto the preceding import (`…'@revyme/runtime';
+  // const MotionLink = …`). syncImports would then treat that whole line as
+  // the framework import and drop it — taking the const with it. The ensure
+  // also UPGRADES a legacy `motion.create(Link)` in place.
+  out = ensureCanonicalMotionLinkDecl(out);
   trace.action('generator.convert-to-motion-link', { nodeId });
   return out;
 }
 
-/** Insert `const MotionLink = motion.create(Link);` on its own line, after the
- *  last import (or after a leading `'use client'` when there are no imports). */
+/** The canonical module-scope MotionLink declaration.
+ *
+ *  Not a bare `motion.create(Link)`: next/link REQUIRES an href, so a link
+ *  whose href resolves empty (a link VARIABLE with no per-instance value —
+ *  "Add link" untouched) still rendered a real `<a>` and navigated to the
+ *  prop's creation-time default ("still defaults to a Home link",
+ *  2026-08-26). The wrapper renders a plain `<div>` when href is falsy — no
+ *  anchor, no navigation, no pointer semantics — and the true next/link
+ *  otherwise. One line so the line-based injectors/regex matchers keep
+ *  working; the LEGACY `motion.create(Link)` form is still accepted
+ *  everywhere and upgraded in place by syncImports. */
+export const MOTION_LINK_DECL =
+  'const MotionLink = motion.create(React.forwardRef(function MotionLinkBase({ href, ...props }: any, ref: any) { return href ? <Link ref={ref} href={href} {...props} /> : <div ref={ref} {...props} />; }));';
+
+/** Matches EITHER declaration form (legacy one-liner or the href-aware
+ *  wrapper) — every "is MotionLink set up" gate must accept both, or old
+ *  files fail validation they used to pass. */
+export const MOTION_LINK_DECL_ANY_RE =
+  /const\s+MotionLink\s*=\s*motion\.create\(\s*(?:Link\s*\)|React\.forwardRef\b)/;
+
+/** Matches ONLY the legacy `const MotionLink = motion.create(Link);` line —
+ *  the shape syncImports upgrades in place. */
+export const MOTION_LINK_DECL_LEGACY_LINE_RE =
+  /const\s+MotionLink\s*=\s*motion\.create\(\s*Link\s*\)\s*;?/;
+
+/** Ensure the file carries the CANONICAL MotionLink declaration.
+ *
+ *  Upgrades the legacy `motion.create(Link)` line in place, injects the
+ *  canonical one when a `<MotionLink>` exists with no declaration at all,
+ *  and no-ops otherwise. Called by every link OPERATION (create/bind/unbind
+ *  a link variable, convert-to-MotionLink) so touching a link is what keeps
+ *  its dialect current — the user should never need an unrelated edit for
+ *  the upgrade to land (2026-08-26: X + re-Set Variable on a master left
+ *  the legacy declaration, so an empty href still rendered an anchor).
+ *  syncImports performs the same upgrade as the general backstop. */
+export function ensureCanonicalMotionLinkDecl(code: string): string {
+  if (!/<MotionLink\b/.test(code)) return code;
+  if (MOTION_LINK_DECL_LEGACY_LINE_RE.test(code)) {
+    trace.action('generator.upgrade-motionlink-const', {});
+    return code.replace(MOTION_LINK_DECL_LEGACY_LINE_RE, MOTION_LINK_DECL);
+  }
+  // A DRIFTED wrapper — the canonical shape mutated by some other pass (live
+  // find 2026-08-26: the data-id healer stamped an id into the wrapper's
+  // internal <Link> before it learned the declaration exemption). Normalize
+  // the whole statement back to canonical; the declaration is scaffolding,
+  // nothing user-authored lives in it.
+  const wrapperLine = code.match(/const\s+MotionLink\s*=\s*motion\.create\(React\.forwardRef[^\n]*;/);
+  if (wrapperLine && wrapperLine[0] !== MOTION_LINK_DECL) {
+    trace.action('generator.normalize-motionlink-const', {});
+    return code.replace(wrapperLine[0], MOTION_LINK_DECL);
+  }
+  if (!MOTION_LINK_DECL_ANY_RE.test(code)) return injectMotionLinkConst(code);
+  return code;
+}
+
+/** Insert the MotionLink declaration on its own line, after the last import
+ *  (or after a leading `'use client'` when there are no imports). */
 function injectMotionLinkConst(code: string): string {
   const lines = code.split('\n');
-  const decl = 'const MotionLink = motion.create(Link);';
+  const decl = MOTION_LINK_DECL;
   let lastImportIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     if (/^\s*import\b/.test(lines[i])) lastImportIdx = i;

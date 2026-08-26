@@ -4,6 +4,7 @@
 import * as t from '@babel/types';
 import { cmsNavHrefExpr } from '@/code/generation/map-gen';
 import { traverse, jsxTagName, jsxAttrs, stringAttr } from './shared';
+import { MOTION_LINK_DECL_ANY_RE } from '@/code/generation/generator-attrs';
 import type { OracleViolation, FileKind } from './shared';
 
 /** CMS COLLECTION-LIST ROW LINK — a Link/MotionLink/anchor whose `href` template
@@ -202,7 +203,7 @@ function checkCmsNavDialect(code: string, ast: t.File, v: OracleViolation[], kin
   // <Link> — the editor's own LinkTool/Make Component output (convertToMotionLinkInCode
   // emits it so the row link can carry framer-motion props). Accept it wherever a
   // bare <Link> is required.
-  const hasMotionLink = /const\s+MotionLink\s*=\s*motion\.create\(\s*Link\s*\)/.test(code)
+  const hasMotionLink = MOTION_LINK_DECL_ANY_RE.test(code)
     && /import\s+Link\s+from\s+['"]next\/link['"]/.test(code);
   // authoritative collection slug — @cmsPage annotation wins, else the import.
   const cmsPageColl = code.match(/@cmsPage[\s\S]*?"collection"\s*:\s*"([A-Za-z0-9_-]+)"/);

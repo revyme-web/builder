@@ -16,7 +16,8 @@ import { calculateSnap, getMouseVelocity } from '../handlers/snap-handler';
 import { snapCorrection } from '../snap-precision';
 import { getActiveRulerGuideSnapLines } from '@/code/stores/ruler-guides-store';
 import { SNAP_THRESHOLD, nodeAcceptsChildren } from '@/shared/constants';
-import { updateNodeStyles, isPrimaryViewport, vpIdFromPrefix, getActiveFilePath, patchNodeStyles, findNodeRect, findNodeComputedStyle, findNodeComputedStyles, findChildRects, getNodeHitsAtPoint, findRootHitAtPoint, forceCanvasRender, getViewportPrefix, parseRectCacheKey, forceCanvasRenderDeferredDuringDrag } from '@/canvas/node-ops';
+import { updateNodeStyles, isPrimaryViewport, vpIdFromPrefix, getActiveFilePath, patchNodeStyles, findNodeRect, findNodeComputedStyle, findNodeComputedStyles, findChildRects, getNodeHitsAtPoint, findRootHitAtPoint, forceCanvasRender, getViewportPrefix, parseRectCacheKey, viewportPrefixesForNode, forceCanvasRenderDeferredDuringDrag } from '@/canvas/node-ops';
+import { resolveDraggedRect } from '../dragged-node-rect';
 import { isFullyInsideQuad, cornersFromRect, pointInQuad , matrixHasRotationSkewOrFlip } from '@/canvas/resize/geometry-utils';
 import { repositionSignalOps } from '../reposition-signal';
 import { dropLineOps } from '@/canvas/selection/drop-line-store';
@@ -237,6 +238,12 @@ export class CanvasDragStrategy implements DragStrategy {
    *  fresh start or strategy switch, so we can see the math state going in. */
   private firstMoveTraced = false;
   private firstWriteTraced = false;
+  /** Trace flag — fires once when the dragged element turns out to be painted
+   *  in a different viewport than the node model claims (post-handoff). */
+  private paintedVpTraced = false;
+  /** Last emitted reject signature of an empty entry scan — dedupes the
+   *  `entry-scan-empty` trace to one line per distinct failure pattern. */
+  private lastScanRejectSig: string | null = null;
 
   // ─── Single-select entry state (preserved for backward compat) ──────────
   // Used only when draggedNodes.length === 1.
@@ -387,6 +394,8 @@ export class CanvasDragStrategy implements DragStrategy {
     this.lastPositions.clear();
     this.firstMoveTraced = false;
     this.firstWriteTraced = false;
+    this.paintedVpTraced = false;
+    this.lastScanRejectSig = null;
     const p = context.draggedNodes[0];
     trace.action('canvas-drag:onStart', {
       startMouse: context.startMouse,
@@ -503,22 +512,25 @@ export class CanvasDragStrategy implements DragStrategy {
         } : null,
       });
 
-      // Synthesize AABB lift corners — ONLY when the cached corners
-      // are STALE from a strategy switch (user dragged out of a
-      // rotated parent into canvas). Detection: the element's own
-      // computed `transform` is empty/identity, but the cached
-      // corners look rotated. That's the post-exit case — the
-      // element is axis-aligned in canvas space but cornersCache
-      // still holds the pre-exit rotated quad.
+      // Synthesize AABB lift corners for every AXIS-ALIGNED dragged node —
+      // anchored on the CURSOR, the one truth that survives strategy
+      // handoffs (see the elScreenRect construction below). The corners
+      // captured in onStart come from the cornersCache, and after a
+      // replica-exit handoff that cache entry belongs to a hidden/parked
+      // copy at its PRE-DRAG position: `dragCorners = staleCorners + delta`
+      // then made the snap engine align a phantom rect a constant offset
+      // from the visible element — pink guides "much lower / much higher,
+      // not around the edges of my node" (the round-trip report,
+      // 2026-08-26). The previous repair only fired when the stale quad
+      // LOOKED rotated; a stale axis-aligned rect at the wrong position
+      // sailed through. For a fresh (non-handoff) drag the cursor anchor
+      // and the cached corners agree, so this is a no-op change there.
       //
-      // CRITICAL: do NOT synthesize unconditionally. For canvas
-      // nodes with their OWN `transform: rotate(...)` etc., the
-      // cached corners are correct (the freshly-grabbed sample IS
-      // the real rotated quad). Synthesizing AABB in that case
-      // wipes the rotation info and the snap engine starts
-      // computing snaps against a fictional axis-aligned dragged
-      // element while the rendered element is still rotated — the
-      // visible breakage the user just reported.
+      // Elements with their OWN rotation/skew keep the cached quad — an
+      // AABB synthesis would wipe the rotation info and snap would compute
+      // against a fictional axis-aligned box (the earlier reported
+      // breakage). A rotated element's corners can still be stale after a
+      // handoff — accepted edge; the cache is the only quad source there.
       const startVpId = vpIdFromPrefix(context.viewportPrefix);
       for (const node of draggedNodes) {
         // Element's OWN transform on canvas. Empty / 'none' /
@@ -532,36 +544,31 @@ export class CanvasDragStrategy implements DragStrategy {
           } catch { /* identity */ }
         }
 
-        // Inspect the cached corners we'd use otherwise.
-        const cached = this.liftCorners.get(node.id);
-        const cornersLookRotated = !!cached && (
-          Math.abs(cached.TL.y - cached.TR.y) > 0.5 ||
-          Math.abs(cached.BL.y - cached.BR.y) > 0.5 ||
-          Math.abs(cached.TL.x - cached.BL.x) > 0.5 ||
-          Math.abs(cached.TR.x - cached.BR.x) > 0.5
-        );
-
-        // The post-exit stale-cache case: cache says rotated, but
-        // the element itself has no rotation. Synthesize axis-
-        // aligned AABB from the now-correct width/height (already
-        // pushed in via the switchRequest's nodeStateOverrides).
-        if (cornersLookRotated && !hasOwnRotationOrSkew) {
+        if (!hasOwnRotationOrSkew) {
+          // Painted TL at the delta=0 instant = startMouse − grabOffset,
+          // converted to canvas space. Equals the element's actual painted
+          // top-left regardless of whether its DOM is still parked in the
+          // origin tile with a diverged base.
+          const anchor = screenPointToCanvas(
+            { x: startMouse.x - node.mouseOffsetX, y: startMouse.y - node.mouseOffsetY },
+            transform, getIframeOffset(),
+          );
           const cssW = node.width / transform.scale;
           const cssH = node.height / transform.scale;
           this.liftCorners.set(node.id, {
-            TL: { x: node.startLeft,        y: node.startTop        },
-            TR: { x: node.startLeft + cssW, y: node.startTop        },
-            BR: { x: node.startLeft + cssW, y: node.startTop + cssH },
-            BL: { x: node.startLeft,        y: node.startTop + cssH },
+            TL: { x: anchor.x,        y: anchor.y        },
+            TR: { x: anchor.x + cssW, y: anchor.y        },
+            BR: { x: anchor.x + cssW, y: anchor.y + cssH },
+            BL: { x: anchor.x,        y: anchor.y + cssH },
           });
           trace.action('canvas-drag:lift-corners-synthesized', {
             nodeId: node.id,
-            reason: 'post-exit-stale-cache',
+            reason: 'cursor-anchored-aabb',
+            anchor: { x: Math.round(anchor.x), y: Math.round(anchor.y) },
           });
         }
-        // else: element has its own rotation OR cached corners are
-        // already axis-aligned. In both cases the cached corners
-        // captured in onStart are correct — keep them as-is.
+        // else: own rotation — the cached quad from onStart is the only
+        // source of the rotated shape; keep it as-is.
       }
     }
 
@@ -892,7 +899,27 @@ export class CanvasDragStrategy implements DragStrategy {
     if (isMultiSelect) {
       this.detectPerNodeContainment(context, draggedIds, dx, dy, snapOffsetX, snapOffsetY, mouseScreen);
     } else {
-      const result = this.detectSingleNodeContainment(context, draggedIds, mouseScreen, snap);
+      // The dragged element's rect, derived from the gesture itself — never
+      // read back from the rect cache. Post-handoff the cache holds the node
+      // under several prefixes and all but the origin's are pre-drag stale; a
+      // stale rect is measurable and silently wrong (2026-08-26 replica-exit
+      // bug: entry detection went blind, then anchored the entry commit on a
+      // dead rect and the element teleported on entry).
+      //
+      // Anchored on the CURSOR, not on model coords: painted TL is
+      // `startMouse − grabOffset` plus the delta this strategy wrote (which
+      // already carries axis lock and snap). Mid-handoff the element is still
+      // PARKED in its origin tile — the exit's code flush is deferred — so
+      // its inline left/top resolve against the old parent and the model's
+      // canvas coords (`finalAbsLeft`) can sit a constant offset from where
+      // the element actually paints. The cursor relation is the one truth
+      // that survives the handoff; for a non-handoff canvas drag the two
+      // formulas are identical.
+      const paintedLeft = context.startMouse.x - primary.mouseOffsetX + (dx + snapOffsetX) * transform.scale;
+      const paintedTop = context.startMouse.y - primary.mouseOffsetY + (dy + snapOffsetY) * transform.scale;
+      const result = this.detectSingleNodeContainment(
+        context, draggedIds, mouseScreen, snap,
+        new DOMRect(paintedLeft, paintedTop, primary.width, primary.height));
       if (result) return result;
     }
 
@@ -976,9 +1003,18 @@ export class CanvasDragStrategy implements DragStrategy {
     // back to the drag-start viewport when the cursor is over empty canvas.
     const cursorHits = getNodeHitsAtPoint(mouseScreen.x, mouseScreen.y);
     const firstNonDraggedHit = cursorHits.find(h => !skipIds.has(h.id) && h.id !== 'root');
+    // The fallback is the drag's ORIGIN viewport, which is wrong once the node
+    // is on the canvas: canvas frames live under the PRIMARY prefix, and the
+    // candidate scan below skips every hit whose prefix differs from this one,
+    // so a mobile-origin prefix would rule out every canvas frame. Reachable
+    // only when the cursor is over bare canvas with nothing under it — the
+    // replica-exit bug this was first written for turned out to be the
+    // painted-viewport blindness fixed in `dragged-node-rect.ts`, not this.
+    const draggedIsCanvasRooted = draggedNodes.every((d) => nodes.get(d.id)?.parentId === null);
+    const originPrefix = draggedIsCanvasRooted ? '' : context.viewportPrefix;
     let hoverVpPrefix = firstNonDraggedHit
       ? firstNonDraggedHit.vpPrefix
-      : (cursorHits.length > 0 ? cursorHits[0].vpPrefix : context.viewportPrefix);
+      : (cursorHits.length > 0 ? cursorHits[0].vpPrefix : originPrefix);
     if (!firstNonDraggedHit) {
       const rootHit = findRootHitAtPoint(mouseScreen.x, mouseScreen.y);
       if (rootHit) hoverVpPrefix = rootHit.vpPrefix;
@@ -1028,8 +1064,20 @@ export class CanvasDragStrategy implements DragStrategy {
     for (const node of draggedNodes) {
       const rState = this.nodeReparentStates.get(node.id)!;
 
-      // Per-node screen rect from the bridge — the live AABB.
-      const elScreenRect = this.mouseSyncedRect(node.id, findNodeRect(node.id, startVpId), context);
+      // Per-node screen rect from the bridge — the live AABB, read in the
+      // viewport that PAINTS this node rather than the drag's origin. Same
+      // handoff hazard the single-node path hit: post-exit the model says
+      // canvas while the element is still in the origin replica's tile, and
+      // the origin's other copies are hidden (`dragged-node-rect.ts`). Here it
+      // degrades to `continue` per node rather than an outright bail, so it
+      // would have read as "some nodes just don't reparent".
+      const painted = resolveDraggedRect(
+        startVpId,
+        viewportPrefixesForNode(node.id).map(vpIdFromPrefix),
+        (vpId) => findNodeRect(node.id, vpId),
+      );
+      const nodeVpId = painted?.vpId ?? startVpId;
+      const elScreenRect = this.mouseSyncedRect(node.id, painted?.rect ?? null, context);
       if (!elScreenRect) continue;
 
       // ─── Per-node exit detection (asymmetric: center-outside) ───
@@ -1055,10 +1103,12 @@ export class CanvasDragStrategy implements DragStrategy {
           // its current screen position (computeExitCanvasPosition does
           // the AABB-center-stable conversion).
           const offset = getIframeOffset();
-          const computed = findNodeComputedStyles(node.id, startVpId, ['width', 'height']);
+          // `nodeVpId`, not `startVpId` — these read the same element as
+          // `elScreenRect` and the exit math pairs the rect with its viewport.
+          const computed = findNodeComputedStyles(node.id, nodeVpId, ['width', 'height']);
           const cssW = parseFloat(computed.width) || elScreenRect.width / context.transform.scale;
           const cssH = parseFloat(computed.height) || elScreenRect.height / context.transform.scale;
-          const { canvasLeft, canvasTop } = computeExitCanvasPosition(node.id, startVpId, elScreenRect, context.transform, offset, cssW, cssH);
+          const { canvasLeft, canvasTop } = computeExitCanvasPosition(node.id, nodeVpId, elScreenRect, context.transform, offset, cssW, cssH);
           const cssLeft = Math.round(canvasLeft);
           const cssTop = Math.round(canvasTop);
           traceTransformReparent('exit', { nodeId: node.id, source: 'per-node', cssLeft, cssTop, cssW, cssH });
@@ -1468,15 +1518,42 @@ export class CanvasDragStrategy implements DragStrategy {
     draggedIds: Set<string>,
     mouseScreen: Point,
     snap: any,
+    elScreenRect: DOMRect,
   ): DragMoveResult | null {
     const { draggedNodes, contentEl, nodes } = context;
     const primary = draggedNodes[0];
-    const startVpId = vpIdFromPrefix(context.viewportPrefix);
 
-    // Live element rect via the bridge — works in iframe mode where parent's
-    // contentEl has no children. Bail only if rect can't be resolved.
-    const elScreenRect = findNodeRect(primary.id, startVpId);
-    if (!elScreenRect) return null;
+    // `elScreenRect` is the CURSOR-ANCHORED painted rect built by onMove
+    // (`startMouse − grabOffset + written delta`) — first-hand truth, never
+    // the rect cache. The cache holds the dragged node under one entry per
+    // viewport that painted it, and after a mid-drag handoff only the origin
+    // copy (at best) tracks the cursor: the rest are pre-drag rects,
+    // measurable and silently wrong. Reading it back from the cache is how
+    // the replica→canvas→frame gesture went blind twice (2026-08-26) — first
+    // on a hidden copy (no rect, bail), then on a stale one (wrong rect,
+    // "not fully inside" forever) — and model-coord projection then made the
+    // ENTRY COMMIT teleport the element (parked-element divergence; see the
+    // onMove call site).
+    //
+    // `startVpId` — the viewport whose tile paints the dragged ELEMENT —
+    // is still resolved from the cache registry, but only for the secondary
+    // per-element lookups below (computed transform, painted corners). Those
+    // must read the copy that exists; the model vp's copy may be hidden.
+    const modelVpId = vpIdFromPrefix(context.viewportPrefix);
+    const painted = resolveDraggedRect(
+      modelVpId,
+      viewportPrefixesForNode(primary.id).map(vpIdFromPrefix),
+      (vpId) => findNodeRect(primary.id, vpId),
+    );
+    const startVpId = painted?.vpId ?? modelVpId;
+    if (startVpId !== modelVpId && !this.paintedVpTraced) {
+      this.paintedVpTraced = true;
+      trace.action('canvas-drag:measuring-in-painting-vp', {
+        nodeId: primary.id,
+        modelVpId,
+        paintingVpId: startVpId,
+      });
+    }
 
     // Skip IDs: dragged elements + their descendants (so we don't try to
     // re-parent into a child of ourselves). Walk NodeMap children since the
@@ -1529,14 +1606,22 @@ export class CanvasDragStrategy implements DragStrategy {
     //     light up the outer flex section behind it.
     let bestFrame: { id: string; rect: DOMRect } | null = null;
     let suppressEntry = false;
+    // Per-hit reject journal, emitted as ONE trace per tick below. This loop
+    // failing SILENTLY (no candidate, no trace) is indistinguishable from it
+    // not running at all — which cost five blind fixes on the replica-exit
+    // bug (2026-08-26) before anyone could see which guard was eating the
+    // frame. Cheap: only ticks during an active canvas drag.
+    const rejects: Array<{ id: string; vp: string; why: string }> = [];
+    const reject = (hit: { id: string; vpPrefix: string }, why: string) =>
+      rejects.push({ id: hit.id, vp: hit.vpPrefix, why });
     for (const hit of hits) {
-      if (hit.vpPrefix !== hoverVpPrefix) continue;
-      if (skipIds.has(hit.id)) continue;
+      if (hit.vpPrefix !== hoverVpPrefix) { reject(hit, 'vp-prefix'); continue; }
+      if (skipIds.has(hit.id)) { reject(hit, 'dragged-or-descendant'); continue; }
       if (hit.id === 'root') continue; // handled by viewport-root fallback below
       // TEMPLATE nodes (`layout::…` header/footer/nav merged from the page's
       // Template + the `children-slot`) belong to the template's own file —
       // never a drop parent on a page (same guard the other strategies apply).
-      if (hit.id.startsWith('layout::') || hit.id === 'children-slot') continue;
+      if (hit.id.startsWith('layout::') || hit.id === 'children-slot') { reject(hit, 'template-chrome'); continue; }
       // Component INSTANCE (or its expanded internals) — never a drop target
       // ITSELF: its content is owned by the master, so inserting page content
       // would corrupt the instance. BUT an in-flow instance sitting in a
@@ -1564,14 +1649,15 @@ export class CanvasDragStrategy implements DragStrategy {
             if (parentRect) { bestFrame = { id: parentId, rect: parentRect }; break; }
           }
         }
+        reject(hit, 'instance-no-layout-parent');
         suppressEntry = true; break;
       }
       const node = nodes.get(hit.id);
-      if (!node) continue;
+      if (!node) { reject(hit, 'not-in-node-map'); continue; }
       const tag = (node as any).tag || node.type || 'div';
-      if (!nodeAcceptsChildren(node)) continue;
+      if (!nodeAcceptsChildren(node)) { reject(hit, `no-children:${tag}`); continue; }
       const rect = findNodeRect(hit.id, hoverVpId);
-      if (!rect) continue;
+      if (!rect) { reject(hit, 'no-rect'); continue; }
 
       const layout = detectParentLayoutById(hit.id, hoverVpId);
       const isLayout = layout === 'flex' || layout === 'grid';
@@ -1606,6 +1692,7 @@ export class CanvasDragStrategy implements DragStrategy {
               bestFrame = { id: hit.id, rect };
               break;
             }
+            reject(hit, 'layout-card-does-not-fit');
             continue;
           }
         }
@@ -1621,14 +1708,19 @@ export class CanvasDragStrategy implements DragStrategy {
         const containerHasTransform = hasNonIdentityTransform(
           findNodeComputedStyle(hit.id, hoverVpId, 'transform'),
         );
+        // The CANDIDATE is read in the hovered viewport, the DRAGGED element
+        // in the one painting it — the two are the same tile in an ordinary
+        // drag and deliberately differ after a handoff (see `startVpId`).
+        // Reading the dragged element under `hoverVpId` would measure a
+        // hidden copy, exactly as the rect lookup above used to.
         const elHasTransform = hasNonIdentityTransform(
-          findNodeComputedStyle(primary.id, hoverVpId, 'transform'),
+          findNodeComputedStyle(primary.id, startVpId, 'transform'),
         );
         const containerCorners = containerHasTransform
           ? getScreenCornersById(hit.id, hoverVpId)
           : null;
         const elCorners = elHasTransform
-          ? getScreenCornersById(primary.id, hoverVpId)
+          ? getScreenCornersById(primary.id, startVpId)
           : null;
 
         let fullyInside: boolean;
@@ -1659,6 +1751,7 @@ export class CanvasDragStrategy implements DragStrategy {
         } else {
           // Cursor IS over a non-layout frame, just not fully contained.
           // Block the walk — don't show drop-line on ancestors behind it.
+          reject(hit, `not-fully-inside el=[${Math.round(elScreenRect.left)},${Math.round(elScreenRect.top)},${Math.round(elScreenRect.width)}x${Math.round(elScreenRect.height)}] target=[${Math.round(rect.left)},${Math.round(rect.top)},${Math.round(rect.width)}x${Math.round(rect.height)}]`);
           suppressEntry = true;
         }
         break;
@@ -1668,6 +1761,25 @@ export class CanvasDragStrategy implements DragStrategy {
       break;
     }
     void elScreenRect;
+    // A no-candidate tick over ACTUAL hits is the one that needs explaining.
+    // Emit once per distinct reject pattern (not per tick — 60/s would drown
+    // the ring buffer), keyed on what was rejected and why.
+    if (!bestFrame && rejects.length > 0) {
+      const sig = rejects.map((r) => `${r.vp}:${r.id}=${r.why}`).join('|');
+      if (sig !== this.lastScanRejectSig) {
+        this.lastScanRejectSig = sig;
+        trace.action('canvas-drag:entry-scan-empty', {
+          mouse: { x: Math.round(mouseScreen.x), y: Math.round(mouseScreen.y) },
+          hoverVpPrefix,
+          startVpId,
+          suppressEntry,
+          hitCount: hits.length,
+          rejects,
+        });
+      }
+    } else if (bestFrame) {
+      this.lastScanRejectSig = null;
+    }
 
     // Edge-magnet promotion. When the deepest layout frame and ITS parent
     // are both layout containers running along the same axis, and the
@@ -1735,6 +1847,7 @@ export class CanvasDragStrategy implements DragStrategy {
         this.enteredInsertIndex = -1;
         dropLineOps.hide();
         parentHighlightOps.hide();
+        this.removeEntryPlaceholder();
         trace.action('canvas-drag:entry-cleared', {
           nodeId: primary.id,
           newCandidate: bestFrameId,
@@ -1754,6 +1867,29 @@ export class CanvasDragStrategy implements DragStrategy {
           enteredVpId: this.enteredVpId,
           framesInside: this.framesInCandidateParent,
         });
+        // Route the interacting viewport to wherever the dragged ELEMENT
+        // will actually be patchable — per-frame writes resolve
+        // `interacting vp → prefix → sandbox STRICT [data-node-id]
+        // selector`, and a prefix with no matching element silently no-ops
+        // every patch (element + corner emits + interaction outline all
+        // freeze at the entry spot until mouseup).
+        //
+        //   • NON-LAYOUT parent: the live-reparent below re-homes the
+        //     element (and clones it per replica prefix), so the element
+        //     genuinely lives in the ENTERED viewport → dispatch enteredVpId.
+        //   • LAYOUT parent: drop-line preview only — the element never
+        //     re-homes mid-drag, it keeps painting under ITS OWN prefix.
+        //     Dispatching enteredVpId here broke the mirror direction
+        //     (canvas node → REPLICA layout frame routed writes to
+        //     `tablet-<id>`, which doesn't exist — the same freeze this
+        //     dispatch was added to fix, 2026-08-26). Stay home:
+        //     `context.viewportPrefix` is the element's prefix — `''` for
+        //     canvas-rooted nodes, including every post-exit handoff.
+        const entryLayout = detectParentLayoutById(bestFrameId, this.enteredVpId);
+        const entryIsLayout = entryLayout === 'flex' || entryLayout === 'grid';
+        window.dispatchEvent(new CustomEvent('revyme:set-interacting-viewport', {
+          detail: { vpId: entryIsLayout ? vpIdFromPrefix(context.viewportPrefix) : this.enteredVpId },
+        }));
       }
     }
 
@@ -1831,7 +1967,15 @@ export class CanvasDragStrategy implements DragStrategy {
         const entryPosByNode = new Map<string, { cssLeft: number; cssTop: number }>();
 
         for (const node of draggedNodes) {
-          const elRect = this.mouseSyncedRect(node.id, findNodeRect(node.id, childVpId), context);
+          // The PRIMARY's rect is the one this strategy computed this frame —
+          // the same first-hand value containment just tested (a cache read
+          // here anchored the entry commit on a pre-drag stale rect, so the
+          // element teleported on entry and only recalibrated at mouseup —
+          // user report 2026-08-26, the sequel to the entry-blindness bug).
+          // Single-select always has exactly one node; the guard is for shape.
+          const elRect = node.id === primary.id
+            ? elScreenRect
+            : this.mouseSyncedRect(node.id, findNodeRect(node.id, childVpId), context);
           let cssLeft = 0;
           let cssTop = 0;
           let pos: ReturnType<typeof computeEntryParentLocalPosition> | null = null;
@@ -1993,7 +2137,39 @@ export class CanvasDragStrategy implements DragStrategy {
           trace.action('canvas-drag:entry-reparent-posted', {
             nodeId: node.id, parentId: enteredParentId, cssLeft, cssTop,
           });
+          // REPLICA-ORIGIN ENTRY: the element the user SEES is still the
+          // origin tile's prefixed copy (the mid-drag exit defers its code
+          // flush, so no render ever re-homed it). Re-homing only the model's
+          // prefix (`''`) moves a HIDDEN copy into the frame while the
+          // visible one stays parked in the tile — and the post-entry
+          // parent-local writes then resolve against the tile's containing
+          // block, teleporting it (the entry-jump report, 2026-08-26). The
+          // exit-shaped reparentLive call collapses every copy to the ONE
+          // painted element and re-prefixes it to `''`, so the entry call
+          // below re-homes the element that is actually on screen. Both
+          // posts land before the sandbox's next paint — no flicker.
+          const paintingPrefix = getViewportPrefix(childVpId);
+          if (paintingPrefix !== context.viewportPrefix) {
+            trace.action('canvas-drag:entry-collapse-painting-copy', {
+              nodeId: node.id, paintingPrefix, modelPrefix: context.viewportPrefix,
+            });
+            getCanvasBridge().reparentLive?.(node.id, paintingPrefix, null, 0, {});
+          }
           getCanvasBridge().reparentLive?.(node.id, context.viewportPrefix, enteredParentId, -1, moveStyles);
+          if (paintingPrefix !== context.viewportPrefix) {
+            // The collapse renamed the element to the MODEL prefix's identity
+            // — which is one of the selectors LayoutLifted's drag-start
+            // `hide-synced-replicas` stylesheet hides (`display: none
+            // !important`, removed at drag end). The just-re-homed element
+            // vanished the moment it entered. INLINE !important beats a
+            // stylesheet !important regardless of specificity — the same
+            // technique the overlay hide in LayoutLifted uses, in reverse.
+            // The post-drop render rebuilds the element from source, so the
+            // stamp cannot outlive the gesture.
+            const authoredDisplay = (getNodeFromCache(node.id)?.styles?.display ?? '').trim();
+            (getCanvasBridge() as { patchStyles?: (id: string, vp: string, s: Record<string, string>, imp?: boolean) => void })
+              .patchStyles?.(node.id, context.viewportPrefix, { display: authoredDisplay || 'block' }, true);
+          }
           patchNodeStyles(context.contentEl, node.id, context.viewportPrefix, { transform: orig });
           // Anchor the translate baseline at the new committed position.
           this.committedPos.set(node.id, { left: cssLeft, top: cssTop });
@@ -2236,17 +2412,11 @@ export class CanvasDragStrategy implements DragStrategy {
           // parent and the element appears offset.
           forceCanvasRenderDeferredDuringDrag();
         }
-        // The dragged node now lives in the entered viewport. Update
-        // `interactingViewportIdAtom` (via Canvas's event listener) so
-        // selection-overlay / pin-constraint-lines / style-write routing
-        // all read from the entered viewport's DOM. Without this, those
-        // overlays keep querying findNodeRect(node, 'desktop') where the
-        // node has display:'none' and zero rect → overlays draw at (0,0).
-        if (enteringNonPrimaryVp) {
-          window.dispatchEvent(new CustomEvent('revyme:set-interacting-viewport', {
-            detail: { vpId: enteredVpId },
-          }));
-        }
+        // (The interacting-viewport flip for the entered node happens at
+        // ENTRY CONFIRMATION above — for layout AND non-layout parents alike;
+        // the layout path has no live-reparent, so a dispatch here would
+        // never have covered it and its outline/writes froze on the origin
+        // prefix. See the entry-confirmed block.)
         trace.action('canvas-drag:code-first-entry', {
           parentId: enteredParentId, vpId: enteredVpId,
           nodeIds: draggedNodes.map(n => n.id),
@@ -2437,6 +2607,7 @@ export class CanvasDragStrategy implements DragStrategy {
         if (hasChildren) {
           dropLineOps.show({ parentId: this.enteredParentId, insertIndex, vpId });
           this.dropLineActive = true;
+          this.removeEntryPlaceholder();
         } else {
           // Empty layout target — no siblings to draw a line between,
           // but the layout-drop preview IS active. Pin lines + snap
@@ -2444,9 +2615,67 @@ export class CanvasDragStrategy implements DragStrategy {
           // case (`useDropLineActive` reads the layout-drop flag, not
           // just whether a line is showing).
           dropLineOps.markEmptyLayoutDrop({ parentId: this.enteredParentId, vpId });
+          // BACK-TO-PARENT PLACEHOLDER — only when this frame is the parent
+          // the GESTURE originally lifted the node out of (any tile: data-ids
+          // match across replicas). The reported case (2026-08-26): drag a
+          // layout child out, brush ANY other frame (exit commits + handoff
+          // to this strategy), come back to the now-EMPTY original parent —
+          // where the never-left LayoutLifted path shows its full-size
+          // spacer, this path showed only a thin outline. Foreign empty
+          // frames keep the plain inside-affordance: showing the spacer on
+          // every layout frame the drag crossed read as "insert planned
+          // here" everywhere (the immediate follow-up report).
+          const sourceParentId = context.draggedNodes[0]?.exitSourceParentId;
+          if (sourceParentId && this.enteredParentId === sourceParentId) {
+            this.ensureEntryPlaceholder(context, this.enteredParentId, vpId);
+          } else {
+            this.removeEntryPlaceholder();
+          }
         }
       }
     }
+    if (!this.enteredParentId) this.removeEntryPlaceholder();
+  }
+
+  /** Placeholder spacer inside an EMPTY layout parent during a confirmed
+   *  entry — parity with LayoutLifted's reorder placeholder. Keyed on
+   *  parent+viewport; recreated only when the target changes. */
+  private entryPlaceholder: { key: string } | null = null;
+  private static readonly ENTRY_PH_ID = 'canvas-entry-ph';
+
+  private ensureEntryPlaceholder(context: DragContext, parentId: string, vpId: string): void {
+    const key = `${parentId}|${vpId}`;
+    if (this.entryPlaceholder?.key === key) return;
+    this.removeEntryPlaceholder();
+    const primary = context.draggedNodes[0];
+    if (!primary) return;
+    const bridge = getCanvasBridge();
+    if (!('createPlaceholder' in bridge)) return;
+    (bridge as { createPlaceholder: (id: string, parentId: string, vpPrefix: string, beforeNodeId: string | null, styles: Record<string, string>) => void })
+      .createPlaceholder(CanvasDragStrategy.ENTRY_PH_ID, parentId, getViewportPrefix(vpId), null, {
+        width: `${Math.round(primary.width / context.transform.scale)}px`,
+        height: `${Math.round(primary.height / context.transform.scale)}px`,
+        position: 'relative',
+        zIndex: '9999',
+        backgroundColor: 'rgba(59, 130, 246, 0.15)',
+        borderRadius: '4px',
+        flexShrink: '0',
+        pointerEvents: 'none',
+        boxSizing: 'border-box',
+      });
+    this.entryPlaceholder = { key };
+    trace.action('canvas-drag:entry-placeholder-created', { parentId, vpId });
+  }
+
+  private removeEntryPlaceholder(): void {
+    if (!this.entryPlaceholder) return;
+    const bridge = getCanvasBridge();
+    if ('removePlaceholders' in bridge) {
+      (bridge as { removePlaceholders: (ids: string[]) => void })
+        .removePlaceholders([CanvasDragStrategy.ENTRY_PH_ID]);
+    }
+    this.entryPlaceholder = null;
+    trace.action('canvas-drag:entry-placeholder-removed', {});
   }
 
   onEnd(context: DragContext): PendingUpdate[] {
@@ -3191,7 +3420,17 @@ export class CanvasDragStrategy implements DragStrategy {
     return updates;
   }
 
-  getDropViewportId(context: DragContext): string {
+  /** The viewport this drag ENTERED — only meaningful once entry is CONFIRMED.
+   *  `enteredVpId` is seeded `'desktop'`, which is truthy, so the old
+   *  `enteredVpId || fromPrefix` returned that stale default for every drag
+   *  that never confirmed an entry. The coordinator then "adopted" desktop over
+   *  the `mobile` the drag had already resolved in flight, and the overlay went
+   *  looking for a desktop copy that is hidden (trace:
+   *  `viewport-drop-adopt-viewport { from: mobile, to: desktop }` on a drop INTO
+   *  mobile, 2026-08-24). Undefined when unconfirmed, so callers can tell
+   *  "no answer" from "desktop". */
+  getDropViewportId(context: DragContext): string | undefined {
+    if (!this.entryConfirmed) return undefined;
     return this.enteredVpId || vpIdFromPrefix(context.viewportPrefix);
   }
 
@@ -3266,6 +3505,9 @@ export class CanvasDragStrategy implements DragStrategy {
   }
 
   private resetState(): void {
+    // Entry placeholder cannot outlive the gesture — onEnd and onCancel both
+    // funnel through here.
+    this.removeEntryPlaceholder();
     // Per-gesture transform/pos snapshots — cleared HERE, after every commit
     // loop that reads them (never mid-onEnd; see the premature-clear bug note
     // in the atomic final-patch section).

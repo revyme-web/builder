@@ -280,8 +280,15 @@ export class EditorPage {
       await this._page.evaluate(() => new Promise(r => requestAnimationFrame(() => r(null))));
     }
 
-    const during = opts?.vpId ? await this.nodeBoxIn(opts.vpId, dataId) : await this.nodeBox(dataId);
-    const moved = Math.abs(during.x - box.x) >= minDelta || Math.abs(during.y - box.y) >= minDelta;
+    // A GONE box also proves engagement: a replica drag-out SPLITS mid-drag
+    // (the gesture continues on a fresh-id clone and the source is hidden on
+    // its origin viewport), so the source id legitimately stops having a box.
+    // Only "still sitting exactly where it started" means the gesture never
+    // engaged.
+    const during = await (opts?.vpId ? this.nodeBoxIn(opts.vpId, dataId) : this.nodeBox(dataId))
+      .catch(() => null);
+    const moved = !during
+      || Math.abs(during.x - box.x) >= minDelta || Math.abs(during.y - box.y) >= minDelta;
     if (!moved) {
       await mouse.up();
       throw new Error(
@@ -294,7 +301,9 @@ export class EditorPage {
     if (opts?.releaseDelayMs) await this._page.waitForTimeout(opts.releaseDelayMs);
     await mouse.up();
     await this._page.waitForTimeout(80); // post-drop flush → ProjectFS
-    return during;
+    // Split gestures have no mid-drag source box — report the start box so
+    // callers that only use the return value for logging keep working.
+    return during ?? box;
   }
 
   /**
@@ -325,10 +334,12 @@ export class EditorPage {
       // Entry hysteresis is 3 frames (canvas) / 5 (absolute sibling) — pump
       // past both before asserting on anything entry-gated.
       await this.pumpDrag(to, opts?.pumpFrames ?? 8);
-      // Same engagement guard as dragNodeAsserted: a mid-drag assertion on a
-      // gesture that never started would be measuring an idle page.
-      const during = opts?.vpId ? await this.nodeBoxIn(opts.vpId, dataId) : await this.nodeBox(dataId);
-      if (Math.abs(during.x - box.x) < 2 && Math.abs(during.y - box.y) < 2) {
+      // Same engagement guard as dragNodeAsserted — a GONE box also counts as
+      // engaged (replica drag-out split: the source hides on its origin
+      // viewport and the gesture continues on a fresh-id clone).
+      const during = await (opts?.vpId ? this.nodeBoxIn(opts.vpId, dataId) : this.nodeBox(dataId))
+        .catch(() => null);
+      if (during && Math.abs(during.x - box.x) < 2 && Math.abs(during.y - box.y) < 2) {
         throw new Error(
           `Drag never engaged for "${dataId}"${opts?.vpId ? ` in viewport ${opts.vpId}` : ''}: ` +
           `still at (${box.x}, ${box.y}) with the button down. Mid-drag assertions would be meaningless.`,

@@ -4,6 +4,16 @@
 import * as t from '@babel/types';
 import { traverse, jsxTagName, jsxAttrs, stringAttr } from './shared';
 import type { OracleViolation } from './shared';
+import { MOTION_LINK_DECL_ANY_RE } from '@/code/generation/generator-attrs';
+
+/** JSX living INSIDE the `const MotionLink = motion.create(React.forwardRef(…))`
+ *  declaration itself (the href-aware wrapper renders `<Link>`/`<div>` in its
+ *  body). That's dialect scaffolding, not authored content — never an
+ *  offender for the link rules. */
+function isInsideMotionLinkDecl(path: { findParent: (cb: (p: any) => boolean) => unknown }): boolean {
+  return !!path.findParent((p: any) =>
+    p.isVariableDeclarator?.() && p.node?.id?.type === 'Identifier' && p.node.id.name === 'MotionLink');
+}
 
 /**
  * COMPONENT LINKS — inside a design component every element is motion.* (the
@@ -22,6 +32,7 @@ function checkComponentLinks(code: string, ast: t.File, v: OracleViolation[]): v
       const opening = path.node.openingElement;
       const tag = jsxTagName(opening.name);
       if (tag === 'MotionLink') { usesMotionLink = true; return; }
+      if (isInsideMotionLinkDecl(path)) return; // the wrapper's own <Link>/<div>
       const attrs = jsxAttrs(opening);
       if (!attrs.some((a) => a.name.name === 'href')) return; // not a link
       offenders.push({ tag, line: opening.loc?.start.line, id: stringAttr(attrs, 'data-id') });
@@ -35,7 +46,7 @@ function checkComponentLinks(code: string, ast: t.File, v: OracleViolation[]): v
   }
   if (usesMotionLink || offenders.length > 0) {
     const hasImport = /import\s+Link\s+from\s+['"]next\/link['"]/.test(code);
-    const hasCreate = /const\s+MotionLink\s*=\s*motion\.create\(\s*Link\s*\)/.test(code);
+    const hasCreate = MOTION_LINK_DECL_ANY_RE.test(code);
     if (usesMotionLink && (!hasImport || !hasCreate)) {
       v.push({
         code: 'MOTIONLINK_SETUP_MISSING', tier: 2,
@@ -64,8 +75,9 @@ function checkPageLinks(code: string, ast: t.File, v: OracleViolation[]): void {
       // framer-motion props so a page link can carry whileHover/whileTap/etc.
       // (the editor converts a <Link> → <MotionLink> when you add an animation
       // to it). Only raw <a>/<motion.a> are forbidden.
-      if (tag === 'Link') { usesLink = true; return; }
       if (tag === 'MotionLink') { usesLink = true; usesMotionLink = true; return; }
+      if (isInsideMotionLinkDecl(path)) return; // the wrapper's own <Link>/<div>
+      if (tag === 'Link') { usesLink = true; return; }
       const attrs = jsxAttrs(opening);
       if (!attrs.some((a) => a.name.name === 'href')) return; // not a link
       // CMS field-bound anchors are tool-owned <a> — leave them.
@@ -89,7 +101,7 @@ function checkPageLinks(code: string, ast: t.File, v: OracleViolation[]): void {
   }
   // A page <MotionLink> needs `const MotionLink = motion.create(Link);` at module
   // scope or it's undefined at runtime — same setup check as design components.
-  if (usesMotionLink && !/const\s+MotionLink\s*=\s*motion\.create\(\s*Link\s*\)/.test(code)) {
+  if (usesMotionLink && !MOTION_LINK_DECL_ANY_RE.test(code)) {
     v.push({
       code: 'MOTIONLINK_SETUP_MISSING', tier: 2,
       message: `<MotionLink> is used on this page but \`const MotionLink = motion.create(Link);\` is missing — without it MotionLink is undefined and the page crashes. Add it at module scope (after \`import Link from 'next/link';\`).`,

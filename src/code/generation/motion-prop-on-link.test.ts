@@ -31,9 +31,11 @@ describe('updateMotionPropInCode — motion prop on a <Link>', () => {
     expect(out).not.toContain('motion.motionlink');
   });
 
-  test('injects the motion.create(Link) const once', () => {
-    expect(out).toMatch(/const MotionLink = motion\.create\(Link\)/);
-    expect((out.match(/const MotionLink = motion\.create\(Link\)/g) || []).length).toBe(1);
+  test('injects the href-aware MotionLink const once', () => {
+    // The declaration is the wrapper form — falsy href renders no anchor
+    // (unset link variables must not be links, 2026-08-26).
+    expect(out).toMatch(/const MotionLink = motion\.create\(/);
+    expect((out.match(/const MotionLink = motion\.create\(/g) || []).length).toBe(1);
   });
 
   test('applies whileHover with the given props (numbers unquoted)', () => {
@@ -51,7 +53,7 @@ describe('updateMotionPropInCode — motion prop on a <Link>', () => {
     expect(parses(out2)).toBe(true);
     expect(out2).toMatch(/whileTap=\{\{ scale: 0\.95 \}\}/);
     expect(out2).toMatch(/whileHover=\{\{ opacity: 0\.6, scale: 1\.05 \}\}/);
-    expect((out2.match(/const MotionLink = motion\.create\(Link\)/g) || []).length).toBe(1);
+    expect((out2.match(/const MotionLink = motion\.create\(/g) || []).length).toBe(1);
     expect(out2).not.toContain('motion.motionlink');
   });
 });

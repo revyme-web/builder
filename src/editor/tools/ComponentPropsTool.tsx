@@ -2852,13 +2852,25 @@ export default function ComponentPropsTool() {
                 // href → a button opening the "Link" popup (page/CMS picker +
                 // Section anchor dropdown). newTab/smooth → Yes/No toggle.
                 if (linkKind === 'href') {
+                  // INSTANCE-ONLY value — deliberately NOT `propValue`, whose
+                  // chain falls back to `prop.defaultValue`. Link variables
+                  // have no default (2026-08-26): mirroring a master default
+                  // here painted a filled "Home" chip on an instance that
+                  // never set the link, and the × looked broken (there was no
+                  // instance value to clear). Unset shows "Add link".
+                  const linkInstanceValue = resolveScopedPropDisplay(prop.name,
+                    pendingProps[prop.name]
+                    ?? previewValues[prop.name]
+                    ?? (isReplica ? responsiveOverrides.get(prop.name) : undefined)
+                    ?? resolveVariantBranchDisplay(currentValues.get(prop.name))
+                    ?? '', prop.defaultValue);
                   return (
                     <HoistMenuItemProvider key={prop.name} item={hoistMenuItem}>
                       <LinkVariableInstanceRow
                         label={prop.name}
                         subLabel="Link To"
                         propName={prop.name}
-                        value={propValue}
+                        value={linkInstanceValue}
                         defaultValue={prop.defaultValue}
                         labelPlain={!hoistMenuItem}
                         onChange={handlePropChange}

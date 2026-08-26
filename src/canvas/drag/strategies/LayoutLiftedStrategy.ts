@@ -24,7 +24,7 @@ import { getScreenCornersById, nodeOrAncestorHasRotationOrSkewById, type ScreenC
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { getIframeOffset } from '../helpers/coords';
 import type { PostMessageBridge } from '@/canvas-sandbox/bridge-host';
-import { getNodeFromCache } from '@/code/stores/store';
+import { getNodeFromCache, selectedIdsAtom, seedNodesForCode } from '@/code/stores/store';
 import { isReplicaOnlyOnViewport } from '../replica-exit';
 import { getReplicaContext } from '../replica-context';
 import { getViewportWidths } from '@/code/stores/viewport-store';
@@ -40,7 +40,7 @@ import { nodeAcceptsChildren } from '@/shared/constants';
 import { calculateLayoutInsertIndexById, computeReorderAssignments } from '../reparent-utils';
 import { rankToOrder, pickPlaceholderOrder, normalizeFlowSpans } from './order-positioning';
 import { commitOrderAssignments, computeLayoutBrackets } from './order-commit';
-import { queueMutation, flushNow, hasPendingDeferredFanOut } from '@/code/mutation/mutation-queue';
+import { queueMutation, flushNow, getCurrentCode, hasPendingDeferredFanOut } from '@/code/mutation/mutation-queue';
 import { commitExitToCanvas, flushExitToCanvas } from '../exit-commit';
 import { registerDragEndRestore } from '../drag-end-restores';
 import { computeExitCanvasPosition } from '../transform-reparent';
@@ -1451,7 +1451,8 @@ export class LayoutLiftedStrategy implements DragStrategy {
           // so `moveNodeInCode`'s strip walker resolves variant ternary
           // text into a plain string for the canvas-rooted clone.
           const exitSourceVariant = isComponentFilePath(getActiveFilePath()) ? exitVpId : undefined;
-          const exitOverrides = new Map<string, { startLeft: number; startTop: number; startParentId: string | null }>();
+          const exitOverrides = new Map<string, { startLeft: number; startTop: number; startParentId: string | null; newId?: string; sourceParentId?: string | null }>();
+          let splitToClone = false;
 
           for (const node of draggedNodes) {
             patchNodeStyles(context.contentEl, node.id, getViewportPrefix(exitVpId), { pointerEvents: '' });
@@ -1478,15 +1479,170 @@ export class LayoutLiftedStrategy implements DragStrategy {
               ms.width = `${Math.round(lifted.width)}px`;
               ms.height = `${Math.round(lifted.height)}px`;
             }
-            commitExitToCanvas({ nodeId: node.id, styles: ms, sourceVariant: exitSourceVariant });
+
+            // REPLICA SPLIT — the mid-drag half of the drop path's rule (its
+            // twin lives in onEnd's drop-on-canvas branch; data-loss report
+            // 2026-08-26). Exiting a replica whose counterparts still render
+            // the node must NOT move the shared source: every tile renders
+            // the SAME JSX element, so the later frame-entry commit would
+            // delete it from every breakpoint. Instead commit a fresh-id
+            // canvas CLONE (fresh ids so the source's @media rules don't
+            // follow it) + hide the source on the ORIGIN viewport only, and
+            // hand the REST OF THE GESTURE to the clone via the override's
+            // `newId`. Solo replicas and primary-origin drags keep the plain
+            // move — for them a move IS the right semantics.
+            let continuedId = node.id;
+            if (!isPrimaryViewport(exitVpId)) {
+              const isOnComponentMaster = isComponentFilePath(getActiveFilePath());
+              const variantNames = isOnComponentMaster
+                ? parseVariantConfig(projectFS.readFile(getActiveFilePath()) ?? '').map(v => v.name)
+                : [];
+              const otherVpIds = isOnComponentMaster
+                ? variantNames.map(v => (v === 'default' ? 'desktop' : v))
+                : Object.keys(getViewportWidths());
+              const isReplicaOnly = isReplicaOnlyOnViewport({
+                dropVpId: exitVpId,
+                otherVpIds,
+                isComponentMaster: isOnComponentMaster,
+                hiddenOnVariants: context.nodes.get(node.id)?.hiddenOnVariants,
+                inlineDisplay: context.nodes.get(node.id)?.styles?.display,
+                readDisplay: (vpId) => findNodeComputedStyle(node.id, vpId, 'display'),
+              });
+              trace.action('layout-lifted:midexit-replica-visibility', {
+                nodeId: node.id, exitVpId, isReplicaOnly,
+              });
+              if (isReplicaOnly) {
+                // SOLO exit carries the node's own inline `display: 'none'`
+                // out with it — the hide-by-default half of "visible only on
+                // this replica". On the canvas (and inside a canvas FRAME the
+                // gesture may enter next) no @media/@container band can ever
+                // un-hide it: the moved node rendered display:none forever
+                // ("when it inserts it's completely hidden", 2026-08-26).
+                // Mirror the drop path's solo branch: clear display, or bake
+                // the variant's effective display on a component master.
+                // The attr-gated clear inside exit-commit doesn't cover this
+                // — a MANUAL hide-everywhere-else has no `data-replica-solo`,
+                // but `isReplicaOnly` (computed from EFFECTIVE displays) is
+                // precisely the "de-facto solo" answer.
+                if ((context.nodes.get(node.id)?.styles?.display ?? '') === 'none') {
+                  let effectiveDisplay = '';
+                  if (isOnComponentMaster) {
+                    const variantKey = exitVpId === 'desktop' ? 'default' : exitVpId;
+                    const vd = context.nodes.get(node.id)?.motionVariants?.[variantKey]?.display;
+                    if (vd && vd !== '' && vd !== 'auto') effectiveDisplay = vd;
+                  }
+                  ms.display = effectiveDisplay;
+                  trace.action('layout-lifted:midexit-solo-display-cleared', {
+                    nodeId: node.id, effectiveDisplay,
+                  });
+                }
+              }
+              if (!isReplicaOnly) {
+                const cloneIdMap = new Map<string, string>();
+                const def = buildCanvasCloneDescriptor(
+                  node.id, context.nodes, cloneIdMap,
+                  isOnComponentMaster ? undefined : getViewportWidths()[exitVpId],
+                  exitSourceVariant,
+                );
+                if (def) {
+                  def.styles = { ...def.styles, ...ms };
+                  // A hide-by-default source (inline `display:'none'` +
+                  // per-vp un-hide) would carry the hide onto a canvas
+                  // root with no @media context to flip it back.
+                  if (def.styles.display === 'none') def.styles.display = '';
+                  queueMutation({ type: 'addCanvasNode', node: def });
+                  if (isOnComponentMaster) {
+                    // Master channel: ADD this variant to the hidden set
+                    // (additive — same as replica-context's hideInThis).
+                    const hidden = new Set(getNodeFromCache(node.id)?.hiddenOnVariants ?? []);
+                    hidden.add(exitVpId === 'desktop' ? 'default' : exitVpId);
+                    queueMutation({
+                      type: 'setVariantVisibility',
+                      nodeId: node.id,
+                      hiddenVariants: Array.from(hidden),
+                      allVariants: variantNames,
+                    });
+                  } else {
+                    // Page channel: this viewport's @media band hides it.
+                    queueMutation({
+                      type: 'updateContainerStyle',
+                      nodeId: node.id,
+                      maxWidth: getViewportWidths()[exitVpId] ?? 0,
+                      styles: { display: 'none' },
+                    });
+                  }
+                  // Fresh ids — copy the subtree's ::after border-overlay
+                  // rules onto them (same as the drop path's clone).
+                  queueBorderOverlayDuplicates(cloneIdMap);
+                  continuedId = def.id;
+                  splitToClone = true;
+                  trace.action('layout-lifted:midexit-clone', {
+                    srcId: node.id, cloneId: def.id, exitVpId,
+                  });
+                } else {
+                  trace.error('layout-lifted:midexit-clone-descriptor-failed', { nodeId: node.id });
+                }
+              }
+            }
+
+            if (continuedId === node.id) {
+              commitExitToCanvas({ nodeId: node.id, styles: ms, sourceVariant: exitSourceVariant });
+            }
             exitOverrides.set(node.id, {
               startLeft: Math.round(canvasLeft),
               startTop: Math.round(canvasTop),
               startParentId: null,
+              // Where the gesture lifted from — read PRE-override, so this
+              // is the true original parent even for the clone continuation.
+              sourceParentId: node.startParentId,
+              ...(continuedId !== node.id ? { newId: continuedId } : {}),
             });
           }
 
-          flushExitToCanvas();
+          if (splitToClone) {
+            // The clone must EXIST — in code, in the DOM, in the caches —
+            // before CanvasDragStrategy's first tick writes to it, and the
+            // source must be back in its slot (hidden on the origin band).
+            // Release the drag locks first: the render skips locked nodes,
+            // and the SOURCE is still in the lock set from the lift — locked,
+            // it would stay floating at the lift position instead of being
+            // rebuilt into its slot. The coordinator re-establishes the locks
+            // from the switched context (which now names the clone).
+            const lockBridge = getCanvasBridge();
+            if ('setDragLockedNodeIds' in lockBridge) {
+              (lockBridge as PostMessageBridge).setDragLockedNodeIds([]);
+            }
+            flushNow();
+            // SEED then FORCE — the established mid-drag render recipe (same
+            // as CanvasDragStrategy's entry-sync pipeline). Two traps here:
+            // nodesAtom doesn't re-derive during a drag, so an unseeded
+            // render rebuilds from the PRE-SPLIT map and the clone gets no
+            // DOM element (every later write and reparentLive for it then
+            // no-ops); and the patch-mode render bails outright while
+            // `interacting` — only forceRender bypasses that flag. Seeding
+            // the imperative cache from the just-flushed code makes the
+            // force handler's gesture-window branch pick up the fresh map.
+            seedNodesForCode(getCurrentCode());
+            forceCanvasRender();
+            // The full rebuild regenerates the canvas <style> from code —
+            // wiping the imperative drag-start hide that keeps the source's
+            // twins in the OTHER viewports invisible for the rest of the
+            // gesture (the desktop copy popped back at its slot mid-drag).
+            // Re-inject; drag-end's deferred restore still removes it.
+            if (this.hiddenReplicaSelector) {
+              injectCanvasCSS(this.hiddenReplicaSelector, 'display: none !important;');
+            }
+            // Selection follows the clone (mid-drag the overlay is hidden;
+            // this is for the end-of-drag bookkeeping + panels).
+            const swapped = Array.from(exitOverrides.values())
+              .map(o => o.newId)
+              .filter((id): id is string => !!id);
+            if (swapped.length > 0) {
+              getDefaultStore().set(selectedIdsAtom, swapped);
+            }
+          } else {
+            flushExitToCanvas();
+          }
 
           // Restore original `order` styles on the parent's remaining
           // siblings — the spaced-rank scheme from neutralize-on-lift is

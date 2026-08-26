@@ -542,6 +542,17 @@ export default function VariableModal({
     return getVariableType(id);
   }, [pendingTypeId, selectedVar, existingVars]);
 
+  /** Hide the Default row for no-default types (VariableTypeDef.noDefault:
+   *  links, cursors). Fallback for LEGACY link variables created before the
+   *  LinkTool stamped `varType: 'link'`: no declared type but the component
+   *  binds them to an `href={…}` → same treatment. */
+  const suppressDefaultRow = useMemo(() => {
+    if (activeTypeDef) return !!activeTypeDef.noDefault;
+    if (!selectedVar) return false;
+    const safe = selectedVar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`href=\\{[^}]*\\b${safe}\\b[^}]*\\}`).test(componentCode);
+  }, [activeTypeDef, selectedVar, componentCode]);
+
   const effectiveProperty = useMemo(() => {
     // The actual BINDING is ground truth — resolve what the variable ACTUALLY drives FIRST (direct/overlay/
     // per-variant in the active file AND forwarded into a child instance prop, the hoisted case). A variable's
@@ -1221,8 +1232,9 @@ export default function VariableModal({
                   <AutoGrowTextarea value={description} onChange={setDescription} minRows={3} />
                 </FieldRow>
 
-                {/* Default value — hidden for cursors / no-default variable types. */}
-                {!hideDefault && activeTypeDef?.editor !== 'componentCursor' && (
+                {/* Default value — hidden for no-default variable types (links,
+                    cursors — see VariableTypeDef.noDefault). */}
+                {!hideDefault && !suppressDefaultRow && (
                   <FieldRow label="Default" align="start">
                     <div className="flex flex-col gap-2">
                       {renderDefaultValueControl(defaultValue, setDefaultValue)}
@@ -1296,8 +1308,9 @@ export default function VariableModal({
                   />
                 </FieldRow>
 
-                {/* Default value — hidden for component cursors (no default value, standard). */}
-                {!hideDefault && activeTypeDef?.editor !== 'componentCursor' && (
+                {/* Default value — hidden for no-default variable types (links,
+                    cursors — see VariableTypeDef.noDefault). */}
+                {!hideDefault && !suppressDefaultRow && (
                   <FieldRow label="Default" align="start">
                     <div className="flex flex-col gap-2">
                       {renderDefaultValueControl(

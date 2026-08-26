@@ -1822,6 +1822,22 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
           return;
         }
 
+        // Skip the JSX INSIDE the `const MotionLink = motion.create(
+        // React.forwardRef(…))` declaration — the href-aware wrapper renders
+        // `<Link>`/`<div>` in its own body. That's module scaffolding, not
+        // authored content; without this skip the two elements got auto ids
+        // (`auto_N`) and appeared as phantom canvas nodes.
+        if (
+          path.findParent(
+            (p) => p.isVariableDeclarator()
+              && (p.node as { id?: { type?: string; name?: string } }).id?.type === 'Identifier'
+              && (p.node as { id?: { name?: string } }).id?.name === 'MotionLink',
+          )
+        ) {
+          path.skip();
+          return;
+        }
+
         // AnimatePresence wrapper for variant visibility — wraps a
         // conditional `{cond && <Child />}` around a single element.
         // We want the inner Child to be processed AS IF it were a

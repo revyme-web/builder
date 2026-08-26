@@ -1257,11 +1257,14 @@ export class GridDragStrategy implements DragStrategy {
       return { snap: null, dropTarget: null, highlightParentId: null, axisLock: null };
     }
 
-    const exitOverrides = new Map<string, { startLeft: number; startTop: number; startParentId: string | null }>();
+    const exitOverrides = new Map<string, { startLeft: number; startTop: number; startParentId: string | null; sourceParentId?: string | null }>();
     exitOverrides.set(this.liftedNodeId, {
       startLeft: Math.round(canvasLeft),
       startTop: Math.round(canvasTop),
       startParentId: null,
+      // Original grid parent — lets the canvas strategy's back-to-parent
+      // placeholder fire only on a return to THIS parent (see shared/types).
+      sourceParentId: this.parentId,
     });
 
     return {

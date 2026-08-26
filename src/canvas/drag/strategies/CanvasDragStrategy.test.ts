@@ -80,6 +80,7 @@ const mockPatchNodeStyles = vi.fn<(contentEl: HTMLElement, nodeId: string, vpPre
 // (getNodeHitsAtPoint + findNodeRect), not DOM-based.
 const mockFindNodeRect = vi.fn<(nodeId: string, vpId: string) => DOMRect | null>(() => null);
 const mockGetNodeHitsAtPoint = vi.fn<(x: number, y: number) => Array<{ id: string; vpPrefix: string }>>(() => []);
+const mockViewportPrefixesForNode = vi.fn<(nodeId: string) => string[]>(() => ['']);
 
 vi.mock('@/canvas/node-ops', () => ({
   updateNodeStyles: vi.fn(),
@@ -98,6 +99,9 @@ vi.mock('@/canvas/node-ops', () => ({
   // Bridge / canvas mode helpers used by reparent + variant-exit branches
   getNodeHitsAtPoint: (...args: any[]) => mockGetNodeHitsAtPoint(args[0], args[1]),
   findRootHitAtPoint: vi.fn(() => null),
+  // Which viewport tiles paint a node — the rect-cache registry the strategy
+  // scans when the dragged element isn't measurable in the model's viewport.
+  viewportPrefixesForNode: (...args: any[]) => mockViewportPrefixesForNode(args[0]),
   forceCanvasRenderDeferredDuringDrag: vi.fn(), forceCanvasRender: vi.fn(),
   getViewportPrefix: vi.fn((vpId: string) =>
     !vpId || vpId === 'desktop' || vpId === 'default' ? '' : `${vpId}-`,
@@ -203,6 +207,7 @@ describe('CanvasDragStrategy', () => {
     // Reset bridge-read defaults (mockImplementation set in a test would
     // otherwise leak into the next one).
     mockFindNodeRect.mockReturnValue(null);
+    mockViewportPrefixesForNode.mockReturnValue(['']);
     mockGetNodeHitsAtPoint.mockReturnValue([]);
   });
 
@@ -548,9 +553,12 @@ describe('CanvasDragStrategy', () => {
       expect(result.highlightVpId).toBe('tablet');
     });
 
-    test('returns undefined vpId when the dragged rect is unresolvable (no bridge hits)', () => {
-      // findNodeRect stays null → containment detection bails early and
-      // never sets lastHoverVpId.
+    test('containment runs even when the bridge has NO rect for the dragged node', () => {
+      // The dragged element's rect is the strategy's own per-frame math, not a
+      // cache read — an empty rect cache (DirectBridge, or every copy hidden
+      // post-handoff) must not blind entry detection. With no hits under the
+      // cursor the hover vp falls back to the drag's origin (primary →
+      // 'desktop') instead of staying unset as the old bail-out left it.
       const ctx = makeContext({
         draggedNodes: [makeDraggedNode({ id: 'node-1', startLeft: 100, startTop: 200 })],
         startMouse: { x: 500, y: 300 },
@@ -559,8 +567,7 @@ describe('CanvasDragStrategy', () => {
 
       const result = strategy.onMove(ctx, { x: 510, y: 310 });
 
-      // No hover viewport resolved → highlightVpId should be undefined
-      expect(result.highlightVpId).toBeUndefined();
+      expect(result.highlightVpId).toBe('desktop');
     });
   });
 
@@ -933,6 +940,139 @@ describe('entry into a REPLICA writes the visibility pair', () => {
     expect(flushNowDeferredDuringDrag).toHaveBeenCalled();
     expect(flushNow).not.toHaveBeenCalled();
     expect(forceCanvasRender).not.toHaveBeenCalled();
+  });
+});
+
+// Reported 2026-08-26: drag a node out of a layout parent on the MOBILE tile,
+// across the canvas, into a no-layout canvas frame → nothing reparents; on
+// mouseup it stays a canvas node. From the PRIMARY the same gesture works.
+//
+// LayoutLifted commits the exit and hands off, so the model is canvas-rooted
+// (`viewportPrefix: ''` → `desktop`) while the live element is still parked in
+// the mobile tile — and drag start hid the desktop copy. Measuring the dragged
+// element in the model's viewport read that hidden copy, so entry detection
+// bailed on its first line every frame and emitted no entry action at all.
+describe('post-handoff: the dragged element is measured where it PAINTS', () => {
+  beforeEach(() => { vi.clearAllMocks(); mockViewportPrefixesForNode.mockReturnValue(['']); });
+
+  const NO_RULES = `<div data-id="root" style={{position:'relative'}}></div>`;
+
+  /** The dragged node is unmeasurable in `hiddenIn` and painted in `paintedIn`,
+   *  which is exactly the post-handoff replica state. */
+  function runHandoffEntry(paintedIn: string, hiddenIn: string) {
+    mockGetNodeHitsAtPoint.mockReturnValue([{ id: 'frame-1', vpPrefix: '' }]);
+    mockViewportPrefixesForNode.mockReturnValue(['', 'tablet-', 'mobile-']);
+    mockFindNodeRect.mockImplementation((nodeId: string, vpId: string) => {
+      if (nodeId === 'node-1') {
+        if (vpId === hiddenIn) return null;      // display:none copy — no rect
+        if (vpId === paintedIn) return new DOMRect(200, 300, 100, 50);
+        return null;
+      }
+      if (nodeId === 'frame-1') return new DOMRect(100, 100, 400, 400);
+      return null;
+    });
+    const ctx = makeContext({
+      // startParentId null + viewportPrefix '' — LayoutLifted already committed
+      // the exit, so the model says "canvas node" before the DOM catches up.
+      draggedNodes: [makeDraggedNode({ id: 'node-1', startLeft: 100, startTop: 200, startParentId: null })],
+      startMouse: { x: 200, y: 300 },
+      viewportPrefix: '',
+      nodes: new Map<string, any>([
+        ['frame-1', { id: 'frame-1', type: 'div', tag: 'div', parentId: null, children: [], styles: { position: 'relative' }, attrs: {} }],
+      ]),
+    });
+    const s = new CanvasDragStrategy();
+    s.onStart(ctx);
+    for (let i = 0; i < 3; i++) s.onMove(ctx, { x: 220, y: 320 });
+    return ctx;
+  }
+
+  test('THE BUG: entry is still detected when the model viewport has no rect', async () => {
+    const { getDefaultStore } = await import('jotai');
+    const { codeAtom } = await import('@/code/stores/store');
+    getDefaultStore().set(codeAtom, NO_RULES);
+
+    runHandoffEntry('mobile', 'desktop');
+
+    expect(queueMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'move', nodeId: 'node-1', newParentId: 'frame-1',
+    }));
+  });
+
+  test('the primary-origin drag is unaffected — no scan, same result', async () => {
+    const { getDefaultStore } = await import('jotai');
+    const { codeAtom } = await import('@/code/stores/store');
+    getDefaultStore().set(codeAtom, NO_RULES);
+
+    // Painted where the model says: the branch that always worked.
+    runHandoffEntry('desktop', 'mobile');
+
+    expect(queueMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'move', nodeId: 'node-1', newParentId: 'frame-1',
+    }));
+  });
+
+  test('an EMPTY rect cache still enters — the dragged rect is drag math, not a lookup', async () => {
+    // Every copy hidden, or no rectCache at all (DirectBridge): the old code
+    // bailed entry outright. The dragged element's rect now comes from the
+    // position the strategy is writing this frame, so the cache state of the
+    // DRAGGED node changes nothing. (Candidate frames still need their rects.)
+    const { getDefaultStore } = await import('jotai');
+    const { codeAtom } = await import('@/code/stores/store');
+    getDefaultStore().set(codeAtom, NO_RULES);
+
+    mockGetNodeHitsAtPoint.mockReturnValue([{ id: 'frame-1', vpPrefix: '' }]);
+    mockViewportPrefixesForNode.mockReturnValue([]);
+    mockFindNodeRect.mockImplementation((nodeId: string) =>
+      nodeId === 'frame-1' ? new DOMRect(100, 100, 400, 400) : null);
+
+    const ctx = makeContext({
+      draggedNodes: [makeDraggedNode({ id: 'node-1', startLeft: 100, startTop: 200, startParentId: null })],
+      startMouse: { x: 200, y: 300 },
+      viewportPrefix: '',
+      nodes: new Map<string, any>([
+        ['frame-1', { id: 'frame-1', type: 'div', tag: 'div', parentId: null, children: [], styles: { position: 'relative' }, attrs: {} }],
+      ]),
+    });
+    const s = new CanvasDragStrategy();
+    s.onStart(ctx);
+    for (let i = 0; i < 3; i++) s.onMove(ctx, { x: 220, y: 320 });
+
+    expect(queueMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'move', nodeId: 'node-1', newParentId: 'frame-1',
+    }));
+  });
+
+  test('the computed rect refuses a frame the element does not FIT', async () => {
+    // The fully-inside rule survives the rect-source change: an element
+    // bigger than the no-layout frame must still suppress entry.
+    const { getDefaultStore } = await import('jotai');
+    const { codeAtom } = await import('@/code/stores/store');
+    getDefaultStore().set(codeAtom, NO_RULES);
+
+    mockGetNodeHitsAtPoint.mockReturnValue([{ id: 'frame-1', vpPrefix: '' }]);
+    mockViewportPrefixesForNode.mockReturnValue(['']);
+    mockFindNodeRect.mockImplementation((nodeId: string) =>
+      nodeId === 'frame-1' ? new DOMRect(100, 100, 400, 400) : null);
+
+    const ctx = makeContext({
+      draggedNodes: [makeDraggedNode({
+        id: 'node-1', startLeft: 100, startTop: 200, startParentId: null,
+        width: 900, height: 500, // overhangs frame-1 in every direction
+      })],
+      startMouse: { x: 200, y: 300 },
+      viewportPrefix: '',
+      nodes: new Map<string, any>([
+        ['frame-1', { id: 'frame-1', type: 'div', tag: 'div', parentId: null, children: [], styles: { position: 'relative' }, attrs: {} }],
+      ]),
+    });
+    const s = new CanvasDragStrategy();
+    s.onStart(ctx);
+    for (let i = 0; i < 3; i++) s.onMove(ctx, { x: 220, y: 320 });
+
+    expect(queueMutation).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'move', nodeId: 'node-1', newParentId: 'frame-1',
+    }));
   });
 });
 

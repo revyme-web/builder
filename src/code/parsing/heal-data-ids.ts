@@ -43,6 +43,18 @@ export function healMissingInstanceDataIds(code: string): { code: string; healed
     const tagName = m[1];
     const tagStart = m.index;
     if (TRANSPARENT_TAGS.has(tagName)) { searchFrom = tagStart + 1 + tagName.length; continue; }
+    // The MotionLink declaration renders `<Link>`/`<div>` in its own body —
+    // module scaffolding, never node-bearing. Stamping a data-id into it
+    // (2026-08-26) mutated the canonical declaration line. The declaration
+    // is single-line by construction, so "the tag's line starts the decl"
+    // is a precise skip.
+    {
+      const lineStart = out.lastIndexOf('\n', tagStart) + 1;
+      if (/^\s*const\s+MotionLink\s*=\s*motion\.create\(/.test(out.slice(lineStart, tagStart))) {
+        searchFrom = tagStart + 1 + tagName.length;
+        continue;
+      }
+    }
     const tagEnd = findTagClose(out, tagStart);
     if (tagEnd === -1) { searchFrom = tagStart + 1 + tagName.length; continue; }
 

@@ -969,12 +969,18 @@ describe('createLinkAttrVariableInCode', () => {
   return <a data-id="lnk" href="/about" target="_blank">x</a>;
 }`;
 
-  test('string attr (href) → prop identifier + string default', () => {
+  test('string attr (href) → prop identifier + EMPTY default (links have no default)', () => {
+    // Product rule 2026-08-26: a link variable has NO default value. Seeding
+    // the creation-time href as the prop default made every instance that
+    // never set the variable navigate to that leftover URL ("defaults to a
+    // Home link"). The href-aware MotionLink wrapper renders no anchor for
+    // the empty value.
     const r = createLinkAttrVariableInCode(base, 'lnk', {
       attrName: 'href', propName: 'linkHref', kind: 'string', defaultValue: '/about',
     });
     expect(r).toMatch(/href=\{linkHref\}/);
-    expect(r).toMatch(/linkHref = ['"]\/about['"]/);
+    expect(r).toMatch(/linkHref = ['"]['"]/);
+    expect(r).not.toMatch(/linkHref = ['"]\/about['"]/);
   });
 
   test('newTab → boolean ternary on target + boolean default', () => {
@@ -1048,7 +1054,12 @@ describe('removeLinkAttrVariableInCode', () => {
     expect(r).not.toMatch(/smooth/);
   });
 
-  test('round-trip: create then remove returns to a clean literal', () => {
+  test('round-trip: create then remove returns to NO link (links have no default)', () => {
+    // The unbind restores from the prop's default — which for link variables
+    // is now always '' (product rule 2026-08-26). So detaching an href
+    // variable yields an empty href = "Add link" state, not the URL the
+    // element happened to carry at variable-creation time. That URL was the
+    // very value that leaked into every unset instance as a phantom default.
     const start = `export default function Card() {
   return <a data-id="lnk" href="/about">x</a>;
 }`;
@@ -1059,7 +1070,7 @@ describe('removeLinkAttrVariableInCode', () => {
     const removed = removeLinkAttrVariableInCode(created, 'lnk', {
       attrName: 'href', propName: 'linkHref', kind: 'string',
     });
-    expect(removed).toMatch(/href=['"]\/about['"]/);
+    expect(removed).toMatch(/href=['"]['"]/);
     expect(removed).not.toMatch(/linkHref/);
   });
 });

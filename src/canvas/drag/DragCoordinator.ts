@@ -446,9 +446,18 @@ export class DragCoordinator {
           // and just refresh startMouse + transform so the new strategy's
           // dx/dy starts at zero. Avoids the rebuild-from-stale-cache problem.
           const overrides = result.switchRequest.nodeStateOverrides;
+          const idSwaps: Array<[string, string]> = [];
           for (const node of this.context.draggedNodes) {
             const o = overrides.get(node.id);
             if (o) {
+              // Continue-on-clone (replica drag-out split): rename FIRST so
+              // the locks/selection swap below and every later per-frame
+              // write target the clone, never the shared source.
+              if (o.newId && o.newId !== node.id) {
+                idSwaps.push([node.id, o.newId]);
+                node.id = o.newId;
+              }
+              if (o.sourceParentId !== undefined) node.exitSourceParentId = o.sourceParentId;
               node.startLeft = o.startLeft;
               node.startTop = o.startTop;
               node.startParentId = o.startParentId;
@@ -486,6 +495,15 @@ export class DragCoordinator {
             // `<oldPrefix><cloneId>` and the drag visibly freezes.
             ...(result.switchRequest.newViewportPrefix !== undefined
               ? { viewportPrefix: result.switchRequest.newViewportPrefix }
+              : {}),
+            // Selection follows the clone — the end-of-drag ladder reads
+            // `selectedIds` for drop-direction + selection bookkeeping.
+            ...(idSwaps.length > 0
+              ? {
+                  selectedIds: this.context.selectedIds.map(
+                    (id) => idSwaps.find(([from]) => from === id)?.[1] ?? id,
+                  ),
+                }
               : {}),
           };
           trace.action('drag:context-skipped-rebuild', {
@@ -591,21 +609,48 @@ export class DragCoordinator {
         }
         return false;                            // reached a viewport root
       };
-      const droppedOnCanvas =
-        updates.some((u) => u.type === 'add' && !!u.descriptor)
-        || updates.some((u) => u.type === 'move' && landsOnCanvas(u.newParentId))
-        || (this.context?.selectedIds ?? []).some((id) => {
-          const n = nodes.get(id);
-          return !!n && n.parentId === null;
-        });
-      // INBOUND: dropped INTO a viewport. `context.viewportPrefix` is where the
-      // drag STARTED — exactly wrong here — so the destination comes from the
-      // strategy.
+      // An explicit `move` names the DESTINATION, so it settles the direction on
+      // its own and outranks everything below. The node map is still PRE-move
+      // here: a node dragged off the canvas into a viewport still reads
+      // `parentId === null`, so the stale-parent fallback would call an inbound
+      // drop "canvas" and reset the viewport to primary — undoing the correct
+      // `mobile` the drag had already adopted (trace: `canvas-drop-reset-viewport
+      // { from: mobile, to: desktop }` on a drop INTO mobile).
       const ctx = this.context;
       const dropVpId = ctx
         ? (this.activeStrategy as { getDropViewportId?: (c: DragContext) => string | undefined })
             .getDropViewportId?.(ctx)
         : undefined;
+      const moveUpdate = updates.find((u) => u.type === 'move' && u.newParentId !== undefined);
+      const movedIntoViewport = !!moveUpdate && !landsOnCanvas(moveUpdate.newParentId);
+      // A REPLICA drag-out commits its exit MID-DRAG, so `onEnd` can return
+      // nothing but a container-style tweak — no `move`, no `add`, and the node
+      // map may not show the new parent yet. The strategy still knows: the
+      // canvas strategy with NO confirmed entry ended on the canvas by
+      // definition. Without this the viewport stayed on `mobile` and the
+      // overlay hunted for a mobile copy of a node that now renders under the
+      // primary prefix (`poll-resolve … found: false`, 2026-08-24).
+      const endedOnCanvasWithNoEntry = endingStrategyName === 'canvas' && dropVpId === undefined;
+      const droppedOnCanvas = !movedIntoViewport && (
+        endedOnCanvasWithNoEntry ||
+        updates.some((u) => u.type === 'add' && !!u.descriptor)
+        || (!!moveUpdate && landsOnCanvas(moveUpdate.newParentId))
+        || (this.context?.selectedIds ?? []).some((id) => {
+          // CACHE FIRST — the atom map is stale for the whole gesture. A SOLO
+          // replica drag-out commits its exit inside `strategy.onEnd` via
+          // `commitExitToCanvas` (queued mutations + `moveNodeInCache`), so
+          // only the imperative cache knows the node is canvas-rooted now;
+          // `nodes` still shows the old parent. Reading the atom here left
+          // `droppedOnCanvas` false → no viewport reset → Layers expanded the
+          // origin replica's section and the overlay polled the origin prefix
+          // for a node that renders under `''` (the "dropped but not really
+          // selected" report, 2026-08-26 — the solo twin of the split case).
+          const n = getNodeFromCache(id) ?? nodes.get(id);
+          return !!n && n.parentId === null;
+        }));
+      // INBOUND: dropped INTO a viewport. `context.viewportPrefix` is where the
+      // drag STARTED — exactly wrong here — so the destination comes from the
+      // strategy.
       if (!droppedOnCanvas && dropVpId) {
         const store = getDefaultStore();
         if (store.get(interactingViewportIdAtom) !== dropVpId) {
@@ -615,6 +660,21 @@ export class DragCoordinator {
           store.set(interactingViewportIdAtom, dropVpId);
         }
       }
+      // A node that has EVER lived in a replica carries the per-viewport
+      // visibility pattern — inline `display: 'none'` plus `@media` rules that
+      // un-hide it on one breakpoint. Those rules match by `data-id`, so they
+      // follow it onto the canvas and hide it there, where no `@media` context
+      // can ever flip them back on. The layout and grid exits both queue
+      // `clearContainerStyles` for exactly this; a MOVE into a canvas-rooted
+      // frame did not, so a node dropped into a canvas layout frame vanished
+      // (reported 2026-08-24 — the move update carried no `display`, which is
+      // what makes it look like the drop did nothing wrong).
+      if (droppedOnCanvas && moveUpdate) {
+        trace.action('drag:canvas-drop-clear-container-styles', { nodeId: moveUpdate.nodeId });
+        queueMutation({ type: 'clearContainerStyles', nodeId: moveUpdate.nodeId });
+        queueMutation({ type: 'updateStyles', nodeId: moveUpdate.nodeId, styles: { display: '' } });
+      }
+
       if (droppedOnCanvas) {
         const store = getDefaultStore();
         const vps = store.get(visibleViewportsAtom);

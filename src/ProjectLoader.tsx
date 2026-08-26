@@ -106,10 +106,16 @@ export default function ProjectLoader() {
             // harness read which write paths a gesture took without the
             // DebugToolbar record/save flow.
             traceEntries: (pattern?: string) => {
+              // JSON-safe payloads — see the local-mode hook below for the
+              // serialization trap this mapping avoids.
               const re = pattern ? new RegExp(pattern) : null;
               return trace.getEntries()
                 .filter((e: any) => !re || re.test(`${e.category ?? ''}`))
-                .map((e: any) => ({ ts: e.ts, c: e.category, d: e.data }));
+                .map((e: any) => {
+                  let data: unknown = null;
+                  try { data = JSON.parse(JSON.stringify(e.data ?? null)); } catch { data = String(e.data) }
+                  return { ts: e.ts, c: e.category, category: e.category, data };
+                });
             },
             nodesSnapshot: () => {
               const map = store.get(nodesAtom);
@@ -410,11 +416,22 @@ export default function ProjectLoader() {
             requestAnimationFrame(() => nodeOps.forceCanvasRender());
             trace.action('e2e:addConnection', { from, to, trigger, file });
           },
-          // Ring-buffer trace access — mirrors the noauth hook above.
+          // Trace-buffer access — mirrors the noauth hook above. The trap this
+          // version hit before (2026-08-26): the return value crosses
+          // page.evaluate, and entry `data` can hold DOMRects/Errors — a
+          // non-serializable result makes evaluate resolve UNDEFINED, silently.
+          // JSON round-trip strips anything unserializable. (getEntries is the
+          // always-on main buffer; getRecentEntries' 1000-entry ring is too
+          // small — geometry traces evict a drop event within ~1s.)
           traceEntries: (pattern?: string) => {
             const re = pattern ? new RegExp(pattern) : null;
             return trace.getEntries()
-              .filter((e: any) => !re || re.test(`${e.category ?? ''} ${e.name ?? ''} ${e.message ?? ''}`));
+              .filter((e: any) => !re || re.test(`${e.category ?? ''}`))
+              .map((e: any) => {
+                let data: unknown = null;
+                try { data = JSON.parse(JSON.stringify(e.data ?? null)); } catch { data = String(e.data) }
+                return { ts: e.ts, c: e.category, category: e.category, data };
+              });
           },
           // Snapshot of NodeMap (id → { parentId, type, children, styles, attrs }) for
           // tests that need to assert on parsed structure.

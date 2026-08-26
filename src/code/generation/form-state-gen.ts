@@ -319,10 +319,33 @@ export function dedupeFormStateDeclarations(code: string): string {
 export function healMissingFormStateDeclarations(code: string): string {
   const refs = new Set<string>();
   for (const m of code.matchAll(/\bformState[A-Za-z0-9]+\b/g)) refs.add(m[0]);
+  // SETTER-ONLY references. `\bformState…` can never match inside
+  // `setFormStateForm…` (no word boundary, different case), so a file whose
+  // last var-reference was stripped — e.g. healOrphanedFormStateBindings
+  // removing a dangling `initialVariant={formState<X> === …}` — but whose
+  // onSubmit still calls `setFormState<X>(…)` was invisible to this healer.
+  // The dangling setter then blocked EVERY later mutation with "References
+  // undefined identifier: setFormState<X>" (live find 2026-08-26: rotating
+  // any node on the page refused to commit). Normalize the setter back to
+  // its state var; the declaration below defines both.
+  for (const m of code.matchAll(/\bsetFormState([A-Za-z0-9]+)\b/g)) {
+    refs.add(`formState${m[1]}`);
+  }
+  // SETTER-ONLY references. `\bformState…` can never match inside
+  // `setFormStateForm…` (no word boundary, different case), so a file whose
+  // last var-reference was stripped — e.g. healOrphanedFormStateBindings
+  // removing a dangling `initialVariant={formState<X> === …}` — but whose
+  // onSubmit still calls `setFormState<X>(…)` was invisible to this healer.
+  // The dangling setter then blocked EVERY later mutation with "References
+  // undefined identifier: setFormState<X>" (live find 2026-08-26: rotating
+  // any node on the page refused to commit). Normalize the setter back to
+  // its state var; the declaration below defines both.
+
   let result = code;
   for (const v of refs) {
     if (hasFormStateDeclaration(result, v)) continue; // already declared (either form)
-    const refIdx = result.search(new RegExp(`\\b${v}\\b`));
+    const refRe = new RegExp(`\\b(?:${v}|${formStateSetter(v)})\\b`);
+    const refIdx = result.search(refRe);
     if (refIdx < 0) continue;
     // Find the opening brace of the function that ENCLOSES the first reference.
     const fnRe = /function\s+\w+\s*\([^)]*\)\s*\{/g;

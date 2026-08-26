@@ -212,7 +212,10 @@ export default function LinkTool() {
       // ternary, which `setResponsiveInstancePropVarInCode` — wrapping the whole attr — can't bind per-tile.)
       if (replicaQuery && attrName === 'href') {
         const muts: any[] = [
-          { type: 'createTypedVariable', name, literalKind: 'string', defaultValue: current },
+          // Link variables have NO default (product rule, 2026-08-26) — the
+          // creation-time href stays on the primary's ternary, never becomes
+          // the fallback every unset instance navigates to.
+          { type: 'createTypedVariable', name, literalKind: 'string', defaultValue: '' },
           { type: 'setComponentPropType', propName: name, varType: 'link' },
         ];
         if (node?.type !== 'MotionLink') muts.push({ type: 'convertToMotionLink', nodeId });

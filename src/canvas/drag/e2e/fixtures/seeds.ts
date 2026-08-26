@@ -1121,7 +1121,95 @@ export default function Page() {
 }
 `);
 
+// ─────────────────────────────────────────────────────────────────────────
+// REPLICA_EXIT_TO_FRAME — a flex child in a 3-viewport page plus a NO-LAYOUT
+// canvas frame below the tablet tile. Used for: drag `card-inner` out of the
+// TABLET/MOBILE replica, across open canvas, into `drop-frame` in ONE gesture
+// — the LayoutLifted → Canvas mid-drag handoff whose entry detection went
+// blind for replica-origin drags, plus the replica SPLIT (clone + hide-on-
+// origin, reported 2026-08-26). The frame is deliberately no-layout (no
+// display) and larger than the dragged card so the fully-inside entry rule
+// can fire. `solo-chip` is SOLO on the tablet replica the MANUAL way (inline
+// display:none + tablet-band un-hide, deliberately NO data-replica-solo attr
+// — exit-commit's attr-gated display clear must not be what saves it) — its
+// drag-out must MOVE the source, keep selection, reset the interacting
+// viewport to primary, and land VISIBLE even inside a canvas frame.
+// ─────────────────────────────────────────────────────────────────────────
+export const REPLICA_EXIT_TO_FRAME = project(`
+/** @canvas {
+  "viewports": [
+    { "id": "desktop", "label": "Desktop", "width": 1440, "isPrimary": true, "order": 0 },
+    { "id": "tablet", "label": "Tablet", "width": 768, "isPrimary": false, "order": 1 },
+    { "id": "mobile", "label": "Mobile", "width": 375, "isPrimary": false, "order": 2 }
+  ],
+  "positions": {
+    "desktop": { "x": 0, "y": 0 },
+    "tablet": { "x": 1560, "y": 0 },
+    "mobile": { "x": 2450, "y": 0 }
+  }
+} */
+'use client';
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Page" style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+      width: '100%', minHeight: '640px', position: 'relative',
+      background: '#0d0d1a', padding: '40px',
+    }}>
+      <style>{\`
+@media (max-width: 768px) and (min-width: 375.02px) {
+  [data-id="solo-chip"] { display: unset !important; }
+}
+\`}</style>
+      <div data-id="card" data-name="Card" style={{
+        display: 'flex', flexDirection: 'column', padding: '32px',
+        width: '480px', height: '260px', position: 'relative',
+        background: '#1a1a3a', borderRadius: '12px',
+      }}>
+        <div data-id="card-inner" data-name="Inner" style={{
+          width: '240px', height: '110px', position: 'relative',
+          background: '#3b3b6b', borderRadius: '8px',
+        }}></div>
+        <div data-id="solo-chip" data-name="SoloChip" style={{
+          width: '180px', height: '70px', position: 'relative',
+          background: '#cc4477', borderRadius: '8px', display: 'none',
+        }}></div>
+      </div>
+    </div>
+  );
+}
+const canvasNodes = (<>
+  <div data-id="drop-frame" data-name="DropFrame" data-canvas-node="true" style={{
+    position: 'absolute',
+    left: '1650px', top: '780px',
+    width: '620px', height: '360px',
+    background: '#e8eefc', borderRadius: '10px',
+    overflow: 'hidden',
+  }}>
+    <div data-id="dead-child" data-name="DeadChild" style={{
+      position: 'absolute', width: '440px', height: '198px',
+      background: '#0d263a', display: 'none',
+      left: '-3162px', top: '-200px',
+    }}></div>
+  </div>
+  <div data-id="layout-frame" data-name="LayoutFrame" data-canvas-node="true" style={{
+    position: 'absolute',
+    left: '860px', top: '780px',
+    width: '620px', height: '360px',
+    display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+    background: '#fce8ee', borderRadius: '10px',
+  }}></div>
+  <div data-id="canvas-chip" data-name="CanvasChip" data-canvas-node="true" style={{
+    position: 'absolute',
+    left: '1650px', top: '-200px',
+    width: '180px', height: '80px',
+    background: '#7c5cff', borderRadius: '8px',
+  }}></div>
+</>);
+`);
+
 export const SEEDS = {
+  REPLICA_EXIT_TO_FRAME,
   NEGATIVE_MARGIN_ROW,
   HANDOFF_TWO_VP,
   COMPONENT_MASTER_2V,

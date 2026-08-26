@@ -27,6 +27,11 @@ export interface VariableTypeDef {
   controlProperty?: string;
   /** False = NOT offered in the "+" type picker (created by a dedicated flow). Defaults to pickable. */
   pickable?: boolean;
+  /** True = the type has NO default value — the modal hides its Default row
+   *  entirely (create + view). Links and cursors: a link's value only means
+   *  something per-instance ("where does THIS card go"), so a default is
+   *  noise; cursors have no default by design. */
+  noDefault?: boolean;
 }
 
 // Ordered to match the reference's picker.
@@ -34,7 +39,7 @@ export const VARIABLE_TYPES: VariableTypeDef[] = [
   { id: 'plainText',     label: 'Plain Text',     iconKey: 'text',       literalKind: 'string',  defaultValue: '',                              editor: 'text' },
   { id: 'formattedText', label: 'Formatted Text', iconKey: 'text',       literalKind: 'string',  defaultValue: '',                              editor: 'textarea' },
   { id: 'date',          label: 'Date',           iconKey: 'date',       literalKind: 'string',  defaultValue: '',                              editor: 'text' },
-  { id: 'link',          label: 'Link',           iconKey: 'link',       literalKind: 'string',  defaultValue: '',                              editor: 'text' },
+  { id: 'link',          label: 'Link',           iconKey: 'link',       literalKind: 'string',  defaultValue: '',                              editor: 'text', noDefault: true },
   { id: 'image',         label: 'Image',          iconKey: 'image',      literalKind: 'string',  defaultValue: '',                              editor: 'style', controlProperty: 'backgroundImage' },
   { id: 'color',         label: 'Color',          iconKey: 'color',      literalKind: 'string',  defaultValue: '#000000',                       editor: 'style', controlProperty: 'backgroundColor' },
   { id: 'toggle',        label: 'Toggle',         iconKey: 'boolean',    literalKind: 'boolean', defaultValue: 'false',                         editor: 'toggle' },
@@ -48,7 +53,7 @@ export const VARIABLE_TYPES: VariableTypeDef[] = [
   // Component-cursor: a component the page instance supplies as the follow/replace cursor. NOT a CSS
   // type — created from the Cursor tool (not the "+" picker), so pickable:false. Its editor is the
   // full Component Cursor control, mounted by the cursor pill via the modal's renderDefaultValue hook.
-  { id: 'componentCursor', label: 'Cursor',       iconKey: 'cursor',     literalKind: 'string',  defaultValue: '',                              editor: 'componentCursor', pickable: false },
+  { id: 'componentCursor', label: 'Cursor',       iconKey: 'cursor',     literalKind: 'string',  defaultValue: '',                              editor: 'componentCursor', pickable: false, noDefault: true },
 ];
 
 // `@pageVariables` stores PRIMITIVE types ('boolean'/'text'/…) while the editor's richer VariableTypeId

@@ -179,6 +179,27 @@ function P() { const [formStateF, setFormStateF] = React.useState('idle'); retur
     expect(healMissingFormStateDeclarations(sound)).toBe(sound);
   });
 
+  it('SETTER-ONLY reference still gets its declaration (2026-08-26 blocked-project heal)', () => {
+    // The state this file gets into: the orphan healer stripped the dangling
+    // `initialVariant={formState<X> === …}` (the only VAR reference) while the
+    // form's onSubmit kept calling the SETTER. `\bformState…` never matches
+    // inside `setFormStateForm…`, so this healer skipped the file and the
+    // dangling setter blocked every later mutation with "References undefined
+    // identifier: setFormStateFormmta5oh869i" — rotating ANY node refused to
+    // commit.
+    const page = `'use client';
+import React from 'react';
+export default function Page() {
+  return (<form onSubmit={async (e) => { e.preventDefault(); setFormStateFormmta5oh869i("loading"); }} data-id="f">
+    <button data-id="b">Send</button>
+  </form>);
+}`;
+    const out = healMissingFormStateDeclarations(page);
+    expect(out).toContain("const [formStateFormmta5oh869i, setFormStateFormmta5oh869i] = React.useState('idle');");
+    expect(out.indexOf('const [formStateFormmta5oh869i')).toBeLessThan(out.indexOf('return (<form'));
+    parses(out);
+  });
+
   it('self-heal leaves a binding whose useState IS declared', () => {
     const sound = setFormStateMappingInCode(
       FORMPAGE('<FormSubmit data-id="btn-1" label={"Send"} />'),

@@ -56,6 +56,13 @@ export interface DraggedNode {
    *  with the stale source value (`context.nodes` may not have re-parsed
    *  the commit yet at switch time). */
   transformOverride?: string;
+  /** The parent the GESTURE originally lifted this node out of — carried
+   *  through mid-drag exit handoffs so the receiving strategy can treat a
+   *  return to that parent (any viewport tile — data-ids match across
+   *  replicas) differently from entering a foreign frame: the back-to-parent
+   *  placeholder shows only there (2026-08-26). Never mutated by later
+   *  entries/exits within the same gesture. */
+  exitSourceParentId?: string | null;
 }
 
 export interface PendingUpdate {

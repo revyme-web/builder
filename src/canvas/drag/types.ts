@@ -95,7 +95,7 @@ export interface DragStrategy {
    * Used by the coordinator to generate replica visibility updates at drop time.
    * Walks up from the element's DOM position to find the viewport ancestor.
    */
-  getDropViewportId?(context: DragContext): string;
+  getDropViewportId?(context: DragContext): string | undefined;
 }
 
 // ─── Drag Move Result ──────────────────────────────────────────────────────
@@ -153,6 +153,18 @@ export interface DragMoveResult {
        *  `draggedNode.transformOverride` for the receiving
        *  strategy's onStart to pick up. */
       transform?: string;
+      /** The gesture CONTINUES ON A DIFFERENT NODE. Set by the replica
+       *  drag-out split (2026-08-26): a mid-drag exit from a replica the
+       *  other breakpoints still render must not move the shared source —
+       *  it commits a fresh-id canvas CLONE + a hide-on-origin, and the
+       *  rest of the drag (canvas travel, frame entry, drop) operates on
+       *  the clone. Coordinator renames the dragged node and swaps the
+       *  id in `context.selectedIds` so end-of-drag bookkeeping follows. */
+      newId?: string;
+      /** The parent the gesture lifted the node out of — planted on
+       *  `draggedNode.exitSourceParentId` so the receiving strategy knows
+       *  which frame counts as "back to parent" (see shared/types). */
+      sourceParentId?: string | null;
     }>;
     /** When the dragged element's data-node-id prefix changes during the
      *  switch (e.g. variant exit hoists to canvas root with no prefix),

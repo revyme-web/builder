@@ -62,3 +62,22 @@ export function screenPointToCanvas(p: Point, t: CanvasTransform, offset?: Point
     y: (p.y - o.y - t.y) / t.scale,
   };
 }
+
+/** Inverse of `screenRectToCanvas`: canvas-space rect → parent-screen space.
+ *
+ *  CAUTION for drag code: mid-handoff the dragged element is still PARKED in
+ *  its origin tile (the exit's code flush is deferred), so projecting its
+ *  MODEL canvas coords through this gives where the element WILL paint after
+ *  the flush — a constant offset from where it paints NOW. Anchoring on
+ *  `startMouse − grabOffset + writtenDelta` is the divergence-free form for
+ *  the dragged element itself (see CanvasDragStrategy's entry detection,
+ *  2026-08-26); this helper is for rects whose model and DOM agree. */
+export function canvasRectToScreen(rect: CanvasRect, t: CanvasTransform, offset?: Point): CanvasRect {
+  const o = offset ?? getIframeOffset();
+  return {
+    left: rect.left * t.scale + t.x + o.x,
+    top: rect.top * t.scale + t.y + o.y,
+    width: rect.width * t.scale,
+    height: rect.height * t.scale,
+  };
+}
