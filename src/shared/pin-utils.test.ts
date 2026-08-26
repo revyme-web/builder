@@ -3,7 +3,7 @@ import {
   isFixedPx, parsePx, getPinState, getInsetMode,
   togglePin, calculateAlignment, calculatePreservedPosition,
   getInsetState, computeResizeInsetStyles, computeDragInsetStyles, computeDimensionInsetStyles,
-  gatePositionTypeOptions,
+  gatePositionTypeOptions, mergeVariantPinStyles,
 } from '@/shared/pin-utils';
 
 const POSITION_OPTIONS = [
@@ -386,5 +386,57 @@ describe('computeDimensionInsetStyles', () => {
     const result = computeDimensionInsetStyles(inset, { top: '20px', bottom: '180px' }, 'height', 150, 400);
     expect(result.top).toBe('20px');
     expect(result.bottom).toBe('230px'); // 400 - 20 - 150
+  });
+});
+
+describe('mergeVariantPinStyles', () => {
+  // The user's repro (2026-08-26): master pinned on all four sides; the
+  // hover variant unpinned via { left: %, top: %, right: 'auto',
+  // bottom: 'auto' }. Every pin consumer reading only base saw the
+  // MASTER's pins.
+  const base = {
+    position: 'absolute', left: '1176px', top: '456px',
+    right: '40px', bottom: '-69px', width: '64px', height: '64px',
+  };
+  const motionVariants = {
+    default: { left: '1176px', top: '456px', right: '40px', bottom: '-69px' },
+    'default-hover': {
+      left: '94.375%', top: '84.0441%', right: 'auto', bottom: 'auto',
+      transform: 'translate(-50%, -50%)',
+    },
+  };
+
+  test('variant tile: entry auto masks base pins, % and transform ride through', () => {
+    const out = mergeVariantPinStyles(base, motionVariants, 'default-hover');
+    expect(out.right).toBeUndefined();
+    expect(out.bottom).toBeUndefined();
+    expect(out.left).toBe('94.375%');
+    expect(out.top).toBe('84.0441%');
+    expect(out.transform).toBe('translate(-50%, -50%)');
+    expect(getPinState(out)).toEqual({ left: false, top: false, right: false, bottom: false });
+  });
+
+  test('primary tile: only the always-on default entry applies', () => {
+    const out = mergeVariantPinStyles(base, motionVariants, 'default');
+    expect(getPinState(out)).toEqual({ left: true, top: true, right: true, bottom: true });
+  });
+
+  test('numeric entry values are stringified', () => {
+    const out = mergeVariantPinStyles({}, { default: {}, v2: { rotate: -90 } }, 'v2');
+    expect(out.rotate).toBe('-90');
+  });
+
+  test('no motionVariants → same reference back', () => {
+    expect(mergeVariantPinStyles(base, undefined, 'v2')).toBe(base);
+    expect(mergeVariantPinStyles(base, null, 'v2')).toBe(base);
+  });
+
+  test('empty entries → same reference back', () => {
+    expect(mergeVariantPinStyles(base, { other: { left: '1px' } }, 'v2')).toBe(base);
+  });
+
+  test('does not mutate base', () => {
+    mergeVariantPinStyles(base, motionVariants, 'default-hover');
+    expect(base.right).toBe('40px');
   });
 });

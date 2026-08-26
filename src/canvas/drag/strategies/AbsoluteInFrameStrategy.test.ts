@@ -152,6 +152,9 @@ vi.mock('@/shared/pin-utils', () => ({
     verticalInset: false,
     fullInset: false,
   })),
+  // Real behavior is pinned in pin-utils.test.ts; a passthrough keeps this
+  // suite's fixture styles (which have no motionVariants) unchanged.
+  mergeVariantPinStyles: vi.fn((styles: Record<string, string>) => styles),
 }));
 
 vi.mock('../types', async (importOriginal) => {

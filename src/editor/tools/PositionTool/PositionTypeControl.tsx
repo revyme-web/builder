@@ -8,6 +8,7 @@ import { getNodesSnapshot } from '@/code/stores/store';
 import { useNode } from '@/code/stores/node-family';
 import { transformManager } from '@/canvas/transform';
 import { toRelative } from '@/shared/position-utils';
+import { applyReplicaClearSemantics } from './replica-clears';
 import { getCSSPropertyOptions } from '../../controls/css-property-options';
 import { gatePositionTypeOptions } from '@/shared/pin-utils';
 import { trace } from '@/shared/debug-trace';
@@ -60,7 +61,10 @@ export default function PositionTypeControl({ position, nodeId, vpId, existingTr
     }
 
     trace.action('position-type:change', { nodeId, from: position, to: newType });
-    onUpdateMultiple(styles);
+    // Non-primary channel: '' clears of base-carried position/inset/transform
+    // must become explicit neutrals, else the base cascades back through the
+    // deleted variant/band key (same law as PinControl / layout-injection).
+    onUpdateMultiple(applyReplicaClearSemantics(nodeId, vpId, styles));
   }, [position, nodeId, vpId, existingTransform, onUpdateMultiple]);
 
   // Context-gate the position types (design-tool parity):

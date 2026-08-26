@@ -10,6 +10,7 @@ import {
   fromInsetMode,
   toRelative,
   toAbsolute,
+  neutralizeReplicaClears,
   type VisualRect,
 } from './position-utils';
 
@@ -203,5 +204,76 @@ describe('buildAxisCenterTransform', () => {
 
   test('other axis has a non-center translate → preserved verbatim', () => {
     expect(buildAxisCenterTransform('x', 'translateY(12px)')).toBe('translateX(-50%) translateY(12px)');
+  });
+});
+
+describe('neutralizeReplicaClears', () => {
+  // The user's exact repro (2026-08-26): master button pinned on all four
+  // sides; unpin-all on a variant wrote right/bottom as '' — which only
+  // DELETES the variant-entry keys, so the base right/bottom cascaded back
+  // and the variant stayed pinned R/B.
+  const base = {
+    position: 'absolute', left: '1176px', top: '456px',
+    right: '40px', bottom: '-69px', width: '64px', height: '64px',
+  };
+
+  test('unpin-all payload: base-carried right/bottom clears become auto', () => {
+    const payload = toPercentageCenter(rect, undefined);
+    const out = neutralizeReplicaClears(payload, base);
+    expect(out.right).toBe('auto');
+    expect(out.bottom).toBe('auto');
+    // Set values ride through untouched
+    expect(out.left).toBe(payload.left);
+    expect(out.top).toBe(payload.top);
+    expect(out.transform).toBe(payload.transform);
+  });
+
+  test('clears of props the base does not carry stay as deletes (no band noise)', () => {
+    const out = neutralizeReplicaClears(
+      { right: '', bottom: '' },
+      { position: 'absolute', left: '10px', top: '10px' },
+    );
+    expect(out.right).toBe('');
+    expect(out.bottom).toBe('');
+  });
+
+  test('re-pin single side: opposite-side clear masks the base value', () => {
+    // Pin right on a variant → PinControl clears left; base left must be
+    // masked or left+width would win over right (over-constrained).
+    const out = neutralizeReplicaClears({ right: '40px', left: '' }, base);
+    expect(out.left).toBe('auto');
+    expect(out.right).toBe('40px');
+  });
+
+  test('pin-all inset mode: width/height clears become auto so insets can stretch', () => {
+    const out = neutralizeReplicaClears({ width: '', height: '' }, base);
+    expect(out.width).toBe('auto');
+    expect(out.height).toBe('auto');
+  });
+
+  test('position clear becomes static when base carries position', () => {
+    const out = neutralizeReplicaClears({ position: '' }, base);
+    expect(out.position).toBe('static');
+  });
+
+  test('transform clear becomes identity translate, not none', () => {
+    // 'none' is collapsed to a key-delete by the variants-object generator —
+    // the identity translate survives both the band and the variant channel.
+    const out = neutralizeReplicaClears(
+      { transform: '' },
+      { ...base, transform: 'translate(-50%, -50%)' },
+    );
+    expect(out.transform).toBe('translate(0px, 0px)');
+  });
+
+  test('transform clear stays a delete when base has no transform', () => {
+    const out = neutralizeReplicaClears({ transform: '' }, base);
+    expect(out.transform).toBe('');
+  });
+
+  test('does not mutate the input payload', () => {
+    const payload = { right: '', bottom: '' };
+    neutralizeReplicaClears(payload, base);
+    expect(payload).toEqual({ right: '', bottom: '' });
   });
 });

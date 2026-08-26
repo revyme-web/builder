@@ -40,7 +40,7 @@ import { getReplicaContext } from '../replica-context';
 import { getConsolidationClone, clearConsolidationClone } from '../consolidation-clone-store';
 import { registerPendingReplicaExtraction, getPendingReplicaExtraction, clearPendingReplicaExtraction } from '../pending-replica-extraction-store';
 import { commitExitToCanvas } from '../exit-commit';
-import { getInsetState } from '@/shared/pin-utils';
+import { getInsetState, mergeVariantPinStyles } from '@/shared/pin-utils';
 import { parentHighlightOps } from '@/canvas/selection/parent-highlight-store';
 import { dropLineOps } from '@/canvas/selection/drop-line-store';
 import { detectParentLayoutById, getFlexDirectionById } from '../types';
@@ -583,13 +583,23 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
       // "treat as not-set" for pin detection — `auto` width with full
       // inset IS the inset state.
       const replicaProps = containerOverrides.get(node.id)?.get(currentVpMaxWidth);
-      const effectiveNs: Record<string, string> = { ...ns };
+      let effectiveNs: Record<string, string> = { ...ns };
       if (replicaProps && replicaProps.size > 0) {
         for (const [prop, val] of replicaProps) {
           if (val === '' || val === 'auto') delete effectiveNs[prop];
           else effectiveNs[prop] = val;
         }
       }
+      // COMPONENT VARIANT tile: this tile's pins/transform live in the
+      // motionVariants entries (base + always-on 'default' + own entry —
+      // the Renderer's paint order), NOT @media. Without this merge, inset
+      // detection reads the MASTER's pins: unpinning R/B on a variant and
+      // then dragging re-committed all four sides in px, and the entry's
+      // `translate(-50%, -50%)` was missing from `originalTransforms`, so
+      // the element jumped by half its size the moment the drag started
+      // (user report 2026-08-26).
+      const variantKey = this.vpId === 'desktop' ? 'default' : this.vpId;
+      effectiveNs = mergeVariantPinStyles(effectiveNs, nodeData?.motionVariants, variantKey);
       const es: Record<string, string> = {};
       for (const k of ['left', 'right', 'top', 'bottom', 'width', 'height']) { if (effectiveNs[k]) es[k] = effectiveNs[k]; }
       const inset = getInsetState(es);
@@ -615,7 +625,6 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
       // drag (otherwise it appears axis-aligned mid-drag and snaps back rotated
       // on mouseup). Passing the merged map to motionPropsToCSSTransform is
       // safe — it only reads the transform-family keys.
-      const variantKey = this.vpId === 'desktop' ? 'default' : this.vpId;
       const variantStyles = nodeData?.motionVariants?.[variantKey] ?? {};
       // Component INSTANCES (e.g. vector sets) keep per-variant motion props as
       // INLINE `rotate: variant === 'v' ? … : …` conditionals → node.conditionalStyles,

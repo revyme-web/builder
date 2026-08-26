@@ -7,7 +7,7 @@ import { CLOUD_ENABLED } from '@/shared/cloud-flag';
 import { settingsOverlayOpenAtom, settingsSectionAtom, hasActiveSubscriptionAtom } from '@/code/stores/website-settings-store';
 import { motion } from 'framer-motion';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { toolModeAtom, isShapeMode, isLayoutMode, type ToolMode } from '@/code/stores/tool-store';
+import { toolModeAtom, panHighlightAtom, isShapeMode, isLayoutMode, type ToolMode } from '@/code/stores/tool-store';
 import { transformManager, zoomIn, zoomOut, zoomTo100, zoomToFit, zoomToFitSelection } from '@/canvas/transform';
 import { getContentRoot } from '@/canvas/node-ops';
 import { selectedNodeAtom } from '@/code/stores/store';
@@ -159,10 +159,15 @@ function CursorDropdown({ toolMode, commentModeActive, onSelect }: {
   // separate tool from the user's POV — so the cursor button must read
   // as inactive while comment mode owns the canvas.
   const isActive = (toolMode === 'select' || toolMode === 'hand') && !commentModeActive;
+  // Spacebar hand: while space is held (panHighlightAtom — set on keydown,
+  // cleared on keyup, same signal the canvas cursor uses) the canvas IS the
+  // hand tool, so the toolbar shows the hand icon for the hold, like the
+  // dropdown's Hand entry (user request 2026-08-27).
+  const spaceHand = useAtomValue(panHighlightAtom);
 
   useClickOutside(ref, open, () => setOpen(false));
 
-  const currentIcon = toolMode === 'hand'
+  const currentIcon = toolMode === 'hand' || spaceHand
     ? <HandToolbarIcon className="w-[22px] h-[22px]" />
     : <CursorIcon className="w-[22px] h-[22px] translate-y-0.5" />;
 

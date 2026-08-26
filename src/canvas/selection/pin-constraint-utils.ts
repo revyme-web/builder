@@ -9,6 +9,7 @@
 
 import type { CanvasNode } from '@/code/parsing/parser';
 import type { ContainerOverrideMap } from '@/code/stores/container-query-store';
+import { mergeVariantPinStyles } from '@/shared/pin-utils';
 
 /** Check if a style value represents a pin (not empty, not auto). */
 export function isStylePinned(v: string | undefined): boolean {
@@ -37,14 +38,24 @@ export function getEffectiveStyles(
   baseStyles: Record<string, string>,
   vpMaxWidth: number,
   containerOverrides: ContainerOverrideMap,
+  // COMPONENT VARIANT channel — pass the node's motionVariants + the tile's
+  // variant name ('default' on the primary) so a variant tile's own pins
+  // resolve. Without it, base-only reads showed the MASTER's pins on a
+  // variant that had unpinned R/B (lines on all four sides, and the drag
+  // strategy re-committing the pins; user report 2026-08-26).
+  motionVariants?: Record<string, Record<string, unknown>> | null,
+  variantKey?: string,
 ): Record<string, string> {
+  let merged = baseStyles;
   const replicaProps = containerOverrides.get(nodeId)?.get(vpMaxWidth);
-  if (!replicaProps || replicaProps.size === 0) return baseStyles;
-  const merged = { ...baseStyles };
-  for (const [prop, val] of replicaProps) {
-    if (val === '' || val === 'auto') delete merged[prop];
-    else merged[prop] = val;
+  if (replicaProps && replicaProps.size > 0) {
+    merged = { ...merged };
+    for (const [prop, val] of replicaProps) {
+      if (val === '' || val === 'auto') delete merged[prop];
+      else merged[prop] = val;
+    }
   }
+  if (variantKey) merged = mergeVariantPinStyles(merged, motionVariants, variantKey);
   return merged;
 }
 

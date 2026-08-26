@@ -466,7 +466,10 @@ export class CanvasMouseController {
     trace.action('canvas:mouseup', { button: e.button, wasPanning: isPanning() });
     handleHandToolUp();
     handleSpacePanUp();
-    this.opts.setPanCursor(false);
+    // Keep the pan highlight while SPACE is still physically held — the drag
+    // ended but the hand mode didn't (shortcuts' keyup clears it). Dropping
+    // it here flipped the toolbar's hand icon back to the cursor mid-hold.
+    this.opts.setPanCursor(isSpaceBarDown());
     const wasDragging = this.opts.dragCoordinatorRef.current?.isDragging || this.opts.dragCoordinatorRef.current?.isPending;
     // `isDragging` ALONE (not `|| isPending`): a plain click on a child of a
     // multi-selection leaves the coordinator PENDING — armed at mousedown but

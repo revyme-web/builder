@@ -12,10 +12,12 @@ import { canvasInteractingAtom, getNodesSnapshot, getNodeFromCache } from '@/cod
 import { containerOverridesAtom } from '@/code/stores/container-query-store';
 import { viewportsConfigAtom } from '@/code/stores/viewport-store';
 import { ToolInput } from '../../controls';
-import { getPinState, parsePx, type PinSide } from '@/shared/pin-utils';
+import { getPinState, parsePx, mergeVariantPinStyles, type PinSide } from '@/shared/pin-utils';
+import { isPrimaryViewport } from '@/shared/constants';
 import { findNodeRect, findNodeComputedStyles, findNodeParentInnerSize } from '@/canvas/node-ops';
 import { transformManager } from '@/canvas/transform';
 import { type VisualRect, toPercentageCenter, toFixedPin, toInsetMode, fromInsetMode, stripTranslateTransforms, buildAxisCenterTransform } from '@/shared/position-utils';
+import { applyReplicaClearSemantics } from './replica-clears';
 import { trace } from '@/shared/debug-trace';
 import { queueMutation } from '@/code/mutation/mutation-queue';
 
@@ -131,6 +133,18 @@ export default function PinControl({ styles, nodeId, vpId, onUpdate, onUpdateMul
             else effectiveStyles[prop] = val;
           }
         }
+        // COMPONENT VARIANT tile: the tile's pins live in motionVariants,
+        // not the cache's base styles — without this merge, any interaction
+        // (even a canvas PAN sets canvasInteracting) flipped the badges to
+        // the MASTER's pins and useLivePreview held them after (user report
+        // 2026-08-26: "pan restores all the pin sides"). Values may lag the
+        // entry mid-drag but px/%/auto CLASSIFICATION — all pins read — is
+        // value-independent.
+        effectiveStyles = mergeVariantPinStyles(
+          effectiveStyles,
+          liveNode.motionVariants,
+          !vpId || isPrimaryViewport(vpId) ? 'default' : vpId,
+        );
         const newPins = getPinState(effectiveStyles);
         setLivePins((prev) =>
           prev
@@ -357,31 +371,39 @@ export default function PinControl({ styles, nodeId, vpId, onUpdate, onUpdateMul
       }
     }
 
+    // Non-primary channel: '' clears of base-carried props must become
+    // explicit neutrals ('auto'), else the deleted variant/band key just
+    // re-exposes the base value — unpinning R/B on a variant kept them
+    // pinned (user report 2026-08-26).
+    newStyles = applyReplicaClearSemantics(nodeId, vpId, newStyles);
     trace.action('pin:toggle', { nodeId, side, wasPinned, newStyles, rect, elTransform: styles.transform, elLeft: styles.left, elTop: styles.top });
     onUpdateMultiple(newStyles);
     // Lock dynamic pinning — user has expressed an explicit pin choice.
     // Cleared on next reparent (AbsoluteInFrameStrategy strips it).
     lockNodePinning(nodeId);
-  }, [styles, pins, nodeId, captureRectViaBridge, onUpdateMultiple]);
+  }, [styles, pins, nodeId, vpId, captureRectViaBridge, onUpdateMultiple]);
 
   const handlePinAll = useCallback(() => {
     const rect = captureRectViaBridge();
     if (!rect) return;
 
+    // Same non-primary clear translation as handlePinToggle: unpin-all's
+    // right/bottom '' and pin-all's width/height/transform '' leak the base
+    // value back on a variant/band channel without it.
     if (allPinned) {
       // Unpin all → percentage centering mode
       const newStyles = toPercentageCenter(rect, styles.transform);
-      onUpdateMultiple(newStyles);
+      onUpdateMultiple(applyReplicaClearSemantics(nodeId, vpId, newStyles));
     } else {
       // Pin all → full inset mode (no width/height, strip translate centering)
       const h = toInsetMode('horizontal', rect);
       const v = toInsetMode('vertical', rect);
       const stripped = stripTranslateTransforms(styles.transform);
-      onUpdateMultiple({ ...h, ...v, transform: stripped || '' });
+      onUpdateMultiple(applyReplicaClearSemantics(nodeId, vpId, { ...h, ...v, transform: stripped || '' }));
     }
     trace.action('pin:toggle-all', { nodeId, allPinned });
     lockNodePinning(nodeId);
-  }, [allPinned, nodeId, styles.transform, captureRectViaBridge, onUpdateMultiple]);
+  }, [allPinned, nodeId, vpId, styles.transform, captureRectViaBridge, onUpdateMultiple]);
 
   const handleValueChange = useCallback((side: PinSide, value: string) => {
     onUpdate(side, value);

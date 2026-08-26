@@ -36,7 +36,7 @@ import RotateHandle from './RotateHandle';
 import BorderRadiusHandle from './BorderRadiusHandle';
 import ObjectPositionHandle from './ObjectPositionHandle';
 import PaddingHandles from './PaddingHandles';
-import { resolveOverlaySize } from './overlay-size';
+import { resolveOverlaySize, resolveOverlayInsets } from './overlay-size';
 import GapHandles from './GapHandles';
 import GripHandle from './GripHandle';
 import { useIsViewer } from '@/code/stores/viewer-mode-store';
@@ -326,8 +326,6 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
     if (c) {
       setCorners(c);
       const selectedNode = liveNode(selectedId);
-      const isInstanceWrapper = selectedNode?.componentFile && !selectedNode?.componentInstanceId;
-      const nodeStyles = isInstanceWrapper ? (selectedNode?.styles ?? {}) : (selectedNode?.styles ?? {});
       // SVG group child: width/height live in `node.attrs` (SVG attrs),
       // not in CSS styles. Without this fallback, the disabled-axis
       // logic below sees empty width/height styles and turns OFF both
@@ -345,8 +343,14 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
         : { width: '', height: '' };
       const w = resolvedSize.width || (isSvgGroupChild ? (selectedNode?.attrs?.width || '') : '') || '';
       const h = resolvedSize.height || (isSvgGroupChild ? (selectedNode?.attrs?.height || '') : '') || '';
-      const hasHInset = !!(nodeStyles.left && nodeStyles.right);
-      const hasVInset = !!(nodeStyles.top && nodeStyles.bottom);
+      // TILE-EFFECTIVE insets, not base: a full inset authored only on a
+      // replica band / variant entry resolves w/h to 'auto' above, and the
+      // base has no right/bottom — reading base here hid every resize
+      // circle on exactly the box whose resize IS the insets (user report
+      // 2026-08-27).
+      const { hasHInset, hasVInset } = selectedNode
+        ? resolveOverlayInsets(selectedNode, vpId, allViewportConfigs, isInComponentMaster)
+        : { hasHInset: false, hasVInset: false };
       const elIsFitSvg = false; // Can't detect without element
       // Viewport frames (page `root` / `layout::root`): the JSX has
       // `width: '100%'` because the element fills its parent at runtime, but
@@ -427,8 +431,6 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
       if (newCorners) {
         setCorners(prev => cornersEqual(prev, newCorners!) ? prev : newCorners!);
         const selNode = liveNode(selectedId);
-        const isInstWrap = selNode?.componentFile && !selNode?.componentInstanceId;
-        const nStyles = selNode?.styles ?? {};
         // Mirror the instant-corners path's SVG-group-child fallback —
         // nested SVGs in a group store width/height as SVG ATTRS, not
         // CSS styles. Without this fallback the RAF poll keeps writing
@@ -445,8 +447,10 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
           : { width: '', height: '' };
         const w = resolvedSize.width || (selIsSvgGroupChild ? (selNode?.attrs?.width || '') : '') || '';
         const h = resolvedSize.height || (selIsSvgGroupChild ? (selNode?.attrs?.height || '') : '') || '';
-        const hasHInset = !!(nStyles.left && nStyles.right);
-        const hasVInset = !!(nStyles.top && nStyles.bottom);
+        // Tile-effective insets — mirror the instant-corners path above.
+        const { hasHInset, hasVInset } = selNode
+          ? resolveOverlayInsets(selNode, vpId, allViewportConfigs, isInComponentMaster)
+          : { hasHInset: false, hasVInset: false };
         // Same viewport-frame override as the instant-corners path above —
         // page roots carry `width: '100%'` but resize means breakpoint-
         // width, not CSS width. Vertical handles enable only when the

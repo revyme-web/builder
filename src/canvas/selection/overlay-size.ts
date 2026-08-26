@@ -23,6 +23,7 @@ import {
   type ContainerOverrideMap,
 } from '@/code/stores/container-query-store';
 import { resolveSpacingSides } from '@/shared/css-utils';
+import { mergeVariantPinStyles } from '@/shared/pin-utils';
 import { trace } from '@/shared/debug-trace';
 
 type VpConfig = { id: string; width?: number; isPrimary?: boolean };
@@ -73,6 +74,41 @@ export function resolveOverlaySize(
     }
   }
   return { width, height };
+}
+
+/**
+ * Tile-effective INSET presence for the resize-handle gate.
+ *
+ * The gate's inset exception ("width auto + L/R pinned IS resizable — the
+ * drag writes the insets") read `node.styles.left && node.styles.right`, the
+ * BASE object. An inset authored only on a replica band (`left/right/top/
+ * bottom !important` + `width/height: auto`) or a variant entry has NO base
+ * right/bottom — so `resolveOverlaySize` above correctly reports auto, the
+ * exception never fires, and every resize circle disappears on exactly the
+ * box whose whole resize story is the insets (user report 2026-08-27,
+ * full-inset-on-tablet frame). Same channels + exact-band lookup as
+ * resolveOverlaySize; `''`/`'auto'` mean not-set, like every pin consumer.
+ */
+export function resolveOverlayInsets(
+  node: CanvasNode,
+  vpId: string,
+  viewportConfigs: VpConfig[],
+  isComponentFile: boolean,
+  containerOverrides?: ContainerOverrideMap,
+): { hasHInset: boolean; hasVInset: boolean } {
+  const vp = viewportConfigs.find((v) => v.id === vpId);
+  const variantKey = isComponentFile ? (vp?.isPrimary ? 'default' : vpId) : 'default';
+  let eff: Record<string, string> = { ...(node.styles ?? {}) };
+  if (!isComponentFile && vp && !vp.isPrimary && typeof vp.width === 'number' && vp.width > 0) {
+    const map = containerOverrides ?? getDefaultStore().get(containerOverridesAtom);
+    for (const [prop, val] of getOverridesAtWidth(map, node.id, vp.width)) {
+      if (val === '' || val === 'auto') delete eff[prop];
+      else eff[prop] = val;
+    }
+  }
+  eff = mergeVariantPinStyles(eff, node.motionVariants, variantKey);
+  const set = (v: string | undefined) => !!v && v !== 'auto';
+  return { hasHInset: set(eff.left) && set(eff.right), hasVInset: set(eff.top) && set(eff.bottom) };
 }
 
 /**

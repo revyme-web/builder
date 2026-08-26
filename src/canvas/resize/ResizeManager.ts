@@ -37,7 +37,7 @@ import { transformManager } from '@/canvas/transform';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { styleHelperOps } from '@/canvas/selection/style-helper-store';
 import { resizeLiveOps } from '@/canvas/resize/resize-live-store';
-import { getInsetState } from '@/shared/pin-utils';
+import { getInsetState, mergeVariantPinStyles } from '@/shared/pin-utils';
 import { trace } from '@/shared/debug-trace';
 import { getNodeFromCache, injectNodeIntoCache } from '@/code/stores/store';
 import { findChildRects, getContentRootRect } from '@/canvas/node-ops';
@@ -1603,7 +1603,7 @@ export function startResize(
   const currentVpConfig = allVpsForOverride.find(v => v.id === vpId);
   const currentVpMaxWidth = currentVpConfig?.width ?? 0;
   const replicaProps = replicaOverrides?.get(currentVpMaxWidth) ?? new Map<string, string>();
-  const mergedStyles: Record<string, string> = { ...nodeStyles };
+  let mergedStyles: Record<string, string> = { ...nodeStyles };
   for (const [prop, val] of replicaProps) {
     if (val === '' || val === 'auto') {
       delete mergedStyles[prop];
@@ -1611,6 +1611,15 @@ export function startResize(
       mergedStyles[prop] = val;
     }
   }
+  // COMPONENT VARIANT tile: the tile's own pins live in motionVariants, not
+  // @media — same merge as AbsoluteInFrameStrategy / PinControl /
+  // PinConstraintLines, else resize on a variant that unpinned R/B anchors
+  // against the MASTER's inset state (user report 2026-08-26).
+  mergedStyles = mergeVariantPinStyles(
+    mergedStyles,
+    nodeData?.motionVariants,
+    isPrimaryViewport(vpId) ? 'default' : vpId,
+  );
   const insetStyles: Record<string, string> = {};
   if (mergedStyles.left) insetStyles.left = mergedStyles.left;
   if (mergedStyles.right) insetStyles.right = mergedStyles.right;

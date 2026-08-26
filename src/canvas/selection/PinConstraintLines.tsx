@@ -28,6 +28,7 @@ import { useLiveNode } from '@/code/stores/node-family';
 import { interactingViewportIdAtom, viewportsConfigAtom } from '@/code/stores/viewport-store';
 import { containerOverridesAtom } from '@/code/stores/container-query-store';
 import { activeFilePathAtom, isComponentFilePath, isIconSetFilePath } from '@/code/project/active-file-store';
+import { isPrimaryViewport } from '@/shared/constants';
 import { shapeEditingIdAtom } from '@/code/stores/shape-edit-store';
 import { findNodeRect, findNodeComputedStyle } from '@/canvas/node-ops';
 import { nodeOrAncestorHasRotationOrSkewById } from '@/canvas/resize/geometry-utils';
@@ -83,6 +84,10 @@ export default function PinConstraintLines() {
   // line shows/hides so the lines pop back as soon as the preview ends.
   const dropLineActive = useDropLineActive();
   const isComp = isComponentFilePath(activeFile);
+  // Variant name for the effective-styles merge — the tile's own entry (plus
+  // the always-on 'default') carries a variant's pins; primary maps to
+  // 'default'. Meaningful on page tiles too (the default entry is always-on).
+  const variantKey = !vpId || isPrimaryViewport(vpId) ? 'default' : vpId;
   // Icon-set masters lay out their cards with absolute positioning
   // purely as a presentation grid. The pin lines aren't a real
   // authoring surface there, and the dashed connectors from each card
@@ -153,7 +158,7 @@ export default function PinConstraintLines() {
     // parent). Read EFFECTIVE styles (base + active vp's @media)
     // so a replica that pinned an element only via @media still
     // shows constraint lines on that viewport.
-    const effectiveStyles = getEffectiveStyles(selectedId, node.styles ?? {}, currentVpMaxWidth, containerOverrides);
+    const effectiveStyles = getEffectiveStyles(selectedId, node.styles ?? {}, currentVpMaxWidth, containerOverrides, node.motionVariants, variantKey);
     const pos = effectiveStyles.position;
     if (pos !== 'absolute' && pos !== 'fixed') { suppress('not-absolute'); return; }
 
@@ -242,7 +247,7 @@ export default function PinConstraintLines() {
         // had the pin, even though the tablet view clearly shows the
         // pinned axis.
         const currentNode = getNodeFromCache(selectedId) ?? node;
-        const cs = getEffectiveStyles(selectedId, currentNode?.styles ?? {}, currentVpMaxWidth, containerOverrides);
+        const cs = getEffectiveStyles(selectedId, currentNode?.styles ?? {}, currentVpMaxWidth, containerOverrides, currentNode?.motionVariants, variantKey);
         const next: PinData = {
           lp: isStylePinned(cs.left), rp: isStylePinned(cs.right),
           tp: isStylePinned(cs.top), bp: isStylePinned(cs.bottom),
@@ -284,7 +289,7 @@ export default function PinConstraintLines() {
     if (!node || node.isCanvasNode || !node.parentId) return false;
     // Absolute SVGs show pin lines; only shape-edit mode suppresses (see effect).
     if (node.type === 'svg' && shapeEditingId === selectedId) return false;
-    const pos = getEffectiveStyles(selectedId!, node.styles ?? {}, currentVpMaxWidth, containerOverrides).position;
+    const pos = getEffectiveStyles(selectedId!, node.styles ?? {}, currentVpMaxWidth, containerOverrides, node.motionVariants, variantKey).position;
     return pos === 'absolute' || pos === 'fixed';
   })();
 

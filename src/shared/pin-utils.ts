@@ -641,3 +641,41 @@ export function gatePositionTypeOptions(
     return { ...opt, disabled };
   });
 }
+
+/**
+ * Merge a COMPONENT-VARIANT tile's motionVariants entries on top of `styles`
+ * for pin/inset detection — the variant counterpart of the @media replica
+ * merge every pin consumer already does.
+ *
+ * A variant tile paints base + the always-on 'default' entry + its own entry
+ * (the Renderer's order; the default entry is always active via
+ * `animate={['default', variant]}`, so it applies on page tiles too). Pin
+ * consumers that read only base styles see the MASTER's pins: unpinning
+ * right/bottom on a variant, then dragging, re-committed all four sides in
+ * px (user report 2026-08-26). `''` and `'auto'` mean "treat as not-set",
+ * exactly like the @media merge. Entry values can be numeric (rotate: -90)
+ * — stringified.
+ *
+ * Shared by PinControl, PinConstraintLines, ResizeManager, and
+ * AbsoluteInFrameStrategy — the four sites the "kept in sync" comments
+ * already bind together. `variantKey` is the tile's variant name, with the
+ * primary tile mapped to 'default' by callers.
+ */
+export function mergeVariantPinStyles(
+  styles: Record<string, string>,
+  motionVariants: Record<string, Record<string, unknown>> | null | undefined,
+  variantKey: string,
+): Record<string, string> {
+  if (!motionVariants) return styles;
+  const defaultEntry = motionVariants['default'] ?? {};
+  const ownEntry = variantKey !== 'default' ? motionVariants[variantKey] ?? {} : {};
+  const entries = Object.entries({ ...defaultEntry, ...ownEntry });
+  if (entries.length === 0) return styles;
+  const merged = { ...styles };
+  for (const [prop, val] of entries) {
+    const sval = String(val);
+    if (sval === '' || sval === 'auto') delete merged[prop];
+    else merged[prop] = sval;
+  }
+  return merged;
+}

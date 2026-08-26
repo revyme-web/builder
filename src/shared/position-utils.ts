@@ -333,3 +333,54 @@ export function convertChildToAbsolute(
   trace.action('position-utils:to-absolute', { left: styles.left, top: styles.top });
   return styles;
 }
+
+// ─── Replica clear semantics ────────────────────────────────────────────────
+
+/** Props whose replica-channel neutral is `auto`. */
+const AUTO_NEUTRAL_PROPS = new Set(['left', 'top', 'right', 'bottom', 'width', 'height']);
+
+/**
+ * Translate `'' = delete` clears into explicit NEUTRAL overrides for a
+ * replica-channel write.
+ *
+ * On the primary, `''` removes the inline property — done. On a non-primary
+ * viewport (page @container band) or component variant (variants object),
+ * `''` only deletes THIS channel's override key and the BASE value cascades
+ * straight back: unpinning right/bottom on a variant left them pinned because
+ * the master's `right: 40px / bottom: -69px` showed through the deleted keys
+ * (user report 2026-08-26 — same law as the layout-injection replica
+ * neutralization, 2026-08-05: "clear" and "neutralize" are different
+ * operations on a replica).
+ *
+ * Only BASE-CARRIED props are translated (a prop the base doesn't state has
+ * nothing to cascade — plain deletion is correct and keeps the band/entry
+ * free of noise):
+ *   left/top/right/bottom/width/height → 'auto'  (the CSS initial)
+ *   position                           → 'static'
+ *   transform                          → 'translate(0px, 0px)'
+ *
+ * transform is NOT 'none': the variants-object generator collapses a 'none'
+ * write to a key delete (deliberately — a 'none' string would clobber
+ * motion's composed transform), so 'none' silently becomes the very leak
+ * this exists to fix. A pure-translate identity string takes the generator's
+ * pure-translate gate, lands in the entry as-is, and overrides the base
+ * string in the resolve merge — and in a @container band it's an equally
+ * valid neutral.
+ *
+ * Pure: caller decides WHEN (non-primary, not solo-redirected) and supplies
+ * the base styles.
+ */
+export function neutralizeReplicaClears(
+  styles: Record<string, string>,
+  baseStyles: Record<string, string>,
+): Record<string, string> {
+  const out: Record<string, string> = { ...styles };
+  for (const [key, value] of Object.entries(styles)) {
+    if (value !== '') continue;
+    if (!baseStyles[key]) continue;
+    if (AUTO_NEUTRAL_PROPS.has(key)) out[key] = 'auto';
+    else if (key === 'position') out[key] = 'static';
+    else if (key === 'transform') out[key] = 'translate(0px, 0px)';
+  }
+  return out;
+}

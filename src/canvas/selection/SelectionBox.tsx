@@ -7,7 +7,7 @@ import { trace } from '@/shared/debug-trace';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { parseRectCacheKey, vpIdFromPrefix } from '@/canvas/node-ops';
 import { isGhostNodeId } from '@/shared/ghost-id';
-import { getActiveAutoPan } from '@/canvas/transform';
+import { getActiveAutoPan, isSpaceBarDown } from '@/canvas/transform';
 import { isViewerMode } from '@/code/stores/viewer-mode-store';
 import { getNodesSnapshot } from '@/code/stores/store';
 
@@ -187,6 +187,13 @@ export default function SelectionBox({ containerEl, contentEl, onSelectionChange
     if (isViewerMode()) return;
     // Only activate on left mouse button
     if (e.button !== 0) return;
+    // Space-pan: this pointerdown belongs to the pan gesture
+    // (CanvasMouseController's handleSpacePanDown). The marquee registers
+    // its OWN container listener, so without this gate both started — a
+    // selection box drew while the user panned (user report 2026-08-27).
+    // The hand TOOL is already covered by `isActive`; spacebar is transient
+    // key state, so it's checked at event time.
+    if (isSpaceBarDown()) return;
     // STRICT: Only activate when clicking DIRECTLY on the canvas container or a viewport root.
     const target = e.target as HTMLElement;
     if (!containerEl) return;
