@@ -1653,7 +1653,14 @@ export function startResize(
   // + commit must re-aim the center from the drag math's visual rect
   // (`newLeft + newWidth/2`), keeping the translate untouched. Same transform
   // detection as `resolvePos`'s start compensation.
-  const authoredTransformForCenter = String(nodeStyles.transform ?? '');
+  // TILE-EFFECTIVE transform, not base: the centering translate of an
+  // element unpinned ONLY on a variant/replica lives in the variant entry /
+  // @media band (mergedStyles), not inline. Reading base said "not centered"
+  // → the centered re-aim below never engaged: an edge drag grew the box
+  // around the stale center %, and the commit re-expressed the painted EDGE
+  // as the center % — the button jumped by half its width (user report
+  // 2026-08-27, hover-variant resize).
+  const authoredTransformForCenter = String(mergedStyles.transform ?? '');
   const isCenteredX = !isSvgGroupChild && !isFixedLeft
     && !inset.pins.left && !inset.pins.right
     && !!insetStyles.left?.includes('%')

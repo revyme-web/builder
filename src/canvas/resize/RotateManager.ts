@@ -19,6 +19,9 @@ import { getDefaultStore } from 'jotai';
 import { parseVariantConfig } from '@/code/variants/variant-config';
 import { projectFS } from '@/code/project/project-fs';
 import { nodesAtom, getNodeFromCache } from '@/code/stores/store';
+import { containerOverridesAtom } from '@/code/stores/container-query-store';
+import { viewportsConfigAtom } from '@/code/stores/viewport-store';
+import { getEffectiveStyles } from '@/canvas/selection/pin-constraint-utils';
 import { queueMutation, flushNow } from '@/code/mutation/mutation-queue';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { refitGroupChain } from '@/code/svg/refit-group';
@@ -125,7 +128,27 @@ export function startRotate(
     return;
   }
 
-  const originalTransform = nodeData?.styles?.transform || '';
+  // TILE-EFFECTIVE transform, not base: an unpinned-on-variant element's
+  // centering translate lives in the variant entry (or a replica's @media
+  // band), not inline. Merging the live rotation into the BASE string
+  // dropped the translate for the whole gesture — the element jumped
+  // down-right by half its size and snapped back on mouseup (user report
+  // 2026-08-27). The commit merge (non-variant-routed path in onUp) uses the
+  // same effective base so a band-carried translate survives its band
+  // commit; on a primary tile effective === base, byte-identical behavior.
+  const vpCfgForTransform = getDefaultStore().get(viewportsConfigAtom).find(v => v.id === vpId);
+  const vpMaxWidthForTransform =
+    (!isComponentFilePath(getActiveFilePath()) && vpCfgForTransform && !vpCfgForTransform.isPrimary)
+      ? (vpCfgForTransform.width ?? 0)
+      : 0;
+  const originalTransform = getEffectiveStyles(
+    nodeId,
+    nodeData?.styles ?? {},
+    vpMaxWidthForTransform,
+    getDefaultStore().get(containerOverridesAtom),
+    nodeData?.motionVariants,
+    isPrimaryViewport(vpId) ? 'default' : vpId,
+  ).transform || '';
 
   // Track live transform for reading during onMove/onUp
   let liveTransform = originalTransform;
