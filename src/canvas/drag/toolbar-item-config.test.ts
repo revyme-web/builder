@@ -39,10 +39,20 @@ describe('getToolbarItemConfig', () => {
     expect(item!.defaultAttrs!.src).toContain('unsplash.com');
   });
 
-  it('returns config for button with textContent', () => {
+  it('returns config for button with a real p text child (not intrinsic text)', () => {
     const item = getToolbarItemConfig('button');
     expect(item!.elementType).toBe('button');
-    expect(item!.textContent).toBe('Button');
+    // The label is a CHILD text node — visible in the layers, styleable —
+    // never intrinsic bare text inside <button> (2026-08-31 change).
+    expect(item!.textContent).toBeUndefined();
+    const kids = item!.children!();
+    expect(kids).toHaveLength(1);
+    expect(kids[0].tag).toBe('p');
+    expect(kids[0].textContent).toBe('Button');
+    // Padded element declares a layout (Padding control requirement).
+    expect(item!.defaultStyles.display).toBe('flex');
+    // Fresh ids per insert — two drops must not share the label's data-id.
+    expect(item!.children!()[0].id).not.toBe(kids[0].id);
   });
 
   it('returns config for video', () => {

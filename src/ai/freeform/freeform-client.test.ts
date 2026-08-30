@@ -43,18 +43,50 @@ function TestCard({ style }: { style?: React.CSSProperties }) {
 export default withResponsiveProps(TestCard);
 `;
 
+// The client runs each attempt as a JOB: POST /api/freeform/job → { jobId },
+// then polls GET /api/freeform/job/:id until a settled payload comes back.
+// One response body carrying BOTH `jobId` and the settled result satisfies
+// both calls, so every mocked attempt is simply the same response twice
+// (POST accept, then the one poll that finds it done).
 function fetchOk(payload: { code: string; text?: string }) {
   return {
     ok: true,
-    json: async () => ({ success: true, files: [{ path: '', kind: 'component', code: payload.code }], text: payload.text ?? 'done', usage: { inputTokens: 10, outputTokens: 20, durationMs: 100 } }),
+    json: async () => ({ jobId: 'job-1', success: true, files: [{ path: '', kind: 'component', code: payload.code }], text: payload.text ?? 'done', usage: { inputTokens: 10, outputTokens: 20, durationMs: 100 } }),
   } as Response;
 }
 
 function fetchOkFiles(files: Array<{ path: string; kind: string; code: string }>, text = 'done') {
   return {
     ok: true,
-    json: async () => ({ success: true, files, text, usage: { inputTokens: 10, outputTokens: 20, durationMs: 100 } }),
+    json: async () => ({ jobId: 'job-1', success: true, files, text, usage: { inputTokens: 10, outputTokens: 20, durationMs: 100 } }),
   } as Response;
+}
+
+/** Queue one full job round trip (submit + poll) on the fetch mock. */
+function enqueueTurn(fetchMock: ReturnType<typeof vi.fn>, res: Response) {
+  fetchMock.mockResolvedValueOnce(res).mockResolvedValueOnce(res);
+}
+
+/** POST bodies only — poll GETs carry no body and would JSON.parse-crash. */
+function postBodies(fetchMock: ReturnType<typeof vi.fn>): any[] {
+  return fetchMock.mock.calls
+    .filter((c) => c[1]?.body != null)
+    .map((c) => JSON.parse(c[1].body));
+}
+
+/** Drive runFreeformEdit under fake timers — the poll loop sleeps
+ *  POLL_INTERVAL_MS between requests, which would make every test wait
+ *  real seconds otherwise. */
+async function runEdit(req: Parameters<typeof runFreeformEdit>[0]) {
+  vi.useFakeTimers();
+  try {
+    let settled = false;
+    const p = runFreeformEdit(req).finally(() => { settled = true; });
+    while (!settled) await vi.advanceTimersByTimeAsync(500);
+    return await p;
+  } finally {
+    vi.useRealTimers();
+  }
 }
 
 describe('formatBounce', () => {
@@ -72,10 +104,11 @@ describe('runFreeformEdit', () => {
   });
 
   it('applies a clean first attempt and reports success', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(fetchOk({ code: CLEAN, text: 'Built the card' }));
+    const fetchMock = vi.fn();
+    enqueueTurn(fetchMock, fetchOk({ code: CLEAN, text: 'Built the card' }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await runFreeformEdit({ prompt: 'card', activeFilePath: FILE, kind: 'component' });
+    const result = await runEdit({ prompt: 'card', activeFilePath: FILE, kind: 'component' });
 
     expect(result.success).toBe(true);
     expect(result.attempts).toBe(1);
@@ -88,9 +121,10 @@ describe('runFreeformEdit', () => {
   it("injects explicit width/height: 'auto' into sizeless nodes on COMMIT", async () => {
     // CLEAN's card + label both omit width/height — the commit normalizer fills them so
     // the source is never sizeless (make-component / resize need a real value).
-    const fetchMock = vi.fn().mockResolvedValueOnce(fetchOk({ code: CLEAN, text: 'ok' }));
+    const fetchMock = vi.fn();
+    enqueueTurn(fetchMock, fetchOk({ code: CLEAN, text: 'ok' }));
     vi.stubGlobal('fetch', fetchMock);
-    await runFreeformEdit({ prompt: 'card', activeFilePath: FILE, kind: 'component' });
+    await runEdit({ prompt: 'card', activeFilePath: FILE, kind: 'component' });
     const committed = projectFS.readFile(FILE)!;
     expect((committed.match(/width: 'auto'/g) || []).length).toBe(2);   // card + label
     expect((committed.match(/height: 'auto'/g) || []).length).toBe(2);
@@ -100,13 +134,13 @@ describe('runFreeformEdit', () => {
   });
 
   it('bounces violations and converges on attempt 2 — the wire carries the previous attempt + violations', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(fetchOk({ code: SINNER }))
-      .mockResolvedValueOnce(fetchOk({ code: CLEAN }));
+    const fetchMock = vi.fn();
+    enqueueTurn(fetchMock, fetchOk({ code: SINNER }));
+    enqueueTurn(fetchMock, fetchOk({ code: CLEAN }));
     vi.stubGlobal('fetch', fetchMock);
 
     const attempts: number[] = [];
-    const result = await runFreeformEdit({
+    const result = await runEdit({
       prompt: 'card', activeFilePath: FILE, kind: 'component',
       onAttempt: (a, vs) => { attempts.push(a); expect(vs.length).toBeGreaterThan(0); },
     });
@@ -117,8 +151,8 @@ describe('runFreeformEdit', () => {
     expect(projectFS.readFile(FILE)).toContain('data-id="label"');
     expect(projectFS.readFile(FILE)).not.toContain('className');
 
-    // second request carried the bounce payload
-    const secondBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    // second SUBMIT carried the bounce payload (calls interleave with polls)
+    const secondBody = postBodies(fetchMock)[1];
     expect(secondBody.previousAttempt).toBe(SINNER);
     expect(secondBody.violations.map((v: { code: string }) => v.code)).toContain('CLASSNAME_STYLING');
   });
@@ -127,7 +161,7 @@ describe('runFreeformEdit', () => {
     const fetchMock = vi.fn().mockResolvedValue(fetchOk({ code: SINNER }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await runFreeformEdit({ prompt: 'card', activeFilePath: FILE, kind: 'component' });
+    const result = await runEdit({ prompt: 'card', activeFilePath: FILE, kind: 'component' });
 
     expect(result.success).toBe(false);
     expect(result.attempts).toBe(3);
@@ -137,10 +171,11 @@ describe('runFreeformEdit', () => {
   });
 
   it('discards a passing result if the user switched files mid-generation', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(fetchOk({ code: CLEAN }));
+    const fetchMock = vi.fn();
+    enqueueTurn(fetchMock, fetchOk({ code: CLEAN }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await runFreeformEdit({
+    const result = await runEdit({
       prompt: 'card', activeFilePath: FILE, kind: 'component',
       isStillActive: () => false,
     });
@@ -158,13 +193,14 @@ describe('runFreeformEdit', () => {
       .replace('style={{ position: \'relative\', width: \'100%\' }} />', 'style={{ position: \'relative\', width: \'100%\', display: \'flex\', flexDirection: \'column\' }}>\n    <FlMeBu data-id="flower-menu-1" data-name="Flower Menu" style={{ position: \'relative\' }} />\n  </div>');
     resetProjectFS(new Map([[PAGE_PATH, PAGE_BEFORE]]));
 
-    const fetchMock = vi.fn().mockResolvedValueOnce(fetchOkFiles([
+    const fetchMock = vi.fn();
+    enqueueTurn(fetchMock, fetchOkFiles([
       { path: 'components/FlMeBu.tsx', kind: 'component', code: CLEAN.replace(/TestCard/g, 'FlMeBu') },
       { path: PAGE_PATH, kind: 'page', code: PAGE_AFTER },
     ], 'Created the flower menu and placed it'));
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await runFreeformEdit({ prompt: 'make a flower menu component here', activeFilePath: PAGE_PATH, kind: 'page' });
+    const result = await runEdit({ prompt: 'make a flower menu component here', activeFilePath: PAGE_PATH, kind: 'page' });
 
     expect(result.success).toBe(true);
     expect(result.written).toEqual(['components/FlMeBu.tsx', PAGE_PATH]);
@@ -178,19 +214,20 @@ describe('runFreeformEdit', () => {
     const PAGE_AFTER = PAGE_BEFORE.replace('width: \'100%\' }} />', 'width: \'100%\', display: \'flex\', flexDirection: \'column\' }}><p data-id="hello" data-name="Hello">Hi</p></div>');
     resetProjectFS(new Map([[PAGE_PATH, PAGE_BEFORE]]));
 
-    const fetchMock = vi.fn().mockResolvedValueOnce(fetchOkFiles([
+    const fetchMock = vi.fn();
+    enqueueTurn(fetchMock, fetchOkFiles([
       { path: 'page.client.tsx', kind: 'page', code: PAGE_AFTER }, // wrong, invented path
     ]));
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await runFreeformEdit({ prompt: 'add hello', activeFilePath: PAGE_PATH, kind: 'page' });
+    const result = await runEdit({ prompt: 'add hello', activeFilePath: PAGE_PATH, kind: 'page' });
 
     expect(result.success).toBe(true);
     expect(result.written).toEqual([PAGE_PATH]);            // remapped, not phantom
     expect(projectFS.readFile('page.client.tsx')).toBeNull(); // no stray file
     expect(projectFS.readFile(PAGE_PATH)).toContain('data-id="hello"');
     // and the request told the server the real path
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const body = postBodies(fetchMock)[0];
     expect(body.currentPath).toBe(PAGE_PATH);
   });
 
@@ -202,13 +239,13 @@ describe('runFreeformEdit', () => {
     const fetchMock = vi.fn().mockResolvedValue(fetchOkFiles([{ path: PAGE_PATH, kind: 'page', code: PAGE_BAD }]));
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await runFreeformEdit({ prompt: 'add ghost', activeFilePath: PAGE_PATH, kind: 'page' });
+    const result = await runEdit({ prompt: 'add ghost', activeFilePath: PAGE_PATH, kind: 'page' });
 
     expect(result.success).toBe(false);
     expect(result.violations?.some((x) => x.code === 'COMPONENT_IMPORT_MISSING')).toBe(true);
     expect(projectFS.readFile(PAGE_PATH)).toBe('old'); // atomic: nothing written
     // the bounce wire carried the missing-component teaching
-    const lastBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    const lastBody = postBodies(fetchMock)[1];
     expect(lastBody.violations.some((x: { code: string }) => x.code === 'COMPONENT_IMPORT_MISSING')).toBe(true);
   });
 
@@ -221,7 +258,7 @@ describe('runFreeformEdit', () => {
     const fetchMock = vi.fn().mockResolvedValue(fetchOkFiles([{ path: LAYOUT_PATH, kind: 'page', code: LAYOUT_BROKEN }]));
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await runFreeformEdit({ prompt: 'redesign template', activeFilePath: LAYOUT_PATH, kind: 'page' });
+    const result = await runEdit({ prompt: 'redesign template', activeFilePath: LAYOUT_PATH, kind: 'page' });
 
     expect(result.success).toBe(false);
     expect(result.violations?.some((x) => x.code === 'TEMPLATE_CHILDREN_MISSING')).toBe(true);
@@ -234,7 +271,7 @@ describe('runFreeformEdit', () => {
     } as Response);
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await runFreeformEdit({ prompt: 'card', activeFilePath: FILE, kind: 'component' });
+    const result = await runEdit({ prompt: 'card', activeFilePath: FILE, kind: 'component' });
     expect(result.success).toBe(false);
     expect(result.error).toBe('model exploded');
     expect(fetchMock).toHaveBeenCalledTimes(1);

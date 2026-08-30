@@ -283,3 +283,105 @@ export default function Page() {
     expect(out).not.toMatch(/font-size: 40px !important/);
   });
 });
+
+describe('primary writes never ship raw TipTap HTML (string-style crash, 2026-08-31)', () => {
+  // Real user site down: `<span style="font-size: 53px;">` landed in base JSX
+  // children as a STRING style attribute — invisible on the canvas, fatal in
+  // React DOM ("The style prop expects a mapping…"). Two writers did it:
+  // the reset-last-override UNWRAP and the unwrapped-primary edit.
+
+  const MARKED = '<span style="font-size: 53px;">Manage all your hospitality needs.</span>';
+
+  test('unwrapped primary edit with a mark → JSX object style, never string', () => {
+    const out = setTextOverrideInCode(PLAIN, 't1', PRIMARY, PRIMARY, MARKED, ALL_VPS);
+    expect(out).not.toMatch(/style="/);
+    expect(out).toMatch(/fontSize:\s*['"]53px['"]/);
+    expect(out).toContain('Manage all your hospitality needs.');
+  });
+
+  test('reset of the LAST override unwraps with converted children (the exact user repro)', () => {
+    // Step 1: replica edit wraps the node.
+    let code = setTextOverrideInCode(PLAIN, 't1', TABLET, PRIMARY, 'Hi tablet', ALL_VPS);
+    // Step 2: primary rich edit stores TipTap HTML as the hook's primary arg.
+    code = setTextOverrideInCode(code, 't1', PRIMARY, PRIMARY, MARKED, ALL_VPS);
+    expect(code).toContain('font-size: 53px'); // safely inside the string arg
+    // Step 3: reset the last override → unwrap must CONVERT, not dump raw.
+    const out = removeTextOverrideInCode(code, 't1', TABLET, PRIMARY, ALL_VPS);
+    expect(out).not.toMatch(/style="/);
+    expect(out).toMatch(/fontSize:\s*['"]53px['"]/);
+    expect(out).toContain('Manage all your hospitality needs.');
+  });
+
+  test('plain-text unwrap unchanged', () => {
+    let code = setTextOverrideInCode(PLAIN, 't1', TABLET, PRIMARY, 'Hi tablet', ALL_VPS);
+    code = setTextOverrideInCode(code, 't1', PRIMARY, PRIMARY, 'Just words', ALL_VPS);
+    const out = removeTextOverrideInCode(code, 't1', TABLET, PRIMARY, ALL_VPS);
+    expect(out).toContain('Just words');
+    expect(out).not.toContain(HOOK_NAME + '(');
+  });
+
+  test('multi-span TipTap payload converts every mark', () => {
+    const html = '<span style="color: #ff0000; font-size: 36px;">​</span><span style="font-size: 36px;">Hello</span>';
+    const out = setTextOverrideInCode(PLAIN, 't1', PRIMARY, PRIMARY, html, ALL_VPS);
+    expect(out).not.toMatch(/style="/);
+    expect(out).toMatch(/fontSize:\s*['"]36px['"]/);
+    expect(out).toContain('Hello');
+  });
+
+  test('malformed HTML falls back to stripped plain text — content never wiped', () => {
+    const out = setTextOverrideInCode(PLAIN, 't1', PRIMARY, PRIMARY, '<span style="x: {bad">Keep me</span', ALL_VPS);
+    expect(out).toContain('Keep me');
+    expect(out).not.toMatch(/style="/);
+  });
+});
+
+describe('wrap preserves marked desktop text (blank-primary bug, 2026-08-31)', () => {
+  // Minutes after the raw-HTML fix: typing the FIRST tablet override on a node
+  // whose desktop text lived in <span style={{ fontSize: '47px' }}> stored the
+  // hook primary as "" — the desktop text vanished. Wrap must serialize the
+  // existing children into the hook's HTML dialect, not flatten marks to ''.
+  const MARKED_PAGE = `'use client';
+import React from 'react';
+export default function Page() {
+  return <p data-id="t1"><span style={{ fontSize: '47px' }}>Hello</span></p>;
+}`;
+
+  test('first override on a marked node keeps the desktop text + mark', () => {
+    const out = setTextOverrideInCode(MARKED_PAGE, 't1', TABLET, PRIMARY, 'Hi tablet', ALL_VPS);
+    expect(out).toMatch(/useResponsiveText\("<span style=\\"font-size: 47px;\\">Hello<\/span>"/);
+    expect(out).toMatch(/768:\s*['"]Hi tablet['"]/);
+  });
+
+  test('full cycle: wrap marked → reset override → desktop children restored with the mark', () => {
+    let code = setTextOverrideInCode(MARKED_PAGE, 't1', TABLET, PRIMARY, 'Hi tablet', ALL_VPS);
+    const out = removeTextOverrideInCode(code, 't1', TABLET, PRIMARY, ALL_VPS);
+    expect(out).not.toMatch(/style="/);
+    expect(out).toMatch(/fontSize:\s*['"]47px['"]/);
+    expect(out).toContain('Hello');
+    expect(out).not.toContain(HOOK_NAME + '(');
+  });
+
+  test('unsupported child shapes keep their text (tag dropped, never blanked)', () => {
+    const page = `'use client';
+import React from 'react';
+export default function Page() {
+  return <p data-id="t1"><strong>Bold bit</strong> and tail</p>;
+}`;
+    const out = setTextOverrideInCode(page, 't1', TABLET, PRIMARY, 'Hi', ALL_VPS);
+    expect(out).toMatch(/useResponsiveText\("[^"]*Bold bit[^"]*and tail/);
+  });
+
+  test('multi-line marked text serializes br and round-trips', () => {
+    const page = `'use client';
+import React from 'react';
+export default function Page() {
+  return <p data-id="t1"><span style={{ fontSize: '20px' }}>Line one<br />Line two</span></p>;
+}`;
+    let code = setTextOverrideInCode(page, 't1', TABLET, PRIMARY, 'Hi', ALL_VPS);
+    expect(code).toContain('Line one<br>Line two');
+    const out = removeTextOverrideInCode(code, 't1', TABLET, PRIMARY, ALL_VPS);
+    expect(out).toContain('Line one');
+    expect(out).toContain('Line two');
+    expect(out).not.toMatch(/style="/);
+  });
+});

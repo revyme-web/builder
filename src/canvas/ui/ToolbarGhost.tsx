@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom';
 import { toolbarGhostOps } from '@/canvas/drag/strategies/toolbar-ghost-atom';
 import { ELEMENT_ICON_MAP } from '@/shared/insert-items/element-icons';
 import { getInsertItem } from '@/shared/insert-items/insert-item-lookup';
+import { SECTION_THUMBS } from '@/shared/insert-items/section-thumb-map';
 import { isPreviewIcon } from '@/shared/insert-items/icon-style-utils';
 import { SocialIcon } from 'react-social-icons/component';
 import { trace } from '@/shared/debug-trace';
@@ -44,6 +45,13 @@ export default function ToolbarGhost() {
   // square instead of the actual image at the tile's size.
   const isMediaImage = item.id.startsWith('media-image:');
   const isMediaVideo = item.id.startsWith('media-video:');
+  // Sections-library drags (`section-bp-<blueprintId>`) show their cover
+  // image (bundled via section-thumb-map) at a compact fixed size — the
+  // panel card in miniature, not the huge real footprint in `ghostSize`.
+  const isSection = item.id.startsWith('section-bp-');
+  const sectionThumbSrc = isSection
+    ? SECTION_THUMBS[item.id.slice('section-bp-'.length)] ?? null
+    : null;
   // Look up the full InsertItem (icon + brand metadata) — same record the
   // secondary-panel card rendered from. Falls back to null for non-Insert
   // drags (CMS, code components, components).
@@ -70,7 +78,24 @@ export default function ToolbarGhost() {
         opacity: 0.85,
       }}
     >
-      {isMediaImage || isMediaVideo ? (
+      {isSection && sectionThumbSrc ? (
+        <div
+          style={{
+            width: 220,
+            height: 137,
+            borderRadius: 8,
+            overflow: 'hidden',
+            filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.45))',
+          }}
+        >
+          <img
+            src={sectionThumbSrc!}
+            alt=""
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            draggable={false}
+          />
+        </div>
+      ) : isMediaImage || isMediaVideo ? (
         /* Media gallery preview ghost — renders the actual uploaded
            image / video at the gallery tile's live size (captured at
            pointerdown via `getBoundingClientRect()` and stashed on

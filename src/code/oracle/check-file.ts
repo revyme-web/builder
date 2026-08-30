@@ -29,7 +29,7 @@ import { SELECT_ICON_ATTR, parseSelectIconSpec } from '@/editor/tools/InputTool/
 import { checkVariantDialect, checkVariantTernaryPrimary } from './checks/variant-dialect';
 import { checkScrollDialect } from './checks/scroll-dialect';
 import { checkPageVariableTypes, checkEventVariables, checkComponentFluidWidth } from './checks/element-identity';
-import { checkSlotComponentInlineChildren, checkUnresolvableTernary, checkGridNeedsTemplate, checkGridChildSpan, checkCanvasFillFeedback, checkPaddingNeedsLayout, checkFlexChildOrder, checkOrderIsString, checkFlexChildShrink, checkImageBackgroundFrame, checkNoLayoutParentRelativeChild, checkMediaColumnFlipRebase } from './checks/layout-rules';
+import { checkSlotComponentInlineChildren, checkUnresolvableTernary, checkGridNeedsTemplate, checkGridChildSpan, checkCanvasFillFeedback, checkPaddingNeedsLayout, checkFlexChildOrder, checkOrderIsString, checkFlexChildShrink, checkFlexRowChildFullWidth, checkImageBackgroundFrame, checkNoLayoutParentRelativeChild, checkMediaColumnFlipRebase } from './checks/layout-rules';
 import { checkCanvasConfig } from './checks/canvas-config';
 import { checkOverlayDialect } from './checks/overlay-dialect';
 import { checkSvgShapeDialect } from './checks/svg-shape-dialect';
@@ -1269,6 +1269,7 @@ export function checkFile(
     checkFlexChildOrder(ast, v);
     checkOrderIsString(ast, v);
     checkFlexChildShrink(ast, v);
+    checkFlexRowChildFullWidth(ast, v);
     checkPaddingNeedsLayout(ast, v, existingDataIds);
     checkGridNeedsTemplate(ast, v, existingDataIds);
     checkGridChildSpan(ast, v, existingDataIds);

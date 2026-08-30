@@ -2187,7 +2187,28 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
                   // swap below (`node.id = cloneId`) so we can clear the
                   // registry entry by its real key.
                   const originalSourceId = node.id;
-                  const pSnap = isReplicaExit ? getPendingReplicaExtraction(originalSourceId) : null;
+                  const pSnapRaw = isReplicaExit ? getPendingReplicaExtraction(originalSourceId) : null;
+                  // A SOLO node's exit must DIRECT-MOVE (leave the viewport
+                  // tree entirely) — extraction (revert + hide + clone) is
+                  // for multi-vp-visible sources. The registration guard in
+                  // onStart skips solo nodes, but it reads the GESTURE-START
+                  // frozen nodes map: a canvas node that entered a replica
+                  // IN THIS SAME GESTURE was still a visible canvas node in
+                  // that snapshot, so it registered anyway. The extraction
+                  // then reverted it into a hidden viewport child + cloned —
+                  // every in/out cycle within one gesture stacked another
+                  // hidden duplicate (user report 2026-08-31). The
+                  // `isReplicaOnly` computed just above reads POST-ENTRY
+                  // state, so it is the authority: solo → drop the stale
+                  // registration and take the direct-move exit below — the
+                  // same path a committed-then-redragged solo node takes.
+                  if (pSnapRaw && isReplicaOnly) {
+                    clearPendingReplicaExtraction(originalSourceId);
+                    trace.action('abs-in-frame:vp-only-extraction-skipped-solo', {
+                      nodeId: originalSourceId, fromVpId: this.vpId,
+                    });
+                  }
+                  const pSnap = pSnapRaw && !isReplicaOnly ? pSnapRaw : null;
                   if (pSnap) {
                     // ── VP-ONLY EXTRACTION (live, during drag) ──
                     // The user exited the entire viewport hierarchy on a
@@ -2604,6 +2625,10 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
           reason: 'parent-exit',
           skipRebuild: !!overrides,
           nodeStateOverrides: overrides ?? undefined,
+          // This exit flushes its commit synchronously (code-first-exit), so
+          // the override coords ARE the painted truth — let the coordinator
+          // rebase the grab offset from them.
+          overridesArePainted: true,
           ...(switchVpPrefix !== null ? { newViewportPrefix: switchVpPrefix } : {}),
         },
       };

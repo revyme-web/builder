@@ -413,6 +413,12 @@ export class ToolbarDragStrategy implements DragStrategy {
       styles.position = 'absolute';
       styles.left = `${Math.round(canvasPos.x - w / 2)}px`;
       styles.top = `${Math.round(canvasPos.y - h / 2)}px`;
+      // Percentage / viewport sizes have nothing to resolve against on the
+      // bare canvas (a free node's `width: 100%` spans the whole workspace)
+      // — materialise the ghost-footprint px instead. Section blueprints
+      // carry `width: '100%'` / `height: '100vh'` for their in-page life.
+      if (/%$/.test(styles.width ?? '')) styles.width = `${w}px`;
+      if (/(%|vh)$/.test(styles.height ?? '')) styles.height = `${h}px`;
     } else if (this.dropIndex === undefined) {
       // Non-layout frame parent (no flex / grid / block flow). `onMove`
       // signals this with `dropParentId` set + `dropIndex === undefined`,

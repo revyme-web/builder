@@ -301,6 +301,13 @@ export function buildCanvasCloneDescriptor(
   const cloneAttrs = src.attrs ? { ...src.attrs } : undefined;
   if (cloneAttrs) {
     delete cloneAttrs.ref;
+    // Viewport-scoped contracts never travel to a canvas clone: a canvas
+    // node has no replica to be solo on and no parent frame for pin
+    // arithmetic. A copied `data-replica-solo` re-entered a replica as a
+    // pre-soloed node and compounded per in/out cycle (the duplicated-attr
+    // residue in the 2026-08-31 same-gesture trace).
+    delete cloneAttrs['data-replica-solo'];
+    delete cloneAttrs['data-pinned'];
     // BAKE THE SOURCE VARIANT. The instance's per-viewport variant choice lives in
     // `data-responsive` ({ "768": { initialVariant: "variant-1" }, … }), which only resolves
     // against a real viewport — a free canvas node has none, so it falls back to the BASE variant

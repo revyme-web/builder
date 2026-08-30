@@ -480,6 +480,28 @@ export class DragCoordinator {
               if (typeof o.transform === 'string') {
                 node.transformOverride = o.transform;
               }
+              // REBASE THE GRAB OFFSET. Everything cursor-anchored downstream
+              // (the lift-corner synthesis that feeds snap, elScreenRect
+              // construction) relies on the invariant
+              //   screenOf(startLeft, startTop) === startMouse − mouseOffset.
+              // We just rebased startLeft/startTop (authoritative committed
+              // coords) and startMouse (below) — but the grab offset still
+              // dated from the ORIGINAL lift. Every leg of a multi-handoff
+              // gesture lets the element slip a few px relative to the
+              // cursor (entry placement, in-frame snap residue, exit
+              // rounding), so the stale offset made the synthesized snap
+              // corners disagree with the painted box by that slip: guides
+              // lit a couple px off the real edges after a
+              // canvas→replica→canvas round trip, and only a re-grab fixed
+              // them (user report 2026-08-31). Canvas-space overrides only —
+              // a parent-relative startLeft needs the parent origin to
+              // convert, so those keep their offset untouched.
+              if (o.startParentId === null && result.switchRequest.overridesArePainted) {
+                const t = this.callbacks.getTransform();
+                const io = getIframeOffset();
+                node.mouseOffsetX = event.clientX - (o.startLeft * t.scale + t.x + io.x);
+                node.mouseOffsetY = event.clientY - (o.startTop * t.scale + t.y + io.y);
+              }
             }
           }
           this.context = {

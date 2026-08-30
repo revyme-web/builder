@@ -19,6 +19,47 @@ import { parseJSX, findFirstElementByDataId, traverse } from '../parsing/ast-uti
 import { trace } from '@/shared/debug-trace';
 import { generate, ensureNamedImport } from './generator-utils';
 import { updateContainerQueryStyle } from './generator-styles';
+import { htmlToJSX, toKebab } from '@/shared/css-utils';
+
+/**
+ * Convert a TipTap text payload into JSX children — NEVER write it raw.
+ *
+ * A payload with marks arrives as HTML (`<span style="font-size: 53px">…`).
+ * Both primary-write sites below used `t.jsxText(payload)`, which Babel emits
+ * literally, so the HTML RE-PARSED as a real `<span>` carrying a STRING style
+ * attribute — legal JSX, tolerated by the canvas (the sandbox applies styles
+ * imperatively), and a fatal React DOM crash on preview/publish ("The style
+ * prop expects a mapping…"). Live user site down 2026-08-31; deterministic
+ * repro: edit text on a replica (creates the override), apply a font-size
+ * mark on the PRIMARY tile (stores raw HTML as the hook's primary arg), then
+ * reset the last override — the unwrap dumped that HTML into the children.
+ *
+ * Same pipeline as updateNodeChildrenFromHTML: htmlToJSX (style="…" →
+ * style={{…}}) then parse as children. Fallback is tag-stripped plain text —
+ * a mark may be lost, the text never is, and raw tags never ship.
+ */
+function htmlToJsxChildren(payload: string): t.JSXElement['children'] {
+  if (!/<[^>]+>/.test(payload)) return [t.jsxText(payload)];
+  try {
+    const wrapperAst = parseJSX(`<_>${htmlToJSX(payload)}</_>`);
+    let out: t.JSXElement['children'] | null = null;
+    if (wrapperAst) {
+      traverse(wrapperAst, {
+        JSXElement(path) {
+          if (path.parentPath?.parentPath?.isProgram()) {
+            out = [...path.node.children];
+            path.stop();
+          }
+        },
+      });
+    }
+    if (out && (out as t.JSXElement['children']).length > 0) return out;
+  } catch (err) {
+    trace.error('text-override-gen:html-children-parse-failed', { error: err instanceof Error ? err.message : String(err) });
+  }
+  trace.action('text-override-gen:html-children-fallback-plain', { len: payload.length });
+  return [t.jsxText(payload.replace(/<[^>]+>/g, ''))];
+}
 
 /** The function name the inline hook is registered under. */
 export const HOOK_NAME = 'useResponsiveText';
@@ -153,7 +194,7 @@ export function setTextOverrideInCode(
         if (obj.properties.length === 0) {
           const primaryArg = wrapper.arguments[0];
           if (t.isStringLiteral(primaryArg)) {
-            path.node.children = [t.jsxText(primaryArg.value)];
+            path.node.children = htmlToJsxChildren(primaryArg.value);
           }
         }
       }
@@ -167,16 +208,23 @@ export function setTextOverrideInCode(
     // text update (delegated by the caller via `setTextOverrideInCode`'s
     // `isPrimary` check below).
     if (isPrimary) {
-      // No wrapper, primary edit → plain text replace.
-      path.node.children = [t.jsxText(text)];
+      // No wrapper, primary edit → replace children (mark-aware, never raw HTML).
+      path.node.children = htmlToJsxChildren(text);
       mutated = true;
       path.stop();
       return;
     }
 
     // Non-primary, plain element → wrap.
-    const currentPlain = extractPlainText(path.node.children);
-    const call = makeHookCall(currentPlain, [{ width: vpWidth, text }], allViewportWidths);
+    // Seed the primary arg from the node's CURRENT children. Marked children
+    // serialize to the hook's HTML dialect (see jsxChildrenToHtml) — the old
+    // plain-only read stored "" and blanked the desktop text.
+    const serialized = jsxChildrenToHtml(path.node.children);
+    // The deep serialization is strictly more complete than the flat plain
+    // read (it descends into every element), so it always wins; the flat read
+    // is only a last-resort fallback for an empty serialization.
+    const currentPrimary = serialized.html.trim() || extractPlainText(path.node.children);
+    const call = makeHookCall(currentPrimary, [{ width: vpWidth, text }], allViewportWidths);
     path.node.children = [t.jsxExpressionContainer(call)];
     mutated = true;
     path.stop();
@@ -320,11 +368,79 @@ function extractPlainText(children: t.JSXElement['children']): string {
     ) {
       out += c.expression.value;
     }
-    // Other shapes (rich-text marks, etc.) are flattened to empty — V1
-    // limitation. Authors who add an override on a rich-text element lose
-    // their inline marks. Documented in the lesson.
   }
   return out.trim();
+}
+
+/** Serialize a style OBJECT of literal values back to a css string
+ *  (`{ fontSize: '47px' }` → `font-size: 47px`). Null = a non-literal value
+ *  we can't serialize — the caller drops the tag and keeps the text. */
+function styleObjectToCss(obj: t.ObjectExpression): string | null {
+  const parts: string[] = [];
+  for (const p of obj.properties) {
+    if (!t.isObjectProperty(p) || p.computed) return null;
+    const k = t.isIdentifier(p.key) ? p.key.name : t.isStringLiteral(p.key) ? p.key.value : null;
+    if (!k) return null;
+    let val: string;
+    if (t.isStringLiteral(p.value)) val = p.value.value;
+    else if (t.isNumericLiteral(p.value)) val = String(p.value.value);
+    else return null;
+    parts.push(`${toKebab(k)}: ${val.replace(/"/g, '&quot;')}`);
+  }
+  return parts.join('; ');
+}
+
+const escapeHtmlText = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
+/**
+ * Serialize existing JSX children into the hook's HTML-string dialect — the
+ * INVERSE of htmlToJsxChildren, used when WRAPPING a node that already
+ * carries rich-text marks.
+ *
+ * extractPlainText flattens marks to '' (its old V1 limitation): typing the
+ * first tablet override on a node whose desktop text lived inside
+ * `<span style={{ fontSize: '47px' }}>` stored the hook's primary arg as ""
+ * — the DESKTOP text vanished the moment the override was created (user
+ * report 2026-08-31, minutes after the raw-HTML unwrap fix; same node).
+ * Known mark shapes (span with literal styles, br) serialize; anything else
+ * contributes its DEEP text with the tag dropped — a mark may be lost in
+ * the worst case, the text never is.
+ */
+function jsxChildrenToHtml(children: t.JSXElement['children']): { html: string; hasMarks: boolean } {
+  let html = '';
+  let hasMarks = false;
+  for (const c of children) {
+    if (t.isJSXText(c)) { html += escapeHtmlText(c.value); continue; }
+    if (t.isJSXExpressionContainer(c)) {
+      if (t.isStringLiteral(c.expression)) html += escapeHtmlText(c.expression.value);
+      continue;
+    }
+    if (t.isJSXElement(c)) {
+      const nm = c.openingElement.name;
+      const tag = t.isJSXIdentifier(nm) ? nm.name
+        : t.isJSXMemberExpression(nm) && t.isJSXIdentifier(nm.property) ? nm.property.name : '';
+      if (tag === 'br') { html += '<br>'; hasMarks = true; continue; }
+      const inner = jsxChildrenToHtml(c.children);
+      if (inner.hasMarks) hasMarks = true;
+      if (tag === 'span') {
+        const styleAttr = c.openingElement.attributes.find(
+          (a): a is t.JSXAttribute => t.isJSXAttribute(a) && a.name.name === 'style');
+        let css: string | null = null;
+        if (!styleAttr) css = '';
+        else if (styleAttr.value && t.isJSXExpressionContainer(styleAttr.value) && t.isObjectExpression(styleAttr.value.expression)) {
+          css = styleObjectToCss(styleAttr.value.expression);
+        }
+        if (css !== null) {
+          hasMarks = true;
+          html += css ? `<span style="${css};">${inner.html}</span>` : `<span>${inner.html}</span>`;
+          continue;
+        }
+      }
+      // Unsupported element shape — keep its text, drop the tag.
+      html += inner.html;
+    }
+  }
+  return { html, hasMarks };
 }
 
 function makeHookCall(

@@ -503,6 +503,72 @@ function checkFlexChildShrink(ast: t.File, v: OracleViolation[]): void {
 }
 
 
+/** FLEX_ROW_CHILD_FULL_WIDTH — width: '100%' on a flex-ROW child that shares
+ *  the row. The dialect's no-shrink rule (flex: '0 0 auto') makes 100%-wide
+ *  siblings LITERAL: two of them are 200% of the row plus gaps, so the row
+ *  overflows the section instead of splitting it (live find 2026-08-30: an
+ *  AI-built card grid rendered every card page-wide). "Share the row equally"
+ *  is expressed as FILL — flex: '1 0 0px' with NO width (the Dimensions tool
+ *  shows it as 1fr/Fill) — never as width: '100%'. Fires per container, only
+ *  for ROW direction (a column child with width 100% is the normal fill-x
+ *  form), only with ≥2 in-flow children, and only on a static '100%'. */
+function checkFlexRowChildFullWidth(ast: t.File, v: OracleViolation[]): void {
+  const styleObjectOf = (el: t.JSXElement): t.ObjectExpression | null => {
+    const a = jsxAttrs(el.openingElement).find((x) => x.name.name === 'style');
+    if (a?.value?.type === 'JSXExpressionContainer' && t.isObjectExpression(a.value.expression)) return a.value.expression;
+    return null;
+  };
+  const strProp = (obj: t.ObjectExpression, key: string): string | null => {
+    for (const pr of obj.properties) {
+      if (!t.isObjectProperty(pr)) continue;
+      const k = t.isIdentifier(pr.key) ? pr.key.name : t.isStringLiteral(pr.key) ? pr.key.value : '';
+      if (k !== key) continue;
+      if (t.isStringLiteral(pr.value)) return pr.value.value;
+      return '__expr__';
+    }
+    return null;
+  };
+
+  traverse(ast, {
+    JSXElement(path) {
+      const pObj = styleObjectOf(path.node);
+      if (!pObj) return;
+      const display = strProp(pObj, 'display');
+      if (display !== 'flex' && display !== 'inline-flex') return;
+      const dir = strProp(pObj, 'flexDirection');
+      if (dir === '__expr__') return; // indeterminate direction — skip
+      // Absent flexDirection IS row (the CSS default) — don't reward omission.
+      if (dir === 'column' || dir === 'column-reverse') return;
+
+      const flow: Array<{ id: string; width: string | null; line?: number }> = [];
+      for (const child of path.node.children) {
+        if (!t.isJSXElement(child)) continue;
+        const cAttrs = jsxAttrs(child.openingElement);
+        const cId = stringAttr(cAttrs, 'data-id');
+        if (!cId) continue;
+        const cObj = styleObjectOf(child);
+        const pos = cObj ? strProp(cObj, 'position') : null;
+        if (pos === 'absolute' || pos === 'fixed') continue;
+        // width 100% capped by a static px maxWidth cannot overflow the row —
+        // a legitimate "fluid up to N" child (e.g. a footer brand column).
+        const maxW = cObj ? strProp(cObj, 'maxWidth') : null;
+        const capped = maxW != null && maxW !== '__expr__' && /px$/.test(maxW);
+        flow.push({ id: cId, width: cObj && !capped ? strProp(cObj, 'width') : null, line: child.openingElement.loc?.start.line });
+      }
+      if (flow.length < 2) return;
+      const bad = flow.filter((c) => c.width === '100%');
+      if (bad.length === 0) return;
+      const parentId = stringAttr(jsxAttrs(path.node.openingElement), 'data-id') ?? jsxTagName(path.node.openingElement.name);
+      const line = path.node.openingElement.loc?.start.line;
+      v.push({
+        code: 'FLEX_ROW_CHILD_FULL_WIDTH', tier: 2, line, elementId: parentId,
+        message: `Flex ROW <${parentId}> (line ${line}) has ${flow.length} in-flow children but ${bad.length} of them set width: '100%': ${bad.map((c) => c.id).join(', ')}. Flex children never shrink here (flex: '0 0 auto'), so each 100% child claims the FULL row and the row overflows the page sideways. To share the row, make each card FILL: flex: '1 0 0px' and REMOVE the width key entirely (the Dimensions tool then shows Fill/1fr); or give it an explicit px width. width: '100%' on a row child is never correct with siblings.`,
+      });
+    },
+  });
+}
+
+
 /**
  * NO_LAYOUT_PARENT_RELATIVE_CHILD — a container is either a LAYOUT frame
  * (display:flex/grid → children in flow, position:'relative') or a FREEFORM
@@ -697,4 +763,4 @@ function checkMediaColumnFlipRebase(ast: t.File, v: OracleViolation[]): void {
   }
 }
 
-export { checkSlotComponentInlineChildren, checkUnresolvableTernary, checkGridNeedsTemplate, checkGridChildSpan, checkCanvasFillFeedback, checkPaddingNeedsLayout, checkFlexChildOrder, checkOrderIsString, checkFlexChildShrink, checkImageBackgroundFrame, checkNoLayoutParentRelativeChild, checkMediaColumnFlipRebase };
+export { checkSlotComponentInlineChildren, checkUnresolvableTernary, checkGridNeedsTemplate, checkGridChildSpan, checkCanvasFillFeedback, checkPaddingNeedsLayout, checkFlexChildOrder, checkOrderIsString, checkFlexChildShrink, checkFlexRowChildFullWidth, checkImageBackgroundFrame, checkNoLayoutParentRelativeChild, checkMediaColumnFlipRebase };

@@ -2,6 +2,7 @@
 // Matches the old builder's InsertCategoryOverlay exactly.
 
 import type { FieldDefinition } from '@/shared/types';
+import { SECTION_BLUEPRINTS, sectionItemId, type SectionCategory } from '@/shared/sections-library';
 
 export interface InsertItem {
   id: string;
@@ -22,6 +23,10 @@ export interface InsertItem {
    *  (Google Maps' multi-color G, Spotify's wordmark green, TikTok's
    *  cyan/red split, etc.). Names match the lib's `network` prop. */
   socialNetwork?: string;
+  /** Sections-library card — the drag builds its ToolbarItem from this
+   *  blueprint's source (src/canvas/section-insert.ts blueprintToToolbarItem)
+   *  instead of the static toolbar catalogue. */
+  sectionBlueprintId?: string;
 }
 
 interface InsertSection {
@@ -241,6 +246,17 @@ const BACKGROUND_ITEMS: InsertItem[] = [
   { id: 'cs-neonParticleField',    name: 'Neon Particles',  iconKey: 'effectNeonParticles',  gradientColors: ['#22D3EE', '#A855F7'] },
 ];
 
+// ─── Sections library items ────────────────────────────────────────────────
+
+function sectionLibraryItems(category: SectionCategory): InsertItem[] {
+  return SECTION_BLUEPRINTS.filter((b) => b.category === category).map((b) => ({
+    id: sectionItemId(b.id),
+    name: b.name,
+    iconKey: 'sectionBlueprint',
+    sectionBlueprintId: b.id,
+  }));
+}
+
 // ─── Categories ────────────────────────────────────────────────────────────
 
 export const CATEGORIES: InsertCategory[] = [
@@ -262,6 +278,22 @@ export const CATEGORIES: InsertCategory[] = [
       { id: 'shapes', label: 'Shapes', items: SHAPE_ITEMS },
     ],
   },
+  // Sections — the source-level blueprint library (shared/sections-library).
+  // Items are generated from the registry so a new blueprint shows up here
+  // by being added to SECTION_BLUEPRINTS alone. Cards drag like every other
+  // element (blueprintToToolbarItem builds the descriptor tree per drag).
+  // TEMPORARILY hidden pre-push (2026-08-30) — uncomment to relaunch; the
+  // library, insert path, thumbnails and tests all stay live underneath.
+  // {
+  //   id: 'sections',
+  //   label: 'Sections',
+  //   iconKey: 'sections',
+  //   columns: 1,
+  //   sections: [
+  //     { id: 'headers', label: 'Headers', items: sectionLibraryItems('header') },
+  //     { id: 'heroes', label: 'Heroes', items: sectionLibraryItems('hero') },
+  //   ],
+  // },
   // Creative is no longer a single Insert row — it's promoted to its own
   // top-level GROUP (sibling to Insert / CMS / Community Blocks). The five
   // ex-sections (Effects, Backgrounds, Text Effects, Containers, Cursors)

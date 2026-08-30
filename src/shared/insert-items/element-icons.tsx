@@ -1040,6 +1040,18 @@ function CollectionIcon() {
 
 // ─── Icon Registry ─────────────────────────────────────────────────────────
 
+function SectionBlueprintIcon() {
+  return (
+    <svg className="w-9 h-9 text-[var(--text-secondary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <g strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="7" rx="1" fill="currentColor" opacity="0.16" />
+        <rect x="3" y="4" width="18" height="7" rx="1" />
+        <path d="M3 15h11M3 19h7" />
+      </g>
+    </svg>
+  );
+}
+
 function FrameIcon() {
   return (
     <svg className="w-9 h-9 text-[var(--text-secondary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1251,6 +1263,7 @@ function CollectionFieldIcon() {
 export const ELEMENT_ICON_MAP: Record<string, React.FC> = {
   // Basic
   frame: FrameIcon,
+  sectionBlueprint: SectionBlueprintIcon,
   column: ColumnIcon,
   row: RowIcon,
   image: ImageIcon,

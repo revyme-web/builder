@@ -94,7 +94,9 @@ function makeCardPricingChildren(): NewNodeDescriptor[] {
     { tag: 'h3', id: generateNodeId('heading'), name: 'Heading', styles: { fontSize: '18px', fontWeight: '700', color: '#111' }, textContent: 'Pro Plan' },
     { tag: 'p', id: generateNodeId('text'), name: 'Text', styles: { fontSize: '32px', fontWeight: '800', color: '#111' }, textContent: '$29' },
     { tag: 'p', id: generateNodeId('text'), name: 'Text', styles: { fontSize: '13px', color: '#888' }, textContent: 'per month' },
-    { tag: 'button', id: generateNodeId('button'), name: 'Button', styles: { padding: '10px 20px', borderRadius: '8px', backgroundColor: '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }, textContent: 'Get Started' },
+    { tag: 'button', id: generateNodeId('button'), name: 'Button', styles: { padding: '10px 20px', borderRadius: '8px', backgroundColor: '#3b82f6', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }, children: [
+      { tag: 'p', id: generateNodeId('text'), name: 'Text', styles: { color: '#ffffff', fontSize: '14px', fontWeight: '600', margin: '0px' }, textContent: 'Get Started' },
+    ] },
   ];
 }
 
@@ -189,8 +191,16 @@ const TOOLBAR_ITEMS: Record<string, ToolbarItem> = {
   },
   button: {
     id: 'button', elementType: 'button',
-    defaultStyles: { padding: '12px 24px', borderRadius: '8px', backgroundColor: '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer' },
-    textContent: 'Button',
+    // A LAYOUT frame with a real <p> child — not intrinsic bare text. Bare
+    // text inside <button> renders but shows NO Text node in the layers
+    // (the label is invisible in the tree and only editable via
+    // double-click), and a padded element must declare a layout for the
+    // Padding control to exist. The p child is a normal text node: visible
+    // in layers, styleable, and the button itself stays a flex container.
+    defaultStyles: { padding: '12px 24px', borderRadius: '8px', backgroundColor: '#3b82f6', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+    children: () => [
+      { tag: 'p', id: generateNodeId('text'), name: 'Text', styles: { color: '#ffffff', fontSize: '15px', fontWeight: '500', margin: '0px' }, textContent: 'Button' },
+    ],
     ghostSize: { width: 120, height: 44 },
   },
 

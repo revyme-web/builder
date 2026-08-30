@@ -171,6 +171,17 @@ export interface DragMoveResult {
      *  the coordinator must update `context.viewportPrefix` so the new
      *  strategy's bridge.patchStyles calls find the right element. */
     newViewportPrefix?: string;
+    /** The overrides' startLeft/startTop describe where the element PAINTS
+     *  RIGHT NOW (the exiting strategy flushed its commit synchronously).
+     *  The coordinator then REBASES each node's grab offset from them, so
+     *  cursor-anchored consumers (snap-corner synthesis, elScreenRect) agree
+     *  with the painted box — the couple-px guide drift after a
+     *  canvas→replica→canvas round trip (2026-08-31). MUST stay unset for
+     *  deferred-flush exits (LayoutLifted): there the element still paints
+     *  at its pre-exit spot and the ORIGINAL grab offset is the painted
+     *  truth — rebasing against the future model coords broke entry
+     *  detection and the round-11 snap guards. */
+    overridesArePainted?: boolean;
   };
 }
 

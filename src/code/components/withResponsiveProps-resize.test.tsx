@@ -73,8 +73,11 @@ describe('withResponsiveProps — resize is bucketed to breakpoints', () => {
     // `@media (max-width: 375px)` — 376 still belongs to the 768 bucket.
     await drag([1200, 1000, 900, 800, 769, 760, 700, 600, 500, 400, 380, 375]);
     // Two crossings (→768 bucket, →375 bucket). Each costs the switch render
-    // plus the flag-release render; nothing else in that 12-event drag renders.
-    expect(renders - before).toBeLessThanOrEqual(4);
+    // plus the instant-window release renders — runtime 0.0.15 holds
+    // MotionConfig at duration 0 for TWO commits after a crossing (`hold: 2`,
+    // stateful components sync their variant one commit late), so a crossing
+    // is 3 renders, not 2. Nothing else in that 12-event drag renders.
+    expect(renders - before).toBeLessThanOrEqual(6);
     expect(lastVariant).toBe('variant-2');
   });
 
