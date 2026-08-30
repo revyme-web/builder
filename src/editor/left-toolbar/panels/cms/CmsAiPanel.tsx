@@ -17,6 +17,7 @@ import { refreshCredits } from '@/code/stores/credits-store';
 import { trace } from '@/shared/debug-trace';
 import CreditsIndicator from '@/editor/CreditsIndicator';
 import ChatUserMessage from '@/editor/ChatUserMessage';
+import VibeComingSoonGate from '@/editor/ui/VibeComingSoonGate';
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
 
@@ -167,7 +168,7 @@ export default function CmsAiPanel({ collectionName, onClose }: {
   const hasMessages = messages.length > 0;
 
   return (
-    <div className="w-[260px] shrink-0 border-l border-[var(--border-light)] bg-[var(--bg-surface)] flex flex-col">
+    <div className="relative w-[260px] shrink-0 border-l border-[var(--border-light)] bg-[var(--bg-surface)] flex flex-col">
       {/* Header — mirrors VibeDockShell. */}
       <div className="relative shrink-0 flex items-center justify-between px-3 h-9 select-none border-b border-[var(--border-light)]">
         <div className="flex items-center gap-1.5 leading-none min-w-0">
@@ -271,6 +272,8 @@ export default function CmsAiPanel({ collectionName, onClose }: {
           </div>
         </div>
       </div>
+      {/* Gated while the in-house agent is offline (see VibeComingSoonGate) */}
+      <VibeComingSoonGate onClose={onClose} />
     </div>
   );
 }

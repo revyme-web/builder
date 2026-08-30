@@ -37,6 +37,7 @@ import Breadcrumb from '@/design-system/Breadcrumb';
 import Button from '@/design-system/Button';
 import { useIsDark } from '@/shared/useIsDark';
 import { trace } from '@/shared/debug-trace';
+import VibeComingSoonGate from '@/editor/ui/VibeComingSoonGate';
 
 interface PluginEditorProps {
   filePath: string;
@@ -347,7 +348,7 @@ function PluginEditorBody({
         {/* AI chat pane — bottom of preview column. Fixed 240px height
             so the preview iframe always has comfortable room. */}
         <div
-          className="border-t border-[var(--border-light)] bg-[var(--bg-surface)] shrink-0 flex flex-col"
+          className="relative border-t border-[var(--border-light)] bg-[var(--bg-surface)] shrink-0 flex flex-col"
           style={{ height: 240 }}
         >
           <div className="px-3 py-1.5 border-b border-[var(--border-light)] text-[10px] uppercase tracking-wider text-[var(--text-disabled)] shrink-0">
@@ -356,6 +357,8 @@ function PluginEditorBody({
           <div className="flex-1 min-h-0">
             <PluginChat code={source} onCodeChange={onSourceChange} />
           </div>
+          {/* Whole-pane gate while the in-house agent is offline. */}
+          <VibeComingSoonGate />
         </div>
       </div>
     </div>

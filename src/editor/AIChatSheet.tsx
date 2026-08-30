@@ -7,6 +7,7 @@
 import { motion } from 'framer-motion';
 import { useState, type ReactNode } from 'react';
 import { trace } from '@/shared/debug-trace';
+import VibeComingSoonGate from './ui/VibeComingSoonGate';
 
 const MIN_WIDTH = 320;
 const MIN_HEIGHT = 160;
@@ -148,6 +149,9 @@ export default function AIChatSheet({ headerAccessory, contextLabel, onClose, ch
           <path d="M8 1L1 8M8 5L5 8" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
         </svg>
       </div>
+      {/* Whole-panel gate (header included) — the sheet's own ✕ is under
+          the blur, so the gate renders a forwarding close. */}
+      <VibeComingSoonGate onClose={onClose} />
     </motion.div>
   );
 }

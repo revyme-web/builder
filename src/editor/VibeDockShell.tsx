@@ -8,6 +8,7 @@
 
 import { type ReactNode } from 'react';
 import { trace } from '@/shared/debug-trace';
+import VibeComingSoonGate from './ui/VibeComingSoonGate';
 
 interface Props {
   /** Accessory rendered in the header, right of the title (credits indicator). */
@@ -74,6 +75,11 @@ export default function VibeDockShell({ headerAccessory, contextLabel, onDetach,
 
       {/* Body */}
       <div className="flex-1 min-h-0 flex flex-col">{children}</div>
+
+      {/* Whole-panel gate (header + credits included) while the in-house
+          agent is offline. The dock closes via LeftMenu's VIBE icon, so no
+          close affordance is lost under the blur. */}
+      <VibeComingSoonGate />
     </div>
   );
 }

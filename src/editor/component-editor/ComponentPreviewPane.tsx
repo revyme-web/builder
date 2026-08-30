@@ -8,6 +8,7 @@ import { compileCodeComponent } from '@/canvas/code-component-runtime';
 import ComponentChat from './ComponentChat';
 import CreditsIndicator from '../CreditsIndicator';
 import { trace } from '@/shared/debug-trace';
+import VibeComingSoonGate from '@/editor/ui/VibeComingSoonGate';
 
 interface ComponentPreviewPaneProps {
   code: string;
@@ -141,7 +142,7 @@ export default function ComponentPreviewPane({ code, fileName, liveCode, onCodeC
       </div>
 
       {/* AI Chat — bottom with drag handle + collapse */}
-      <div className="shrink-0 border-t border-[var(--border-light)] flex flex-col" style={{ height: chatCollapsed ? 28 : chatHeight }}>
+      <div className="relative shrink-0 border-t border-[var(--border-light)] flex flex-col" style={{ height: chatCollapsed ? 28 : chatHeight }}>
         {/* Drag handle + header */}
         <div className="shrink-0 flex items-center h-7 select-none">
           <div className="flex items-center gap-1.5 pl-3 shrink-0 leading-none">
@@ -172,6 +173,10 @@ export default function ComponentPreviewPane({ code, fileName, liveCode, onCodeC
             <ComponentChat code={liveCode} onCodeChange={onCodeChange} />
           </div>
         )}
+
+        {/* Whole-section gate (AI Chat strip + credits included) while the
+            in-house agent is offline (see VibeComingSoonGate). */}
+        <VibeComingSoonGate />
       </div>
     </div>
   );
