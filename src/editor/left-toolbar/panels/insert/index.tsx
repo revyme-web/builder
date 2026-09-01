@@ -16,6 +16,7 @@ import { startToolbarDrag } from '@/canvas/drag/toolbar-drag-bridge';
 import { getToolbarItemConfig } from '@/canvas/drag/toolbar-item-config';
 import { blueprintToToolbarItem } from '@/canvas/section-insert';
 import { SECTION_THUMBS } from '@/shared/insert-items/section-thumb-map';
+import { SHADER_THUMBS } from '@/shared/insert-items/shader-thumb-map';
 import { collectionSchemasAtom } from '@/code/stores/cms-store';
 import { cmsPageMetaAtom } from '@/code/stores/cms-page-store';
 import { leftPanelAtom } from '@/code/stores/left-panel-store';
@@ -201,6 +202,35 @@ function GridCard({ item }: GridCardProps) {
   // Items with gradientColors get a gradient background card
   if (item.gradientColors && item.gradientColors.length > 0) {
     return <GradientCard item={item} />;
+  }
+
+  // Shaders-library cards: full-bleed cover render of the actual shader
+  // (shader-thumb-map, bundled imports). Checked AFTER gradientColors so
+  // the Backgrounds panel's gradient tiles keep their look even where item
+  // ids overlap (MeshGradient / LiquidMetal appear in both panels).
+  if (SHADER_THUMBS[item.id]) {
+    return (
+      <div
+        data-toolbar-item={item.id}
+        onPointerDown={handlePointerDown}
+        className="flex flex-col cut-corners bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] cursor-grab transition-all group overflow-hidden"
+      >
+        <div className="w-full overflow-hidden">
+          <img
+            src={SHADER_THUMBS[item.id]}
+            alt={item.name}
+            draggable={false}
+            className="w-full block transition-transform duration-300 group-hover:scale-[1.02]"
+            style={{ aspectRatio: '16 / 10', objectFit: 'cover' }}
+          />
+        </div>
+        <div className="px-3 py-2.5">
+          <span className="text-[11px] font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">
+            {item.name}
+          </span>
+        </div>
+      </div>
+    );
   }
 
   // Sections-library cards: full-width cover image (marketplace-style

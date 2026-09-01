@@ -225,6 +225,19 @@ function CreativeEffectsIcon() {
   );
 }
 
+/** Slate square with concentric blob rings — the Shaders pack. */
+function CreativeShadersIcon() {
+  return (
+    <CategorySquare bg="#334155">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="1.1" strokeLinecap="round">
+        <path d="M6 1.5c2.6 0 4.5 1.9 4.5 4.5S8.6 10.5 6 10.5 1.5 8.6 1.5 6 3.4 1.5 6 1.5Z" opacity="0.95" />
+        <path d="M6 3.4c1.6 0 2.6 1 2.6 2.6S7.6 8.6 6 8.6 3.4 7.6 3.4 6 4.4 3.4 6 3.4Z" opacity="0.6" />
+        <circle cx="6" cy="6" r="0.9" fill="white" stroke="none" opacity="0.9" />
+      </svg>
+    </CategorySquare>
+  );
+}
+
 /** Indigo square with a soft gradient swatch — picks up the Backgrounds vibe. */
 function CreativeBackgroundsIcon() {
   return (
@@ -296,6 +309,7 @@ export const CATEGORY_ICON_MAP: Record<string, React.FC> = {
   // Creative subcategories — each Creative row in the sidebar resolves
   // here. Kept separate from `creative` (the old single-row entry, now
   // unused but still registered for back-compat with any out-of-tree refs).
+  creativeShaders: CreativeShadersIcon,
   creativeEffects: CreativeEffectsIcon,
   creativeBackgrounds: CreativeBackgroundsIcon,
   creativeTextEffectsCategory: CreativeTextEffectsCategoryIcon,

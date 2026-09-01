@@ -14,6 +14,10 @@ import {
   LIQUID_METAL_COMPONENT,
   CAUSTICS_LIGHT_COMPONENT,
   NEON_PARTICLE_FIELD_COMPONENT,
+  GEM_SMOKE_COMPONENT,
+  GRAIN_GRADIENT_COMPONENT,
+  METABALLS_COMPONENT,
+  SMOKE_RING_COMPONENT,
 } from './index';
 import { compileCodeComponent } from '@/canvas/code-component-runtime';
 import { hasComponentControls, parseComponentControlsMeta } from '@/code/components/controls-parser';
@@ -26,6 +30,11 @@ const SHADERS: { name: string; src: string; expectedLabel: string; minControls: 
   { name: 'LiquidMetal',   src: LIQUID_METAL_COMPONENT,   expectedLabel: 'Liquid Metal',   minControls: 6 },
   { name: 'CausticsLight', src: CAUSTICS_LIGHT_COMPONENT, expectedLabel: 'Caustics',       minControls: 6 },
   { name: 'NeonParticleField', src: NEON_PARTICLE_FIELD_COMPONENT, expectedLabel: 'Neon Particles', minControls: 8 },
+  // Paper-derived WebGL2 pack (vendored paper-design/shaders GLSL).
+  { name: 'GemSmoke',      src: GEM_SMOKE_COMPONENT,      expectedLabel: 'Gem Smoke',      minControls: 14 },
+  { name: 'GrainGradient', src: GRAIN_GRADIENT_COMPONENT, expectedLabel: 'Grain Gradient', minControls: 11 },
+  { name: 'Metaballs',     src: METABALLS_COMPONENT,      expectedLabel: 'Metaballs',      minControls: 9 },
+  { name: 'SmokeRing',     src: SMOKE_RING_COMPONENT,     expectedLabel: 'Smoke Ring',     minControls: 10 },
 ];
 
 describe('Shader Code components', () => {

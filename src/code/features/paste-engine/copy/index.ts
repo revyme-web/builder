@@ -447,3 +447,22 @@ export function getClipboardData(): ClipboardData | null {
 export function hasClipboard(): boolean {
   return getClipboardData() !== null;
 }
+
+/**
+ * Store an EXTERNAL ClipboardData payload (e.g. reshaders' "Copy for
+ * Revyme" — a different origin, so it can't reach this localStorage
+ * itself; the payload travels through the OS clipboard as JSON and the
+ * Ctrl+V handler routes it here). Validated minimally; returns false on
+ * shape mismatch so the caller can fall through to other paste kinds.
+ */
+export function setExternalClipboardData(data: ClipboardData): boolean {
+  if (!data || data.version !== 1 || !Array.isArray(data.nodes) || data.nodes.length === 0) return false;
+  try {
+    localStorage.setItem(CLIPBOARD_STORAGE_KEY, JSON.stringify({ ...data, timestamp: Date.now() }));
+    trace.action('clipboard:external-set', { nodes: data.nodes.length, components: data.components?.length ?? 0 });
+    return true;
+  } catch (err) {
+    trace.error('clipboard:external-set-failed', err);
+    return false;
+  }
+}

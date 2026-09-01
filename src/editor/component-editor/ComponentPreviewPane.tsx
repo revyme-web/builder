@@ -22,6 +22,17 @@ export default function ComponentPreviewPane({ code, fileName, liveCode, onCodeC
   const [error, setError] = useState<string | null>(null);
   const [CompiledComponent, setCompiledComponent] = useState<React.ComponentType<any> | null>(null);
 
+  // Environment flag for the preview pane's lifetime. Components that gate
+  // themselves on per-session state (an intro loader's play-once flag, a
+  // cookie-consent banner) check this global to know they're in the code
+  // editor and should ALWAYS run — previewMode only reaches the compiler,
+  // never the component, so without a signal a play-once component renders
+  // an empty pane after its first run.
+  useEffect(() => {
+    (window as any).__REVYME_COMPONENT_PREVIEW_PANE__ = true;
+    return () => { delete (window as any).__REVYME_COMPONENT_PREVIEW_PANE__; };
+  }, []);
+
   // Compile the component whenever code changes
   useEffect(() => {
     if (!code || code.length < 10) {
@@ -125,7 +136,13 @@ export default function ComponentPreviewPane({ code, fileName, liveCode, onCodeC
           </div>
         ) : CompiledComponent ? (
           <ErrorBoundary key={code + JSON.stringify(props)}>
-            <div style={{ position: 'absolute', inset: 0 }}>
+            {/* transform creates a CONTAINING BLOCK for position:fixed
+                descendants, so overlay-style components (intro loaders,
+                cursors) fill THIS pane instead of escaping over the whole
+                editor window — the pane runs components live (previewMode
+                forces useStaticCanvas false), so a fixed overlay otherwise
+                covers the entire editor UI. */}
+            <div style={{ position: 'absolute', inset: 0, transform: 'translateZ(0)' }}>
               <CompiledComponent
                 {...props}
                 style={{ width: '100%', height: '100%' }}

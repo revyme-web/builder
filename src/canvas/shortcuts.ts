@@ -27,7 +27,7 @@ import {
 } from './image-paste';
 import { handleClipboardTextPaste } from './text-paste';
 import { readFigmaClipboard, handleFigmaPaste } from './figma-paste';
-import { hasClipboard as hasInternalClipboard } from '../code/features/paste-engine';
+import { hasClipboard as hasInternalClipboard, setExternalClipboardData } from '../code/features/paste-engine';
 import { parsePluginUrl } from '@/editor/command-palette/marketplace-client';
 import { paletteOpenAtom, paletteQueryAtom } from '@/code/stores/palette-store';
 import { getDefaultStore as getJotaiStore } from 'jotai';
@@ -490,6 +490,63 @@ export function registerShortcuts(refs: ShortcutRefs): () => void {
           trace.action('component-paste:import-result', { ok });
         });
         return;
+      }
+      // 2.5 reshaders "Copy for Revyme" — a FULL ClipboardData payload as
+      //     JSON text (marker key `revymeClipboard: 1`). reshaders runs on
+      //     a different origin, so the usual localStorage clipboard can't
+      //     carry it; the payload rides the OS clipboard instead. Store it
+      //     as the internal clipboard and run the standard paste — the
+      //     component master materializes via ensureLocalComponentImports
+      //     (no sourceProjectId → same-project path).
+      if (trimmed.startsWith('{') && trimmed.includes('"revymeClipboard"')) {
+        try {
+          const payload = JSON.parse(trimmed);
+          if (payload && payload.revymeClipboard === 1 && setExternalClipboardData(payload.data)) {
+            trace.action('reshaders-paste:detected-from-ctrl-v', {
+              nodes: payload.data?.nodes?.length,
+              components: payload.data?.components?.length,
+            });
+            executePaste(nodesRef.current, contentRef.current, selectedIdRef.current, (id) => setSelectedIds(id ? [id] : []), handleNodeMouseDown);
+            return;
+          }
+        } catch { /* not a reshaders payload — fall through */ }
+      }
+      // 2.6 reshaders component CODE ("Copy code" instead of "Copy for
+      //     Revyme") — the raw TSX carries @shaderDoc + a default export.
+      //     Synthesize the same ClipboardData so either button installs.
+      if (trimmed.startsWith("'use client'") && trimmed.includes('@shaderDoc')) {
+        const nameMatch = trimmed.match(/export default withResponsiveProps\((\w+)\)/) ||
+          trimmed.match(/export default function (\w+)/);
+        if (nameMatch) {
+          const tag = nameMatch[1];
+          const hMatch = trimmed.match(/@defaultHeight (\d+)/);
+          const h = hMatch ? parseInt(hMatch[1], 10) : 400;
+          const ok = setExternalClipboardData({
+            version: 1,
+            timestamp: Date.now(),
+            nodes: [{
+              id: `rs${Date.now().toString(36)}`,
+              type: tag,
+              parentId: null,
+              children: [],
+              order: 0,
+              styles: { position: 'relative', width: '600px', height: `${h}px`, flex: '0 0 auto' },
+              name: tag,
+              componentFile: `components/${tag}.tsx`,
+            }],
+            components: [{
+              tagName: tag,
+              masterPath: `components/${tag}.tsx`,
+              kind: 'code',
+              files: [{ path: `components/${tag}.tsx`, content: trimmed }],
+            }],
+          } as never);
+          if (ok) {
+            trace.action('reshaders-paste:tsx-from-ctrl-v', { tag });
+            executePaste(nodesRef.current, contentRef.current, selectedIdRef.current, (id) => setSelectedIds(id ? [id] : []), handleNodeMouseDown);
+            return;
+          }
+        }
       }
       // 3. Internal node paste from localStorage `canvas_clipboard`.
       //    Only run when there's actually something in the internal

@@ -755,6 +755,13 @@ const SHADER_TOOLBAR_ITEMS: Record<string, { tag: string; width: number; height:
   'cs-shaderMatrixRain':      { tag: 'MatrixRain',       width: 600, height: 400 },
   'cs-shaderWaveDistortion':  { tag: 'WaveDistortion',   width: 600, height: 400 },
   'cs-neonParticleField':     { tag: 'NeonParticleField', width: 600, height: 400 },
+  // Paper-grade WebGL2 pack (vendored paper-design/shaders GLSL) — surfaced
+  // in the Creative → Shaders panel with cover-image cards. MeshGradient and
+  // LiquidMetal reuse the two ids above.
+  'cs-shaderGemSmoke':        { tag: 'GemSmoke',         width: 600, height: 400 },
+  'cs-shaderGrainGradient':   { tag: 'GrainGradient',    width: 600, height: 400 },
+  'cs-shaderMetaballs':       { tag: 'Metaballs',        width: 600, height: 400 },
+  'cs-shaderSmokeRing':       { tag: 'SmokeRing',        width: 600, height: 400 },
 };
 
 function makeShaderToolbarItem(itemId: string): ToolbarItem | null {

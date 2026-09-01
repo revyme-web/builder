@@ -246,6 +246,19 @@ const BACKGROUND_ITEMS: InsertItem[] = [
   { id: 'cs-neonParticleField',    name: 'Neon Particles',  iconKey: 'effectNeonParticles',  gradientColors: ['#22D3EE', '#A855F7'] },
 ];
 
+// Shaders — the Paper-grade WebGL2 shader pack (default-code-components with
+// vendored paper-design/shaders GLSL). No gradientColors: these cards render
+// full-bleed cover images from shader-thumb-map, like the sections library.
+// Gem Smoke and Liquid Metal accept an uploaded image (logo → glass/chrome).
+const SHADER_LIBRARY_ITEMS: InsertItem[] = [
+  { id: 'cs-shaderGemSmoke',      name: 'Gem Smoke',      iconKey: 'shaderMeshGradient' },
+  { id: 'cs-shaderLiquidMetal',   name: 'Liquid Metal',   iconKey: 'shaderLiquidMetal' },
+  { id: 'cs-shaderMeshGradient',  name: 'Mesh Gradient',  iconKey: 'shaderMeshGradient' },
+  { id: 'cs-shaderGrainGradient', name: 'Grain Gradient', iconKey: 'shaderMeshGradient' },
+  { id: 'cs-shaderMetaballs',     name: 'Metaballs',      iconKey: 'shaderMeshGradient' },
+  { id: 'cs-shaderSmokeRing',     name: 'Smoke Ring',     iconKey: 'shaderMeshGradient' },
+];
+
 // ─── Sections library items ────────────────────────────────────────────────
 
 function sectionLibraryItems(category: SectionCategory): InsertItem[] {
@@ -346,6 +359,16 @@ export const CATEGORIES: InsertCategory[] = [
 // et al.), so the actual cards inside each panel are unchanged.
 
 export const CREATIVE_CATEGORIES: InsertCategory[] = [
+  // Shaders leads the group — the flagship pack (thumbnail cards, not
+  // gradient tiles). Distinct from Backgrounds: these are the Paper-grade
+  // WebGL2 components, two of which turn an uploaded image into glass/chrome.
+  {
+    id: 'creative-shaders',
+    label: 'Shaders',
+    iconKey: 'creativeShaders',
+    columns: 2,
+    sections: [{ id: 'shaders', label: 'Shaders', items: SHADER_LIBRARY_ITEMS }],
+  },
   {
     id: 'creative-effects',
     label: 'Effects',

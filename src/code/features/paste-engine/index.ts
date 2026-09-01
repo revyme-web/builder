@@ -9,6 +9,7 @@
 export {
   copyNodes,
   hasClipboard,
+  setExternalClipboardData,
 } from './copy';
 
 // Paste

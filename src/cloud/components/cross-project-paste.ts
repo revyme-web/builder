@@ -101,7 +101,10 @@ function materializeBundle(master: ClipboardComponentMaster): { specifier: strin
     for (let i = 2; projectFS.exists(rootPath) && projectFS.readFile(rootPath) !== root!.content; i++) {
       rootPath = `${base}Linked${i}.tsx`;
     }
-    desiredName = `${master.tagName}Linked`;
+    // Derive the tag from the FINAL path — with the numbered fallback
+    // (`FooLinked2.tsx`) a fixed `${tag}Linked` would point syncImports at
+    // FooLinked.tsx, a different master with different content.
+    desiredName = rootPath.replace(/^.*\//, '').replace(/\.tsx?$/, '');
   }
   if (!projectFS.exists(rootPath)) projectFS.writeFile(rootPath, root!.content);
 
@@ -209,7 +212,17 @@ export function ensureLocalComponentImports(data: ClipboardData, _targetFilePath
   if (!data.components?.length) return renames;
   for (const master of data.components) {
     try {
-      if (projectFS.exists(master.masterPath)) continue; // syncImports handles it
+      if (projectFS.exists(master.masterPath)) {
+        // Same path AND same content → the master is genuinely already here
+        // (the normal same-project copy) — syncImports handles the import.
+        // Same path but DIFFERENT content (two reshaders exports both named
+        // "Untitled Project", or two standalone projects with a same-named
+        // component) must fall through: materializeBundle allocates a
+        // `…Linked` name instead of silently reusing the stale master —
+        // the bug where every paste rendered the FIRST version forever.
+        const incoming = master.files[0]?.content;
+        if (incoming == null || projectFS.readFile(master.masterPath) === incoming) continue;
+      }
       const local = materializeBundle(master);
       if (local.desiredName !== master.tagName) renames.set(master.tagName, local.desiredName);
     } catch (err) {

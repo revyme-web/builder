@@ -28,6 +28,10 @@ import {
   LIQUID_METAL_COMPONENT,
   CAUSTICS_LIGHT_COMPONENT,
   NEON_PARTICLE_FIELD_COMPONENT,
+  GEM_SMOKE_COMPONENT,
+  GRAIN_GRADIENT_COMPONENT,
+  METABALLS_COMPONENT,
+  SMOKE_RING_COMPONENT,
   LENS_BOX_COMPONENT,
   MAGNET_BOX_COMPONENT,
   MARQUEE_COMPONENT,
@@ -220,6 +224,19 @@ export class InMemoryProjectFS implements ProjectFS {
     if (globals && globals.includes(LEGACY_SEED_RESET)) {
       this.files.set('app/globals.css', globals.replace(LEGACY_SEED_RESET, UNIVERSAL_SEED_RESET));
       trace.action('project-fs:migrated-seed-reset', {});
+    }
+    // Restore a WIPED reset: addPresetTokenToCSS used to REPLACE globals.css
+    // wholesale when it had no :root block yet (fixed 2026-08-31), erasing the
+    // seed reset — published sites then get UA margins + content-box blowouts
+    // while the sandbox reset masks it in the editor. A project with ANY
+    // box-sizing rule (its own custom reset included) is never touched.
+    // Inserted after leading @imports — CSS requires imports first.
+    const globalsAfter = this.files.get('app/globals.css');
+    if (globalsAfter && !globalsAfter.includes('box-sizing: border-box')) {
+      const importsHead = globalsAfter.match(/^(\s*(?:@import[^\n]*\n)*)/)?.[1] ?? '';
+      const rest = globalsAfter.slice(importsHead.length);
+      this.files.set('app/globals.css', `${importsHead}${UNIVERSAL_SEED_RESET}\n\n${rest}`);
+      trace.action('project-fs:restored-seed-reset', {});
     }
     trace.action('project-fs:load-snapshot', { fileCount: files.size });
     this.notify();
@@ -1557,6 +1574,12 @@ const BUILT_IN_COMPONENTS: [string, string][] = [
   ['components/LiquidMetal.tsx', LIQUID_METAL_COMPONENT],
   ['components/CausticsLight.tsx', CAUSTICS_LIGHT_COMPONENT],
   ['components/NeonParticleField.tsx', NEON_PARTICLE_FIELD_COMPONENT],
+  // Paper-grade WebGL2 shader pack (vendored paper-design/shaders GLSL;
+  // MeshGradient/LiquidMetal above were upgraded in place to this pack).
+  ['components/GemSmoke.tsx', GEM_SMOKE_COMPONENT],
+  ['components/GrainGradient.tsx', GRAIN_GRADIENT_COMPONENT],
+  ['components/Metaballs.tsx', METABALLS_COMPONENT],
+  ['components/SmokeRing.tsx', SMOKE_RING_COMPONENT],
   // Container code components — render connected canvas nodes via the slot system.
   ['components/LensBox.tsx', LENS_BOX_COMPONENT],
   ['components/MagnetBox.tsx', MAGNET_BOX_COMPONENT],

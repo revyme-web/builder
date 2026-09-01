@@ -54,6 +54,12 @@ export { LIQUID_METAL_COMPONENT } from './LiquidMetal';
 export { CAUSTICS_LIGHT_COMPONENT } from './CausticsLight';
 export { NEON_PARTICLE_FIELD_COMPONENT } from './NeonParticleField';
 
+// ─── Shaders pack (Paper-derived WebGL2, vendored paper-design/shaders) ────
+export { GEM_SMOKE_COMPONENT } from './GemSmoke';
+export { GRAIN_GRADIENT_COMPONENT } from './GrainGradient';
+export { METABALLS_COMPONENT } from './Metaballs';
+export { SMOKE_RING_COMPONENT } from './SmokeRing';
+
 // ─── Containers (slot-based — render connected canvas nodes as children) ──
 export { LENS_BOX_COMPONENT } from './LensBox';
 export { MAGNET_BOX_COMPONENT } from './MagnetBox';

@@ -43,6 +43,7 @@ import { isGhostNodeId } from '@/shared/ghost-id';
 import { containerOverridesAtom, getOverridesAtWidth } from '@/code/stores/container-query-store';
 import { collectionSchemasAtom, collectionDataAtom } from '@/code/stores/cms-store';
 import { cmsPageMetaAtom, activePreviewItemAtom } from '@/code/stores/cms-page-store';
+import { applyDetailPageBindings } from '@/code/features/cms-page-bindings';
 import { openCmsEditorAtom } from '@/code/stores/cms-editor-store';
 import { leftPanelAtom } from '@/code/stores/left-panel-store';
 import { SANDBOX_ORIGIN } from '@/canvas-sandbox/protocol';
@@ -703,8 +704,30 @@ export default function Canvas() {
           const pos = freshPositions[v.id];
           return pos ? { ...merged, ...pos } : merged;
         });
+    // DETAIL-PAGE CMS VALUES LIVE IN THE NODES, AND ARE BAKED IN RIGHT HERE.
+    //
+    // Exactly the localeOverrides trap below, one binding system over. On a
+    // `/collection/[slug]` page the parser leaves `{item.title}` nodes with an
+    // EMPTY textContent and a `binding` descriptor; the words only exist once
+    // `applyDetailPageBindings` substitutes the previewed record. React renders
+    // do that in useRendererSync, but this imperative path shipped the raw
+    // parser map — so `patchElement` saw empty text, `shouldClearEmptiedText`
+    // fired, and every bound paragraph and image on the page was wiped.
+    //
+    // It reproduced on ANY style edit, because those end in
+    // `forceRenderAfterExternalEdit` (user report 2026-09-01: changing padding
+    // made all the images disappear; 72 `clear-emptied-text` traces in one
+    // pass, and the live preview - which never takes this path - stayed
+    // correct). Read from the store, not a closure: this callback is
+    // imperative and long-lived, and the previewed slug changes under it.
+    const cmsMeta = store.get(cmsPageMetaAtom);
+    const cmsPreviewItem = store.get(activePreviewItemAtom);
+    const boundNodes = cmsMeta?.kind === 'detail' && cmsPreviewItem
+      ? applyDetailPageBindings(freshNodes, cmsPreviewItem)
+      : freshNodes;
+
     const freshInput = {
-      nodes: freshNodes,
+      nodes: boundNodes,
       viewports: freshViewports,
       code: freshCode,
       css: '',

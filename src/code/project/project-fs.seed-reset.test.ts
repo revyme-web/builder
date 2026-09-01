@@ -53,4 +53,19 @@ describe('seed reset — native universal margin/padding', () => {
     fs.loadSnapshot(new Map([['app/globals.css', custom]]));
     expect(fs.readFile('app/globals.css')).toBe(custom);
   });
+
+  // Live find 2026-08-31: addPresetTokenToCSS used to REPLACE globals.css
+  // wholesale when no :root existed, erasing reset + @imports. loadSnapshot
+  // restores a missing reset; the generator fix stops new wipes.
+  it('loadSnapshot restores a reset wiped by the old preset write, after leading @imports', () => {
+    const wiped = `@import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');\n/* Design Tokens — Presets */\n:root {\n  --color-brand: #111111;\n}\n`;
+    const fs = new InMemoryProjectFS(new Map());
+    fs.loadSnapshot(new Map([['app/globals.css', wiped]]));
+    const globals = fs.readFile('app/globals.css')!;
+    expect(globals).toContain(UNIVERSAL);
+    // imports stay first (CSS requires it), tokens survive
+    expect(globals.indexOf('@import')).toBe(0);
+    expect(globals.indexOf('@import')).toBeLessThan(globals.indexOf(UNIVERSAL));
+    expect(globals.indexOf(UNIVERSAL)).toBeLessThan(globals.indexOf('--color-brand'));
+  });
 });

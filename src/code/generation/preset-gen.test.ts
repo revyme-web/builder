@@ -323,3 +323,25 @@ describe('removePresetTokenFromCSS', () => {
     expect(updated).toContain('--color-brand-light: #818cf8;');
   });
 });
+
+// Live find 2026-08-31: a globals.css WITHOUT a :root block (imports + seed
+// reset only) lost everything on the first preset write — the no-:root branch
+// returned only the serialized tokens. The branch must APPEND, never replace.
+import { describe as describe_wipe, it as it_wipe, expect as expect_wipe } from 'vitest';
+import { addPresetTokenToCSS as addTok } from './preset-gen';
+
+describe_wipe('addPresetTokenToCSS — no :root block', () => {
+  it_wipe('appends a :root block and preserves imports + reset', () => {
+    const css = "@import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');\n\n*, *::before, *::after {\n  margin: 0;\n  padding: 0;\n  box-sizing: border-box;\n}\n";
+    const out = addTok(css, { name: 'color-brand', value: '#ff0000', category: 'color' } as any);
+    expect_wipe(out).toContain('@import');
+    expect_wipe(out).toContain('box-sizing: border-box');
+    expect_wipe(out).toContain('--color-brand: #ff0000;');
+    expect_wipe(out.indexOf('@import')).toBeLessThan(out.indexOf(':root'));
+  });
+
+  it_wipe('an empty file still gets a fresh tokens block', () => {
+    const out = addTok('', { name: 'color-brand', value: '#ff0000', category: 'color' } as any);
+    expect_wipe(out).toContain('--color-brand: #ff0000;');
+  });
+});

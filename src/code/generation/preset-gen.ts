@@ -235,9 +235,14 @@ export function addPresetTokenToCSS(css: string, token: PresetToken): string {
   // Check if :root block exists
   const rootMatch = css.match(/:root\s*\{([\s\S]*?)\}/);
   if (!rootMatch) {
-    // No :root block — create one with the token
+    // No :root block — APPEND one, never replace the file. globals.css also
+    // carries the seed reset and Google-font @imports; returning only the
+    // serialized tokens here erased both on the first preset write to a
+    // project whose globals had no :root yet (live find 2026-08-31: reset +
+    // imports wiped → published layout blowouts + fallback fonts).
     trace.action('preset-gen:addPresetTokenToCSS:creating-root-block');
-    return serializePresetTokens([token]);
+    const block = serializePresetTokens([token]);
+    return css.trim().length > 0 ? `${css.replace(/\s+$/, '')}\n\n${block}` : block;
   }
 
   const body = rootMatch[1];
