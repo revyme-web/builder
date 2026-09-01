@@ -359,16 +359,27 @@ export const CATEGORIES: InsertCategory[] = [
 // et al.), so the actual cards inside each panel are unchanged.
 
 export const CREATIVE_CATEGORIES: InsertCategory[] = [
+  // HIDDEN 2026-09-01 — shipped to production before it was ready. Commenting
+  // out the CATEGORY is all that hides it: nothing else in the codebase refers
+  // to `creative-shaders`, so the row simply stops rendering.
+  //
+  // Left in place for the restore: `SHADER_LIBRARY_ITEMS` (this file),
+  // `creativeShaders` in category-icons.tsx, shader-thumb-map.ts and the
+  // shader-thumbs/ images. `SHADER_LIBRARY_ITEMS` is now referenced only by
+  // this comment - that is deliberate, not dead code to be swept.
+  //
+  // To restore: uncomment the block below. Nothing else to change.
+  //
   // Shaders leads the group — the flagship pack (thumbnail cards, not
   // gradient tiles). Distinct from Backgrounds: these are the Paper-grade
   // WebGL2 components, two of which turn an uploaded image into glass/chrome.
-  {
-    id: 'creative-shaders',
-    label: 'Shaders',
-    iconKey: 'creativeShaders',
-    columns: 2,
-    sections: [{ id: 'shaders', label: 'Shaders', items: SHADER_LIBRARY_ITEMS }],
-  },
+  // {
+  //   id: 'creative-shaders',
+  //   label: 'Shaders',
+  //   iconKey: 'creativeShaders',
+  //   columns: 2,
+  //   sections: [{ id: 'shaders', label: 'Shaders', items: SHADER_LIBRARY_ITEMS }],
+  // },
   {
     id: 'creative-effects',
     label: 'Effects',
