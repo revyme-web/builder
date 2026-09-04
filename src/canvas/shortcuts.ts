@@ -27,6 +27,7 @@ import {
 } from './image-paste';
 import { handleClipboardTextPaste } from './text-paste';
 import { readFigmaClipboard, handleFigmaPaste } from './figma-paste';
+import { readReshadersClipboard } from './reshaders-clipboard';
 import { hasClipboard as hasInternalClipboard, setExternalClipboardData } from '../code/features/paste-engine';
 import { parsePluginUrl } from '@/editor/command-palette/marketplace-client';
 import { paletteOpenAtom, paletteQueryAtom } from '@/code/stores/palette-store';
@@ -442,6 +443,30 @@ export function registerShortcuts(refs: ShortcutRefs): () => void {
         trace.action('image-paste:handled-from-ctrl-v', { url: imageUrl });
         return;
       }
+      // reshaders "Copy code component" — like the Figma plugin, a hidden
+      // text/html flavor (text/plain is a single space, so the component
+      // source never pastes into a text editor). Same envelope as the
+      // older text form handled in doTextPaste (2.5).
+      readReshadersClipboard().then((envelope) => {
+        if (envelope && setExternalClipboardData(envelope.data)) {
+          trace.action('reshaders-paste:detected-from-html-flavor', {
+            nodes: envelope.data.nodes.length,
+            components: envelope.data.components?.length ?? 0,
+          });
+          executePaste(nodesRef.current, contentRef.current, selectedIdRef.current, (id) => setSelectedIds(id ? [id] : []), handleNodeMouseDown);
+          return;
+        }
+        tryFigmaThenText();
+      }).catch((err) => {
+        trace.error('reshaders-paste:ctrl-v-failed', err);
+        tryFigmaThenText();
+      });
+    }).catch((err) => {
+      trace.error('image-paste:ctrl-v-failed', err);
+      doTextPaste();
+    });
+
+    function tryFigmaThenText() {
       // Figma "Import to Revyme" clipboard — the plugin copies a hidden
       // text/html flavor carrying the design payload. Must be checked from
       // the HTML flavor (the text/plain flavor is a single space).
@@ -456,10 +481,7 @@ export function registerShortcuts(refs: ShortcutRefs): () => void {
         trace.error('figma-paste:ctrl-v-failed', err);
         doTextPaste();
       });
-    }).catch((err) => {
-      trace.error('image-paste:ctrl-v-failed', err);
-      doTextPaste();
-    });
+    }
 
     function doTextPaste() {
     navigator.clipboard.readText().then(text => {
