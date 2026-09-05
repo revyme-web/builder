@@ -571,7 +571,7 @@ function resolveConditionalText(
   node: CanvasNode,
   variantName?: string | null,
   vpWidth?: number,
-): string | null {
+): { text: string; rich: boolean } | null {
   if (!node.conditionalText) return null;
   if (vpWidth !== undefined) vpWidth = pinnedResolveWidth(node.id, vpWidth); // viewport-drag pin
   // A SPECIFIC per-viewport variant (page replica) WINS over the base variantName — see
@@ -599,7 +599,13 @@ function resolveConditionalText(
     variant = node.componentVariant;
   }
   if (!variant) return null;
-  return node.conditionalText[variant] ?? node.conditionalText['default'] ?? null;
+  if (node.conditionalText[variant] !== undefined) {
+    return { text: node.conditionalText[variant]!, rich: !!node.conditionalTextRich?.[variant] };
+  }
+  if (node.conditionalText['default'] !== undefined) {
+    return { text: node.conditionalText['default']!, rich: !!node.conditionalTextRich?.['default'] };
+  }
+  return null;
 }
 
 /**
@@ -2592,13 +2598,25 @@ function patchElement(
 
   // Per-variant text: a `{variant === 'x' ? 'a' : 'b'}` child is captured by
   // the parser into `node.conditionalText`; pick the active variant's text.
+  // The literal contract is PER-BRANCH: a rich branch (authored JSX runs)
+  // must render its markup, a plain branch — even on a node whose other
+  // branches are rich — keeps the pasted-source-stays-escaped guarantee.
+  // Without this, a plain-default node's rich variant painted its SOURCE as
+  // literal text on the tile (live find 2026-09-05).
+  let effectiveTextIsLiteral = node.textIsLiteral;
   const variantText = resolveConditionalText(node, variantName, vpWidth);
-  if (variantText !== null) resolvedTextContent = variantText;
+  if (variantText !== null) {
+    resolvedTextContent = variantText.text;
+    effectiveTextIsLiteral = !variantText.rich;
+  }
   // Per-VIEWPORT text override on a replica tile (template/page): the inline `{__mq ? branch : base}`
   // child evaluates against the editor WINDOW, so the canvas resolves it per tile. Takes precedence
   // over base/variant text (an active CMS binding still wins via the `hasActiveTextBinding` guard below).
   const responsiveText = getResponsiveTextValueForNode(node, vpWidth);
-  if (responsiveText !== undefined) resolvedTextContent = responsiveText;
+  if (responsiveText !== undefined) {
+    resolvedTextContent = responsiveText;
+    effectiveTextIsLiteral = node.textIsLiteral;
+  }
   // RICH-TEXT locale runs: a mixed node whose inner JSX carries {t('key')}
   // run calls renders the locale-RESOLVED innerJsx from the override map —
   // the raw source would paint the literal `{t('…')}` markup.
@@ -2621,7 +2639,7 @@ function patchElement(
   const hasActiveTextBinding = !!(bindingData && node.binding
     && node.binding.property === 'text'
     && bindingData[node.binding.field] !== undefined);
-  const useInnerHTML = shouldUseInnerHTML(node.type, resolvedTextContent, node.hasMixedContent, node.children.length, node.isChildrenSlot, node.textIsLiteral);
+  const useInnerHTML = shouldUseInnerHTML(node.type, resolvedTextContent, node.hasMixedContent, node.children.length, node.isChildrenSlot, effectiveTextIsLiteral);
   if (useInnerHTML && !hasActiveTextBinding) {
     try {
       const html = jsxStyleToHTML(resolvedTextContent);
@@ -3656,10 +3674,17 @@ function buildNodeElement(
     // precedence — same order patchElement applies. It was MISSING from this
     // build chain entirely: the first paint showed primary text on replica
     // tiles until any later patch pass re-resolved it.
+    const buildCond = resolveConditionalText(node, variantName, vpWidth);
     const buildText = localeOverrides?.get(node.id)?.innerJsx
-      ?? getResponsiveTextValueForNode(node, vpWidth) ?? resolveConditionalText(node, variantName, vpWidth)
+      ?? getResponsiveTextValueForNode(node, vpWidth) ?? (buildCond !== null ? buildCond.text : null)
       ?? getTextOverrideBucketValue(node, vpWidth) ?? node.textContent;
-    const buildUseInnerHTML = shouldUseInnerHTML(node.type, buildText, node.hasMixedContent, node.children.length, node.isChildrenSlot, node.textIsLiteral);
+    // Same per-branch literal contract as patchElement: the conditional
+    // branch's own richness decides, but only when IT is what won the chain.
+    const buildCondWon = buildCond !== null
+      && localeOverrides?.get(node.id)?.innerJsx == null
+      && getResponsiveTextValueForNode(node, vpWidth) === undefined;
+    const buildTextIsLiteral = buildCondWon ? !buildCond!.rich : node.textIsLiteral;
+    const buildUseInnerHTML = shouldUseInnerHTML(node.type, buildText, node.hasMixedContent, node.children.length, node.isChildrenSlot, buildTextIsLiteral);
     if (buildUseInnerHTML) {
       try {
         el.innerHTML = jsxStyleToHTML(buildText);

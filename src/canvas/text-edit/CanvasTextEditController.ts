@@ -586,17 +586,31 @@ export class CanvasTextEditController {
         // other variants yet.
         queueMutation({ type: 'updateChildrenHTML', nodeId, html: inner });
       } else if (isDesignComponent && (onNonPrimaryVariant || hasConditionalText)) {
-        // Per-variant text is plain-text only — flatten TipTap's HTML. Do NOT
-        // .trim(): a typed edge space (`Time - `) is meaningful and per-variant
-        // text is stored as a string literal in the ternary, where it survives
-        // verbatim (same whitespace contract as the plain path above).
+        // Per-variant text supports RICH runs (Framer parity, 2026-09-05):
+        // when the payload carries marks, ship TipTap's HTML through —
+        // updateVariantTextInCode converts it to a JSXFragment branch of real
+        // inline runs (string styles → object styles via htmlToJSX). The old
+        // contract flattened here ("per-variant text is plain-text only"),
+        // which silently threw the user's bold/color away: canvas showed the
+        // mark until reload, the file never changed.
+        //
+        // Plain payloads keep the historical flatten + whitespace contract —
+        // do NOT .trim(): a typed edge space (`Time - `) is meaningful and a
+        // plain branch is stored as a string literal, where it survives
+        // verbatim. TipTap paragraph wrappers are normalized to inline form
+        // first (`</p><p>` → <br />) so a multi-line edit stays one branch.
+        const inline = inner
+          .replace(/<\/p>\s*<p[^>]*>/gi, '<br />')
+          .replace(/^\s*<p[^>]*>/i, '')
+          .replace(/<\/p>\s*$/i, '');
+        const hasMarks = /<[a-z][^>]*>/i.test(inline);
         const tmp = document.createElement('div');
         tmp.innerHTML = inner;
         queueMutation({
           type: 'updateVariantText',
           nodeId,
           variantName: editingVpId,
-          text: tmp.textContent ?? '',
+          text: hasMarks ? inline : (tmp.textContent ?? ''),
         });
       } else if (vpWidth !== primaryWidth || hasOverrides) {
         queueMutation({

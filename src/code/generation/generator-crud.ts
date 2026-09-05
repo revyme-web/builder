@@ -405,6 +405,103 @@ function collectDeepJsxText(children: t.Node[]): string {
  * Mirrors how `conditionalStyles` encodes per-variant style; the read side is
  * `node.conditionalText` (parser) + the Renderer's per-variant resolution.
  */
+/** Rich-run sniff for per-variant text — mirrors useResponsiveText's own
+ *  isHtml test so the two rich channels agree on what counts as markup. */
+const VARIANT_RICH_RE = /<[a-z][^>]*>/i;
+
+/**
+ * Build ONE ternary branch for per-variant text.
+ *
+ * Plain words stay a StringLiteral — the historical dialect, byte-compatible
+ * with every existing file. Marked text (TipTap HTML from the committer, or a
+ * JSX slice read back from an existing branch) becomes a JSXFragment of real
+ * inline runs, routed through htmlToJSX so string styles become object
+ * styles. This is what makes per-variant formatting real instead of the old
+ * contract ("per-variant text is plain-text only — flatten"), which silently
+ * threw the user's marks away (canvas showed bold, file never changed,
+ * live find 2026-09-05).
+ *
+ * Parse failure falls back to tag-stripped plain text: a mark may be lost,
+ * the words never are, and raw markup NEVER lands in a string literal.
+ */
+function variantTextBranch(text: string): t.Expression {
+  if (!VARIANT_RICH_RE.test(text)) return t.stringLiteral(text);
+  try {
+    const wrapperAst = parseJSX(`<_>${htmlToJSX(text)}</_>`);
+    let children: t.JSXElement['children'] | null = null;
+    if (wrapperAst) {
+      traverse(wrapperAst, {
+        JSXElement(fp) {
+          if (fp.parentPath?.parentPath?.isProgram()) {
+            children = [...fp.node.children];
+            fp.stop();
+          }
+        },
+      });
+    }
+    if (children && (children as t.JSXElement['children']).length > 0) {
+      return t.jsxFragment(t.jsxOpeningFragment(), t.jsxClosingFragment(), children);
+    }
+  } catch (err) {
+    trace.error('generator:variantTextBranch-parse-failed', { error: err instanceof Error ? err.message : String(err) });
+  }
+  return t.stringLiteral(text.replace(/<[^>]+>/g, ''));
+}
+
+/**
+ * Canonical form of a per-variant text value, for NO-OP detection only.
+ *
+ * A click-away commit must leave the file byte-identical, but the two sides
+ * of the compare speak different dialects: the committer sends TipTap HTML
+ * (`<span style="color: rgb(21, 21, 21);">`), the file stores JSX — and in
+ * component masters the stored runs are `motion.span layout={true}` (FLIP
+ * members buildNodeJSX emits), which TipTap can only ever echo back as bare
+ * `span`. Both sides are pushed through the same branch builder, generated,
+ * and then scrubbed of the motion wrapper + layout prop — so "the user
+ * changed nothing" compares equal regardless of dialect, while a real mark
+ * change (bold added, color moved) still differs and writes.
+ */
+function canonicalVariantText(text: string): string {
+  try {
+    const branch = variantTextBranch(text);
+    const rendered = t.isStringLiteral(branch)
+      ? JSON.stringify(branch.value)
+      : generate(branch, { retainLines: false, concise: true }).code;
+    return rendered
+      .replace(/<motion\.(\w+)/g, '<$1')
+      .replace(/<\/motion\.(\w+)>/g, '</$1>')
+      .replace(/\s+layout=\{true\}/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * Read ONE existing branch back to its text value. Strings verbatim; rich
+ * branches (fragment/element) as their SOURCE SLICE — the same JSX-flavored
+ * markup dialect `node.textContent` uses for mixed nodes, so tiles, panels
+ * and re-writes all speak one language. Identifiers (variable bindings)
+ * return null — the callers route those into their `vars` map.
+ */
+function variantBranchText(node: t.Node | null | undefined, code: string): string | null {
+  if (!node) return null;
+  if (node.type === 'StringLiteral') return (node as t.StringLiteral).value;
+  if (node.type === 'JSXFragment') {
+    const kids = (node as t.JSXFragment).children;
+    if (kids.length === 0) return '';
+    const first = kids[0] as t.Node, last = kids[kids.length - 1] as t.Node;
+    if (typeof first.start === 'number' && typeof last.end === 'number') {
+      return code.slice(first.start!, last.end!).trim();
+    }
+  }
+  if (node.type === 'JSXElement' && typeof node.start === 'number' && typeof node.end === 'number') {
+    return code.slice(node.start!, node.end!).trim();
+  }
+  return null;
+}
+
 export function updateVariantTextInCode(
   code: string,
   nodeId: string,
@@ -457,16 +554,32 @@ export function updateVariantTextInCode(
         // dead code (initialVariant is 'default'/'variant-1'/… , never 'desktop'). Drop it so the bad
         // state self-heals on the next edit.
         if (k === 'desktop') { cursor = cursor.alternate; continue; }
-        if (cursor.consequent?.type === 'StringLiteral') literals[k] = cursor.consequent.value;
-        else if (cursor.consequent?.type === 'Identifier') vars[k] = cursor.consequent.name;
+        if (cursor.consequent?.type === 'Identifier') vars[k] = cursor.consequent.name;
+        else {
+          // String OR rich (fragment/element) branch — variantBranchText
+          // reads both; rich comes back as its JSX source slice.
+          const bt = variantBranchText(cursor.consequent, code);
+          if (bt != null) literals[k] = bt;
+        }
         cursor = cursor.alternate;
       }
-      if (cursor?.type === 'StringLiteral') literals['default'] = cursor.value;
-      else if (cursor?.type === 'Identifier') vars['default'] = cursor.name;
+      if (cursor?.type === 'Identifier') vars['default'] = cursor.name;
+      else {
+        const bt = variantBranchText(cursor, code);
+        if (bt != null) literals['default'] = bt;
+      }
     } else {
       // DEEP read — see collectDeepJsxText: span-wrapped text must not read
-      // as '' or every non-edited variant's text is written empty.
-      literals['default'] = collectDeepJsxText(path.node.children as t.Node[]);
+      // as '' or every non-edited variant's text is written empty. When the
+      // children carry RICH runs, capture their SOURCE instead of the flat
+      // text: creating the first variant branch used to tag-strip the
+      // primary's marks into the fallback literal (silent formatting loss).
+      const sig = significant as t.Node[];
+      const first = sig[0], last = sig[sig.length - 1];
+      const hasRuns = sig.some((c) => c.type === 'JSXElement');
+      literals['default'] = (hasRuns && typeof first?.start === 'number' && typeof last?.end === 'number')
+        ? code.slice(first.start!, last.end!).trim()
+        : collectDeepJsxText(path.node.children as t.Node[]);
     }
 
     // Apply the edit to the TARGET variant only (primary = the `default` fallback). Callers may pass the
@@ -481,7 +594,9 @@ export function updateVariantTextInCode(
     const existingForKey = vars[key] !== undefined
       ? null
       : literals[key] ?? (key !== 'default' && vars['default'] !== undefined ? null : literals['default']);
-    if (existingForKey != null && existingForKey === newText) {
+    if (existingForKey != null
+      && (existingForKey === newText
+        || canonicalVariantText(existingForKey) === canonicalVariantText(newText))) {
       trace.action('generator:updateVariantTextInCode-noop', { nodeId, variantName });
       textUnchanged = true;
       path.stop();
@@ -500,18 +615,24 @@ export function updateVariantTextInCode(
 
     const keys = [...new Set([...Object.keys(literals), ...Object.keys(vars)])].filter(k => k !== 'default');
     if (keys.length === 0 && Object.keys(vars).length === 0) {
-      // Pure literal, no branches → plain text.
-      path.node.children = [t.jsxText(`\n      ${literals['default'] ?? ''}\n    `)];
+      // Pure value, no branches. Plain → inline text (unchanged dialect).
+      // Rich → REAL children runs: collapsing every variant back to one text
+      // converges on the ordinary mixed-content node shape, not a ternary.
+      const def = literals['default'] ?? '';
+      const branch = variantTextBranch(def);
+      path.node.children = t.isJSXFragment(branch)
+        ? [t.jsxText('\n      '), ...branch.children, t.jsxText('\n    ')]
+        : [t.jsxText(`\n      ${def}\n    `)];
     } else {
       // Use the captured identifier; for from-plain-text edits detect a `variant` useState, else the
       // always-defined `initialVariant` prop (so we never emit an undefined `variant` reference).
       const idName = variantId ?? (/\bconst\s*\[\s*variant\b/.test(code) ? 'variant' : 'initialVariant');
       let expr: t.Expression = vars['default']
         ? t.identifier(vars['default'])
-        : t.stringLiteral(literals['default'] ?? '');
+        : variantTextBranch(literals['default'] ?? '');
       for (let i = keys.length - 1; i >= 0; i--) {
         const k = keys[i];
-        const branch = vars[k] ? t.identifier(vars[k]) : t.stringLiteral(literals[k] ?? '');
+        const branch = vars[k] ? t.identifier(vars[k]) : variantTextBranch(literals[k] ?? '');
         expr = t.conditionalExpression(
           t.binaryExpression('===', t.identifier(idName), t.stringLiteral(k)),
           branch, expr,
@@ -784,12 +905,20 @@ export function detachTextVariableForVariantInCode(
         && cursor.test.right?.type === 'StringLiteral') {
         variantId = cursor.test.left.name;
         const k = cursor.test.right.value;
-        if (cursor.consequent?.type === 'StringLiteral') literals[k] = cursor.consequent.value;
-        else if (cursor.consequent?.type === 'Identifier') vars[k] = cursor.consequent.name;
+        if (cursor.consequent?.type === 'Identifier') vars[k] = cursor.consequent.name;
+        else {
+          // String OR rich (fragment/element) branch — preserve rich runs
+          // through the detach instead of dropping the branch.
+          const bt = variantBranchText(cursor.consequent, code);
+          if (bt != null) literals[k] = bt;
+        }
         cursor = cursor.alternate;
       }
-      if (cursor?.type === 'StringLiteral') literals['default'] = cursor.value;
-      else if (cursor?.type === 'Identifier') vars['default'] = cursor.name;
+      if (cursor?.type === 'Identifier') vars['default'] = cursor.name;
+      else {
+        const bt = variantBranchText(cursor, code);
+        if (bt != null) literals['default'] = bt;
+      }
     } else if (only && only.type === 'JSXExpressionContainer' && (only as t.JSXExpressionContainer).expression.type === 'Identifier') {
       vars['default'] = ((only as t.JSXExpressionContainer).expression as t.Identifier).name;
     }
@@ -803,17 +932,21 @@ export function detachTextVariableForVariantInCode(
     const keys = [...new Set([...Object.keys(literals), ...Object.keys(vars)])].filter(k => k !== 'default');
     const noVarsLeft = Object.keys(vars).length === 0;
     if (noVarsLeft && keys.every(k => literals[k] === (literals['default'] ?? literal))) {
-      path.node.children = [t.jsxText(`\n      ${literals['default'] ?? literal}\n    `)];
+      const def = literals['default'] ?? literal;
+      const collapsed = variantTextBranch(def);
+      path.node.children = t.isJSXFragment(collapsed)
+        ? [t.jsxText('\n      '), ...collapsed.children, t.jsxText('\n    ')]
+        : [t.jsxText(`\n      ${def}\n    `)];
       path.stop();
       return;
     }
     const idName = variantId ?? (/\bconst\s*\[\s*variant\b/.test(code) ? 'variant' : 'initialVariant');
     let expr: t.Expression = vars['default']
       ? t.identifier(vars['default'])
-      : t.stringLiteral(literals['default'] ?? literal);
+      : variantTextBranch(literals['default'] ?? literal);
     for (let i = keys.length - 1; i >= 0; i--) {
       const k = keys[i];
-      const branch = vars[k] ? t.identifier(vars[k]) : t.stringLiteral(literals[k] ?? '');
+      const branch = vars[k] ? t.identifier(vars[k]) : variantTextBranch(literals[k] ?? '');
       expr = t.conditionalExpression(
         t.binaryExpression('===', t.identifier(idName), t.stringLiteral(k)),
         branch, expr,

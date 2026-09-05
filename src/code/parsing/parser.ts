@@ -319,6 +319,13 @@ export interface CanvasNode {
   // ternary text child like `{variant === 'v1' ? 'A' : 'B'}`. The trailing
   // literal is the `default` branch (primary variant). Mirrors conditionalStyles.
   conditionalText?: Record<string, string> | null;
+  /** Branches of `conditionalText` whose SOURCE was real JSX (a fragment of
+   *  inline runs), not a string literal. The renderer keys its innerHTML
+   *  decision on this — a rich branch must render its markup, while a PLAIN
+   *  branch containing typed `<` (pasted source code) must stay escaped
+   *  (same contract as `textIsLiteral`). A string sniff cannot tell those
+   *  apart; only the parser can, so it records which is which. */
+  conditionalTextRich?: Record<string, true> | null;
   /** Per-variant TEXT-VARIABLE bindings: variant name → prop name (`default` = the fallback). Set when a
    *  text ternary branch/fallback is a variable, so the Content control can show the per-variant bound
    *  state. Mirrors `conditionalStyleVariables` for styles. */
@@ -2008,6 +2015,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
         let translationKey: string | undefined;
         // Per-variant text from a `{variant === 'x' ? 'a' : 'b'}` child.
         let conditionalText: Record<string, string> | null = null;
+        let conditionalTextRich: Record<string, true> | null = null;
         // Per-variant TEXT-VARIABLE branches (variant → prop name) when a branch/fallback is a variable.
         let conditionalTextVariable: Record<string, string> | null = null;
         // Per-VIEWPORT text branches from a `{__mqN ? branch : base}` child (variable names / literal
@@ -2121,20 +2129,25 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
           // conditionalStyles.
           if (!variantBindings?.text && !responsiveTextValues && child.type === 'JSXExpressionContainer'
               && child.expression.type === 'ConditionalExpression') {
-            const g = walkVariantTextGeneral(child.expression);
+            const g = walkVariantTextGeneral(child.expression, code);
             if (g) {
               // Literal branches → conditionalText. Variable branches → conditionalTextVariable (per-variant
               // binding); their resolved values get baked into conditionalText in the post-resolve pass so
               // the Renderer paints the right text per variant. `textVariable` (any var) keeps the Content
               // control purple + triggers that resolve pass.
               conditionalText = { ...g.literals };
+              conditionalTextRich = Object.keys(g.richs).length > 0 ? { ...g.richs } : null;
               if (Object.keys(g.vars).length > 0) {
                 conditionalTextVariable = g.vars;
                 textVariable = g.vars['default'] ?? Object.values(g.vars)[0];
               }
               textContent = g.literals['default'] ?? textContent;
-              textIsLiteral = true;
-              trace.action('parser:conditional-text', { nodeId: id, literals: Object.keys(g.literals), vars: Object.keys(g.vars) });
+              // A RICH default is markup, not a literal string child — the
+              // text-edit literal contract must not treat it as one. Keyed on
+              // the AST fact (was the branch a fragment?), never a `<` sniff:
+              // a plain branch holding pasted source code must stay literal.
+              textIsLiteral = !g.richs['default'];
+              trace.action('parser:conditional-text', { nodeId: id, literals: Object.keys(g.literals), vars: Object.keys(g.vars), rich: Object.keys(g.richs) });
             }
           }
         }
@@ -2328,6 +2341,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
         if (isCollectionTemplate) node.isCollectionTemplate = true;
         if (binding) node.binding = binding;
         if (conditionalText) node.conditionalText = conditionalText;
+        if (conditionalTextRich) node.conditionalTextRich = conditionalTextRich;
         if (conditionalTextVariable) node.conditionalTextVariable = conditionalTextVariable;
         if (responsiveTextVariables) node.responsiveTextVariables = responsiveTextVariables;
         if (responsiveTextValues) node.responsiveTextValues = responsiveTextValues;
@@ -2413,7 +2427,19 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
           return;
         }
 
-        if (hasMixedContent || hasTextAnim || splitWrapper || isTextOverridesContainer) {
+        // RICH per-variant text: the ternary's fragment branches hold inline
+        // runs (<span>/<strong> with no data-id). They are captured in
+        // conditionalText as source slices — letting the traverse descend
+        // would mint auto-id nodes for every run, which then render on EVERY
+        // tile as real children: the live find 2026-09-05 was 'strong'/'span'
+        // rows in the Layers panel, duplicated text on the variant tile, and
+        // the PRIMARY showing the variant's formatting after reopen. Guarded
+        // on "no structural element children" so a hand-authored ternary
+        // sharing the parent with real elements keeps its old behavior.
+        const hasRichConditionalText = !!conditionalTextRich
+          && !el.children.some((c: any) => c.type === 'JSXElement');
+
+        if (hasMixedContent || hasTextAnim || splitWrapper || isTextOverridesContainer || hasRichConditionalText) {
           // Skip traversing inline children — they're in textContent as raw JSX source
           // For text-anim: children are animation artifacts (motion.span), not structural nodes
           // For text-overrides: children are <span data-vp> per-viewport variants, captured in textOverrides
@@ -4201,9 +4227,30 @@ function extractStyles(attrs: (JSXAttribute | any)[], ctx: ParseCtx): { styles: 
  *    `{v === 'a' ? 'x' : content}`         → literals {a:'x'},  vars {default:'content'}   (detach)
  *    `{v === 'a' ? content : 'y'}`         → literals {default:'y'}, vars {a:'content'}     (bind on variant)
  *  null when it isn't a variant ternary. */
-function walkVariantTextGeneral(expr: any): { literals: Record<string, string>; vars: Record<string, string> } | null {
+function walkVariantTextGeneral(expr: any, code: string): { literals: Record<string, string>; vars: Record<string, string>; richs: Record<string, true> } | null {
   const literals: Record<string, string> = {};
   const vars: Record<string, string> = {};
+  const richs: Record<string, true> = {};
+  // A RICH branch (per-variant formatting) is a JSXFragment/JSXElement of
+  // inline runs. Its value is the SOURCE SLICE — the same JSX-flavored markup
+  // dialect textContent carries for mixed nodes, so the tile renderer's
+  // mixed-content path paints it with zero new machinery.
+  const branchValue = (node: any): string | null => {
+    if (node?.type === 'StringLiteral') return node.value;
+    if (node?.type === 'JSXFragment') {
+      const kids = node.children ?? [];
+      if (kids.length === 0) return '';
+      const first = kids[0], last = kids[kids.length - 1];
+      if (typeof first.start === 'number' && typeof last.end === 'number') {
+        return code.slice(first.start, last.end).trim();
+      }
+      return null;
+    }
+    if (node?.type === 'JSXElement' && typeof node.start === 'number' && typeof node.end === 'number') {
+      return code.slice(node.start, node.end).trim();
+    }
+    return null;
+  };
   let cursor: any = expr;
   let sawBranch = false;
   while (cursor?.type === 'ConditionalExpression') {
@@ -4215,17 +4262,25 @@ function walkVariantTextGeneral(expr: any): { literals: Record<string, string>; 
       test.right?.type !== 'StringLiteral'
     ) return null;
     const key = test.right.value;
-    if (cursor.consequent?.type === 'StringLiteral') literals[key] = cursor.consequent.value;
-    else if (cursor.consequent?.type === 'Identifier') vars[key] = cursor.consequent.name;
-    else return null;
+    if (cursor.consequent?.type === 'Identifier') vars[key] = cursor.consequent.name;
+    else {
+      const v = branchValue(cursor.consequent);
+      if (v == null) return null;
+      literals[key] = v;
+      if (cursor.consequent.type !== 'StringLiteral') richs[key] = true;
+    }
     sawBranch = true;
     cursor = cursor.alternate;
   }
-  if (cursor?.type === 'StringLiteral') literals['default'] = cursor.value;
-  else if (cursor?.type === 'Identifier') vars['default'] = cursor.name;
-  else return null;
+  if (cursor?.type === 'Identifier') vars['default'] = cursor.name;
+  else {
+    const v = branchValue(cursor);
+    if (v == null) return null;
+    literals['default'] = v;
+    if (cursor.type !== 'StringLiteral') richs['default'] = true;
+  }
   if (!sawBranch) return null;
-  return { literals, vars };
+  return { literals, vars, richs };
 }
 
 /**

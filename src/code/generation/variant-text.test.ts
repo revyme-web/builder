@@ -304,19 +304,32 @@ function Button({ initialVariant = 'default' }) {
 }
 export default Button;`;
 
+  // CONTRACT CHANGE (rich per-variant text, 2026-09-05): the committer no
+  // longer flattens TipTap HTML before this generator, so a click-away now
+  // arrives as the RICH payload TipTap echoes from the rendered runs — and a
+  // PLAIN payload on a rich node means the user deliberately cleared the
+  // formatting. The protected property is unchanged: click-away must leave
+  // the file byte-identical (canonicalVariantText bridges the TipTap-HTML /
+  // stored-JSX / motion.span dialects), and no edit may ever write an empty
+  // or text-losing fallback.
+  const CLICK_AWAY_PAYLOAD = '<span style="color: rgb(21, 21, 21);">CONTACT US</span>';
+
   test('NO-OP edit on a variant tile leaves the file byte-identical (span preserved)', () => {
-    const out = updateVariantTextInCode(SPAN_COMP, 'label', 'variant-3', 'CONTACT US');
+    const out = updateVariantTextInCode(SPAN_COMP, 'label', 'variant-3', CLICK_AWAY_PAYLOAD);
     expect(out).toBe(SPAN_COMP);
   });
 
   test('REAL edit on a variant tile keeps the span text as the fallback, never empty', () => {
     const out = updateVariantTextInCode(SPAN_COMP, 'label', 'variant-3', 'REACH OUT');
-    expect(out).toMatch(/variant === ['"]variant-3['"] \? ['"]REACH OUT['"] : ['"]CONTACT US['"]/);
+    expect(out).toMatch(/variant === ['"]variant-3['"] \? ['"]REACH OUT['"] :/);
+    // The fallback keeps the words AND the color run (no more tag-strip).
+    expect(out).toContain('CONTACT US');
+    expect(out).toContain("color: 'rgb(21, 21, 21)'");
     expect(out).not.toMatch(/: ['"]{2}\}/); // no empty fallback branch
   });
 
   test('NO-OP edit on the PRIMARY leaves the file byte-identical', () => {
-    const out = updateVariantTextInCode(SPAN_COMP, 'label', 'default', 'CONTACT US');
+    const out = updateVariantTextInCode(SPAN_COMP, 'label', 'default', CLICK_AWAY_PAYLOAD);
     expect(out).toBe(SPAN_COMP);
   });
 });

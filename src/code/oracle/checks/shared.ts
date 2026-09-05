@@ -121,13 +121,28 @@ function needsDataId(tag: string, path: NodePath<t.JSXElement>): boolean {
   // foreignObject > p[data-id="X"]) — a structural container, never a node;
   // the svg wrapper and inner text carry the ids.
   if (['path', 'polygon', 'circle', 'ellipse', 'rect', 'line', 'polyline', 'defs', 'g', 'text', 'pattern', 'stop', 'linearGradient', 'radialGradient', 'foreignObject'].includes(base)) return false;
-  // inline runs inside a text element are rich-text, not nodes
+  // inline runs inside a text element are rich-text, not nodes. The owning
+  // element is not always the DIRECT parent: per-variant rich text stores its
+  // runs inside a ternary branch fragment —
+  //   <p data-id="x">{variant === 'v1' ? <><span>…</span></> : 'plain'}</p>
+  // — so the run's ancestry climbs JSXFragment → ConditionalExpression →
+  // JSXExpressionContainer before reaching the <p>. Those wrappers are
+  // rich-text plumbing, not structure; climb through them (and through outer
+  // runs, e.g. <span><strong>) to whatever ELEMENT actually owns the text.
   if (INLINE_RUN_TAGS.has(base)) {
-    const parent = path.parentPath?.node;
-    if (parent && t.isJSXElement(parent)) {
-      const parentTag = jsxTagName(parent.openingElement.name);
-      const parentBase = parentTag.startsWith('motion.') ? parentTag.slice('motion.'.length) : parentTag;
-      if (TEXT_TAGS.has(parentBase)) return false;
+    let p: NodePath | null = path.parentPath;
+    while (p) {
+      const n = p.node;
+      if (t.isJSXElement(n)) {
+        const parentTag = jsxTagName(n.openingElement.name);
+        const parentBase = parentTag.startsWith('motion.') ? parentTag.slice('motion.'.length) : parentTag;
+        return !(TEXT_TAGS.has(parentBase));
+      }
+      if (t.isJSXFragment(n) || t.isJSXExpressionContainer(n) || t.isConditionalExpression(n)) {
+        p = p.parentPath;
+        continue;
+      }
+      break;
     }
   }
   return true;
