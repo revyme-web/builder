@@ -26,7 +26,7 @@ import { styleHelperAtom } from '@/canvas/selection/style-helper-store';
 import { findSvgShapeChild, findNodeComputedStyles, getViewportPrefix, isPrimaryViewport, getActiveFilePath } from '@/canvas/node-ops';
 import { isComponentFilePath } from '@/code/project/active-file-store';
 import { parseSvgRotate, mergeSvgRotate, svgPivotStyles, commitVariantRotation, applyVariantRotatePreviewBase } from '@/canvas/resize/RotateManager';
-import { motionPropsToCSSTransform } from '@/shared/motion-transform';
+import { composeTransformWithRotate } from '@/shared/motion-transform';
 import { useRef } from 'react';
 
 /** Extract the degree value from a CSS transform string like
@@ -140,19 +140,17 @@ function RotateAtom() {
       // commitVariantRotation runs the full normalize+migration+flush
       // pipeline, too heavy per slider tick.
       const entryName = isPrimTile ? 'default' : vpId;
-      const merged = { ...(mvAll?.default ?? {}), ...(isPrimTile ? {} : (mvAll?.[entryName] ?? {})) };
-      // The entry can carry a RAW css `transform` — a %-position centering
-      // `translate(-50%, -50%)` — that is NOT a motion x/y prop, so
-      // motionPropsToCSSTransform silently DROPS it and the preview jumps by
-      // half the element. The rotate HANDLE keeps it (its mergeRotation
-      // preview preserves non-rotation parts), so slider != handle offset
-      // (live find 2026-09-05, X-arm on variant-1). Compose the base
-      // transform's non-rotate parts back in front of the motion fold.
-      const baseCss = typeof merged.transform === 'string'
-        ? merged.transform.replace(/\s*rotate\([^)]*\)/gi, '').trim()
-        : '';
-      const motionFold = motionPropsToCSSTransform({ ...merged, rotate: n });
-      const folded = baseCss ? `${baseCss} ${motionFold}`.trim() : motionFold;
+      // base ⊕ default ⊕ entry, folded the way the Renderer paints it. The
+      // INLINE base is part of the merge: a centering pin may live there as
+      // motion shorthands (`x/y: '-50%'`) or a `translate()` string, and
+      // either dropped from the fold shifts the preview by half the element
+      // (live finds 2026-09-05: X-arm string form, hamburger shorthand form).
+      const merged: Record<string, unknown> = {
+        ...(node.styles ?? {}),
+        ...(mvAll?.default ?? {}),
+        ...(isPrimTile ? {} : (mvAll?.[entryName] ?? {})),
+      };
+      const folded = composeTransformWithRotate(merged, n);
       // Pivot carrier + legacy-attr clear FIRST, or the slider preview spins
       // around the wrapper's default origin and compounds with an old
       // rotate() attr — offset for the whole drag, snapping right only at

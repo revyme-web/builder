@@ -107,3 +107,29 @@ describe('MOTION_TRANSFORM_PROPS set', () => {
     for (const p of ['transform', 'left', 'top', 'width']) expect(MOTION_TRANSFORM_PROPS.has(p)).toBe(false);
   });
 });
+
+describe('composeTransformWithRotate — the rotate PREVIEW paints what the Renderer paints', () => {
+  // Live finds 2026-09-05: a centering pin can live as a translate() STRING
+  // (X arm) or as x/y SHORTHANDS (hamburger bar); a preview that reads only
+  // one form drops the other and jumps the element by half its size.
+  it('keeps motion x/y shorthands in front of the rotate', async () => {
+    const { composeTransformWithRotate } = await import('./motion-transform');
+    expect(composeTransformWithRotate({ x: '-50%', y: '-50%', rotate: '9' }, 146.8))
+      .toBe('translateX(-50%) translateY(-50%) rotate(146.8deg)');
+  });
+  it('keeps a CSS transform STRING, stripping only its own rotate()', async () => {
+    const { composeTransformWithRotate } = await import('./motion-transform');
+    expect(composeTransformWithRotate({ transform: 'translate(-50%, -50%) rotate(22deg)' }, 30))
+      .toBe('translate(-50%, -50%) rotate(30deg)');
+  });
+  it('composes string first, then shorthands (Renderer.foldMotionTransforms order)', async () => {
+    const { composeTransformWithRotate } = await import('./motion-transform');
+    expect(composeTransformWithRotate({ transform: 'translate(-50%, -50%)', scale: '1.2' }, 45))
+      .toBe('translate(-50%, -50%) scale(1.2) rotate(45deg)');
+  });
+  it('bare rotate when there is nothing else; rotate 0 still emits (explicit override)', async () => {
+    const { composeTransformWithRotate } = await import('./motion-transform');
+    expect(composeTransformWithRotate({}, 12)).toBe('rotate(12deg)');
+    expect(composeTransformWithRotate({ transform: 'none' }, 12)).toBe('rotate(12deg)');
+  });
+});

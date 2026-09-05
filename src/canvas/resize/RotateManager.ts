@@ -28,7 +28,7 @@ import { refitGroupChain } from '@/code/svg/refit-group';
 import { modifyProjectFile } from '@/code/project/modify-file';
 import { normalizeShapeWrapperViewBoxInCode, ensureShapeChildIds } from '@/code/generation/generator-attrs';
 import { svgChildCarrierOrigin, groupChildScaleToGeometryUpdates } from '@/canvas/drag/replica-context';
-import { motionPropsToCSSTransform } from '@/shared/motion-transform';
+import { motionPropsToCSSTransform, composeTransformWithRotate } from '@/shared/motion-transform';
 import type { CanvasNode } from '@/code/parsing/parser';
 
 let cleanup: (() => void) | null = null;
@@ -218,10 +218,31 @@ export function startRotate(
     });
   }
 
+  // COMPONENT-FILE PREVIEW: paint exactly what the Renderer paints. On a
+  // motion.* element the centering can live as motion SHORTHANDS
+  // (`x: '-50%', y: '-50%'`) and the rotation in `variants.default.rotate` —
+  // neither is in the CSS `transform` string that `originalTransform` above
+  // reads, so `mergeRotation('', θ)` patched a bare `rotate(θ)` over the
+  // painted `translateX(-50%) translateY(-50%) rotate(…)`: the bar jumped
+  // half its width for the whole drag and snapped back on mouseup (live find
+  // 2026-09-05, hamburger bar on the primary). Fold base ⊕ default ⊕ entry
+  // with composeTransformWithRotate (the Renderer's own composition) and
+  // patch the interacting tile plus every inheriting mirror individually —
+  // the page path keeps its updateNodeStyles broadcast (bands, not entries).
+  const isComponentPreview = isComponentFilePath(getActiveFilePath());
+  const cpEntryName = isPrimaryViewport(vpId) ? 'default' : vpId;
+  const cpMv = (nodeData?.motionVariants ?? {}) as Record<string, Record<string, unknown>>;
+  const cpMerged: Record<string, unknown> = {
+    ...(nodeData?.styles ?? {}),
+    ...(cpMv.default ?? {}),
+    ...(cpEntryName !== 'default' ? (cpMv[cpEntryName] ?? {}) : {}),
+  };
+  const cpMirrors = (isComponentPreview && cpEntryName === 'default') ? inheritingVariantMirrors(nodeId, vpId) : [];
+
   // Starting angle from center to pointer
   const startAngle = Math.atan2(startEvent.clientY - centerY, startEvent.clientX - centerX);
 
-  trace.action('rotate:start', { nodeId, vpId, currentRotation, centerX, centerY, migratedFromAttr: !!legacyShapeRotate });
+  trace.action('rotate:start', { nodeId, vpId, currentRotation, centerX, centerY, migratedFromAttr: !!legacyShapeRotate, componentPreview: isComponentPreview });
   onInteracting(true);
 
   const onMove = (e: PointerEvent) => {
@@ -244,13 +265,24 @@ export function startRotate(
     // primary rotate but the replicas stay frozen until release.
     // `domOnly: true` skips the mutation queue + cache update so the
     // commit at mouseup remains the single source-of-truth write.
-    const newTransform = mergeRotation(originalTransform, newRotation);
-    updateNodeStyles({
-      id: nodeId,
-      styles: { transform: newTransform, ...pivotStyles },
-      contentEl,
-      domOnly: true,
-    });
+    let newTransform: string;
+    if (isComponentPreview) {
+      newTransform = composeTransformWithRotate(cpMerged, newRotation);
+      getCanvasBridge().patchStyles(nodeId, vpPrefix, { transform: newTransform, ...pivotStyles }, true);
+      for (const m of cpMirrors) {
+        getCanvasBridge().patchStyles(nodeId, m.prefix, {
+          transform: composeTransformWithRotate({ ...cpMerged, ...m.own }, newRotation), ...pivotStyles,
+        }, true);
+      }
+    } else {
+      newTransform = mergeRotation(originalTransform, newRotation);
+      updateNodeStyles({
+        id: nodeId,
+        styles: { transform: newTransform, ...pivotStyles },
+        contentEl,
+        domOnly: true,
+      });
+    }
     liveTransform = newTransform;
     lastAppliedRotation = newRotation;
 
@@ -272,49 +304,41 @@ export function startRotate(
 
     trace.action('rotate:end', { nodeId, vpId, finalRotation });
 
-    // PER-VARIANT rotation of a PLAIN motion element (component master,
-    // non-primary variant): route the angle into the variant object as an
-    // EXPLICIT `rotate` motion value — the same channel the SVG shape handle
-    // (commitVariantRotation) and the Styles Rotate control already use.
-    // The CSS-transform path below writes `transform: mergeRotation(orig, 0) ===
-    // ''` for a 0° result, which the variant routing (updateVariantStyleInCode)
-    // reads as "reset override" and DELETES the rotate from the variant entry.
-    // So rotating a variant element back to 0 — when its DEFAULT variant is
-    // rotated (e.g. 90°) — silently dropped the override (`'variant-1': {}`) and
-    // the tile rendered rotated like the primary. A non-zero angle worked (it
-    // wrote a real `rotate`), which is why it looked intermittent. Writing an
-    // explicit `rotate: 0` fixes it. SVG wrappers keep the CSS + group-refit
-    // path below (their variant rotation already routes via startSvgShapeRotate).
-    if (!isSvgWrapper && isComponentFilePath(getActiveFilePath()) && !isPrimaryViewport(vpId)) {
-      trace.action('rotate:end-variant-routed-plain', { nodeId, vpId, finalRotation });
-      commitVariantRotation(nodeId, vpId, finalRotation);
-      styleHelperOps.hide();
-      onInteracting(false);
-      return;
-    }
-
-    // TOP-LEVEL SVG WRAPPER on a variant tile. Nested shapes returned early
-    // via startSvgShapeRotate, so any svg wrapper reaching here is top-level —
-    // and the CSS commit below writes updateNodeStyles to the BASE inline
-    // transform, which a variant tile NEVER paints (it reads the variant
-    // entry). So the rotation silently reverted on mouseup and the dropped
-    // pivot shifted it left (live find 2026-09-05, X arm on variant-1; the
-    // preview was already correct, only the commit diverged).
-    //
-    // Route the angle into the variant entry like plain elements do, and
-    // write the SAME `pivotStyles` the preview painted (border-box + bbox
-    // centre) to base — motion applies `rotate` with no origin of its own, so
-    // the base pivot governs and the commit is pixel-identical to the last
-    // preview tick.
-    // Top-level svg wrapper on a variant → the SAME variant-entry commit the
-    // slider and plain elements use (commitVariantRotation now resolves the
-    // svg-wrapper pivot via variantRotateCarrier, so handle and slider land
-    // identically). Nested shapes returned early via startSvgShapeRotate.
-    if (isSvgWrapper && isComponentFilePath(getActiveFilePath()) && !isPrimaryViewport(vpId)) {
+    // COMPONENT FILE (any tile): never let the commit touch the DOM with an
+    // UNFOLDED value. `updateNodeStyles` patched `transform: rotate(θ)` —
+    // minus the x/y centering — the instant the pointer lifted, and the
+    // folded repaint arrived ~15ms later from the source rebuild: a one-frame
+    // jump to the un-centred position on every mouseup (live find 2026-09-05,
+    // "weird glitch for 0.1s"). Same contract as startSvgShapeRotate: re-patch
+    // the LAST preview tick at the committed (0.1°-rounded) angle so it is
+    // pixel-identical to what the rebuild paints, queue SOURCE writes only,
+    // and let the flush replace the DOM value with the identical one.
+    //   - rotate → this tile's entry (`default` on the primary) via
+    //     commitVariantRotation (carrier + transform-law default seed + flush)
+    //   - a stale base rotation (CSS `rotate()` in the transform string, or a
+    //     `rotate` shorthand from the pre-unification commit) is cleared so
+    //     the entry can't double with it
+    if (isComponentPreview) {
+      const rounded = Math.round(finalRotation * 10) / 10;
+      getCanvasBridge().patchStyles(nodeId, vpPrefix, { transform: composeTransformWithRotate(cpMerged, rounded), ...pivotStyles }, true);
+      for (const m of cpMirrors) {
+        getCanvasBridge().patchStyles(nodeId, m.prefix, { transform: composeTransformWithRotate({ ...cpMerged, ...m.own }, rounded), ...pivotStyles }, true);
+      }
+      const baseT = nodeData?.styles?.transform || '';
+      const baseFix: Record<string, string> = {};
+      if (/rotate\(/i.test(baseT)) baseFix.transform = mergeRotation(baseT, 0);
+      const baseRot = (nodeData?.styles as Record<string, string> | undefined)?.rotate;
+      if (baseRot != null && baseRot !== '') baseFix.rotate = '';
+      if (Object.keys(baseFix).length > 0) queueMutation({ type: 'updateStyles', nodeId, styles: baseFix });
       if (legacyShapeRotate) {
         queueMutation({ type: 'updateSvgAttrs', nodeId, attrs: { transform: '' }, childIndex: 0 });
       }
-      commitVariantRotation(nodeId, vpId, finalRotation);
+      trace.action('rotate:end-component-routed', { nodeId, vpId, rotate: rounded, baseFix: Object.keys(baseFix) });
+      commitVariantRotation(nodeId, vpId, rounded);
+      if (isGroupWrapper) {
+        const chain = getSvgGroupAncestorChain(nodeId);
+        if (chain.length > 0) refitGroupChain(chain, getActiveFilePath());
+      }
       styleHelperOps.hide();
       onInteracting(false);
       return;
@@ -482,23 +506,9 @@ function startSvgShapeRotate(
   // instead of snapping on mouseup. Each mirror folds the live default
   // (with the in-progress angle) UNDER the variant's own entry, the same
   // merge resolveVariantStyles paints.
-  const inheritingMirrors: Array<{ prefix: string; own: Record<string, string | number> }> = [];
-  if (isVariantRotatePreview && rotateEntryName === 'default') {
-    const mvAll = getNodeFromCache(nodeId)?.motionVariants ?? {};
-    // Variant tiles come from the component's variantConfig (NOT
-    // viewportsConfigAtom, which holds page viewports — empty for variant
-    // mirroring; the first pass silently mirrored to nobody).
-    let variantNames: string[] = [];
-    try {
-      variantNames = parseVariantConfig(projectFS.readFile(getActiveFilePath()) ?? '').map(v => v.name);
-    } catch { /* no config — nothing to mirror */ }
-    for (const vName of variantNames) {
-      if (vName === vpId || vName === 'default') continue;
-      const own = (mvAll[vName] ?? {}) as Record<string, string | number>;
-      if (own.rotate != null && own.rotate !== '') continue; // independent rotation — don't touch
-      inheritingMirrors.push({ prefix: `${vName}-`, own });
-    }
-  }
+  const inheritingMirrors = (isVariantRotatePreview && rotateEntryName === 'default')
+    ? inheritingVariantMirrors(nodeId, vpId)
+    : [];
 
   // Preview base BEFORE the first tick: pivot carrier + legacy-attr clear on
   // the interacting tile and every inheriting mirror — see the helper's doc.
@@ -791,6 +801,30 @@ export function calculateRotationAngle(
  * Replace only the rotate() part of an existing transform string.
  * Preserves other transforms (translateX, translateY, scale, etc.).
  */
+/**
+ * Variant tiles that INHERIT the primary's rotation (their entry has no
+ * `rotate` of its own). A primary-tile rotation must mirror to them live —
+ * the commit syncs them anyway, mirroring per tick just makes it not snap
+ * on mouseup. Each mirror folds the live default UNDER its own entry, the
+ * same merge resolveVariantStyles paints. Tile names come from the
+ * component's variantConfig (NOT viewportsConfigAtom — page viewports).
+ */
+function inheritingVariantMirrors(nodeId: string, vpId: string): Array<{ prefix: string; own: Record<string, string | number> }> {
+  const out: Array<{ prefix: string; own: Record<string, string | number> }> = [];
+  const mvAll = getNodeFromCache(nodeId)?.motionVariants ?? {};
+  let variantNames: string[] = [];
+  try {
+    variantNames = parseVariantConfig(projectFS.readFile(getActiveFilePath()) ?? '').map(v => v.name);
+  } catch { /* no config — nothing to mirror */ }
+  for (const vName of variantNames) {
+    if (vName === vpId || vName === 'default') continue;
+    const own = (mvAll[vName] ?? {}) as Record<string, string | number>;
+    if (own.rotate != null && own.rotate !== '') continue; // independent rotation — don't touch
+    out.push({ prefix: `${vName}-`, own });
+  }
+  return out;
+}
+
 export function mergeRotation(existingTransform: string, degrees: number): string {
   const rotateStr = degrees !== 0 ? `rotate(${Math.round(degrees * 10) / 10}deg)` : '';
   // Remove existing rotate(...) from the transform

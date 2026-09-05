@@ -87,6 +87,30 @@ export function buildAxisCenterTransform(axis: 'x' | 'y', existingTransform: str
   return [thisT, otherT, visuals].filter(Boolean).join(' ');
 }
 
+/** Which channel carries an element's centering translate. A design-component
+ *  (`motion.*`) element may pin through motion's INDEPENDENT props
+ *  (`x: '-50%'`, `y: '-50%'`) instead of a CSS translate string — that is how
+ *  the rotation commit / geometry migration store a pin. Every writer that
+ *  sets a centering translate must use the SAME channel: the Renderer folds
+ *  the string first, then the shorthands, so mixing them shifts the element
+ *  twice (live find 2026-09-05: align on a shorthand-centred svg wrote
+ *  `translateX(-50%)` beside `x: '-50%'` and it landed half a width left). */
+export function centeringChannel(styles: Record<string, string | undefined>): 'shorthand' | 'string' {
+  const set = (v: string | undefined) => v != null && v !== '' && v !== 'auto';
+  return set(styles.x) || set(styles.y) ? 'shorthand' : 'string';
+}
+
+/** Remove ONE axis's translate from a transform string, keeping the OTHER
+ *  axis's translate and every visual (rotate/scale/skew). A 2-arg
+ *  `translate(x, y)` is split so the kept axis survives as `translateY(..)`.
+ *  Returns '' when nothing is left (→ remove the property). */
+export function removeAxisTranslate(transform: string | undefined, axis: 'x' | 'y'): string {
+  if (!transform || transform === 'none') return '';
+  const other = extractAxisTranslate(transform, axis === 'x' ? 'y' : 'x');
+  const visuals = stripTranslateTransforms(transform);
+  return [other, visuals].filter(Boolean).join(' ');
+}
+
 // ─── Position Mode Conversions ──────────────────────────────────────────────
 
 /**

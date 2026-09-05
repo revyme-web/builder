@@ -277,3 +277,21 @@ describe('neutralizeReplicaClears', () => {
     expect(payload).toEqual({ right: '', bottom: '' });
   });
 });
+
+describe('removeAxisTranslate / centeringChannel', () => {
+  test('removes one axis, keeps the other + visuals; splits translate(x,y)', async () => {
+    const { removeAxisTranslate } = await import('./position-utils');
+    expect(removeAxisTranslate('translateX(-50%) translateY(-50%) rotate(9deg)', 'x')).toBe('translateY(-50%) rotate(9deg)');
+    expect(removeAxisTranslate('translate(-50%, -50%)', 'x')).toBe('translateY(-50%)');
+    expect(removeAxisTranslate('translateX(-50%)', 'x')).toBe('');
+    expect(removeAxisTranslate('rotate(9deg)', 'y')).toBe('rotate(9deg)');
+    expect(removeAxisTranslate(undefined, 'x')).toBe('');
+  });
+  test('centeringChannel detects motion shorthands', async () => {
+    const { centeringChannel } = await import('./position-utils');
+    expect(centeringChannel({ x: '-50%' })).toBe('shorthand');
+    expect(centeringChannel({ y: '-50%', transform: 'translateX(-50%)' })).toBe('shorthand');
+    expect(centeringChannel({ transform: 'translateX(-50%)' })).toBe('string');
+    expect(centeringChannel({ x: '' })).toBe('string');
+  });
+});

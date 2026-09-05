@@ -438,6 +438,27 @@ export function calculateAlignment(
       break;
   }
 
+  // MOTION-SHORTHAND CENTERING. A `motion.*` element (design component) can
+  // centre through motion's independent props (`x: '-50%'`, `y: '-50%'`)
+  // instead of a CSS translate string — that's how the rotation commit and the
+  // geometry migration store a pin. The string recipe above, written on top of
+  // it, DOUBLES the shift: the Renderer folds the string first, then the
+  // shorthands → `translateX(-50%) translateX(-50%)` → the bar landed half a
+  // width LEFT of centre (live find 2026-09-05). When the node already centres
+  // via shorthands, route this axis's translate into the SAME channel and
+  // never emit `transform` for it: on a motion element `transform: ''` is the
+  // rotation RESET (it wipes the entry's `rotate`), and any stale string
+  // translate is evicted by the generators on the `x`/`y` write
+  // ("one channel per axis").
+  const isShorthandCentred = isSet(styles.x) || isSet(styles.y);
+  if (isShorthandCentred && typeof u.transform === 'string') {
+    const horizontal = direction === 'left' || direction === 'center-h' || direction === 'right';
+    const val = horizontal ? extractTranslateX(u.transform) : extractTranslateY(u.transform);
+    u[horizontal ? 'x' : 'y'] = val ?? '';
+    const visual = u.transform.replace(/translate[XYZ3d]*\([^)]+\)/gi, '').trim();
+    if (visual) u.transform = visual; else delete u.transform;
+  }
+
   return u;
 }
 

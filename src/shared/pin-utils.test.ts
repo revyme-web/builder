@@ -440,3 +440,36 @@ describe('mergeVariantPinStyles', () => {
     expect(base.right).toBe('40px');
   });
 });
+
+describe('calculateAlignment — motion-shorthand centred node (x/y channel)', () => {
+  // A design-component element pinned via motion shorthands (`x/y: '-50%'`),
+  // as the rotation commit stores it. The CSS-string recipe on top of that
+  // doubled the translate (live find 2026-09-05: bar landed half a width left).
+  const elem = { width: 200, height: 100 };
+  const parent = { width: 600, height: 400 };
+  const sh = { left: '10%', top: '50%', x: '-50%', y: '-50%' };
+
+  test('center-h → left 50% + x:-50%, NO transform key', () => {
+    const u = calculateAlignment('center-h', sh, elem, parent);
+    expect(u).toEqual({ left: '50%', right: '', x: '-50%' });
+    expect('transform' in u).toBe(false);
+  });
+  test('left → centre-point % + x:-50%, untouched y', () => {
+    const u = calculateAlignment('left', sh, elem, parent);
+    expect(u).toEqual({ left: '16.6667%', right: '', x: '-50%' });
+  });
+  test('center-v → top 50% + y:-50%', () => {
+    expect(calculateAlignment('center-v', sh, elem, parent)).toEqual({ top: '50%', bottom: '', y: '-50%' });
+  });
+  test('a case that REMOVES the axis translate clears the shorthand (x: "")', () => {
+    // vertical inset + left pinned → string recipe would drop translateX
+    const s = { left: '0px', top: '20px', bottom: '20px', x: '-50%', y: '-50%' };
+    const u = calculateAlignment('center-h', s, elem, parent);
+    expect(u.x).toBe('');
+    expect('transform' in u).toBe(false);
+  });
+  test('string-centred nodes are byte-identical to before', () => {
+    expect(calculateAlignment('center-h', {}, elem, parent))
+      .toEqual({ left: '50%', right: '', transform: 'translateX(-50%)' });
+  });
+});

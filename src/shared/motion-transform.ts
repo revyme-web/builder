@@ -147,3 +147,24 @@ export function cssTransformToMotionProps(transform: string): Record<string, str
   }
   return out;
 }
+
+/**
+ * The CSS `transform` the STATIC canvas will PAINT for a tile's merged style
+ * map (inline base ⊕ `default` entry ⊕ active variant entry) with the rotation
+ * overridden — the rotate PREVIEW must produce exactly this, or the gesture
+ * jumps. Mirrors Renderer.foldMotionTransforms' composition: a pre-existing
+ * CSS `transform` string first (its own rotate() stripped), then the motion
+ * shorthands in motion's order. Both a `translate(-50%,-50%)` STRING and
+ * `x: '-50%', y: '-50%'` SHORTHANDS survive — the handle's old
+ * mergeRotation(getEffectiveStyles().transform) saw only the string form and
+ * dropped a shorthand-centred element by half its size for the whole drag
+ * (live find 2026-09-05, hamburger bar on the component primary).
+ */
+export function composeTransformWithRotate(merged: Record<string, unknown>, rotate: number): string {
+  const css = typeof merged.transform === 'string' && merged.transform.trim() && merged.transform !== 'none'
+    ? merged.transform.replace(/\s*rotate\([^)]*\)/gi, '').trim()
+    : '';
+  const motion = motionPropsToCSSTransform({ ...merged, rotate });
+  return css ? `${css} ${motion}`.trim() : motion;
+}
+

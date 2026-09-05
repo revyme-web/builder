@@ -11,6 +11,7 @@ import { toKebab, SHORTHAND_LONGHANDS } from '@/shared/css-utils';
 import { escapeRegExp } from '@/shared/regex-utils';
 import { CSS_LAYOUT_DEFAULTS } from '@/shared/constants';
 import { cssTransformToMotionProps, MOTION_TRANSFORM_PROPS } from '@/shared/motion-transform';
+import { removeAxisTranslate } from '@/shared/position-utils';
 import { parseJSX } from '@/code/parsing/ast-utils';
 import * as t from '@babel/types';
 import _traverse from '@babel/traverse';
@@ -2283,7 +2284,13 @@ function updateVariantStyleInCodeInner(
   // matches either quoted or bare so existing entries are found regardless. No-ops for non-`--`
   // keys, so every existing variant-write path is byte-identical.
   const emitKey = (k: string) => (k.startsWith('--') ? `'${k}'` : k);
-  const keyPat = (k: string) => (k.startsWith('--') ? `['"]?${k}['"]?` : k);
+  // LEFT-ANCHORED key pattern. Unanchored, a bare `y` matched the TAIL of
+  // `displa|y: 'none'` / `opacit|y:` and `x` the tail of `transformBo|x:` —
+  // an `{ y: '-50%' }` entry write rewrote the default entry to
+  // `display: '-50%'` (live find 2026-09-05: hamburger bar, X arm). The
+  // lookbehind rejects any identifier/`--` character before the key, for
+  // bare AND quoted (`'--x'`) forms.
+  const keyPat = (k: string) => `(?<![A-Za-z0-9_$-])` + (k.startsWith('--') ? `['"]?${k}['"]?` : k);
 
   // Step 1: Find the node's element in the JSX
   const idPattern = `data-id="${nodeId}"`;
@@ -2862,6 +2869,26 @@ function updateVariantStyleInCodeInner(
     // Variant entry exists — update/add properties
     let entryContent = entryMatch[2];
 
+    // ONE CHANNEL PER AXIS (entry twin of updateNodeInCode): an `x`/`y` write
+    // evicts that axis's translate from the entry's own `transform` string —
+    // the primary→default mirror had stored `transform: 'translateX(-50%)'`
+    // beside the shorthand and the fold doubled the shift. Runs AFTER the
+    // transform-reset block far above, so a resulting `transform: ''` is the
+    // loop's plain key delete, never the rotate-wiping reset.
+    if (!('transform' in styles) && ('x' in styles || 'y' in styles)) {
+      const tm = entryContent.match(/(?<![A-Za-z0-9_$-])transform\s*:\s*(?:'([^']*)'|"([^"]*)")/);
+      const existingT = tm ? (tm[1] ?? tm[2] ?? '') : '';
+      if (existingT) {
+        let next = existingT;
+        if ('x' in styles) next = removeAxisTranslate(next, 'x');
+        if ('y' in styles) next = removeAxisTranslate(next, 'y');
+        if (next !== existingT) {
+          trace.action('generator:variant-entry-evict-string-translate', { nodeId, variantName, from: existingT, to: next });
+          styles = { ...styles, transform: next };
+        }
+      }
+    }
+
     // Properties that should be numeric (no quotes) in variant entries
     const NUMERIC_PROPS = new Set(['order', 'opacity', 'scale', 'scaleX', 'scaleY', 'rotate', 'rotateX', 'rotateY', 'rotateZ', 'skewX', 'skewY', 'x', 'y', 'z', 'transformPerspective', 'attrX', 'attrY']);
     for (const [key, value] of Object.entries(styles)) {
@@ -2925,6 +2952,15 @@ function updateVariantStyleInCodeInner(
     }
 
 
+    // HEAL an entry poisoned by the pre-anchor `y`/`x` key collision above: a
+    // `display: '-50%'`-style value (numeric/percent — never a display
+    // keyword) is garbage the browser ignores; drop it so the entry stops
+    // carrying it forward on every rewrite.
+    const healedContent = entryContent.replace(/(^|[,{\s])display\s*:\s*['"](-?\d[^'"]*)['"]\s*,?/g, '$1');
+    if (healedContent !== entryContent) {
+      trace.action('generator:variant-entry-heal-invalid-display', { nodeId, variantName });
+      entryContent = healedContent;
+    }
     const fullMatchStart = constIdx + afterConst.indexOf(entryMatch[0]);
     const fullMatchEnd = fullMatchStart + entryMatch[0].length;
     let result = code.slice(0, fullMatchStart) + entryMatch[1] + entryContent + entryMatch[3] + code.slice(fullMatchEnd);

@@ -10,6 +10,7 @@ import { sanitizeDataName } from '@/shared/id-utils';
 import { parseJSX, findFirstElementByDataId, findAttribute, traverse } from '../parsing/ast-utils';
 import { toKebab, htmlToJSX, splitStyleProps } from '@/shared/css-utils';
 import { cssTransformToMotionProps } from '@/shared/motion-transform';
+import { removeAxisTranslate } from '@/shared/position-utils';
 import { trace } from '@/shared/debug-trace';
 import { sweepEmptyGlideWrappers } from './glide-gen';
 import { generate, findTagClose, findJSXDataIdIndex, quoteStyleValue, serializeJSXAttr, findMatchingCloseTagIndex, findStyleObjectEnd } from './generator-utils';
@@ -76,6 +77,25 @@ export function updateNodeInCode(
       }
     }
   }
+  // ONE CHANNEL PER AXIS. Writing motion `x`/`y` (a shorthand centring pin)
+  // must EVICT that axis's translate from a CSS `transform` string already on
+  // the element — the Renderer folds string + shorthands, so both together
+  // shift the element twice (live find 2026-09-05: align on a shorthand-centred
+  // svg). Runs AFTER the motion block above, so the resulting `transform: ''`
+  // is a plain delete — never the rotation-reset seed. Also heals files that
+  // already carry both forms the next time `x`/`y` is written.
+  if (!('transform' in styleChanges) && ('x' in styleChanges || 'y' in styleChanges) && isMotionElementAt(code, nodeId)) {
+    const existing = readInlineStyleValue(code, nodeId, 'transform');
+    if (existing) {
+      let next = existing;
+      if ('x' in styleChanges) next = removeAxisTranslate(next, 'x');
+      if ('y' in styleChanges) next = removeAxisTranslate(next, 'y');
+      if (next !== existing) {
+        trace.action('generator:evict-string-translate-for-shorthand', { nodeId, from: existing, to: next });
+        styleChanges = { ...styleChanges, transform: next };
+      }
+    }
+  }
   // A `transform` style write must also refresh the element's paired
   // `transformTemplate` (the composer that keeps a static translate alive
   // while motion animates y — see generator-motion-props). The template is
@@ -114,6 +134,29 @@ function findStyleKeyIndex(content: string, key: string): number {
     if (prev === '' || prev === ',' || prev === '{' || /\s/.test(prev)) return idx;
     from = idx + 1;
   }
+}
+
+/** Read ONE top-level string value out of a node's inline `style={{…}}`
+ *  (tag-bound, quote-aware). null when the node/style/key is absent. */
+function readInlineStyleValue(code: string, nodeId: string, key: string): string | null {
+  const idIndex = findJSXDataIdIndex(code, nodeId);
+  if (idIndex === -1) return null;
+  let d = 0, i = idIndex, tagCloseIdx = code.length;
+  while (i < code.length) {
+    if (code[i] === '{') d++;
+    else if (code[i] === '}') d--;
+    else if (code[i] === '>' && d === 0) { tagCloseIdx = i; break; }
+    i++;
+  }
+  const styleStart = code.indexOf('style={{', idIndex);
+  if (styleStart === -1 || styleStart > tagCloseIdx) return null;
+  const objStart = styleStart + 'style={{'.length;
+  const objEnd = findStyleObjectEnd(code, objStart);
+  const body = code.substring(objStart, objEnd === -1 ? code.length - 1 : objEnd);
+  const k = findStyleKeyIndex(body, key);
+  if (k === -1) return null;
+  const m = body.slice(k + key.length).match(/^\s*:\s*(?:'([^']*)'|"([^"]*)")/);
+  return m ? (m[1] ?? m[2] ?? '') : null;
 }
 
 /**

@@ -16,7 +16,7 @@ import { getPinState, parsePx, mergeVariantPinStyles, type PinSide } from '@/sha
 import { isPrimaryViewport } from '@/shared/constants';
 import { findNodeRect, findNodeComputedStyles, findNodeParentInnerSize } from '@/canvas/node-ops';
 import { transformManager } from '@/canvas/transform';
-import { type VisualRect, toPercentageCenter, toFixedPin, toInsetMode, fromInsetMode, stripTranslateTransforms, buildAxisCenterTransform } from '@/shared/position-utils';
+import { type VisualRect, toPercentageCenter, toFixedPin, toInsetMode, fromInsetMode, stripTranslateTransforms, buildAxisCenterTransform, centeringChannel, extractAxisTranslate } from '@/shared/position-utils';
 import { applyReplicaClearSemantics } from './replica-clears';
 import { trace } from '@/shared/debug-trace';
 import { queueMutation } from '@/code/mutation/mutation-queue';
@@ -376,6 +376,20 @@ export default function PinControl({ styles, nodeId, vpId, onUpdate, onUpdateMul
     // re-exposes the base value — unpinning R/B on a variant kept them
     // pinned (user report 2026-08-26).
     newStyles = applyReplicaClearSemantics(nodeId, vpId, newStyles);
+    // MOTION-SHORTHAND CENTERING: this node centres via motion `x`/`y`, not a
+    // CSS translate string (how the rotation commit stores a pin). Route the
+    // toggled axis into that channel and never emit `transform` for it — on a
+    // motion element `transform: ''` is the rotation RESET (wipes the entry's
+    // rotate), and mixing channels doubles the shift (Renderer folds string
+    // then shorthands; live find 2026-09-05). The generators evict any stale
+    // string translate on the x/y write.
+    if (centeringChannel(styles) === 'shorthand' && typeof newStyles.transform === 'string') {
+      const axis = isHoriz ? 'x' : 'y';
+      const part = extractAxisTranslate(newStyles.transform, axis);
+      newStyles[axis] = part ? part.replace(/^translate[XY]\(\s*|\s*\)$/g, '') : '';
+      const visuals = stripTranslateTransforms(newStyles.transform);
+      if (visuals) newStyles.transform = visuals; else delete newStyles.transform;
+    }
     trace.action('pin:toggle', { nodeId, side, wasPinned, newStyles, rect, elTransform: styles.transform, elLeft: styles.left, elTop: styles.top });
     onUpdateMultiple(newStyles);
     // Lock dynamic pinning — user has expressed an explicit pin choice.
