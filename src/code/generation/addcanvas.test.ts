@@ -1039,3 +1039,55 @@ export default C;`;
     expect(out).toContain('animate={{');
   });
 });
+
+describe('addNodeInCode — pasted TipTap HTML is sanitized (the copy→paste string-style corruption)', () => {
+  // Regression, reproduced live 2026-09-05 (and the NoShit Academy outage):
+  // copying a node whose text lives in a `useResponsiveText` hook puts the
+  // hook's RAW payload — TipTap HTML with string style attrs — into the
+  // clipboard node's textContent. Interpolated verbatim by buildNodeJSX it
+  // parses as real `<span style="…">` string-attr JSX: canvas tolerates it,
+  // preview/publish white-screen. buildNodeJSX must objectify on the way in.
+  const page = `export default function Page() {
+  return <div data-id="root" style={{ position: 'relative' }}></div>;
+}`;
+
+  const TIPTAP_HTML =
+    '<span style="font-weight: 700;"><strong>Kako</strong></span> <span style="color: rgb(238, 126, 126);">funkcioniše platforma?</span>';
+
+  it('converts string style attrs to object styles on paste', () => {
+    const out = addNodeInCode(page, 'root', {
+      id: 'p-paste-1', type: 'p', styles: { fontSize: '16px' },
+      textContent: TIPTAP_HTML,
+    });
+    expect(out).not.toContain('style="');
+    expect(out).toContain("fontWeight: '700'");
+    expect(out).toContain('rgb(238, 126, 126)');
+    // The words themselves must survive intact.
+    expect(out).toContain('Kako');
+    expect(out).toContain('funkcioniše platforma?');
+  });
+
+  it('closes bare <br> so the file stays parseable', () => {
+    const out = addNodeInCode(page, 'root', {
+      id: 'p-paste-2', type: 'p', styles: {},
+      textContent: 'line one<br>line two',
+    });
+    expect(out).toContain('<br />');
+    expect(out).not.toMatch(/<br>(?!\s*\/)/);
+  });
+
+  it('is a byte-level no-op on already-correct JSX marks', () => {
+    const jsx = `<span style={{ fontWeight: '700' }}><strong>Šta</strong></span> plain tail`;
+    const out = addNodeInCode(page, 'root', {
+      id: 'p-paste-3', type: 'p', styles: {}, textContent: jsx,
+    });
+    expect(out).toContain(jsx);
+  });
+
+  it('leaves plain text untouched', () => {
+    const out = addNodeInCode(page, 'root', {
+      id: 'p-paste-4', type: 'p', styles: {}, textContent: 'just words, no tags',
+    });
+    expect(out).toContain('just words, no tags');
+  });
+});

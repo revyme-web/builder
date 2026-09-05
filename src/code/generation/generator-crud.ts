@@ -2888,7 +2888,19 @@ export function buildNodeJSX(node: AddNodeDef, isComponentFile: boolean, indent:
     tag = `motion.${tag}`;
     layoutAttr = ' layout={true}';
   }
-  const textContent = node.textContent || '';
+  // NEVER interpolate textContent raw. A node copied from a responsive-text
+  // (`useResponsiveText`) tile carries the hook's stored payload — TipTap
+  // HTML with STRING style attributes (`<span style="font-weight: 700;">`)
+  // and unclosed `<br>` tags. Interpolated verbatim, the string spans are
+  // VALID JSX (a string attr parses fine), so they ride through both insert
+  // paths into the file, the canvas tolerates them, and preview/publish
+  // white-screen on React's "style prop expects a mapping" (the NoShit
+  // Academy outage, reproduced deterministically via copy→paste 2026-09-05).
+  // `htmlToJSX` converts `style="…"` → `style={{…}}` and `<br>` → `<br />`,
+  // and is a no-op on already-JSX content (its regex only matches the
+  // string-attr shape) — so plain text and object-styled spans pass through
+  // byte-identical.
+  const textContent = node.textContent ? htmlToJSX(node.textContent) : '';
 
   // Has children — build nested JSX
   if (node.children && node.children.length > 0) {
