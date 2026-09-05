@@ -21,9 +21,11 @@ import type { AtomProps } from '../../../controls/unified/types';
 import { useNodesComputed } from '@/code/stores/node-family';
 import { queueMutation } from '@/code/mutation/mutation-queue';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
+import { useAtomValue } from 'jotai';
+import { styleHelperAtom } from '@/canvas/selection/style-helper-store';
 import { findSvgShapeChild, findNodeComputedStyles, getViewportPrefix, isPrimaryViewport, getActiveFilePath } from '@/canvas/node-ops';
 import { isComponentFilePath } from '@/code/project/active-file-store';
-import { parseSvgRotate, mergeSvgRotate, svgPivotStyles, commitVariantRotation } from '@/canvas/resize/RotateManager';
+import { parseSvgRotate, mergeSvgRotate, svgPivotStyles, commitVariantRotation, applyVariantRotatePreviewBase } from '@/canvas/resize/RotateManager';
 import { motionPropsToCSSTransform } from '@/shared/motion-transform';
 import { useRef } from 'react';
 
@@ -113,6 +115,15 @@ function RotateAtom() {
   // panel showed 0° for rotated group children and a slider write would have
   // forked back into the legacy attr channel (live report 2026-06-12).
   const mvAll = node?.motionVariants as Record<string, Record<string, string | number>> | undefined;
+  // LIVE SYNC WITH THE CANVAS HANDLE. RotateManager pushes the in-progress
+  // angle into styleHelperAtom every onMove (`{ type: 'rotate', value }`).
+  // The slider reads it during an active rotate so the track + number field
+  // move WITH the handle, instead of freezing at the stale source value until
+  // mouseup (live ask 2026-09-05). Ignored when the badge isn't a rotate one.
+  const liveHelper = useAtomValue(styleHelperAtom);
+  const liveRotate = (liveHelper.show && liveHelper.type === 'rotate')
+    ? (liveHelper.value ?? null) : null;
+
   const isPrimTile = isPrimaryViewport(vpId);
   const mergedEntryRotate = mvAll
     ? (isPrimTile ? mvAll.default?.rotate : (mvAll[vpId]?.rotate ?? mvAll.default?.rotate))
@@ -130,7 +141,23 @@ function RotateAtom() {
       // pipeline, too heavy per slider tick.
       const entryName = isPrimTile ? 'default' : vpId;
       const merged = { ...(mvAll?.default ?? {}), ...(isPrimTile ? {} : (mvAll?.[entryName] ?? {})) };
-      const folded = motionPropsToCSSTransform({ ...merged, rotate: n });
+      // The entry can carry a RAW css `transform` — a %-position centering
+      // `translate(-50%, -50%)` — that is NOT a motion x/y prop, so
+      // motionPropsToCSSTransform silently DROPS it and the preview jumps by
+      // half the element. The rotate HANDLE keeps it (its mergeRotation
+      // preview preserves non-rotation parts), so slider != handle offset
+      // (live find 2026-09-05, X-arm on variant-1). Compose the base
+      // transform's non-rotate parts back in front of the motion fold.
+      const baseCss = typeof merged.transform === 'string'
+        ? merged.transform.replace(/\s*rotate\([^)]*\)/gi, '').trim()
+        : '';
+      const motionFold = motionPropsToCSSTransform({ ...merged, rotate: n });
+      const folded = baseCss ? `${baseCss} ${motionFold}`.trim() : motionFold;
+      // Pivot carrier + legacy-attr clear FIRST, or the slider preview spins
+      // around the wrapper's default origin and compounds with an old
+      // rotate() attr — offset for the whole drag, snapping right only at
+      // the debounced commit (same fix as the rotate handle, 2026-09-05).
+      applyVariantRotatePreviewBase(nodeId, getViewportPrefix(vpId), vpId);
       getCanvasBridge().patchStyles(nodeId, getViewportPrefix(vpId), { transform: folded }, true);
       if (commitTimer.current) clearTimeout(commitTimer.current);
       commitTimer.current = setTimeout(() => {
@@ -224,10 +251,11 @@ function RotateAtom() {
     }
     write(n);
   };
+  const shownNum = liveRotate ?? num;
   return (
     <div className="flex items-center gap-2 w-full">
-      <ToolSlider value={num} min={-360} max={360} step={1} onChange={write} />
-      <ToolInput value={String(Math.round(num * 10) / 10)} onChange={writeRaw} step={1} chevronLabel="deg" />
+      <ToolSlider value={shownNum} min={-360} max={360} step={1} onChange={write} />
+      <ToolInput value={String(Math.round(shownNum * 10) / 10)} onChange={writeRaw} step={1} chevronLabel="deg" />
     </div>
   );
 }

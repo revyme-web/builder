@@ -293,6 +293,33 @@ export function startRotate(
       return;
     }
 
+    // TOP-LEVEL SVG WRAPPER on a variant tile. Nested shapes returned early
+    // via startSvgShapeRotate, so any svg wrapper reaching here is top-level —
+    // and the CSS commit below writes updateNodeStyles to the BASE inline
+    // transform, which a variant tile NEVER paints (it reads the variant
+    // entry). So the rotation silently reverted on mouseup and the dropped
+    // pivot shifted it left (live find 2026-09-05, X arm on variant-1; the
+    // preview was already correct, only the commit diverged).
+    //
+    // Route the angle into the variant entry like plain elements do, and
+    // write the SAME `pivotStyles` the preview painted (border-box + bbox
+    // centre) to base — motion applies `rotate` with no origin of its own, so
+    // the base pivot governs and the commit is pixel-identical to the last
+    // preview tick.
+    // Top-level svg wrapper on a variant → the SAME variant-entry commit the
+    // slider and plain elements use (commitVariantRotation now resolves the
+    // svg-wrapper pivot via variantRotateCarrier, so handle and slider land
+    // identically). Nested shapes returned early via startSvgShapeRotate.
+    if (isSvgWrapper && isComponentFilePath(getActiveFilePath()) && !isPrimaryViewport(vpId)) {
+      if (legacyShapeRotate) {
+        queueMutation({ type: 'updateSvgAttrs', nodeId, attrs: { transform: '' }, childIndex: 0 });
+      }
+      commitVariantRotation(nodeId, vpId, finalRotation);
+      styleHelperOps.hide();
+      onInteracting(false);
+      return;
+    }
+
     // Commit to code — merge final rotation into ORIGINAL transform (preserve translate, scale, etc.)
     const transformValue = mergeRotation(originalTransform, finalRotation);
 
@@ -471,6 +498,13 @@ function startSvgShapeRotate(
       if (own.rotate != null && own.rotate !== '') continue; // independent rotation — don't touch
       inheritingMirrors.push({ prefix: `${vName}-`, own });
     }
+  }
+
+  // Preview base BEFORE the first tick: pivot carrier + legacy-attr clear on
+  // the interacting tile and every inheriting mirror — see the helper's doc.
+  if (isVariantRotatePreview) {
+    applyVariantRotatePreviewBase(nodeId, vpPrefix, vpId);
+    for (const m of inheritingMirrors) applyVariantRotatePreviewBase(nodeId, m.prefix, vpId);
   }
 
   const onMove = (e: PointerEvent) => {
@@ -837,6 +871,65 @@ export function mergeSvgRotate(
  *  carrier + the entry rotate, seed the default return path (presence-
  *  guarded), and fold-and-clear a legacy inner-attr rotation. Shared by the
  *  rotate HANDLE commit and the Styles-panel Rotate control. */
+/**
+ * Paint everything the VARIANT rotate preview needs BESIDES the folded
+ * transform, so every gesture tick equals the commit's final paint:
+ *
+ *   1. the pivot carrier — the same branch commitVariantRotation writes
+ *      (view-box + px origin for a nested group child, fill-box/center
+ *      otherwise). Without it the live rotation spins around the wrapper's
+ *      DEFAULT origin: the bar visibly offset for the whole gesture and only
+ *      snapped right on mouseup (live find 2026-09-05, X-icon arm).
+ *   2. a cleared legacy inner-attr rotation — the old `rotate(a cx cy)` attr
+ *      otherwise keeps painting UNDER the wrapper preview and compounds.
+ *
+ * Idempotent — the slider path calls it per tick.
+ */
+/**
+ * The pivot carrier for a variant rotation, resolved once so preview AND
+ * commit, handle AND slider all agree (a fill-box/border-box mismatch between
+ * the slider's commit and the handle's made the slider offset — live find
+ * 2026-09-05). Three shapes:
+ *   - nested group child (parent is <svg>) → view-box + px origin
+ *   - top-level <svg> wrapper              → border-box + bbox-centre px
+ *     (motion applies `rotate` with no origin of its own, so this pins the
+ *      spin to the PAINTED content centre — what the handle preview uses)
+ *   - plain element                        → fill-box/centre
+ */
+function variantRotateCarrier(nodeId: string, vpId: string): Record<string, string> {
+  const node = getNodeFromCache(nodeId);
+  const parent = node?.parentId ? getNodeFromCache(node.parentId) : null;
+  if (node && parent?.type === 'svg') {
+    return svgChildCarrierOrigin(node.attrs, parent.attrs?.viewBox) as unknown as Record<string, string>;
+  }
+  if (node?.type === 'svg') {
+    // MIRROR the handle's general-path pivotStyles EXACTLY (see its comment):
+    // a single-SHAPE svg (content fills the viewBox → painted centre == box
+    // centre) pivots at 50% 50% as a PERCENT so it auto-tracks resize; only a
+    // GROUP svg (no inner shape) keeps the painted-centre px origin.
+    // svgPivotStyles for BOTH made the slider spin around the bbox-px point
+    // (~top of a short box: 12.5px 2px ≈ 51%/17%) while the handle and commit
+    // used 50% 50% — offset during the slider drag, snapping right on mouseup
+    // (live find 2026-09-05).
+    const shapeChild = findSvgShapeChild(node, getDefaultStore().get(nodesAtom));
+    return shapeChild
+      ? { transformBox: 'border-box', transformOrigin: '50% 50%' }
+      : svgPivotStyles(nodeId, vpId);
+  }
+  return { transformBox: 'fill-box', transformOrigin: '50% 50%' };
+}
+
+export function applyVariantRotatePreviewBase(nodeId: string, vpPrefix: string, vpId: string): void {
+  const node = getNodeFromCache(nodeId);
+  getCanvasBridge().patchStyles(nodeId, vpPrefix, variantRotateCarrier(nodeId, vpId), true);
+  const innerId = node?.children?.[0];
+  const innerTransform = innerId ? (getNodeFromCache(innerId)?.attrs?.transform ?? '') : '';
+  if (innerTransform && parseSvgRotate(innerTransform)) {
+    (getCanvasBridge() as { setChildShapeAttribute?: (p: string, v: string, i: number, a: string, val: string | null) => void })
+      .setChildShapeAttribute?.(nodeId, vpPrefix, 0, 'transform', null);
+  }
+}
+
 export function commitVariantRotation(nodeId: string, vpId: string, finalRotation: number): void {
   const rotateEntryName = isPrimaryViewport(vpId) ? 'default' : vpId;
   const originalShapeTransform = (() => {
@@ -849,12 +942,7 @@ export function commitVariantRotation(nodeId: string, vpId: string, finalRotatio
   for (const mig of groupChildScaleToGeometryUpdates(nodeId, rotateEntryName, getActiveFilePath())) {
     queueMutation(mig as any);
   }
-  const rotateNode = getNodeFromCache(nodeId);
-  const rotateParent = rotateNode?.parentId ? getNodeFromCache(rotateNode.parentId) : null;
-  const carrier = (rotateNode && rotateParent?.type === 'svg')
-    ? svgChildCarrierOrigin(rotateNode.attrs, rotateParent.attrs?.viewBox)
-    : { transformBox: 'fill-box', transformOrigin: '50% 50%' };
-  queueMutation({ type: 'updateStyles', nodeId, styles: carrier as unknown as Record<string, string> });
+  queueMutation({ type: 'updateStyles', nodeId, styles: variantRotateCarrier(nodeId, vpId) });
   queueMutation({
     type: 'updateVariantStyle', nodeId, variantName: rotateEntryName,
     styles: { rotate: `${Math.round(finalRotation * 10) / 10}` },
