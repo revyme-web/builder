@@ -48,6 +48,21 @@ export interface ClipboardNode {
    * values via `updateMotionProp` (see paste/motion-reinject.ts).
    */
   motionProps?: CanvasNode['motionProps'];
+  /** NON-default-locale texts of a translated node, captured at COPY
+   *  (locale → string). `textContent` already carries the baked default, so
+   *  a paste into a non-localized project keeps today's plain-text fallback —
+   *  but a paste anywhere the locale IS configured re-mints the `t()` call
+   *  and seeds the messages, so the duplicate stays translated (the FR
+   *  duplicate showed baked English, live find 2026-09-05). */
+  translations?: Record<string, string>;
+  /** Same, per translatable ATTR: attr → locale → string. */
+  attrTranslations?: Record<string, Record<string, string>>;
+  /** Per-breakpoint style overrides captured from the source page's @media
+   *  bands (`[data-id="X"] { … !important }` rules keyed by the band's
+   *  max-width). Same style-block failure mode as the ::after border: the
+   *  clipboard tree alone loses them, so a duplicate showed base styles on
+   *  every replica tile — descendants included (live find 2026-09-05). */
+  responsiveBands?: Array<{ maxWidth: number; styles: Record<string, string> }>;
 
   /**
    * `::after` border-overlay rule BODY captured from the source page's

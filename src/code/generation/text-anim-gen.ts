@@ -23,7 +23,7 @@ import type { TextAnimConfig } from '@/editor/tools/AnimationTool/motion/text-an
 import { easeToMotion } from '@/shared/animation-utils';
 import { trace } from '@/shared/debug-trace';
 import { nodeIdToVarName } from '@/shared/id-utils';
-import { parseJSX } from '@/code/parsing/ast-utils';
+import { parseJSX, traverse } from '@/code/parsing/ast-utils';
 import { findJSXDataIdIndex, findTagClose, findMatchingCloseTagIndex, stripTagAttrBalanced, ensureNamedImport } from './generator-utils';
 
 /** The runtime component every text effect wraps its content in. Prefixed because
@@ -73,6 +73,13 @@ export function buildSplitTextSpecSource(config: TextAnimConfig): string {
   const parts: string[] = [];
   if (config.animationType) parts.push(`animationType: ${JSON.stringify(config.animationType)}`);
   if (config.mask) parts.push('mask: true');
+  // Per-scope existence: `disabled: true` on the base (effect added on a
+  // replica → off everywhere else) or inside a scope's config (X on a tile).
+  // `disabled: false` MUST also serialize — inside a scope it is the
+  // re-enable override on a disabled base ("add only on mobile"); dropping
+  // falsy values here silently killed that case.
+  // The runtime renders a disabled scope static — identical DOM, no motion.
+  if (config.disabled !== undefined) parts.push(`disabled: ${config.disabled}`);
   if (config.trigger && config.trigger !== 'view') parts.push(`trigger: ${JSON.stringify(config.trigger)}`);
   if (config.scrollStart !== undefined) parts.push(`scrollStart: ${config.scrollStart}`);
   if (config.scrollEnd !== undefined) parts.push(`scrollEnd: ${config.scrollEnd}`);
@@ -300,6 +307,58 @@ function healCorruptedStyleTextAnim(code: string): string {
 
 // ─── Wrapper content resolution ──────────────────────────────────────────────
 
+/** Inline mark tags a rich run may carry — mirror of the runtime splitter's
+ *  INLINE_MARK_TAGS (`@revyme/runtime` split-text.tsx). The two lists MUST
+ *  agree: a tag this passes through that the runtime doesn't recognise makes
+ *  the whole node fall back to an unanimated verbatim render. */
+const INLINE_MARK_TAGS = new Set(['span', 'strong', 'em', 'b', 'i', 'u', 's', 'small', 'sub', 'sup', 'mark', 'code', 'a']);
+
+/** Normalize a marked-up inner to the rich form the runtime splitter accepts,
+ *  or null when it isn't purely inline marks (then the caller plain-folds as
+ *  before). Paragraph structure normalizes exactly like jsxInnerToPlainText
+ *  (`</p><p>` boundaries → `<br />`, outer `<p>` unwrapped) but the MARK TAGS
+ *  SURVIVE — applying a Text effect used to silently strip bold/color
+ *  (live find 2026-09-05); the runtime now splits around them.
+ */
+export function normalizeInlineRichInner(inner: string): string | null {
+  let cand = inner.trim()
+    .replace(/<\/p>\s*<p[^>]*>/gi, '<br />')
+    .replace(/^<p[^>]*>/i, '')
+    .replace(/<\/p>$/i, '')
+    .trim();
+  if (!cand) return null;
+  const ast = parseJSX(`<x>${cand}</x>`);
+  if (!ast) return null;
+  let hasMark = false;
+  let ok = true;
+  const walk = (node: any): void => {
+    if (!ok || !node) return;
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    if (node.type === 'JSXText') return;
+    if (node.type === 'JSXExpressionContainer') {
+      // `{" "}` space preservers are fine; any live expression means this
+      // is not a simple rich run — let the caller's existing paths decide.
+      if (node.expression?.type !== 'StringLiteral') ok = false;
+      return;
+    }
+    if (node.type === 'JSXElement') {
+      const tag = node.openingElement?.name?.name;
+      if (tag === 'br') return;
+      if (typeof tag !== 'string' || !INLINE_MARK_TAGS.has(tag)) { ok = false; return; }
+      hasMark = true;
+      walk(node.children);
+      return;
+    }
+    if (node.type === 'JSXFragment') { walk(node.children); return; }
+  };
+  traverse(ast, {
+    JSXElement(pp) {
+      if (pp.parentPath?.parentPath?.isProgram()) { walk(pp.node.children); pp.stop(); }
+    },
+  });
+  return ok && hasMark ? cand : null;
+}
+
 /** What goes INSIDE `<RevymeSplitText>`.
  *
  *  The critical branch is (c): a node whose children are a single expression container —
@@ -329,8 +388,15 @@ function resolveWrapperContent(code: string, nodeId: string, inner: string): { c
   const single = singleExpressionChild(inner);
   if (single) return { content: single, code };
 
-  // (d) markup (TipTap `</p><p>` commits, inline marks) → fold to plain text + real <br />
-  if (/<(?!br\b)/.test(inner)) return { content: escapeText(jsxInnerToPlainText(inner)), code };
+  // (d) inline MARKS (`<strong>`, styled `<span>`) → preserved: the runtime
+  // splitter walks them and animates the glyphs inside (bold/color used to be
+  // silently stripped here). Paragraph wrappers normalize to `<br />`.
+  if (/<(?!br\b)/.test(inner)) {
+    const rich = normalizeInlineRichInner(inner);
+    if (rich !== null) return { content: rich, code };
+    // (d2) any other markup → fold to plain text + real <br /> (unchanged)
+    return { content: escapeText(jsxInnerToPlainText(inner)), code };
+  }
 
   // (e) plain text and/or <br /> — already correct
   return { content: inner, code };
@@ -426,7 +492,13 @@ export function addTextAnimInCode(code: string, nodeId: string, config: TextAnim
   const attrs = stripSpecAttrs(openingTag.slice(0, lastGt));
   const newOpen = `${attrs} data-text-anim='${JSON.stringify(config)}'>`;
 
-  const variantAttr = needsVariantProp(config) ? ' variant={variant}' : '';
+  // The active-variant prop for `{variant}` scopes. Connection-LESS components
+  // have no `variant` useState — only the `initialVariant` prop — and emitting
+  // `variant={variant}` there is an undefined identifier the oracle rightly
+  // blocks ("X on a variant tile bounced every write", live find 2026-09-05).
+  // Same detection updateVariantTextInCode uses for its ternary identifier.
+  const variantId = /\bconst\s*\[\s*variant\b/.test(working) ? 'variant' : 'initialVariant';
+  const variantAttr = needsVariantProp(config) ? ` variant={${variantId}}` : '';
   const wrapper = `<${SPLIT_TEXT_TAG} spec={${buildSplitTextSpecSource(config)}}${variantAttr}>`
     + resolved.content + `</${SPLIT_TEXT_TAG}>`;
 

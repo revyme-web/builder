@@ -14,6 +14,12 @@ interface TextAnimOverride {
 }
 
 export interface TextAnimConfig {
+  /** Per-SCOPE existence switch (a VALUE field, so replicas/variants override
+   *  it like any other): `true` = the effect renders static on that scope.
+   *  This is what makes the X on a tablet tile remove the effect THERE
+   *  without touching desktop — parity with appear/hover/loop, which have
+   *  had per-scope add/remove all along (live ask 2026-09-05). */
+  disabled?: boolean;
   animationType: 'character' | 'word' | 'line' | 'full';
   /** Wrap each split unit in an overflow-hidden clip so the reveal slides out from BEHIND the line
    *  ("cut-off"/masked reveal) instead of floating in from open space. Structural, like animationType —
@@ -188,6 +194,13 @@ export function resolveTextAnimForScope(config: TextAnimConfig, scope: TextAnimS
   if (!scope) return config;
   const ov = config.responsive?.find(r => textAnimScopesEqual(r.scope, scope));
   return ov ? { ...config, ...ov.config } : config;
+}
+
+/** Does the effect actually RUN on this scope? (base ⊕ override, disabled wins).
+ *  Drives the Animation row's per-tile presence and, via `existingTypes`,
+ *  whether the Add menu re-offers Text Effect on that tile. */
+export function textAnimPresentOn(config: TextAnimConfig, scope: TextAnimScope | null): boolean {
+  return !resolveTextAnimForScope(config, scope).disabled;
 }
 
 /** True when there's a value override for this scope (drives the blue "reset override" indicator). */

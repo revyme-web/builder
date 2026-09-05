@@ -184,7 +184,10 @@ describe('variant prop', () => {
     const withVariant = addTextAnimInCode(PAGE, 'hero', {
       ...DEFAULT_CONFIG, responsive: [{ scope: { variant: 'open' }, config: { opacity: 0.5 } }],
     } as TextAnimConfig);
-    expect(withVariant).toContain('variant={variant}');
+    // No `const [variant` in this page fixture → the emitter falls back to
+    // the always-defined `initialVariant` (a bare `variant` reference here
+    // was the undefined identifier the oracle blocked, 2026-09-05).
+    expect(withVariant).toContain('variant={initialVariant}');
   });
 });
 
@@ -323,5 +326,127 @@ export default function Page() {
     expect(out).toContain('[data-id="hero"] { width: 100% !important; }');   // CSS intact
     expect(out).toContain('<RevymeSplitText');
     expect(validateGeneratedCode(out)).toBeNull();
+  });
+});
+
+describe('addTextAnimInCode — inline marks survive (BUG 4, 2026-09-05)', () => {
+  const RICH_PAGE = `import React from 'react';
+import { motion } from 'framer-motion';
+export default function Page() {
+  return <div data-id="root">
+    <h1 data-id="hero" style={{ fontSize: '48px' }}>The <strong>quick</strong> <span style={{ color: 'rgb(200, 50, 50)' }}>brown</span> fox</h1>
+  </div>;
+}`;
+
+  it('keeps bold and color marks inside the wrapper instead of folding to plain text', () => {
+    const out = addTextAnimInCode(RICH_PAGE, 'hero', DEFAULT_CONFIG);
+    expect(out).toContain('<RevymeSplitText');
+    expect(out).toContain('<strong>quick</strong>');
+    expect(out).toContain("color: 'rgb(200, 50, 50)'");
+    expect(out).toContain('brown');
+    expect(validateGeneratedCode(out)).toBeNull();
+  });
+
+  it('re-applying keeps the marks (idempotent through branch a)', () => {
+    const once = addTextAnimInCode(RICH_PAGE, 'hero', DEFAULT_CONFIG);
+    const twice = addTextAnimInCode(once, 'hero', { ...DEFAULT_CONFIG, trigger: 'scroll' });
+    expect((twice.match(/<RevymeSplitText/g) || []).length).toBe(1);
+    expect(twice).toContain('<strong>quick</strong>');
+    expect(twice).toContain("rgb(200, 50, 50)");
+  });
+
+  it('TipTap paragraph commits still normalize to <br /> with marks intact', () => {
+    const page = RICH_PAGE.replace(
+      'The <strong>quick</strong> <span style={{ color: \'rgb(200, 50, 50)\' }}>brown</span> fox',
+      '<p>line <strong>one</strong></p><p>line two</p>',
+    );
+    const out = addTextAnimInCode(page, 'hero', DEFAULT_CONFIG);
+    expect(out).toContain('<br />');
+    expect(out).toContain('<strong>one</strong>');
+    expect(out).not.toContain('<p>');
+  });
+
+  it('NON-inline markup still folds to plain text (old behavior preserved)', () => {
+    const page = RICH_PAGE.replace(
+      'The <strong>quick</strong> <span style={{ color: \'rgb(200, 50, 50)\' }}>brown</span> fox',
+      'hello <div data-id="oops">boxed</div> world',
+    );
+    const out = addTextAnimInCode(page, 'hero', DEFAULT_CONFIG);
+    expect(out).toContain('hello');
+    expect(out).toContain('boxed');
+    expect(out).not.toMatch(/<RevymeSplitText[^>]*>[\s\S]*<div/);
+  });
+});
+
+describe('per-scope existence — disabled (2026-09-05)', () => {
+  // X on a tablet tile used to strip the animation from EVERY tile; adding on
+  // mobile lit it up everywhere. `disabled` is a per-scope VALUE field: the
+  // base or any responsive scope can switch the effect off while the others
+  // keep theirs — parity with appear/hover/loop.
+  it('serializes disabled on the base and inside scope configs, in BOTH spec and attr', () => {
+    const cfg = {
+      ...DEFAULT_CONFIG,
+      disabled: true,
+      responsive: [{ scope: { query: '(max-width: 768px)' }, config: { disabled: false } }],
+    } as TextAnimConfig;
+    const out = addTextAnimInCode(PAGE_FOR_SCOPES, 'hero', cfg);
+    // spec prop
+    expect(out).toMatch(/spec=\{\{[^}]*disabled: true/);
+    expect(out).toMatch(/responsive: \[\{ scope: \{ query: "\(max-width: 768px\)" \}, config: \{ disabled: false \} \}\]/);
+    // data-text-anim JSON mirror
+    expect(out).toContain('"disabled":true');
+    expect(validateGeneratedCode(out)).toBeNull();
+  });
+});
+
+const PAGE_FOR_SCOPES = `import React from 'react';
+import { motion } from 'framer-motion';
+export default function Page() {
+  return <div data-id="root">
+    <h1 data-id="hero" style={{ fontSize: '48px' }}>Hello World</h1>
+  </div>;
+}`;
+
+describe('variant scopes — the active-variant prop matches the component shape (2026-09-05)', () => {
+  // X on a variant tile writes a `{variant: …}` scope; the wrapper then needs
+  // the active variant passed in. A connection-less master has NO `variant`
+  // useState — only the `initialVariant` prop — and emitting
+  // `variant={variant}` there is an undefined identifier (the oracle blocked
+  // every write on such tiles: "AI changes blocked — references undefined
+  // identifier: variant").
+  const VARIANT_CFG = {
+    ...DEFAULT_CONFIG,
+    responsive: [{ scope: { variant: 'variant-1' }, config: { disabled: true } }],
+  } as TextAnimConfig;
+
+  const CONNECTIONLESS = `import React from 'react';
+import { motion } from 'framer-motion';
+function Comp({ initialVariant = 'default' }: any) {
+  return <div data-id="root">
+    <p data-id="hero" style={{ fontSize: '16px' }}>Hello</p>
+  </div>;
+}
+export default Comp;`;
+
+  const CONNECTED = CONNECTIONLESS.replace(
+    "function Comp({ initialVariant = 'default' }: any) {",
+    "function Comp({ initialVariant = 'default' }: any) {\n  const [variant, setVariant] = React.useState(initialVariant);",
+  );
+
+  it('connection-less master → variant={initialVariant}', () => {
+    const out = addTextAnimInCode(CONNECTIONLESS, 'hero', VARIANT_CFG);
+    expect(out).toContain('variant={initialVariant}');
+    expect(out).not.toContain('variant={variant}');
+  });
+
+  it('connected master (variant useState) → variant={variant}', () => {
+    const out = addTextAnimInCode(CONNECTED, 'hero', VARIANT_CFG);
+    expect(out).toContain('variant={variant}');
+  });
+
+  it('viewport-only scopes emit NO variant prop (unchanged)', () => {
+    const cfg = { ...DEFAULT_CONFIG, responsive: [{ scope: { query: '(max-width: 768px)' }, config: { disabled: true } }] } as TextAnimConfig;
+    const out = addTextAnimInCode(CONNECTIONLESS, 'hero', cfg);
+    expect(out).not.toContain('variant={');
   });
 });

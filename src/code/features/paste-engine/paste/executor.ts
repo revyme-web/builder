@@ -16,6 +16,7 @@ import { trace } from '@/shared/debug-trace';
 import { queueMutation } from '@/code/mutation/mutation-queue';
 import { isPrimaryViewport } from '@/canvas/node-ops';
 import { getReplicaContext } from '@/canvas/drag/replica-context';
+import { queueReplicaCreationUnhide } from '@/canvas/creators/creator-utils';
 import {
   calculatePosition,
   findRootNodes,
@@ -23,7 +24,7 @@ import {
 import { createNode } from '../core/node-creator';
 import { resolveTargets } from '../core/target-resolver';
 import { reinjectMotionProps } from './motion-reinject';
-import { reinjectBorderOverlays, reinjectPlaceholderStyles } from './border-reinject';
+import { reinjectResponsiveBands, reinjectBorderOverlays, reinjectPlaceholderStyles } from './border-reinject';
 import type {
   ClipboardNode,
   PasteConfig,
@@ -76,6 +77,25 @@ function applyReplicaCascade(
   });
 
   for (const newId of createdRootIds) {
+    if (!rctx.isComponent) {
+      // PAGE replica — the drag path's documented trio, parts (1) and (3),
+      // which this cascade was missing (only part 2 ran): the duplicate
+      // stayed visible on the PRIMARY, because no @container band can hide
+      // the primary — only an inline `display: none` can, with the entered
+      // band un-hiding it back (live find 2026-09-05: duplicate on tablet
+      // hid on mobile but leaked onto desktop).
+      //
+      // The un-hide restores the node's REAL display (flex/grid from the
+      // baked clipboard styles), not a blind `unset` — same contract the
+      // creators use, so a duplicated flex card keeps its layout on the
+      // tile it was duplicated on.
+      const cn = ctx.clipboardNodes.find((n) => idMapper.getNewIdsForClipboard(n.id).includes(newId));
+      const enteredWidth = ctx.viewportWidths![vpId];
+      queueMutation({ type: 'updateStyles', nodeId: newId, styles: { display: 'none' } });
+      if (typeof enteredWidth === 'number') {
+        queueReplicaCreationUnhide(newId, vpId, enteredWidth, cn?.styles?.display);
+      }
+    }
     if (rctx.isComponent) {
       // Component: hide as base inline + show only in target variant.
       // Use `display: 'unset'` for the per-variant un-hide override —
@@ -222,6 +242,11 @@ export function executePaste(
   // Post-paste pass — re-inject ::placeholder rules (Input tool Placeholder
   // Color) under the new ids; same style-block failure mode as the border.
   reinjectPlaceholderStyles(ctx.clipboardNodes, idMapper);
+
+  // Post-paste pass — rebuild per-breakpoint @media overrides under the new
+  // ids (same style-block failure mode as the border: the duplicate showed
+  // base styles on every replica tile, descendants included).
+  reinjectResponsiveBands(ctx.clipboardNodes, idMapper);
 
   return createdIds;
 }

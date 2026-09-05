@@ -6,6 +6,7 @@
 //   3. Execute via executor
 //   4. Return created IDs for the call-site to select
 
+import { reinjectTranslations } from './translations-reinject';
 import { trace } from '@/shared/debug-trace';
 import type { CanvasNode } from '@/code/parsing/parser';
 import type { Transform } from '@/shared/types';
@@ -140,6 +141,9 @@ export function executePaste(opts: PasteOptions): PasteResult {
     // exit/entry pair the drag paths use.
     if (opts.activeFilePath) {
       rehydratePastedCmsBindings(idMapper, opts.activeFilePath);
+      // Re-seed per-locale translations on the copies (see the module header
+      // for why this runs HERE, after the nodes are guaranteed in the file).
+      reinjectTranslations(ctx.clipboardNodes, idMapper, opts.activeFilePath);
     }
     return {
       success: true,

@@ -185,6 +185,16 @@ export function gateTurnFiles(
       const used = new Map<string, number>();
       let grandfathered = 0;
       for (const cur of vs) {
+        // TIER 3 IS NEVER GRANDFATHERED. Tier 3 means the file crashes or is
+        // unusable (SYNTAX_ERROR, STRING_STYLE_ATTR, CANVAS_CONFIG_DESTROYED)
+        // — a violation the previous version also carried is still a white
+        // screen on preview and publish, and waiving it is how the NoShit
+        // Academy corruption rode through every AI gate pass after it landed
+        // (2026-09-03): TipTap spans carry no data-id, so STRING_STYLE_ATTR
+        // on them always fell into the element-less COUNT waiver below.
+        // Enforcing it here also makes AI edits SELF-HEALING: the bounce
+        // names the crash, the model fixes it in the same turn.
+        if (cur.tier === 3) { kept.push(cur); continue; }
         if (cur.elementId && oldKeyed.has(`${cur.code}::${cur.elementId}`)) { grandfathered++; continue; }
         if (!cur.elementId) {
           const allowance = oldCounts.get(cur.code) ?? 0;

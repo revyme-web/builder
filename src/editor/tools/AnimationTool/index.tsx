@@ -51,7 +51,7 @@ import { getActiveAnimationScope, resolveResponsiveMotionProp } from './animatio
 import { getSortedBreakpointWidths, activeComponentVariantAtom } from '@/code/stores/viewport-store';
 import TextEffectPopup from './motion/TextEffectPopup';
 import { getTextAnimForNode } from '@/code/parsing/text-anim-parser';
-import { DEFAULT_TEXT_ANIM, hasTextAnimScope, resetTextAnimScope, type TextAnimConfig, type TextAnimScope } from './motion/text-anim-presets';
+import { DEFAULT_TEXT_ANIM, hasTextAnimScope, resetTextAnimScope, resolveTextAnimForScope, setTextAnimScoped, textAnimPresentOn, type TextAnimConfig, type TextAnimScope } from './motion/text-anim-presets';
 import { consumeAnchorOverride } from '../../controls/unified/UsedByRow';
 import { isTextTag } from '@/shared/constants';
 import { LocalizeGate } from '@/editor/controls/localize-gate';
@@ -535,8 +535,13 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
     const textAnim = getTextAnimForNode(allTextAnims, nodeId);
     if (textAnim) {
       const taScope = getActiveAnimationScope() as TextAnimScope | null;
-      entries.push({ type: 'textEffect', summary: textAnim.config.animationType, key: 'textEffect',
-        data: { ...textAnim, isOverride: hasTextAnimScope(textAnim.config, taScope) } });
+      // Presence is PER SCOPE: a tile where the effect is disabled shows no
+      // row — and, through `existingTypes`, gets Text Effect back in its Add
+      // menu. Same model as appear/hover/loop.
+      if (textAnimPresentOn(textAnim.config, taScope)) {
+        entries.push({ type: 'textEffect', summary: textAnim.config.animationType, key: 'textEffect',
+          data: { ...textAnim, isOverride: hasTextAnimScope(textAnim.config, taScope) || !!textAnim.config.disabled } });
+      }
     }
 
     // CSS
@@ -734,9 +739,29 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
         queueMutation({ type: 'updateLoop', nodeId, spec: { props: { rotate: '360' }, transition: { duration: '2', repeat: 'Infinity', ease: 'linear' }, ...(lscope ? { scope: [lscope] } : {}) } });
         setActivePopup('loop'); break;
       }
-      case 'textEffect':
-        queueMutation({ type: 'addTextAnim', nodeId, config: { ...DEFAULT_TEXT_ANIM } });
+      case 'textEffect': {
+        // Scoped existence (parity with appear/hover/loop, 2026-09-05):
+        //  - base already exists but is off HERE → flip this scope on
+        //  - fresh add on a replica/variant → base disabled + this scope on,
+        //    so the effect exists ONLY where it was added
+        //  - fresh add on the primary → plain base, everywhere (unchanged)
+        const taScope = getActiveAnimationScope() as TextAnimScope | null;
+        const existing = getTextAnimForNode(allTextAnims, nodeId);
+        if (existing) {
+          const view = { ...resolveTextAnimForScope(existing.config, taScope), disabled: false };
+          queueMutation({ type: 'updateTextAnim', nodeId, config: taScope
+            ? setTextAnimScoped(existing.config, view, taScope)
+            : { ...existing.config, disabled: false } });
+        } else if (taScope) {
+          queueMutation({ type: 'addTextAnim', nodeId, config: {
+            ...DEFAULT_TEXT_ANIM, disabled: true,
+            responsive: [{ scope: taScope, config: { disabled: false } }],
+          } });
+        } else {
+          queueMutation({ type: 'addTextAnim', nodeId, config: { ...DEFAULT_TEXT_ANIM } });
+        }
         setActivePopup('textEffect'); break;
+      }
       case 'scrollTransform':
         if (isInstance) { addInstanceFx('transform', { transform: { from: { opacity: 0.5, scale: 0.5 }, to: { opacity: 1, scale: 1 } } }); setActivePopup('scrollTransform'); break; }
         // Scroll Transform = SCRUBBED From→To tied to scroll progress. Its own
@@ -796,7 +821,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
         break;
       }
     }
-  }, [nodeId, onUpdate, setKeyframeSheet, bumpKeyframes, s.transition, isInstance, writeInstanceFx, addInstanceFx]);
+  }, [nodeId, onUpdate, setKeyframeSheet, bumpKeyframes, s.transition, isInstance, writeInstanceFx, addInstanceFx, allTextAnims]);
 
   const handleRemove = useCallback((type: AnimEntryType, entry?: DetectedEntry) => {
     trace.action('animation:remove', { nodeId, type });
@@ -868,8 +893,24 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
         }
         break;
       }
-      case 'textEffect':
-        queueMutation({ type: 'removeTextAnim', nodeId }); break;
+      case 'textEffect': {
+        // X on a replica/variant disables the effect for THAT scope only —
+        // it used to strip the whole node's animation from every tile
+        // (live ask 2026-09-05). X on the primary removes for real, except
+        // when a scope was explicitly (re-)enabled there: then the base goes
+        // disabled and the enabled scopes live on ("add only on mobile").
+        const taScope = getActiveAnimationScope() as TextAnimScope | null;
+        const existing = getTextAnimForNode(allTextAnims, nodeId);
+        if (taScope && existing) {
+          const view = { ...resolveTextAnimForScope(existing.config, taScope), disabled: true };
+          queueMutation({ type: 'updateTextAnim', nodeId, config: setTextAnimScoped(existing.config, view, taScope) });
+        } else if (existing?.config.responsive?.some((r) => r.config.disabled === false)) {
+          queueMutation({ type: 'updateTextAnim', nodeId, config: { ...existing.config, disabled: true } });
+        } else {
+          queueMutation({ type: 'removeTextAnim', nodeId });
+        }
+        break;
+      }
       case 'glide':
         queueMutation({ type: 'removeGlide', nodeId }); break;
       case 'scrollTransform':

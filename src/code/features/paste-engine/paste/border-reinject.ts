@@ -62,3 +62,30 @@ export function reinjectPlaceholderStyles(
     });
   }
 }
+
+/**
+ * Same pass for per-breakpoint @media overrides: copy captured each node's
+ * band rules as `responsiveBands` (width → camelized styles); one
+ * `updateContainerStyle` per band per pasted copy rebuilds them under the NEW
+ * id — the generator re-adds `!important` and constructs the destination
+ * file's band (with its seams) itself. Without this a duplicate showed base
+ * styles on every replica tile, descendants included (live find 2026-09-05).
+ */
+export function reinjectResponsiveBands(
+  clipboardNodes: ClipboardNode[],
+  idMapper: IdMapper,
+): void {
+  for (const cn of clipboardNodes) {
+    if (!cn.responsiveBands || cn.responsiveBands.length === 0) continue;
+    const newIds = idMapper.getNewIdsForClipboard(cn.id);
+    if (newIds.length === 0) continue;
+    for (const newId of newIds) {
+      for (const band of cn.responsiveBands) {
+        queueMutation({ type: 'updateContainerStyle', nodeId: newId, maxWidth: band.maxWidth, styles: band.styles });
+      }
+    }
+    trace.action('paste:responsive-bands-reinjected', {
+      clipboardId: cn.id, bands: cn.responsiveBands.length, copies: newIds.length,
+    });
+  }
+}

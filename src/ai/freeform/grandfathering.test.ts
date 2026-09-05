@@ -65,3 +65,32 @@ describe('gateTurnFiles grandfathering', () => {
     expect(violations.map((v) => v.code)).toContain('TEXT_STYLE_ON_FRAME');
   });
 });
+
+describe('tier 3 is NEVER grandfathered', () => {
+  // The NoShit Academy hole (2026-09-03): a crash-level violation the previous
+  // version already carried was waived on every subsequent AI pass — for
+  // STRING_STYLE_ATTR doubly so, because TipTap spans have no data-id and so
+  // always fell into the element-less COUNT waiver. Tier 3 means the file
+  // white-screens on preview/publish; "it was already broken" is not a pass.
+  const CRASH_BODY = `    <p data-id="legacy-rich" data-name="Text" style={{ position: 'relative', width: '100%', height: 'auto' }}>
+      <span style="font-weight: 700;">Kako</span> works
+    </p>`;
+
+  it('a pre-existing STRING_STYLE_ATTR still bounces every subsequent edit', () => {
+    projectFS.writeFile(PAGE_PATH, pageWith(CRASH_BODY));
+    // The edit keeps the crash exactly as the previous version had it and
+    // only adds an unrelated clean element — the old count-waiver's blind spot.
+    const edited = pageWith(`${CRASH_BODY}
+    <p data-id="new-clean" data-name="New" style={{ position: 'relative', width: '100%', height: 'auto' }}>Fresh copy</p>`);
+    const { violations } = gateTurnFiles([{ path: PAGE_PATH, kind: 'page', code: edited }], PAGE_PATH);
+    expect(violations.map((v) => v.code)).toContain('STRING_STYLE_ATTR');
+  });
+
+  it('tier ≤ 2 grandfathering is untouched by the tier-3 carve-out', () => {
+    projectFS.writeFile(PAGE_PATH, pageWith(LEGACY_BODY));
+    const edited = pageWith(`${LEGACY_BODY}
+    <p data-id="new-clean" data-name="New" style={{ position: 'relative', width: '100%', height: 'auto' }}>Fresh copy</p>`);
+    const { violations } = gateTurnFiles([{ path: PAGE_PATH, kind: 'page', code: edited }], PAGE_PATH);
+    expect(violations.map((v) => v.code)).not.toContain('TEXT_STYLE_ON_FRAME');
+  });
+});

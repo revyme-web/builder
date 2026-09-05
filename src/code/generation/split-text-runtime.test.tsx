@@ -87,3 +87,86 @@ describe('RevymeSplitText renders', () => {
     )).not.toThrow();
   });
 });
+
+describe('rich children — marks survive the split (BUG 4, 2026-09-05)', () => {
+  // Applying a Text effect to `The <b>quick</b> <span color>brown</span> fox`
+  // used to fold everything to plain text (generator) and, when marks did
+  // reach the runtime, bail to an UNANIMATED verbatim render. The rich walk
+  // keeps the mark wrappers in the DOM with the glyph units animating inside.
+  const spec = { animationType: 'character' as const, trigger: 'view' as const };
+
+  it('keeps the mark wrappers and splits their text into units', () => {
+    const { container } = render(
+      <RevymeSplitText spec={spec}>
+        The <strong>quick</strong> <span style={{ color: 'rgb(200, 50, 50)' }}>brown</span> fox
+      </RevymeSplitText>,
+    );
+    const strong = container.querySelector('strong');
+    expect(strong).not.toBeNull();
+    // The bold word's glyphs are ANIMATED UNITS inside the mark, not flat text.
+    expect(strong!.querySelectorAll('span').length).toBeGreaterThanOrEqual(5);
+    expect(strong!.textContent).toBe('quick');
+    const colored = container.querySelector('span[style*="rgb(200, 50, 50)"]');
+    expect(colored).not.toBeNull();
+    expect(colored!.textContent).toBe('brown');
+    // Whole text intact, in order.
+    expect(container.textContent?.replace(/\s+/g, ' ').trim()).toBe('The quick brown fox');
+  });
+
+  it('word mode groups words inside their marks', () => {
+    const { container } = render(
+      <RevymeSplitText spec={{ ...spec, animationType: 'word' }}>
+        plain <strong>bold words</strong> tail
+      </RevymeSplitText>,
+    );
+    const strong = container.querySelector('strong')!;
+    expect(strong.textContent).toBe('bold words');
+    expect(container.textContent?.replace(/\s+/g, ' ').trim()).toBe('plain bold words tail');
+  });
+
+  it('a NON-inline child (an svg icon) still renders verbatim, unsplit', () => {
+    const { container } = render(
+      <RevymeSplitText spec={spec}>
+        hello <svg data-probe="icon" /> world
+      </RevymeSplitText>,
+    );
+    expect(container.querySelector('svg[data-probe="icon"]')).not.toBeNull();
+    expect(container.textContent).toContain('hello');
+  });
+
+  it('plain text output is byte-identical to the pre-rich structure', () => {
+    const rich = render(<RevymeSplitText spec={spec}>ab cd</RevymeSplitText>);
+    // Two words → two mask-less wraps of char units, space between — the old
+    // shape. If the rich walk changed plain output, SSR pages would rehydrate
+    // differently after the runtime upgrade.
+    const units = rich.container.querySelectorAll('span[style*="inline-block"]');
+    expect(units.length).toBeGreaterThanOrEqual(4);
+    expect(rich.container.textContent).toBe('ab cd');
+  });
+});
+
+describe('disabled — per-scope existence renders static (2026-09-05)', () => {
+  it('disabled base renders the SAME split DOM with no hidden state', () => {
+    const { container } = render(
+      <RevymeSplitText spec={{ animationType: 'character', opacity: 0, y: 20, disabled: true }}>
+        hi
+      </RevymeSplitText>,
+    );
+    // Units exist (structure identical to enabled)…
+    const units = container.querySelectorAll('span[style*="inline-block"]');
+    expect(units.length).toBeGreaterThanOrEqual(2);
+    // …but nothing starts hidden: no opacity:0, no translate.
+    expect(container.innerHTML).not.toContain('opacity: 0');
+    expect(container.innerHTML).not.toMatch(/translateY\(20px\)|transform:[^"]*20px/);
+    expect(container.textContent).toBe('hi');
+  });
+
+  it('enabled base still starts hidden (control)', () => {
+    const { container } = render(
+      <RevymeSplitText spec={{ animationType: 'character', opacity: 0, y: 20 }}>
+        hi
+      </RevymeSplitText>,
+    );
+    expect(container.innerHTML).toContain('opacity: 0');
+  });
+});
