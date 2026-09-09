@@ -342,7 +342,7 @@ export class InMemoryProjectFS implements ProjectFS {
       if (!src.includes('<style>')) continue;
       const healed = healStyleBlockImportant(src);
       if (healed === src) continue;
-      try { parseJSX(healed); } catch { trace.error('project-fs:media-important-heal-unparseable', path); continue; }
+      if (!parseJSX(healed)) { trace.error('project-fs:media-important-heal-unparseable', path); continue; }
       this.files.set(path, healed);
       trace.action('project-fs:migrated-media-important', { path });
     }

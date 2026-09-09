@@ -78,7 +78,7 @@ export function applyNodeCmsBindings(
   vpWidth: number | undefined,
   variantName: string | null | undefined,
   opts: { resetEmptyStyleToDefault?: boolean; skipHref?: boolean } = {},
-): { textApplied: boolean } {
+): { textApplied: boolean; styleKeys: string[] } {
   const rb = node.responsiveBindings;
   const vb = node.variantBindings;
   // The variant whose per-variant bindings apply, resolved the SAME way as
@@ -153,7 +153,12 @@ export function applyNodeCmsBindings(
     else if (attrName === 'textContent') { applyBoundText(el, resolved); textApplied = true; }
     else if (resolved) el.setAttribute(attrName, resolved);
   }
-  return { textApplied };
+  // `styleKeys` = the inline style props this call OWNS (bound or overridden).
+  // The caller records them so a binding that disappears (× on the Fill pill
+  // removes `backgroundImage` from the source) is CLEARED on the next patch —
+  // the stale-clear only walks keys the style pass itself wrote, so the bound
+  // url() lingered on the template row until a page switch (2026-09-09).
+  return { textApplied, styleKeys: Array.from(styleProps) };
 }
 
 /**

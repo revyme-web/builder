@@ -65,6 +65,11 @@ export function reparentLive(nodeId: string, vpPrefix: string, newParentId: stri
       if (!parent) return; // no target in this viewport → let the commit handle it
       reparentChildAtIndex(parent, el, index); // DOM move into the slot + sequential CSS order
       applyTwoPass(el, styles, false);          // position:relative + clear left/top/right/bottom
+      // The element leaves the lift WITHOUT restoreNode (mid-drag handoff /
+      // canvas exit): drop the lift markers or `data-lift-inline-snapshot`
+      // keeps gating the ghost mirroring for this node (ghostFanOutAllowed).
+      el.removeAttribute('data-lift-inline-snapshot');
+      el.removeAttribute('data-lift-tracked-keys');
       // Replicate into EVERY OTHER viewport's copy of this section so the node shows
       // in tablet/mobile instantly too (not ~0.2s later when the re-render fans it
       // out). Reuse a replica copy if one's already rendered, else clone the primary.
@@ -477,6 +482,32 @@ export function restoreNode(
       }
     }
     if (trackedAttr !== null) el.removeAttribute('data-lift-tracked-keys');
+    // Collection-list GHOST COPIES of the restored node mirror its inline
+    // styles (Renderer.syncInlineStyles). Re-sync them from the restored
+    // element NOW so any lift geometry that reached them is gone at the
+    // exact moment the template is clean — independent of whether a render
+    // follows (the drop's forced render can be skipped by the integrity
+    // guard; 2026-09-09 the ghost rows stayed displaced).
+    // ONLY the keys the lift/restore touched are copied — never the whole
+    // cssText: ghost rows carry their own CMS-bound inline styles (a Fill
+    // bound to an image field is `backgroundImage: url(row-N)` on each copy)
+    // and a cssText copy stamped row 0's values on every row (review find
+    // 2026-09-09; persistent on a grid list, where no render follows).
+    {
+      const canonicalId = el.getAttribute('data-id') ?? nodeId;
+      const ghosts = Array.from(
+        contentRoot.querySelectorAll<HTMLElement>(`[data-node-id^="${vpPrefix}${nodeId}__"]`),
+      ).filter((g) => g.getAttribute('data-id') === canonicalId);
+      if (ghosts.length) {
+        const keys = new Set<string>([...Object.keys(merged), ...(preservedAttr ? preservedAttr.split(',').map((k) => k.trim()).filter(Boolean) : [])]);
+        for (const g of ghosts) {
+          for (const k of keys) {
+            try { (g.style as any)[k] = (el.style as any)[k] ?? ''; } catch { /* skip invalid */ }
+          }
+        }
+        trace.action('sandbox:restoreNode-ghosts-resynced', { nodeId, vpPrefix, count: ghosts.length, keys: Array.from(keys) });
+      }
+    }
     // Insert at target index among children that have data-id and aren't placeholders.
     const siblings = Array.from(parent.children).filter(
       (c) => c.hasAttribute('data-id') && c !== el && !(c as HTMLElement).hasAttribute('data-layout-placeholder'),

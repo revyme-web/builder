@@ -18,6 +18,7 @@ import {
 } from '@/canvas/node-ops';
 import { getViewportWidths } from '@/code/stores/viewport-store';
 import { getNodeFromCache } from '@/code/stores/store';
+import { outOfFlowLayeringForOrders, type LayerAssignment } from '../out-of-flow-order';
 import { trace } from '@/shared/debug-trace';
 
 // computeLayoutBrackets moved to shared/flex-helpers (2026-07-27): the store's
@@ -55,6 +56,40 @@ export function commitOrderAssignments(
     orderAssignments = orderAssignments.filter(a => !isTemplateChrome(a.nodeId));
     trace.action('order-commit:template-chrome-excluded', { vpId, chromeIds });
   }
+  // OUT-OF-FLOW SIBLINGS: Chrome paints an absolute/fixed child of a flex
+  // container as if its `order` were 0, so once a flow sibling gets `order ≥ 1`
+  // every overlay that follows it in the DOM drops behind it (the pinned hero
+  // vanished under the next section, 2026-09-09). Give those overlays
+  // `z-index: 1` (when they have none) — see out-of-flow-order.ts.
+  let layering: LayerAssignment[] = [];
+  if (orderAssignments.length > 0) {
+    // The DRAGGED node's cache entry may still point at its OLD parent (or
+    // none, for a canvas node) at commit time — take the parent from the
+    // first assignment whose node already lives in a parent that contains
+    // another assigned sibling, else the first non-null parent.
+    const assignedIds = new Set(orderAssignments.map(a => a.nodeId));
+    let parentId: string | null = null;
+    for (const a of orderAssignments) {
+      const pid = getNodeFromCache(a.nodeId)?.parentId ?? null;
+      if (!pid) continue;
+      const kids = getNodeFromCache(pid)?.children ?? [];
+      if (kids.some(k => k !== a.nodeId && assignedIds.has(k))) { parentId = pid; break; }
+      if (parentId === null) parentId = pid;
+    }
+    const parent = parentId ? getNodeFromCache(parentId) : undefined;
+    if (parent?.children?.length) {
+      layering = outOfFlowLayeringForOrders(
+        orderAssignments,
+        parent.children.filter(id => !isTemplateChrome(id)),
+        (id) => {
+          const pos = (getNodeFromCache(id)?.styles?.position || findNodeComputedStyle(id, vpId, 'position') || '').trim();
+          return pos === 'absolute' || pos === 'fixed';
+        },
+        (id) => getNodeFromCache(id)?.styles?.zIndex,
+      );
+      if (layering.length) trace.action('order-commit:out-of-flow-layering', { vpId, parentId, layering });
+    }
+  }
   const vpPrefix = getViewportPrefix(vpId);
   const isPrimary = isPrimaryViewport(vpId);
   const updates: PendingUpdate[] = [];
@@ -65,6 +100,10 @@ export function commitOrderAssignments(
     for (const { nodeId, order } of orderAssignments) {
       patchNodeStyles(contentEl, nodeId, vpPrefix, { order: String(order) });
       updates.push({ nodeId, type: 'style', styles: { order: String(order) } });
+    }
+    for (const { nodeId, zIndex } of layering) {
+      patchNodeStyles(contentEl, nodeId, vpPrefix, { zIndex: String(zIndex) });
+      updates.push({ nodeId, type: 'style', styles: { zIndex: String(zIndex) } });
     }
   } else {
     // Non-primary: set inline order with !important for instant visual feedback.
@@ -100,6 +139,10 @@ export function commitOrderAssignments(
           orderMap: { default: primaryOrder, [variantName]: order },
         });
       }
+      for (const { nodeId, zIndex } of layering) {
+        patchNodeStyles(contentEl, nodeId, vpPrefix, { zIndex: String(zIndex) }, true);
+        updates.push({ nodeId, type: 'style', styles: { zIndex: String(zIndex) } });
+      }
     } else {
       branch = 'pageReplica';
       // Page replica: write order via @container (max-width) CSS.
@@ -111,6 +154,10 @@ export function commitOrderAssignments(
           maxWidth: vpWidth,
           styles: { order: String(order) },
         });
+      }
+      for (const { nodeId, zIndex } of layering) {
+        patchNodeStyles(contentEl, nodeId, vpPrefix, { zIndex: String(zIndex) }, true);
+        updates.push({ nodeId, type: 'updateContainerStyle', maxWidth: vpWidth, styles: { zIndex: String(zIndex) } });
       }
       // HEAL: delete any chrome `order` a pre-guard reorder wrote into this
       // band ('' = remove-key; no-op when absent). The template merge's own

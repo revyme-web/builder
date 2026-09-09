@@ -19,6 +19,7 @@ import {
   updateCollectionItem,
   removeCollectionItem,
   reorderCollectionItems,
+  reorderCollectionFields,
   saveCollectionSchema,
   addCollectionField,
   updateCollectionField,
@@ -42,6 +43,8 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 import { trace } from '@/shared/debug-trace';
+import { pushHistory } from '@/code/mutation/history';
+import { fieldDropTargets } from './cms-field-reorder';
 
 type SidebarMode = 'items' | 'fields';
 
@@ -89,8 +92,16 @@ function itemStatusDot(item: CollectionItem) {
 // pointerdown (EllipsisMenu) so opening it never arms a drag. Reordering rewrites
 // the collection's stored item array, which is the EXACT order a collection-list
 // `.map()` renders — so list output reorders to match.
-function SortableCmsItemRow({
-  id, icon, label, isActive, onSelect, menuItems,
+// Shared by the Items AND the Fields tab (same dnd mechanics for both lists).
+// `disabled` PINS a row (the collection's TITLE field): it can't be picked up
+// (dnd-kit `disabled.draggable`) but stays a drop target, so a NON-text field
+// can still be dropped above it; text fields never reach it because the Fields
+// DndContext filters those targets out (`fieldDropTargets`). dnd-kit's
+// attributes are always spread — they carry `aria-disabled` + the button
+// role/tabIndex so the pinned row keeps its place in the tab order — only the
+// pointer/keyboard LISTENERS are withheld.
+function SortableCmsRow({
+  id, icon, label, isActive, onSelect, menuItems, right, disabled, title,
 }: {
   id: string;
   icon: ReactNode;
@@ -98,8 +109,14 @@ function SortableCmsItemRow({
   isActive: boolean;
   onSelect: () => void;
   menuItems: DropdownMenuEntry[];
+  right?: ReactNode;
+  disabled?: boolean;
+  title?: string;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: disabled ? { draggable: true, droppable: false } : undefined,
+  });
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition: isDragging ? 'none' : transition,
@@ -116,8 +133,10 @@ function SortableCmsItemRow({
       isActive={isActive}
       onClick={onSelect}
       menuItems={menuItems}
+      right={right}
+      title={title}
       {...attributes}
-      {...listeners}
+      {...(disabled ? {} : listeners)}
     />
   );
 }
@@ -277,8 +296,49 @@ export default function CmsEditorOverlay() {
     if (oldIdx === -1 || newIdx === -1) return;
     reorderCollectionItems(activeSlug, arrayMove(ids, oldIdx, newIdx));
     bumpVersion(v => v + 1);
+    // Own undo entry (history snapshots the whole ProjectFS) — otherwise the
+    // reorder rode into the next unrelated canvas entry.
+    pushHistory('');
     trace.action('cms-editor:reorder-items', { slug: activeSlug, from: oldIdx, to: newIdx });
   }, [activeSlug, items, bumpVersion]);
+
+  // ── Drag-to-reorder fields ──────────────────────────────────────────────────
+  // The schema's field array IS the display order (Fields tab, the item editor's
+  // Content form, binding pickers). One invariant is kept: the collection's TITLE
+  // is "the first text-type field" — it names items in the sidebar, seeds the auto
+  // slug and gets the required star — so it is pinned (not draggable) and no other
+  // text field may be dropped above it. Any other field can move freely.
+  const titleFieldId = useMemo(() => schema?.fields.find(f => f.type === 'text')?.id ?? null, [schema]);
+
+  const handleReorderFields = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!activeSlug || !schema || !over || active.id === over.id) return;
+    const ids = schema.fields.map(f => f.id);
+    const oldIdx = ids.indexOf(active.id as string);
+    let newIdx = ids.indexOf(over.id as string);
+    if (oldIdx === -1 || newIdx === -1) return;
+    if (active.id === titleFieldId) return; // pinned
+    const moved = schema.fields[oldIdx];
+    const titleIdx = titleFieldId ? ids.indexOf(titleFieldId) : -1;
+    if (moved.type === 'text' && titleIdx !== -1 && newIdx <= titleIdx) {
+      // A text field can't become the new "first text field" — land right after the title.
+      newIdx = titleIdx + (oldIdx < titleIdx ? 0 : 1);
+      if (newIdx === oldIdx) return;
+    }
+    const changed = reorderCollectionFields(activeSlug, arrayMove(ids, oldIdx, newIdx));
+    if (changed) { bumpVersion(v => v + 1); pushHistory(''); }
+    trace.action('cms-editor:reorder-fields', { slug: activeSlug, from: oldIdx, to: newIdx, changed });
+  }, [activeSlug, schema, titleFieldId, bumpVersion]);
+
+  // The drag PREVIEW must obey the same rule as the commit: while a text field
+  // is dragged, rows at/above the title are not drop targets, so dnd-kit never
+  // shows it landing there and then snapping back (review find 2026-09-09).
+  const fieldsCollision = useCallback((args: Parameters<typeof closestCenter>[0]) => {
+    const ids = schema?.fields.map(f => f.id) ?? [];
+    const moved = schema?.fields.find(f => f.id === args.active.id);
+    const allowed = fieldDropTargets(ids, titleFieldId, moved?.type === 'text');
+    return closestCenter({ ...args, droppableContainers: args.droppableContainers.filter(c => allowed.has(String(c.id))) });
+  }, [schema, titleFieldId]);
 
   // ── Field (schema) handlers ────────────────────────────────────────────────
 
@@ -429,7 +489,7 @@ export default function CmsEditorOverlay() {
                       >
                         <SortableContext items={items.map(i => i._id)} strategy={verticalListSortingStrategy}>
                           {items.map(item => (
-                            <SortableCmsItemRow
+                            <SortableCmsRow
                               key={item._id}
                               id={item._id}
                               icon={itemStatusDot(item)}
@@ -497,7 +557,9 @@ export default function CmsEditorOverlay() {
                       <div className="px-2 py-8 text-center text-[11px] text-[var(--text-disabled)]">
                         {fieldSearchQuery.trim() ? `No results for "${fieldSearchQuery}"` : 'No fields yet'}
                       </div>
-                    ) : (
+                    ) : fieldSearchQuery.trim() ? (
+                      // While filtering, reordering a subset is ambiguous — plain rows
+                      // (same rule as the Items tab). Clear the search to reorder.
                       filteredFields.map(field => {
                         const menuItems: DropdownMenuEntry[] = [
                           { id: 'delete', label: 'Delete', onClick: () => handleRemoveField(field.id) },
@@ -514,6 +576,36 @@ export default function CmsEditorOverlay() {
                           />
                         );
                       })
+                    ) : (
+                      // Drag to reorder — the schema field order IS the order the item
+                      // editor's Content form (and every field list) shows. Same dnd
+                      // mechanics as the Items tab; the title field is pinned.
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={fieldsCollision}
+                        modifiers={[restrictToVerticalAxis]}
+                        onDragEnd={handleReorderFields}
+                      >
+                        <SortableContext items={schema!.fields.map(f => f.id)} strategy={verticalListSortingStrategy}>
+                          {schema!.fields.map(field => {
+                            const isTitle = field.id === titleFieldId;
+                            return (
+                              <SortableCmsRow
+                                key={field.id}
+                                id={field.id}
+                                icon={<span className="w-2 h-2 rounded-full bg-[var(--text-disabled)]" />}
+                                label={field.name || 'Untitled field'}
+                                isActive={field.id === selectedFieldId}
+                                onSelect={() => setSelectedFieldId(field.id)}
+                                right={<span className="text-[10px] text-[var(--text-disabled)]">{typeLabel(field.type)}</span>}
+                                menuItems={[{ id: 'delete', label: 'Delete', onClick: () => handleRemoveField(field.id) }]}
+                                disabled={isTitle}
+                                title={isTitle ? 'Title field — stays the first text field (names items and seeds the slug)' : undefined}
+                              />
+                            );
+                          })}
+                        </SortableContext>
+                      </DndContext>
                     )}
                   </div>
                 </>

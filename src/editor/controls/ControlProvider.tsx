@@ -1221,6 +1221,15 @@ export function ControlProvider({ children }: { children: ReactNode }) {
             const styleProp = (property === 'backgroundColor' && isImage) ? 'backgroundImage' : property;
             trace.action('control:bind-style-for-variant', { nodeId: selectedId, fieldId, styleProp, variant: activeComponentVariant });
             queueMutation({ type: 'setVariantCmsStyle', nodeId: selectedId, styleProp, variantName: activeComponentVariant, itemVar, override: { kind: 'field', field: fieldId, isImage } });
+            // backgroundSize/Position are the node's OWN styles (not bound) — seed the
+            // cover/center every image-fill path writes, or the bound image renders at
+            // its natural size while the panel says "Cover" (2026-09-09).
+            if (isImage && styleProp === 'backgroundImage') {
+              const seed: Record<string, string> = {};
+              if (!styles.backgroundSize) seed.backgroundSize = 'cover';
+              if (!styles.backgroundPosition) seed.backgroundPosition = 'center';
+              if (Object.keys(seed).length) queueMutation({ type: 'updateStyles', nodeId: selectedId, styles: seed });
+            }
             flushNow();
             return;
           }

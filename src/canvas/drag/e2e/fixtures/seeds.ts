@@ -1237,6 +1237,3637 @@ export default function Page() {
 }
 `);
 
+// ─────────────────────────────────────────────────────────────────────────
+// CMS_LIST_ROWS — a collection list (3 items) whose template row is a flex
+// child, for the "drag the row and release in place" ghost regression.
+export const CMS_LIST_ROWS: ProjectData = {
+  format: 'revyme-v1',
+  files: {
+    'app/page.tsx': `import PageClient from './page.client';
+
+export const metadata = {};
+
+export default function Page() {
+  return <PageClient />;
+}
+`,
+    'app/page.client.tsx': `/** @canvas { "viewports": [{"id":"desktop","width":900}] } */
+'use client';
+import React from 'react';
+import team from '@/cms/team.json';
+import { RevymeSplitText } from '@revyme/runtime';
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Page" style={{ position: 'relative', width: '900px', minHeight: '700px', background: '#0d0d1a', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px' }}>
+      <p data-id="title" data-name="Text" data-text-anim='{"animationType":"word","opacity":0,"blur":10,"delay":0.05}' style={{ fontSize: '32px', color: '#ffffff', position: 'relative', flex: '0 0 auto' }}><RevymeSplitText data-id="RevymeSplitText-e2e-1" spec={{ animationType: "word", opacity: 0, blur: 10, delay: 0.05 }}>Our team.</RevymeSplitText></p>
+      <div data-id="list" data-name="List" data-collection-list="team" style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '300px', padding: '12px', background: '#ffffff', borderRadius: '8px', position: 'relative' }}>
+        {team.map((item, idx) => (
+          <div data-id="row" data-name="Row" key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', height: '56px', padding: '8px', background: '#eeeeee', borderRadius: '6px', position: 'relative', flex: '0 0 auto' }}>
+            <div data-id="avatar" style={{ width: '40px', height: '40px', background: '#cccccc', borderRadius: '6px', flex: '0 0 auto' }}></div>
+            <p data-id="name" style={{ fontSize: '14px', color: '#111111', flex: '0 0 auto' }}>{item.name}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+`,
+    'cms/team.schema.json': JSON.stringify({ slug: 'team', name: 'Team', fields: [{ id: 'name', name: 'Name', type: 'text' }] }),
+    'cms/team.json': JSON.stringify([
+      { _id: 'i1', _slug: 'john', _status: 'published', name: 'John Doe' },
+      { _id: 'i2', _slug: 'jane', _status: 'published', name: 'Jane Roe' },
+      { _id: 'i3', _slug: 'max', _status: 'published', name: 'Max Mustermann' },
+    ]),
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// FLEX_WITH_ABSOLUTE_HERO — a flex-column section holding one flow section
+// (opaque) plus an ABSOLUTE hero and an absolute top bar pinned at its top,
+// and a canvas-node header to drop above the flow section. Dropping it
+// renumbers the flow siblings; the overlays must keep painting above.
+export const FLEX_WITH_ABSOLUTE_HERO = project(`
+/** @canvas { "viewports": [{"id":"desktop","width":900}] } */
+'use client';
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Page" style={{ position: 'relative', width: '900px', minHeight: '900px', background: '#0d0d1a', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div data-id="wrap" data-name="Wrap" style={{ display: 'flex', flexDirection: 'column', width: '100%', position: 'relative', flex: '0 0 auto', paddingTop: '48px' }}>
+        <div data-id="body" data-name="Body" style={{ position: 'relative', width: '100%', height: '700px', backgroundColor: '#0a0a0a', flex: '0 0 auto', order: '0' }}></div>
+        <div data-id="hero" data-name="Hero" style={{ position: 'absolute', left: '0px', top: '0px', width: '70%', height: '200px', backgroundColor: '#ff3366' }}></div>
+        <div data-id="bar" data-name="Bar" style={{ position: 'absolute', left: '0px', top: '0px', width: '70%', height: '60px', backgroundColor: '#3366ff' }}></div>
+      </div>
+    </div>
+  );
+}
+const canvasNodes = (<>
+  <div data-id="hdr" data-name="Header" data-canvas-node="true" style={{ position: 'absolute', left: '-500px', top: '100px', width: '300px', height: '80px', backgroundColor: '#22cc88' }}></div>
+</>);
+`);
+
+// ─── USER PAGE REPRO (hero collapse after dropping a frame above the section) ───
+export const USER_HERO_BEFORE: ProjectData = {
+  format: 'revyme-v1',
+  files: {
+    'app/collection-1/[slug]/page.tsx': `import PageClient from './page.client';
+
+export const metadata = {};
+
+export default function Page() {
+  return <PageClient />;
+}
+`,
+    'app/collection-1/[slug]/page.client.tsx': `'use client';
+
+/** @canvas {
+  "viewports": [
+    { "id": "desktop", "label": "Desktop", "width": 1440, "isPrimary": true, "order": 0 },
+    { "id": "tablet", "label": "Tablet", "width": 768, "isPrimary": false, "order": 1 },
+    { "id": "mobile", "label": "Mobile", "width": 375, "isPrimary": false, "order": 2 }
+  ],
+  "positions": {
+    "desktop": { "x": 0, "y": 0 },
+    "tablet": { "x": 1600, "y": 0 },
+    "mobile": { "x": 2528, "y": 0 }
+  }
+} */
+/** @cmsPage {
+  "collection": "collection-1",
+  "kind": "detail"
+} */
+
+import React, { useState, useRef, useLayoutEffect } from 'react';
+import { useParams } from 'next/navigation';
+import collection1 from '@/cms/collection-1.json';
+import BaRoLe from '@/components/BaRoLe';
+
+function useResponsiveText(primary, overrides, vpWidths) {
+  const ref = useRef(null);
+  const [w, setW] = useState(() => typeof window !== 'undefined' ? window.innerWidth : Infinity);
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return;
+    let host = ref.current && ref.current.parentElement;
+    while (host && host !== document.body && !host.hasAttribute('data-viewport-width')) {
+      host = host.parentElement;
+    }
+    if (host && host.hasAttribute && host.hasAttribute('data-viewport-width')) {
+      const read = () => setW(parseInt(host.getAttribute('data-viewport-width'), 10) || window.innerWidth);
+      read();
+      const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(read) : null;
+      if (ro) ro.observe(host);
+      const mo = new MutationObserver(read);
+      mo.observe(host, {
+        attributes: true,
+        attributeFilter: ['data-viewport-width']
+      });
+      return () => {
+        if (ro) ro.disconnect();
+        mo.disconnect();
+      };
+    }
+    const onResize = () => setW(window.innerWidth);
+    setW(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  // Bucket the current width into one of the configured viewports, then look
+  // up that bucket's override. Smallest viewport width >= w wins. If no
+  // viewport is wider than w, fall through to primary. Without the full
+  // viewport list, we can't tell mobile (375) from tablet (768) when only
+  // tablet has an override — both would resolve to tablet's text.
+  const widths = (vpWidths || Object.keys(overrides || {}).map(Number)).filter(function (n) {
+    return typeof n === 'number' && isFinite(n) && n > 0;
+  }).slice().sort(function (a, b) {
+    return a - b;
+  });
+  let bucket = null;
+  for (let i = 0; i < widths.length; i++) {
+    if (w <= widths[i]) {
+      bucket = widths[i];
+      break;
+    }
+  }
+  let value = primary;
+  if (bucket !== null && overrides && overrides[bucket] !== undefined) {
+    value = overrides[bucket];
+  }
+  // Override values may contain rich-text marks emitted by TipTap on commit
+  // (\`<span style="font-size: 14px">word</span>\` etc.). Plain string children
+  // get escaped by React, so use dangerouslySetInnerHTML when the value looks
+  // like HTML. Plain text falls through to the children path so React's text
+  // diffing stays cheap.
+  const isHtml = typeof value === 'string' && /<[a-z][^>]*>/i.test(value);
+  return isHtml ? React.createElement('span', {
+    ref: ref,
+    style: {
+      display: 'contents'
+    },
+    dangerouslySetInnerHTML: {
+      __html: value
+    }
+  }) : React.createElement('span', {
+    ref: ref,
+    style: {
+      display: 'contents'
+    }
+  }, value);
+}
+// @useResponsiveText-end
+
+export default function Page() {
+  const params = useParams();
+  const item = collection1.find(i => i._slug === params?.slug) ?? collection1[0];
+  return <div data-id="root" key={String(params?.slug ?? '')} data-name="Case study Detail" style={{
+    position: 'relative',
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    height: 'auto', overflowX: 'clip', backgroundColor: '#ffffff'}}>
+      
+  <style>{\`
+    @media (max-width: 768px) and (min-width: 375.02px) {
+      [data-id="div-mt9uiobo-10"] { flex-direction: column !important; height: min-content !important; gap: 32px !important; }
+      [data-id="div-mt9uiobo-11"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobo-16"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobo-1l"] { padding-top: 0 !important; padding-right: 16px !important; padding-bottom: 0 !important; padding-left: 16px !important; height: min-content !important; }
+      [data-id="div-mt9uiobg-6"] { flex-direction: column !important; height: min-content !important; }
+      [data-id="div-mt9uiobo-u"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobn-7"] { width: 100% !important; flex-direction: column !important; }
+      [data-id="div-mt9uiobo-z"] { padding-top: 112px !important; padding-right: 16px !important; padding-bottom: 112px !important; padding-left: 16px !important; }
+      [data-id="div-mt9uiobg-4"] { padding-top: 40px !important; padding-right: 16px !important; padding-bottom: 112px !important; padding-left: 16px !important; }
+      [data-id="p-mt9uiobo-32"] { width: 100% !important; }
+      [data-id="div-mt9uiobo-2y"] { padding-top: 0px !important; padding-right: 16px !important; padding-bottom: 16px !important; padding-left: 16px !important; }
+      [data-id="div-mt9uiobo-1p"] { display: flex !important; height: min-content !important; gap: 32px !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; }
+      [data-id="div-mt9uiobo-1q"] { width: 100% !important; height: 100% !important; }
+      [data-id="div-mt9uiobo-1v"] { width: 100% !important; height: 100% !important; }
+      [data-id="div-mt9uiobo-20"] { width: 100% !important; height: 100% !important; }
+      [data-id="div-mt9uiobo-25"] { width: 100% !important; height: 100% !important; }
+      [data-id="div-mt9uiobo-1o"] { height: min-content !important; }
+      [data-id="div-mt9uiobo-1m"] { width: 100% !important; }
+      [data-id="div-mt9uiobo-1k"] { height: min-content !important; padding-top: 40px !important; padding-right: 0 !important; padding-bottom: 40px !important; padding-left: 0 !important; }
+    }
+    @media (max-width: 375px) {
+      [data-id="div-mt9uiobo-10"] { flex-direction: column !important; height: min-content !important; gap: 40px !important; }
+      [data-id="div-mt9uiobo-11"] { width: 100% !important; flex: 0 0 auto !important; height: min-content !important; }
+      [data-id="div-mt9uiobo-16"] { width: 100% !important; flex: 0 0 auto !important; height: min-content !important; }
+      [data-id="div-mt9uiobo-19"] { height: min-content !important; }
+      [data-id="div-mt9uiobo-z"] { padding-top: 112px !important; padding-right: 16px !important; padding-bottom: 112px !important; padding-left: 16px !important; }
+      [data-id="div-mt9uiobg-6"] { flex-direction: column !important; height: min-content !important; }
+      [data-id="div-mt9uiobo-u"] { width: 100% !important; flex: 0 0 auto !important; height: min-content !important; }
+      [data-id="div-mt9uiobg-4"] { padding-top: 40px !important; padding-right: 16px !important; padding-bottom: 40px !important; padding-left: 16px !important; height: min-content !important; }
+      [data-id="div-mt9uiobn-7"] { width: 100% !important; height: min-content !important; }
+      [data-id="div-mt9uiobo-v"] { width: 100% !important; height: 15px !important; }
+      [data-id="div-mt9uiobo-x"] { height: min-content !important; }
+      [data-id="div-mt9uiobo-k"] { width: 100% !important; }
+      [data-id="div-mt9uiobo-a"] { width: 100% !important; }
+      [data-id="div-mt9uiobn-8"] { width: 100% !important; }
+      [data-id="div-mt9uiobo-p"] { width: 100% !important; }
+      [data-id="div-mt9uiobg-5"] { height: min-content !important; }
+      [data-id="div-mt9uiobo-2y"] { padding-top: 0px !important; padding-right: 16px !important; padding-bottom: 16px !important; padding-left: 16px !important; }
+      [data-id="p-mt9uiobo-30"] { width: 100% !important; }
+      [data-id="p-mt9uiobo-32"] { width: 100% !important; font-size: 68px !important; }
+      [data-id="div-mt9uiobo-33"] { height: min-content !important; }
+      [data-id="div-mt9uiobo-1l"] { height: min-content !important; padding-top: 0 !important; padding-right: 16px !important; padding-bottom: 0 !important; padding-left: 16px !important; }
+      [data-id="div-mt9uiobo-1m"] { width: 100% !important; }
+      [data-id="div-mt9uiobo-1p"] { flex-direction: column !important; height: min-content !important; }
+      [data-id="div-mt9uiobo-1q"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobo-1v"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobo-20"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobo-25"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobo-1o"] { height: min-content !important; width: 100% !important; }
+      [data-id="div-mt9uiobo-1k"] { height: min-content !important; padding-top: 40px !important; padding-right: 0 !important; padding-bottom: 40px !important; padding-left: 0 !important; }
+    }
+  \`}</style>
+        
+    <div data-id="div-mt9uiobg-1" data-name="Sleek Agency Portfolio Landing Page" style={{
+      display: 'flex',
+      width: '100%',
+      height: 'min-content',
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      backgroundColor: '#0A0A0A',
+      position: 'relative',
+      order: '2'
+    }}>
+        <div data-id="div-mt9uiobg-2" data-name="CaseStudy" style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        width: '100%',
+        height: 'min-content',
+        backgroundColor: '#0A0A0A',
+        position: 'relative',
+        flex: '0 0 auto',
+        order: '0'
+      }}>
+          <div data-id="div-mt9uiobg-3" data-name="Placeholder for CaseStudy" style={{
+          height: '681.695px',
+          width: '100%',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '0'
+        }}></div>
+          <div data-id="div-mt9uiobg-4" data-name="Section" style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+          width: '100%',
+          height: '484px',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '1',
+          paddingTop: '112px',
+          paddingRight: '80px',
+          paddingBottom: '112px',
+          paddingLeft: '80px'
+        }}>
+            <div data-id="div-mt9uiobg-5" data-name="Container" style={{
+            display: 'flex',
+            maxWidth: '1440px',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            width: '100%',
+            height: '259px',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0',
+            paddingTop: '0',
+            paddingRight: '0px',
+            paddingBottom: '0',
+            paddingLeft: '0px'
+          }}>
+              <div data-id="div-mt9uiobg-6" data-name="Container" style={{
+              display: 'flex',
+              height: '259px',
+              width: '100%',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+                <div data-id="div-mt9uiobn-7" data-name="Container" data-pinned="true" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gridRow: '1 / span 1',
+                gridColumn: '1 / span 4',
+                justifySelf: 'stretch',
+                height: '259.24200439453125px',
+                position: 'relative',
+                width: '369px'
+              }}>
+                  <div data-id="div-mt9uiobn-8" data-name="Paragraph" style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  width: '301px',
+                  height: 'min-content',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}>
+                    <p data-id="p-mt9uiobn-9" data-name="Scope of work" style={{
+                    color: '#6B6864',
+                    fontFamily: '"DM Mono", sans-serif',
+                    fontSize: '10.88px',
+                    fontStyle: 'normal',
+                    fontWeight: '400',
+                    lineHeight: '1.333',
+                    letterSpacing: '1.741px',
+                    textTransform: 'uppercase',
+                    width: '106px',
+                    margin: '0px',
+                    height: 'auto',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      Scope of work
+                    </p>
+                  </div>
+                  <div data-id="div-mt9uiobo-a" data-name="Container:margin" style={{
+                  display: 'flex',
+                  paddingTop: '24px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  width: 'min-content',
+                  height: '89px',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '1'
+                }}>
+                    <div data-id="div-mt9uiobo-b" data-name="Container" style={{
+                    height: '65px',
+                    width: 'min-content',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    justifyContent: 'center',
+                    display: 'flex',
+                    gap: '8px'
+                  }}>
+                      
+    <div data-id="frame-mt9vyfbs-3b" data-name="Frame" style={{
+                      position: 'relative',
+                      width: 'min-content',
+                      height: 'min-content',
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(0, 0, 0, 0)',
+                      overflow: 'visible',
+                      gap: '8px',
+                      flex: '0 0 auto'
+                    }}>
+    <div data-id="div-mt9uiobo-e" data-name="Text" data-pinned="true" style={{
+                        display: 'flex',
+                        padding: '6px 12px',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        border: '1px solid rgba(245, 242, 236, 0.15)',
+                        width: '126px',
+                        height: '28px'
+                      }}>
+                        <p data-id="p-mt9uiobo-f" data-name="Art Direction" style={{
+                          color: '#C8C4BC',
+                          fontFamily: '"DM Mono", sans-serif',
+                          fontSize: '10.88px',
+                          fontStyle: 'normal',
+                          fontWeight: '400',
+                          lineHeight: '1.333',
+                          letterSpacing: '1.306px',
+                          textTransform: 'uppercase',
+                          width: '101px',
+                          margin: '0px',
+                          height: 'auto',
+                          position: 'relative',
+                          flex: '0 0 auto',
+                          order: '0',
+                          whiteSpace: 'nowrap'
+                        }}>{item.untitled20}</p>
+                      </div>
+  
+    <div data-id="div-mt9uiobo-c" data-name="Text" data-pinned="true" style={{
+                        display: 'flex',
+                        padding: '6px 12px',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        border: '1px solid rgba(245, 242, 236, 0.15)',
+                        width: 'min-content',
+                        height: 'min-content'
+                      }}>
+                        <p data-id="p-mt9uiobo-d" data-name="UX Strategy" style={{
+                          color: '#C8C4BC',
+                          fontFamily: '"DM Mono", sans-serif',
+                          fontSize: '10.88px',
+                          fontStyle: 'normal',
+                          fontWeight: '400',
+                          lineHeight: '1.333',
+                          letterSpacing: '1.306px',
+                          textTransform: 'uppercase',
+                          width: 'min-content',
+                          margin: '0px',
+                          height: 'auto',
+                          position: 'relative',
+                          flex: '0 0 auto',
+                          order: '0',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          whiteSpace: 'nowrap'
+                        }}>{item.untitled21}</p>
+                      </div>
+  </div>
+                      
+    <div data-id="frame-mt9vxihy-3a" data-name="Frame" style={{
+                      position: 'relative',
+                      width: 'min-content',
+                      height: 'min-content',
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(0, 0, 0, 0)',
+                      overflow: 'visible',
+                      gap: '8px',
+                      flex: '0 0 auto'
+                    }}>
+    <div data-id="div-mt9uiobo-g" data-name="Text" data-pinned="true" style={{
+                        display: 'flex',
+                        padding: '6px 12px',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        border: '1px solid rgba(245, 242, 236, 0.15)',
+                        width: 'min-content',
+                        height: 'min-content'
+                      }}>
+                        <p data-id="p-mt9uiobo-h" data-name="Web Design" style={{
+                          color: '#C8C4BC',
+                          fontFamily: '"DM Mono", sans-serif',
+                          fontSize: '10.88px',
+                          fontStyle: 'normal',
+                          fontWeight: '400',
+                          lineHeight: '1.333',
+                          letterSpacing: '1.306px',
+                          textTransform: 'uppercase',
+                          width: 'min-content',
+                          margin: '0px',
+                          height: 'auto',
+                          position: 'relative',
+                          flex: '0 0 auto',
+                          order: '0',
+                          whiteSpace: 'nowrap'
+                        }}>{item.untitled22}</p>
+                      </div>
+  
+    <div data-id="div-mt9uiobo-i" data-name="Text" data-pinned="true" style={{
+                        display: 'flex',
+                        padding: '6px 12px',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        border: '1px solid rgba(245, 242, 236, 0.15)',
+                        width: 'min-content',
+                        height: 'min-content'
+                      }}>
+                        <p data-id="p-mt9uiobo-j" data-name="Development" style={{
+                          color: '#C8C4BC',
+                          fontFamily: '"DM Mono", sans-serif',
+                          fontSize: '10.88px',
+                          fontStyle: 'normal',
+                          fontWeight: '400',
+                          lineHeight: '1.333',
+                          letterSpacing: '1.306px',
+                          textTransform: 'uppercase',
+                          width: 'min-content',
+                          margin: '0px',
+                          height: 'auto',
+                          position: 'relative',
+                          flex: '0 0 auto',
+                          order: '0',
+                          whiteSpace: 'nowrap',
+                          transform: 'rotate(0deg)'
+                        }}>{item.untitled23}</p>
+                      </div>
+  </div>
+                    </div>
+                  </div>
+                  <div data-id="div-mt9uiobo-k" data-name="Container" style={{
+                  display: 'flex',
+                  width: '301px',
+                  height: 'min-content',
+                  paddingTop: '24px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '2'
+                }}>
+                    <div data-id="div-mt9uiobo-l" data-name="Paragraph" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    width: '301px',
+                    height: '14px',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-m" data-name="Client" style={{
+                      color: '#6B6864',
+                      fontFamily: '"DM Mono", sans-serif',
+                      fontSize: '10.4px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.333',
+                      letterSpacing: '1.04px',
+                      textTransform: 'uppercase',
+                      width: '43px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        Client
+                      </p>
+                    </div>
+                    <div data-id="div-mt9uiobo-n" data-name="Paragraph" style={{
+                    display: 'flex',
+                    width: '301px',
+                    height: '32px',
+                    paddingTop: '8px',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '1'
+                  }}>
+                      <p data-id="p-mt9uiobo-o" data-name="Meridian Architects" style={{
+                      color: '#F5F2EC',
+                      fontFamily: 'Barlow, sans-serif',
+                      fontSize: '16px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.5',
+                      width: '136px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>{item.untitled4}</p>
+                    </div>
+                  </div>
+                  <div data-id="div-mt9uiobo-p" data-name="Container" style={{
+                  display: 'flex',
+                  width: '301px',
+                  height: '70px',
+                  paddingTop: '24px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '3'
+                }}>
+                    <div data-id="div-mt9uiobo-q" data-name="Paragraph" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    width: '301px',
+                    height: '14px',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-r" data-name="Year" style={{
+                      color: '#6B6864',
+                      fontFamily: '"DM Mono", sans-serif',
+                      fontSize: '10.4px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.333',
+                      letterSpacing: '1.04px',
+                      textTransform: 'uppercase',
+                      width: '29px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        Year
+                      </p>
+                    </div>
+                    <div data-id="div-mt9uiobo-s" data-name="Paragraph" style={{
+                    display: 'flex',
+                    width: '301px',
+                    height: '32px',
+                    paddingTop: '8px',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '1'
+                  }}>
+                      <p data-id="p-mt9uiobo-t" data-name="2024" style={{
+                      color: '#F5F2EC',
+                      fontFamily: 'Barlow, sans-serif',
+                      fontSize: '16px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.5',
+                      width: '36px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>{item.untitled5}</p>
+                    </div>
+                  </div>
+                </div>
+                <div data-id="div-mt9uiobo-u" data-name="Container" data-pinned="true" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gridRow: '1 / span 1',
+                gridColumn: '5 / span 8',
+                justifySelf: 'stretch',
+                height: '259.24200439453125px',
+                position: 'relative',
+                flex: '1 0 0px'
+              }}>
+                  <div data-id="div-mt9uiobo-v" data-name="Paragraph" style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  width: '666px',
+                  height: '15px',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}>
+                    <p data-id="p-mt9uiobo-w" data-name="Overview" style={{
+                    color: '#6B6864',
+                    fontFamily: '"DM Mono", sans-serif',
+                    fontSize: '10.88px',
+                    fontStyle: 'normal',
+                    fontWeight: '400',
+                    lineHeight: '1.333',
+                    letterSpacing: '1.741px',
+                    textTransform: 'uppercase',
+                    width: 'min-content',
+                    margin: '0px',
+                    height: 'auto',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      Overview
+                    </p>
+                  </div>
+                  <div data-id="div-mt9uiobo-x" data-name="Paragraph" style={{
+                  display: 'flex',
+                  paddingTop: '24px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  width: '100%',
+                  height: '112px',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '1'
+                }}>
+                    <p data-id="p-mt9uiobo-y" data-name="Meridian Architects is a forty-person practice kno" style={{
+                    width: '100%',
+                    color: '#C8C4BC',
+                    fontFamily: 'Barlow, sans-serif',
+                    fontSize: '18.032px',
+                    fontStyle: 'normal',
+                    fontWeight: '400',
+                    lineHeight: '1.625',
+                    margin: '0px',
+                    height: 'auto',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0',
+                    maxWidth: '666px'
+                  }}>{item.untitled3}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div data-id="div-mt9uiobo-z" data-name="Container" style={{
+          display: 'flex',
+          width: '100%',
+          maxWidth: '100%',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          height: '1291px',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '2',
+          paddingTop: '112px',
+          paddingRight: '80px',
+          paddingBottom: '112px',
+          paddingLeft: '80px'
+        }}>
+            <div data-id="div-mt9uiobo-10" data-name="Container" style={{
+            display: 'flex',
+            height: '139px',
+            width: '100%',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-evenly',
+            gap: '80px'
+          }}>
+              <div data-id="div-mt9uiobo-11" data-name="Container" data-pinned="true" style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gridRow: '1 / span 1',
+              gridColumn: '1 / span 1',
+              justifySelf: 'stretch',
+              height: '138.50799560546875px',
+              position: 'relative',
+              flex: '1 0 0px'
+            }}>
+                <div data-id="div-mt9uiobo-12" data-name="Paragraph" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                width: '100%',
+                height: 'min-content',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '0'
+              }}>
+                  <p data-id="p-mt9uiobo-13" data-name="The challenge" style={{
+                  color: '#E8FF47',
+                  fontFamily: '"DM Mono", sans-serif',
+                  fontSize: '10.88px',
+                  fontStyle: 'normal',
+                  fontWeight: '400',
+                  lineHeight: '1.333',
+                  letterSpacing: '1.958px',
+                  textTransform: 'uppercase',
+                  width: 'min-content',
+                  margin: '0px',
+                  height: 'auto',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0',
+                  whiteSpace: 'nowrap'
+                }}>
+                    The challenge
+                  </p>
+                </div>
+                <div data-id="div-mt9uiobo-14" data-name="Paragraph" style={{
+                display: 'flex',
+                width: '100%',
+                paddingTop: '20px',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                height: 'min-content',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '1'
+              }}>
+                  <p data-id="p-mt9uiobo-15" data-name="Architecture practices are notoriously hard to dif" style={{
+                  width: '100%',
+                  color: '#C8C4BC',
+                  fontFamily: 'Barlow, sans-serif',
+                  fontSize: '16px',
+                  fontStyle: 'normal',
+                  fontWeight: '400',
+                  lineHeight: '1.625',
+                  margin: '0px',
+                  height: 'auto',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}>{item.untitled6}</p>
+                </div>
+              </div>
+              <div data-id="div-mt9uiobo-16" data-name="Container" data-pinned="true" style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gridRow: '1 / span 1',
+              gridColumn: '2 / span 1',
+              justifySelf: 'stretch',
+              height: '138.50799560546875px',
+              position: 'relative',
+              flex: '1 0 0px'
+            }}>
+                <div data-id="div-mt9uiobo-17" data-name="Paragraph" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                width: '100%',
+                height: 'min-content',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '0'
+              }}>
+                  <p data-id="p-mt9uiobo-18" data-name="Our approach" style={{
+                  color: '#E8FF47',
+                  fontFamily: '"DM Mono", sans-serif',
+                  fontSize: '10.88px',
+                  fontStyle: 'normal',
+                  fontWeight: '400',
+                  lineHeight: '1.333',
+                  letterSpacing: '1.958px',
+                  textTransform: 'uppercase',
+                  width: '100%',
+                  margin: '0px',
+                  height: 'auto',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0',
+                  whiteSpace: 'nowrap'
+                }}>
+                    Our approach
+                  </p>
+                </div>
+                <div data-id="div-mt9uiobo-19" data-name="Paragraph" style={{
+                display: 'flex',
+                width: '100%',
+                paddingTop: '20px',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                height: '124px',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '1'
+              }}>
+                  <p data-id="p-mt9uiobo-1a" data-name="We led with their photography. A full-bleed editor" style={{
+                  width: '100%',
+                  color: '#C8C4BC',
+                  fontFamily: 'Barlow, sans-serif',
+                  fontSize: '16px',
+                  fontStyle: 'normal',
+                  fontWeight: '400',
+                  lineHeight: '1.625',
+                  margin: '0px',
+                  height: 'auto',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}>{item.untitled7}</p>
+                </div>
+              </div>
+            </div>
+            <div data-id="div-mt9uiobo-1b" data-name="Container:margin" style={{
+            display: 'flex',
+            paddingTop: '80px',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            width: '100%',
+            height: '531px',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '1'
+          }}>
+              <div data-id="div-mt9uiobo-1c" data-name="Container" style={{
+              display: 'flex',
+              width: '100%',
+              height: '451px',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              overflow: 'hidden',
+              backgroundColor: '#1E1E1E',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0'
+            }}>
+                <div data-id="div-mt9uiobo-1d" data-name="Image (Project detail)" style={{
+                height: '451px',
+                width: '100%',
+                overflow: 'hidden',
+                backgroundImage: \`url(\${item.untitled8})\`,
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '0'
+              }}></div>
+              </div>
+            </div>
+            <div data-id="div-mt9uiobo-1e" data-name="Container:margin" style={{
+            display: 'flex',
+            paddingTop: '16px',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            width: '100%',
+            height: '397px',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '2'
+          }}>
+              <div data-id="div-mt9uiobo-1f" data-name="Container" style={{
+              display: 'flex',
+              height: '381px',
+              width: '100%',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px'
+            }}>
+                <div data-id="div-mt9uiobo-1g" data-name="Container" data-pinned="true" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gridRow: '1 / span 1',
+                gridColumn: '1 / span 1',
+                justifySelf: 'stretch',
+                height: '380.625px',
+                overflow: 'hidden',
+                position: 'relative',
+                backgroundColor: '#1E1E1E',
+                flex: '1 0 0px'
+              }}>
+                  <div data-id="div-mt9uiobo-1h" data-name="Image (Project)" style={{
+                  height: '381px',
+                  width: '100%',
+                  overflow: 'hidden',
+                  backgroundImage: \`url(\${item.untitled9})\`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}></div>
+                </div>
+                <div data-id="div-mt9uiobo-1i" data-name="Container" data-pinned="true" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gridRow: '1 / span 1',
+                gridColumn: '2 / span 1',
+                justifySelf: 'stretch',
+                height: '380.625px',
+                overflow: 'hidden',
+                position: 'relative',
+                backgroundColor: '#1E1E1E',
+                flex: '1 0 0px'
+              }}>
+                  <div data-id="div-mt9uiobo-1j" data-name="Image (Project)" style={{
+                  height: '381px',
+                  width: '100%',
+                  overflow: 'hidden',
+                  backgroundImage: \`url(\${item.untitled10})\`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div data-id="div-mt9uiobo-1k" data-name="Section" style={{
+          display: 'flex',
+          padding: '112px 0',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          borderTop: '1px solid rgba(245, 242, 236, 0.08)',
+          borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+          width: '100%',
+          height: '460px',
+          backgroundColor: '#141414',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '3'
+        }}>
+            <div data-id="div-mt9uiobo-1l" data-name="Container" style={{
+            display: 'flex',
+            maxWidth: '100%',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            width: '100%',
+            height: '234px',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0',
+            paddingTop: '0',
+            paddingRight: '80px',
+            paddingBottom: '0',
+            paddingLeft: '80px'
+          }}>
+              <div data-id="div-mt9uiobo-1m" data-name="Paragraph" style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              width: '1031px',
+              height: '15px',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0'
+            }}>
+                <p data-id="p-mt9uiobo-1n" data-name="Outcomes" style={{
+                color: '#6B6864',
+                fontFamily: '"DM Mono", sans-serif',
+                fontSize: '10.88px',
+                fontStyle: 'normal',
+                fontWeight: '400',
+                lineHeight: '1.333',
+                letterSpacing: '1.958px',
+                textTransform: 'uppercase',
+                width: '66px',
+                margin: '0px',
+                height: 'auto',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '0'
+              }}>
+                  Outcomes
+                </p>
+              </div>
+              <div data-id="div-mt9uiobo-1o" data-name="Container:margin" style={{
+              display: 'flex',
+              paddingTop: '56px',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              width: '100%',
+              height: '219px',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '1'
+            }}>
+                <div data-id="div-mt9uiobo-1p" data-name="Container" style={{
+                display: 'flex',
+                height: '163px',
+                borderLeft: '1px solid rgba(245, 242, 236, 0.08)',
+                width: '100%',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '0',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                  <div data-id="div-mt9uiobo-1q" data-name="Container" data-pinned="true" style={{
+                  display: 'flex',
+                  padding: '40px 32px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gridRow: '1 / span 1',
+                  gridColumn: '1 / span 1',
+                  justifySelf: 'stretch',
+                  borderRight: '1px solid rgba(245, 242, 236, 0.08)',
+                  borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+                  height: '163.21099853515625px',
+                  position: 'relative',
+                  flex: '1 0 0px', order: '0'
+                }}>
+                    <div data-id="div-mt9uiobo-1r" data-name="Container" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    width: '192.5px',
+                    height: '57px',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-1s" data-name="+210%" style={{
+                      color: '#E8FF47',
+                      fontFamily: '"Barlow Condensed", sans-serif',
+                      fontSize: '56.35px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1',
+                      letterSpacing: '-1.127px',
+                      width: '125px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        +210%
+                      </p>
+                    </div>
+                    <div data-id="div-mt9uiobo-1t" data-name="Container" style={{
+                    display: 'flex',
+                    width: '192.5px',
+                    height: 'min-content',
+                    paddingTop: '12px',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '1'
+                  }}>
+                      <p data-id="p-mt9uiobo-1u" data-name="Avg. session duration" style={{
+                      color: '#6B6864',
+                      fontFamily: '"DM Mono", sans-serif',
+                      fontSize: '10.4px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.333',
+                      letterSpacing: '1.04px',
+                      textTransform: 'uppercase',
+                      width: '152px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0',
+                      whiteSpace: 'nowrap'
+                    }}>
+                        Avg. session duration
+                      </p>
+                    </div>
+                  </div>
+                  <div data-id="div-mt9uiobo-1v" data-name="Container" data-pinned="true" style={{
+                  display: 'flex',
+                  padding: '40px 32px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gridRow: '1 / span 1',
+                  gridColumn: '2 / span 1',
+                  justifySelf: 'stretch',
+                  borderRight: '1px solid rgba(245, 242, 236, 0.08)',
+                  borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+                  height: '163.21099853515625px',
+                  position: 'relative',
+                  flex: '1 0 0px', order: '1'
+                }}>
+                    <div data-id="div-mt9uiobo-1w" data-name="Container" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    width: '192.5px',
+                    height: '57px',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-1x" data-name="4.2s" style={{
+                      color: '#E8FF47',
+                      fontFamily: '"Barlow Condensed", sans-serif',
+                      fontSize: '56.35px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1',
+                      letterSpacing: '-1.127px',
+                      width: '75px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        4.2s
+                      </p>
+                    </div>
+                    <div data-id="div-mt9uiobo-1y" data-name="Container" style={{
+                    display: 'flex',
+                    width: '192.5px',
+                    height: 'min-content',
+                    paddingTop: '12px',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '1'
+                  }}>
+                      <p data-id="p-mt9uiobo-1z" data-name="Avg. time to first scroll" style={{
+                      color: '#6B6864',
+                      fontFamily: '"DM Mono", sans-serif',
+                      fontSize: '10.4px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.333',
+                      letterSpacing: '1.04px',
+                      textTransform: 'uppercase',
+                      width: '181px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0',
+                      whiteSpace: 'nowrap'
+                    }}>
+                        Avg. time to first scroll
+                      </p>
+                    </div>
+                  </div>
+                  <div data-id="div-mt9uiobo-20" data-name="Container" data-pinned="true" style={{
+                  display: 'flex',
+                  padding: '40px 32px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gridRow: '1 / span 1',
+                  gridColumn: '3 / span 1',
+                  justifySelf: 'stretch',
+                  borderRight: '1px solid rgba(245, 242, 236, 0.08)',
+                  borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+                  height: '163.21099853515625px',
+                  position: 'relative',
+                  flex: '1 0 0px', order: '2'
+                }}>
+                    <div data-id="div-mt9uiobo-21" data-name="Container" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    width: '192.5px',
+                    height: '57px',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-22" data-name="+61%" style={{
+                      color: '#E8FF47',
+                      fontFamily: '"Barlow Condensed", sans-serif',
+                      fontSize: '56.35px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1',
+                      letterSpacing: '-1.127px',
+                      width: '102px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        +61%
+                      </p>
+                    </div>
+                    <div data-id="div-mt9uiobo-23" data-name="Container" style={{
+                    display: 'flex',
+                    width: '192.5px',
+                    height: 'min-content',
+                    paddingTop: '12px',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '1'
+                  }}>
+                      <p data-id="p-mt9uiobo-24" data-name="RFP submissions" style={{
+                      color: '#6B6864',
+                      fontFamily: '"DM Mono", sans-serif',
+                      fontSize: '10.4px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.333',
+                      letterSpacing: '1.04px',
+                      textTransform: 'uppercase',
+                      width: '109px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0',
+                      whiteSpace: 'nowrap'
+                    }}>
+                        RFP submissions
+                      </p>
+                    </div>
+                  </div>
+                  <div data-id="div-mt9uiobo-25" data-name="Container" data-pinned="true" style={{
+                  display: 'flex',
+                  padding: '40px 32px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gridRow: '1 / span 1',
+                  gridColumn: '4 / span 1',
+                  justifySelf: 'stretch',
+                  borderRight: '1px solid rgba(245, 242, 236, 0.08)',
+                  borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+                  height: '163.21099853515625px',
+                  position: 'relative',
+                  flex: '1 0 0px', order: '3'
+                }}>
+                    <div data-id="div-mt9uiobo-26" data-name="Container" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    width: '192.5px',
+                    height: '57px',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-27" data-name="D&AD" style={{
+                      color: '#E8FF47',
+                      fontFamily: '"Barlow Condensed", sans-serif',
+                      fontSize: '56.35px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1',
+                      letterSpacing: '-1.127px',
+                      width: '103px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        D&AD
+                      </p>
+                    </div>
+                    <div data-id="div-mt9uiobo-28" data-name="Container" style={{
+                    display: 'flex',
+                    width: '192.5px',
+                    height: 'min-content',
+                    paddingTop: '12px',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '1'
+                  }}>
+                      <p data-id="p-mt9uiobo-29" data-name="Shortlisted 2024" style={{
+                      color: '#6B6864',
+                      fontFamily: '"DM Mono", sans-serif',
+                      fontSize: '10.4px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.333',
+                      letterSpacing: '1.04px',
+                      textTransform: 'uppercase',
+                      width: '116px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0',
+                      whiteSpace: 'nowrap'
+                    }}>
+                        Shortlisted 2024
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div data-id="div-mt9uiobo-2a" data-name="Section" style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+          width: '100%',
+          height: '376.6640625px',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '4'
+        }}>
+            <div data-id="div-mt9uiobo-2b" data-name="Link" style={{
+            display: 'flex',
+            height: '375.664px',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            width: '100%',
+            overflow: 'hidden',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0'
+          }}>
+              <div data-id="div-mt9uiobo-2c" data-name="CaseStudy" style={{
+              height: '375.664px',
+              width: '100%',
+              overflow: 'hidden',
+              backgroundColor: '#1E1E1E',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0'
+            }}>
+                <div data-id="div-mt9uiobo-2d" data-name="Image (FORM STUDIO)" data-pinned="true" style={{
+                width: '100%',
+                height: '375.664px',
+                opacity: '0.3',
+                overflow: 'hidden',
+                position: 'absolute',
+                left: '0px',
+                top: '0px',
+                backgroundImage: 'url(https://assets.revyme.app/b072a507-4f93-11f1-a46a-920007cce419/055d350c-ac4d-11f1-b3b1-920007cce419/images/uploaded/bca362287f73a32f.webp)',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+              }}></div>
+                <div data-id="div-mt9uiobo-2e" data-name="Container" data-pinned="true" style={{
+                width: '100%',
+                height: '375.664px',
+                position: 'absolute',
+                left: '0px',
+                top: '0px',
+                backgroundImage: 'linear-gradient(180deg, rgba(10, 10, 10, 0.30) 0%, rgba(10, 10, 10, 0.70) 100%)'
+              }}></div>
+                <div data-id="div-mt9uiobo-2f" data-name="Container" data-pinned="true" style={{
+                display: 'flex',
+                width: '100%',
+                height: '375.664px',
+                padding: '0 24px',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                position: 'absolute',
+                left: '0px',
+                top: '0px'
+              }}>
+                  <div data-id="div-mt9uiobo-2g" data-name="Paragraph:margin" style={{
+                  display: 'flex',
+                  paddingBottom: '20px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  width: '103px',
+                  height: '35px',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}>
+                    <p data-id="p-mt9uiobo-2h" data-name="Next project" style={{
+                    color: '#E8FF47',
+                    textAlign: 'center',
+                    fontFamily: '"DM Mono", sans-serif',
+                    fontSize: '11.2px',
+                    fontStyle: 'normal',
+                    fontWeight: '400',
+                    lineHeight: '1.333',
+                    letterSpacing: '2.016px',
+                    textTransform: 'uppercase',
+                    width: '103px',
+                    margin: '0px',
+                    height: 'auto',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0',
+                    whiteSpace: 'nowrap'
+                  }}>Next project</p>
+                  </div>
+                  <div data-id="div-mt9uiobo-2i" data-name="Heading 2" style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  width: '384px',
+                  height: '83px',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '1'
+                }}>
+                    <p data-id="p-mt9uiobo-2j" data-name="FORM STUDIO" style={{
+                    color: '#F5F2EC',
+                    textAlign: 'center',
+                    fontFamily: '"Barlow Condensed", sans-serif',
+                    fontSize: '90.16px',
+                    fontStyle: 'normal',
+                    fontWeight: '400',
+                    lineHeight: '0.92',
+                    letterSpacing: '-1.803px',
+                    width: '384px',
+                    margin: '0px',
+                    height: 'auto',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      FORM STUDIO
+                    </p>
+                  </div>
+                  <div data-id="div-mt9uiobo-2k" data-name="Container:margin" style={{
+                  display: 'flex',
+                  paddingTop: '32px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  width: '56px',
+                  height: '88px',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '2'
+                }}>
+                    <div data-id="div-mt9uiobo-2l" data-name="Container" style={{
+                    display: 'flex',
+                    width: '56px',
+                    height: '56px',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    borderRadius: '16777200px',
+                    border: '1px solid rgba(245, 242, 236, 0.40)',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-2m" data-name="→" style={{
+                      color: '#F5F2EC',
+                      textAlign: 'center',
+                      fontFamily: 'Barlow, sans-serif',
+                      fontSize: '20px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.4',
+                      width: '20px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        →
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+                  </div>
+        <div data-id="div-mt9uiobo-2v" data-name="CaseStudy" data-pinned="true" style={{
+        width: '100%',
+        height: '681.695px',
+        position: 'absolute',
+        overflow: 'hidden',
+        left: '0px',
+        top: '0px',
+        backgroundColor: '#141414',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        display: 'flex'
+      }}>
+          <div data-id="div-mt9uiobo-2w" data-name="Image (MERIDIAN ARCHITECTS)" data-pinned="true" style={{
+          width: '100%',
+          height: '681.695px',
+          opacity: '0.35',
+          overflow: 'hidden',
+          position: 'absolute',
+          backgroundImage: \`url(\${item.untitled19})\`,
+          backgroundRepeat: 'no-repeat',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          flex: '0 0 auto',
+          left: '0px',
+          top: '0.15354207397052733px'
+        }}></div>
+          <div data-id="div-mt9uiobo-2x" data-name="Container" data-pinned="true" style={{
+          width: '100%',
+          position: 'absolute',
+          backgroundImage: 'linear-gradient(180deg, rgba(10, 10, 10, 0.20) 0%, rgba(10, 10, 10, 0.85) 100%)',
+          left: '0px',
+          top: '0px',
+          height: '682px'
+        }}></div>
+          <div data-id="div-mt9uiobo-2y" data-name="Container" data-pinned="true" style={{
+          display: 'flex',
+          width: '100%',
+          maxWidth: '100%',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          position: 'relative',
+          flex: '1 0 0px',
+          paddingTop: '0px',
+          paddingRight: '48px',
+          paddingBottom: '80px',
+          paddingLeft: '48px',
+          justifyContent: 'flex-end'
+        }}>
+            <div data-id="div-mt9uiobo-2z" data-name="Paragraph" style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            width: '100%',
+            height: '15px',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0'
+          }}>
+              <p data-id="p-mt9uiobo-30" data-name="02 — Web Experience — 2024" style={{
+              color: '#E8FF47',
+              fontFamily: '"DM Mono", sans-serif',
+              fontSize: '11.2px',
+              fontStyle: 'normal',
+              fontWeight: '400',
+              lineHeight: '1.333',
+              letterSpacing: '2.016px',
+              textTransform: 'uppercase',
+              width: '100%',
+              margin: '0px',
+              height: 'auto',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0'
+            }}>{item.title}</p>
+            </div>
+            <div data-id="div-mt9uiobo-31" data-name="Heading 1" style={{
+            display: 'flex',
+            width: '100%',
+            height: 'min-content',
+            paddingTop: '16px',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '1'
+          }}>
+              <p data-id="p-mt9uiobo-32" data-name="MERIDIAN ARCHITECTS" style={{
+              color: '#F5F2EC',
+              fontFamily: '"Barlow Condensed", sans-serif',
+              fontSize: '101.43px',
+              fontStyle: 'normal',
+              fontWeight: '400',
+              lineHeight: '0.92',
+              letterSpacing: '-2.536px',
+              width: '717px',
+              margin: '0px',
+              height: 'auto',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0'
+            }}>{item.untitled}</p>
+            </div>
+            <div data-id="div-mt9uiobo-33" data-name="Paragraph" style={{
+            display: 'flex',
+            width: '100%',
+            height: '58px',
+            maxWidth: '672px',
+            paddingTop: '24px',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '2'
+          }}>
+              <p data-id="p-mt9uiobo-34" data-name="A digital portfolio that matches the ambition of t" style={{
+              color: '#C8C4BC',
+              fontFamily: 'Barlow, sans-serif',
+              fontSize: '22.4px',
+              fontStyle: 'normal',
+              fontWeight: '400',
+              lineHeight: '1.5',
+              width: '100%',
+              margin: '0px',
+              height: 'auto',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0'
+            }}>{item.untitled2}</p>
+            </div>
+          </div>
+        </div>
+        <div data-id="div-mt9uiobo-35" data-name="CaseStudy" data-pinned="true" style={{
+        display: 'flex',
+        width: '100%',
+        height: '80px',
+        padding: '0 48px',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        position: 'absolute',
+        borderBottom: '1px solid rgba(245, 242, 236, 0.06)',
+        backdropFilter: 'blur(12px)',
+        left: '0px',
+        top: '0px',
+        backgroundColor: 'rgba(10, 10, 10, 0.92)'
+      }}>
+          <div data-id="div-mt9uiobo-36" data-name="Link" style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          width: '55px',
+          height: '28px',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '0'
+        }}>
+            <p data-id="p-mt9uiobo-37" data-name="ATELIER." style={{
+            color: '#E8FF47',
+            fontFamily: '"Barlow Condensed", sans-serif',
+            fontSize: '20px',
+            fontStyle: 'normal',
+            fontWeight: '400',
+            lineHeight: '1.4',
+            letterSpacing: '-0.5px',
+            width: '55px',
+            margin: '0px',
+            height: 'auto',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0'
+          }}>
+              ATELIER.
+            </p>
+          </div>
+          <div data-id="div-mt9uiobo-38" data-name="Button" style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          width: '53px',
+          height: '15px',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '1'
+        }}>
+            <p data-id="p-mt9uiobo-39" data-name="← Back" style={{
+            color: '#6B6864',
+            textAlign: 'center',
+            fontFamily: '"DM Mono", sans-serif',
+            fontSize: '11.2px',
+            fontStyle: 'normal',
+            fontWeight: '400',
+            lineHeight: '1.333',
+            letterSpacing: '1.568px',
+            textTransform: 'uppercase',
+            width: '53px',
+            margin: '0px',
+            height: 'auto',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0'
+          }}>
+              ← Back
+            </p>
+          </div>
+        </div>
+      </div></div>;
+}
+
+const canvasNodes = (<>
+  <BaRoLe data-id="BaRoLe-mtu5f85o-2" data-name="BaRoLe" data-canvas-node="true" style={{position: 'absolute', height: '81px', width: '1440px', flex: '0 0 auto', left: '-1117px', top: '346px'}}></BaRoLe>
+
+  <div data-id="frame-mtuae9ay-1" data-name="Frame" data-canvas-node="true" style={{position: 'absolute', width: '167px', height: '108px', backgroundColor: '#97cffc', borderRadius: '0px', overflow: 'hidden', left: '-290px', top: '134px'}}></div>
+</>);
+`,
+    'app/page.tsx': `import PageClient from './page.client';
+
+export const metadata = {};
+
+export default function Page() {
+  return <PageClient />;
+}
+`,
+    'app/page.client.tsx': `'use client';
+export default function Page() { return <div data-id="root" style={{ width: '100%', minHeight: '400px' }}></div>; }
+`,
+    'components/BaRoLe.tsx': `'use client';
+/** @label "BaRoLe" */
+/** @comment "stub" */
+/** @defaultWidth 1440 */
+/** @defaultHeight 81 */
+/** @controls {} */
+import { withResponsiveProps } from '@revyme/runtime';
+function BaRoLe({ ...props }: { [key: string]: any }) {
+  return <div {...props} style={{ position: 'relative', width: '100%', height: '100%', background: '#222', ...props.style }} />;
+}
+export default withResponsiveProps(BaRoLe);
+`,
+    'cms/collection-1.schema.json': "{\"slug\": \"collection-1\", \"name\": \"Collection 1\", \"fields\": [{\"id\": \"title\", \"name\": \"title\", \"type\": \"text\"}, {\"id\": \"untitled\", \"name\": \"untitled\", \"type\": \"text\"}, {\"id\": \"untitled10\", \"name\": \"untitled10\", \"type\": \"image\"}, {\"id\": \"untitled19\", \"name\": \"untitled19\", \"type\": \"image\"}, {\"id\": \"untitled2\", \"name\": \"untitled2\", \"type\": \"text\"}, {\"id\": \"untitled20\", \"name\": \"untitled20\", \"type\": \"text\"}, {\"id\": \"untitled21\", \"name\": \"untitled21\", \"type\": \"text\"}, {\"id\": \"untitled22\", \"name\": \"untitled22\", \"type\": \"text\"}, {\"id\": \"untitled23\", \"name\": \"untitled23\", \"type\": \"text\"}, {\"id\": \"untitled3\", \"name\": \"untitled3\", \"type\": \"text\"}, {\"id\": \"untitled4\", \"name\": \"untitled4\", \"type\": \"text\"}, {\"id\": \"untitled5\", \"name\": \"untitled5\", \"type\": \"text\"}, {\"id\": \"untitled6\", \"name\": \"untitled6\", \"type\": \"text\"}, {\"id\": \"untitled7\", \"name\": \"untitled7\", \"type\": \"text\"}, {\"id\": \"untitled8\", \"name\": \"untitled8\", \"type\": \"image\"}, {\"id\": \"untitled9\", \"name\": \"untitled9\", \"type\": \"image\"}]}",
+    'cms/collection-1.json': "[{\"_id\": \"i1\", \"_slug\": \"meridian\", \"_status\": \"published\", \"_createdAt\": \"2026-09-01T00:00:00.000Z\", \"_updatedAt\": \"2026-09-01T00:00:00.000Z\", \"title\": \"02 \\u2014 Web Experience \\u2014 2024\", \"untitled\": \"MERIDIAN ARCHITECTS\", \"untitled10\": \"https://images.unsplash.com/photo-1545897398-2aba891843b6?w=800\", \"untitled19\": \"https://images.unsplash.com/photo-1545897398-2aba891843b6?w=800\", \"untitled2\": \"A digital portfolio that matches the ambition of the practice.\", \"untitled20\": \"UNTITLED20\", \"untitled21\": \"UNTITLED21\", \"untitled22\": \"UNTITLED22\", \"untitled23\": \"UNTITLED23\", \"untitled3\": \"UNTITLED3\", \"untitled4\": \"UNTITLED4\", \"untitled5\": \"UNTITLED5\", \"untitled6\": \"UNTITLED6\", \"untitled7\": \"UNTITLED7\", \"untitled8\": \"https://images.unsplash.com/photo-1545897398-2aba891843b6?w=800\", \"untitled9\": \"https://images.unsplash.com/photo-1545897398-2aba891843b6?w=800\"}]",
+  },
+};
+
+export const USER_HERO_AFTER: ProjectData = {
+  format: 'revyme-v1',
+  files: {
+    'app/collection-1/[slug]/page.tsx': `import PageClient from './page.client';
+
+export const metadata = {};
+
+export default function Page() {
+  return <PageClient />;
+}
+`,
+    'app/collection-1/[slug]/page.client.tsx': `'use client';
+
+/** @canvas {
+  "viewports": [
+    { "id": "desktop", "label": "Desktop", "width": 1440, "isPrimary": true, "order": 0 },
+    { "id": "tablet", "label": "Tablet", "width": 768, "isPrimary": false, "order": 1 },
+    { "id": "mobile", "label": "Mobile", "width": 375, "isPrimary": false, "order": 2 }
+  ],
+  "positions": {
+    "desktop": { "x": 0, "y": 0 },
+    "tablet": { "x": 1600, "y": 0 },
+    "mobile": { "x": 2528, "y": 0 }
+  }
+} */
+/** @cmsPage {
+  "collection": "collection-1",
+  "kind": "detail"
+} */
+
+import React, { useState, useRef, useLayoutEffect } from 'react';
+import { useParams } from 'next/navigation';
+import collection1 from '@/cms/collection-1.json';
+import BaRoLe from '@/components/BaRoLe';
+
+function useResponsiveText(primary, overrides, vpWidths) {
+  const ref = useRef(null);
+  const [w, setW] = useState(() => typeof window !== 'undefined' ? window.innerWidth : Infinity);
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return;
+    let host = ref.current && ref.current.parentElement;
+    while (host && host !== document.body && !host.hasAttribute('data-viewport-width')) {
+      host = host.parentElement;
+    }
+    if (host && host.hasAttribute && host.hasAttribute('data-viewport-width')) {
+      const read = () => setW(parseInt(host.getAttribute('data-viewport-width'), 10) || window.innerWidth);
+      read();
+      const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(read) : null;
+      if (ro) ro.observe(host);
+      const mo = new MutationObserver(read);
+      mo.observe(host, {
+        attributes: true,
+        attributeFilter: ['data-viewport-width']
+      });
+      return () => {
+        if (ro) ro.disconnect();
+        mo.disconnect();
+      };
+    }
+    const onResize = () => setW(window.innerWidth);
+    setW(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  // Bucket the current width into one of the configured viewports, then look
+  // up that bucket's override. Smallest viewport width >= w wins. If no
+  // viewport is wider than w, fall through to primary. Without the full
+  // viewport list, we can't tell mobile (375) from tablet (768) when only
+  // tablet has an override — both would resolve to tablet's text.
+  const widths = (vpWidths || Object.keys(overrides || {}).map(Number)).filter(function (n) {
+    return typeof n === 'number' && isFinite(n) && n > 0;
+  }).slice().sort(function (a, b) {
+    return a - b;
+  });
+  let bucket = null;
+  for (let i = 0; i < widths.length; i++) {
+    if (w <= widths[i]) {
+      bucket = widths[i];
+      break;
+    }
+  }
+  let value = primary;
+  if (bucket !== null && overrides && overrides[bucket] !== undefined) {
+    value = overrides[bucket];
+  }
+  // Override values may contain rich-text marks emitted by TipTap on commit
+  // (\`<span style="font-size: 14px">word</span>\` etc.). Plain string children
+  // get escaped by React, so use dangerouslySetInnerHTML when the value looks
+  // like HTML. Plain text falls through to the children path so React's text
+  // diffing stays cheap.
+  const isHtml = typeof value === 'string' && /<[a-z][^>]*>/i.test(value);
+  return isHtml ? React.createElement('span', {
+    ref: ref,
+    style: {
+      display: 'contents'
+    },
+    dangerouslySetInnerHTML: {
+      __html: value
+    }
+  }) : React.createElement('span', {
+    ref: ref,
+    style: {
+      display: 'contents'
+    }
+  }, value);
+}
+// @useResponsiveText-end
+
+export default function Page() {
+  const params = useParams();
+  const item = collection1.find(i => i._slug === params?.slug) ?? collection1[0];
+  return <div data-id="root" key={String(params?.slug ?? '')} data-name="Case study Detail" style={{
+    position: 'relative',
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    height: 'auto',
+    overflowX: 'clip',
+    backgroundColor: '#ffffff'
+  }}>
+      
+  <style>{\`
+    @media (max-width: 768px) and (min-width: 375.02px) {
+      [data-id="div-mt9uiobo-10"] { flex-direction: column !important; height: min-content !important; gap: 32px !important; }
+      [data-id="div-mt9uiobo-11"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobo-16"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobo-1l"] { padding-top: 0 !important; padding-right: 16px !important; padding-bottom: 0 !important; padding-left: 16px !important; height: min-content !important; }
+      [data-id="div-mt9uiobg-6"] { flex-direction: column !important; height: min-content !important; }
+      [data-id="div-mt9uiobo-u"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobn-7"] { width: 100% !important; flex-direction: column !important; }
+      [data-id="div-mt9uiobo-z"] { padding-top: 112px !important; padding-right: 16px !important; padding-bottom: 112px !important; padding-left: 16px !important; }
+      [data-id="div-mt9uiobg-4"] { padding-top: 40px !important; padding-right: 16px !important; padding-bottom: 112px !important; padding-left: 16px !important; }
+      [data-id="p-mt9uiobo-32"] { width: 100% !important; }
+      [data-id="div-mt9uiobo-2y"] { padding-top: 0px !important; padding-right: 16px !important; padding-bottom: 16px !important; padding-left: 16px !important; }
+      [data-id="div-mt9uiobo-1p"] { display: flex !important; height: min-content !important; gap: 32px !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; }
+      [data-id="div-mt9uiobo-1q"] { width: 100% !important; height: 100% !important; }
+      [data-id="div-mt9uiobo-1v"] { width: 100% !important; height: 100% !important; }
+      [data-id="div-mt9uiobo-20"] { width: 100% !important; height: 100% !important; }
+      [data-id="div-mt9uiobo-25"] { width: 100% !important; height: 100% !important; }
+      [data-id="div-mt9uiobo-1o"] { height: min-content !important; }
+      [data-id="div-mt9uiobo-1m"] { width: 100% !important; }
+      [data-id="div-mt9uiobo-1k"] { height: min-content !important; padding-top: 40px !important; padding-right: 0 !important; padding-bottom: 40px !important; padding-left: 0 !important; }
+    }
+    @media (max-width: 375px) {
+      [data-id="div-mt9uiobo-10"] { flex-direction: column !important; height: min-content !important; gap: 40px !important; }
+      [data-id="div-mt9uiobo-11"] { width: 100% !important; flex: 0 0 auto !important; height: min-content !important; }
+      [data-id="div-mt9uiobo-16"] { width: 100% !important; flex: 0 0 auto !important; height: min-content !important; }
+      [data-id="div-mt9uiobo-19"] { height: min-content !important; }
+      [data-id="div-mt9uiobo-z"] { padding-top: 112px !important; padding-right: 16px !important; padding-bottom: 112px !important; padding-left: 16px !important; }
+      [data-id="div-mt9uiobg-6"] { flex-direction: column !important; height: min-content !important; }
+      [data-id="div-mt9uiobo-u"] { width: 100% !important; flex: 0 0 auto !important; height: min-content !important; }
+      [data-id="div-mt9uiobg-4"] { padding-top: 40px !important; padding-right: 16px !important; padding-bottom: 40px !important; padding-left: 16px !important; height: min-content !important; }
+      [data-id="div-mt9uiobn-7"] { width: 100% !important; height: min-content !important; }
+      [data-id="div-mt9uiobo-v"] { width: 100% !important; height: 15px !important; }
+      [data-id="div-mt9uiobo-x"] { height: min-content !important; }
+      [data-id="div-mt9uiobo-k"] { width: 100% !important; }
+      [data-id="div-mt9uiobo-a"] { width: 100% !important; }
+      [data-id="div-mt9uiobn-8"] { width: 100% !important; }
+      [data-id="div-mt9uiobo-p"] { width: 100% !important; }
+      [data-id="div-mt9uiobg-5"] { height: min-content !important; }
+      [data-id="div-mt9uiobo-2y"] { padding-top: 0px !important; padding-right: 16px !important; padding-bottom: 16px !important; padding-left: 16px !important; }
+      [data-id="p-mt9uiobo-30"] { width: 100% !important; }
+      [data-id="p-mt9uiobo-32"] { width: 100% !important; font-size: 68px !important; }
+      [data-id="div-mt9uiobo-33"] { height: min-content !important; }
+      [data-id="div-mt9uiobo-1l"] { height: min-content !important; padding-top: 0 !important; padding-right: 16px !important; padding-bottom: 0 !important; padding-left: 16px !important; }
+      [data-id="div-mt9uiobo-1m"] { width: 100% !important; }
+      [data-id="div-mt9uiobo-1p"] { flex-direction: column !important; height: min-content !important; }
+      [data-id="div-mt9uiobo-1q"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobo-1v"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobo-20"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobo-25"] { width: 100% !important; flex: 0 0 auto !important; }
+      [data-id="div-mt9uiobo-1o"] { height: min-content !important; width: 100% !important; }
+      [data-id="div-mt9uiobo-1k"] { height: min-content !important; padding-top: 40px !important; padding-right: 0 !important; padding-bottom: 40px !important; padding-left: 0 !important; }
+    }
+  \`}</style>
+        
+    <div data-id="div-mt9uiobg-1" data-name="Sleek Agency Portfolio Landing Page" style={{
+      display: 'flex',
+      width: '100%',
+      height: 'min-content',
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      backgroundColor: '#0A0A0A',
+      position: 'relative',
+      order: '2'
+    }}>
+        
+    <div data-id="frame-mtuae9ay-1" data-name="Frame" style={{
+        position: 'relative',
+        width: '167px',
+        height: '108px',
+        backgroundColor: '#97cffc',
+        borderRadius: '0px',
+        overflow: 'hidden',
+        flex: '0 0 auto', order: '0'
+      }}></div><div data-id="div-mt9uiobg-2" data-name="CaseStudy" style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        width: '100%',
+        height: 'min-content',
+        backgroundColor: '#0A0A0A',
+        position: 'relative',
+        flex: '0 0 auto',
+        order: '1'
+      }}>
+          <div data-id="div-mt9uiobg-3" data-name="Placeholder for CaseStudy" style={{
+          height: '681.695px',
+          width: '100%',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '0'
+        }}></div>
+          <div data-id="div-mt9uiobg-4" data-name="Section" style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+          width: '100%',
+          height: '484px',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '1',
+          paddingTop: '112px',
+          paddingRight: '80px',
+          paddingBottom: '112px',
+          paddingLeft: '80px'
+        }}>
+            <div data-id="div-mt9uiobg-5" data-name="Container" style={{
+            display: 'flex',
+            maxWidth: '1440px',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            width: '100%',
+            height: '259px',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0',
+            paddingTop: '0',
+            paddingRight: '0px',
+            paddingBottom: '0',
+            paddingLeft: '0px'
+          }}>
+              <div data-id="div-mt9uiobg-6" data-name="Container" style={{
+              display: 'flex',
+              height: '259px',
+              width: '100%',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+                <div data-id="div-mt9uiobn-7" data-name="Container" data-pinned="true" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gridRow: '1 / span 1',
+                gridColumn: '1 / span 4',
+                justifySelf: 'stretch',
+                height: '259.24200439453125px',
+                position: 'relative',
+                width: '369px'
+              }}>
+                  <div data-id="div-mt9uiobn-8" data-name="Paragraph" style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  width: '301px',
+                  height: 'min-content',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}>
+                    <p data-id="p-mt9uiobn-9" data-name="Scope of work" style={{
+                    color: '#6B6864',
+                    fontFamily: '"DM Mono", sans-serif',
+                    fontSize: '10.88px',
+                    fontStyle: 'normal',
+                    fontWeight: '400',
+                    lineHeight: '1.333',
+                    letterSpacing: '1.741px',
+                    textTransform: 'uppercase',
+                    width: '106px',
+                    margin: '0px',
+                    height: 'auto',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      Scope of work
+                    </p>
+                  </div>
+                  <div data-id="div-mt9uiobo-a" data-name="Container:margin" style={{
+                  display: 'flex',
+                  paddingTop: '24px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  width: 'min-content',
+                  height: '89px',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '1'
+                }}>
+                    <div data-id="div-mt9uiobo-b" data-name="Container" style={{
+                    height: '65px',
+                    width: 'min-content',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    justifyContent: 'center',
+                    display: 'flex',
+                    gap: '8px'
+                  }}>
+                      
+    <div data-id="frame-mt9vyfbs-3b" data-name="Frame" style={{
+                      position: 'relative',
+                      width: 'min-content',
+                      height: 'min-content',
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(0, 0, 0, 0)',
+                      overflow: 'visible',
+                      gap: '8px',
+                      flex: '0 0 auto'
+                    }}>
+    <div data-id="div-mt9uiobo-e" data-name="Text" data-pinned="true" style={{
+                        display: 'flex',
+                        padding: '6px 12px',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        border: '1px solid rgba(245, 242, 236, 0.15)',
+                        width: '126px',
+                        height: '28px'
+                      }}>
+                        <p data-id="p-mt9uiobo-f" data-name="Art Direction" style={{
+                          color: '#C8C4BC',
+                          fontFamily: '"DM Mono", sans-serif',
+                          fontSize: '10.88px',
+                          fontStyle: 'normal',
+                          fontWeight: '400',
+                          lineHeight: '1.333',
+                          letterSpacing: '1.306px',
+                          textTransform: 'uppercase',
+                          width: '101px',
+                          margin: '0px',
+                          height: 'auto',
+                          position: 'relative',
+                          flex: '0 0 auto',
+                          order: '0',
+                          whiteSpace: 'nowrap'
+                        }}>{item.untitled20}</p>
+                      </div>
+  
+    <div data-id="div-mt9uiobo-c" data-name="Text" data-pinned="true" style={{
+                        display: 'flex',
+                        padding: '6px 12px',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        border: '1px solid rgba(245, 242, 236, 0.15)',
+                        width: 'min-content',
+                        height: 'min-content'
+                      }}>
+                        <p data-id="p-mt9uiobo-d" data-name="UX Strategy" style={{
+                          color: '#C8C4BC',
+                          fontFamily: '"DM Mono", sans-serif',
+                          fontSize: '10.88px',
+                          fontStyle: 'normal',
+                          fontWeight: '400',
+                          lineHeight: '1.333',
+                          letterSpacing: '1.306px',
+                          textTransform: 'uppercase',
+                          width: 'min-content',
+                          margin: '0px',
+                          height: 'auto',
+                          position: 'relative',
+                          flex: '0 0 auto',
+                          order: '0',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          whiteSpace: 'nowrap'
+                        }}>{item.untitled21}</p>
+                      </div>
+  </div>
+                      
+    <div data-id="frame-mt9vxihy-3a" data-name="Frame" style={{
+                      position: 'relative',
+                      width: 'min-content',
+                      height: 'min-content',
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(0, 0, 0, 0)',
+                      overflow: 'visible',
+                      gap: '8px',
+                      flex: '0 0 auto'
+                    }}>
+    <div data-id="div-mt9uiobo-g" data-name="Text" data-pinned="true" style={{
+                        display: 'flex',
+                        padding: '6px 12px',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        border: '1px solid rgba(245, 242, 236, 0.15)',
+                        width: 'min-content',
+                        height: 'min-content'
+                      }}>
+                        <p data-id="p-mt9uiobo-h" data-name="Web Design" style={{
+                          color: '#C8C4BC',
+                          fontFamily: '"DM Mono", sans-serif',
+                          fontSize: '10.88px',
+                          fontStyle: 'normal',
+                          fontWeight: '400',
+                          lineHeight: '1.333',
+                          letterSpacing: '1.306px',
+                          textTransform: 'uppercase',
+                          width: 'min-content',
+                          margin: '0px',
+                          height: 'auto',
+                          position: 'relative',
+                          flex: '0 0 auto',
+                          order: '0',
+                          whiteSpace: 'nowrap'
+                        }}>{item.untitled22}</p>
+                      </div>
+  
+    <div data-id="div-mt9uiobo-i" data-name="Text" data-pinned="true" style={{
+                        display: 'flex',
+                        padding: '6px 12px',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        border: '1px solid rgba(245, 242, 236, 0.15)',
+                        width: 'min-content',
+                        height: 'min-content'
+                      }}>
+                        <p data-id="p-mt9uiobo-j" data-name="Development" style={{
+                          color: '#C8C4BC',
+                          fontFamily: '"DM Mono", sans-serif',
+                          fontSize: '10.88px',
+                          fontStyle: 'normal',
+                          fontWeight: '400',
+                          lineHeight: '1.333',
+                          letterSpacing: '1.306px',
+                          textTransform: 'uppercase',
+                          width: 'min-content',
+                          margin: '0px',
+                          height: 'auto',
+                          position: 'relative',
+                          flex: '0 0 auto',
+                          order: '0',
+                          whiteSpace: 'nowrap',
+                          transform: 'rotate(0deg)'
+                        }}>{item.untitled23}</p>
+                      </div>
+  </div>
+                    </div>
+                  </div>
+                  <div data-id="div-mt9uiobo-k" data-name="Container" style={{
+                  display: 'flex',
+                  width: '301px',
+                  height: 'min-content',
+                  paddingTop: '24px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '2'
+                }}>
+                    <div data-id="div-mt9uiobo-l" data-name="Paragraph" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    width: '301px',
+                    height: '14px',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-m" data-name="Client" style={{
+                      color: '#6B6864',
+                      fontFamily: '"DM Mono", sans-serif',
+                      fontSize: '10.4px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.333',
+                      letterSpacing: '1.04px',
+                      textTransform: 'uppercase',
+                      width: '43px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        Client
+                      </p>
+                    </div>
+                    <div data-id="div-mt9uiobo-n" data-name="Paragraph" style={{
+                    display: 'flex',
+                    width: '301px',
+                    height: '32px',
+                    paddingTop: '8px',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '1'
+                  }}>
+                      <p data-id="p-mt9uiobo-o" data-name="Meridian Architects" style={{
+                      color: '#F5F2EC',
+                      fontFamily: 'Barlow, sans-serif',
+                      fontSize: '16px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.5',
+                      width: '136px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>{item.untitled4}</p>
+                    </div>
+                  </div>
+                  <div data-id="div-mt9uiobo-p" data-name="Container" style={{
+                  display: 'flex',
+                  width: '301px',
+                  height: '70px',
+                  paddingTop: '24px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '3'
+                }}>
+                    <div data-id="div-mt9uiobo-q" data-name="Paragraph" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    width: '301px',
+                    height: '14px',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-r" data-name="Year" style={{
+                      color: '#6B6864',
+                      fontFamily: '"DM Mono", sans-serif',
+                      fontSize: '10.4px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.333',
+                      letterSpacing: '1.04px',
+                      textTransform: 'uppercase',
+                      width: '29px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        Year
+                      </p>
+                    </div>
+                    <div data-id="div-mt9uiobo-s" data-name="Paragraph" style={{
+                    display: 'flex',
+                    width: '301px',
+                    height: '32px',
+                    paddingTop: '8px',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '1'
+                  }}>
+                      <p data-id="p-mt9uiobo-t" data-name="2024" style={{
+                      color: '#F5F2EC',
+                      fontFamily: 'Barlow, sans-serif',
+                      fontSize: '16px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.5',
+                      width: '36px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>{item.untitled5}</p>
+                    </div>
+                  </div>
+                </div>
+                <div data-id="div-mt9uiobo-u" data-name="Container" data-pinned="true" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gridRow: '1 / span 1',
+                gridColumn: '5 / span 8',
+                justifySelf: 'stretch',
+                height: '259.24200439453125px',
+                position: 'relative',
+                flex: '1 0 0px'
+              }}>
+                  <div data-id="div-mt9uiobo-v" data-name="Paragraph" style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  width: '666px',
+                  height: '15px',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}>
+                    <p data-id="p-mt9uiobo-w" data-name="Overview" style={{
+                    color: '#6B6864',
+                    fontFamily: '"DM Mono", sans-serif',
+                    fontSize: '10.88px',
+                    fontStyle: 'normal',
+                    fontWeight: '400',
+                    lineHeight: '1.333',
+                    letterSpacing: '1.741px',
+                    textTransform: 'uppercase',
+                    width: 'min-content',
+                    margin: '0px',
+                    height: 'auto',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      Overview
+                    </p>
+                  </div>
+                  <div data-id="div-mt9uiobo-x" data-name="Paragraph" style={{
+                  display: 'flex',
+                  paddingTop: '24px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  width: '100%',
+                  height: '112px',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '1'
+                }}>
+                    <p data-id="p-mt9uiobo-y" data-name="Meridian Architects is a forty-person practice kno" style={{
+                    width: '100%',
+                    color: '#C8C4BC',
+                    fontFamily: 'Barlow, sans-serif',
+                    fontSize: '18.032px',
+                    fontStyle: 'normal',
+                    fontWeight: '400',
+                    lineHeight: '1.625',
+                    margin: '0px',
+                    height: 'auto',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0',
+                    maxWidth: '666px'
+                  }}>{item.untitled3}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div data-id="div-mt9uiobo-z" data-name="Container" style={{
+          display: 'flex',
+          width: '100%',
+          maxWidth: '100%',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          height: '1291px',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '2',
+          paddingTop: '112px',
+          paddingRight: '80px',
+          paddingBottom: '112px',
+          paddingLeft: '80px'
+        }}>
+            <div data-id="div-mt9uiobo-10" data-name="Container" style={{
+            display: 'flex',
+            height: '139px',
+            width: '100%',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-evenly',
+            gap: '80px'
+          }}>
+              <div data-id="div-mt9uiobo-11" data-name="Container" data-pinned="true" style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gridRow: '1 / span 1',
+              gridColumn: '1 / span 1',
+              justifySelf: 'stretch',
+              height: '138.50799560546875px',
+              position: 'relative',
+              flex: '1 0 0px'
+            }}>
+                <div data-id="div-mt9uiobo-12" data-name="Paragraph" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                width: '100%',
+                height: 'min-content',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '0'
+              }}>
+                  <p data-id="p-mt9uiobo-13" data-name="The challenge" style={{
+                  color: '#E8FF47',
+                  fontFamily: '"DM Mono", sans-serif',
+                  fontSize: '10.88px',
+                  fontStyle: 'normal',
+                  fontWeight: '400',
+                  lineHeight: '1.333',
+                  letterSpacing: '1.958px',
+                  textTransform: 'uppercase',
+                  width: 'min-content',
+                  margin: '0px',
+                  height: 'auto',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0',
+                  whiteSpace: 'nowrap'
+                }}>
+                    The challenge
+                  </p>
+                </div>
+                <div data-id="div-mt9uiobo-14" data-name="Paragraph" style={{
+                display: 'flex',
+                width: '100%',
+                paddingTop: '20px',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                height: 'min-content',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '1'
+              }}>
+                  <p data-id="p-mt9uiobo-15" data-name="Architecture practices are notoriously hard to dif" style={{
+                  width: '100%',
+                  color: '#C8C4BC',
+                  fontFamily: 'Barlow, sans-serif',
+                  fontSize: '16px',
+                  fontStyle: 'normal',
+                  fontWeight: '400',
+                  lineHeight: '1.625',
+                  margin: '0px',
+                  height: 'auto',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}>{item.untitled6}</p>
+                </div>
+              </div>
+              <div data-id="div-mt9uiobo-16" data-name="Container" data-pinned="true" style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gridRow: '1 / span 1',
+              gridColumn: '2 / span 1',
+              justifySelf: 'stretch',
+              height: '138.50799560546875px',
+              position: 'relative',
+              flex: '1 0 0px'
+            }}>
+                <div data-id="div-mt9uiobo-17" data-name="Paragraph" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                width: '100%',
+                height: 'min-content',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '0'
+              }}>
+                  <p data-id="p-mt9uiobo-18" data-name="Our approach" style={{
+                  color: '#E8FF47',
+                  fontFamily: '"DM Mono", sans-serif',
+                  fontSize: '10.88px',
+                  fontStyle: 'normal',
+                  fontWeight: '400',
+                  lineHeight: '1.333',
+                  letterSpacing: '1.958px',
+                  textTransform: 'uppercase',
+                  width: '100%',
+                  margin: '0px',
+                  height: 'auto',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0',
+                  whiteSpace: 'nowrap'
+                }}>
+                    Our approach
+                  </p>
+                </div>
+                <div data-id="div-mt9uiobo-19" data-name="Paragraph" style={{
+                display: 'flex',
+                width: '100%',
+                paddingTop: '20px',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                height: '124px',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '1'
+              }}>
+                  <p data-id="p-mt9uiobo-1a" data-name="We led with their photography. A full-bleed editor" style={{
+                  width: '100%',
+                  color: '#C8C4BC',
+                  fontFamily: 'Barlow, sans-serif',
+                  fontSize: '16px',
+                  fontStyle: 'normal',
+                  fontWeight: '400',
+                  lineHeight: '1.625',
+                  margin: '0px',
+                  height: 'auto',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}>{item.untitled7}</p>
+                </div>
+              </div>
+            </div>
+            <div data-id="div-mt9uiobo-1b" data-name="Container:margin" style={{
+            display: 'flex',
+            paddingTop: '80px',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            width: '100%',
+            height: '531px',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '1'
+          }}>
+              <div data-id="div-mt9uiobo-1c" data-name="Container" style={{
+              display: 'flex',
+              width: '100%',
+              height: '451px',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              overflow: 'hidden',
+              backgroundColor: '#1E1E1E',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0'
+            }}>
+                <div data-id="div-mt9uiobo-1d" data-name="Image (Project detail)" style={{
+                height: '451px',
+                width: '100%',
+                overflow: 'hidden',
+                backgroundImage: \`url(\${item.untitled8})\`,
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '0'
+              }}></div>
+              </div>
+            </div>
+            <div data-id="div-mt9uiobo-1e" data-name="Container:margin" style={{
+            display: 'flex',
+            paddingTop: '16px',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            width: '100%',
+            height: '397px',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '2'
+          }}>
+              <div data-id="div-mt9uiobo-1f" data-name="Container" style={{
+              display: 'flex',
+              height: '381px',
+              width: '100%',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px'
+            }}>
+                <div data-id="div-mt9uiobo-1g" data-name="Container" data-pinned="true" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gridRow: '1 / span 1',
+                gridColumn: '1 / span 1',
+                justifySelf: 'stretch',
+                height: '380.625px',
+                overflow: 'hidden',
+                position: 'relative',
+                backgroundColor: '#1E1E1E',
+                flex: '1 0 0px'
+              }}>
+                  <div data-id="div-mt9uiobo-1h" data-name="Image (Project)" style={{
+                  height: '381px',
+                  width: '100%',
+                  overflow: 'hidden',
+                  backgroundImage: \`url(\${item.untitled9})\`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}></div>
+                </div>
+                <div data-id="div-mt9uiobo-1i" data-name="Container" data-pinned="true" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gridRow: '1 / span 1',
+                gridColumn: '2 / span 1',
+                justifySelf: 'stretch',
+                height: '380.625px',
+                overflow: 'hidden',
+                position: 'relative',
+                backgroundColor: '#1E1E1E',
+                flex: '1 0 0px'
+              }}>
+                  <div data-id="div-mt9uiobo-1j" data-name="Image (Project)" style={{
+                  height: '381px',
+                  width: '100%',
+                  overflow: 'hidden',
+                  backgroundImage: \`url(\${item.untitled10})\`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div data-id="div-mt9uiobo-1k" data-name="Section" style={{
+          display: 'flex',
+          padding: '112px 0',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          borderTop: '1px solid rgba(245, 242, 236, 0.08)',
+          borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+          width: '100%',
+          height: '460px',
+          backgroundColor: '#141414',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '3'
+        }}>
+            <div data-id="div-mt9uiobo-1l" data-name="Container" style={{
+            display: 'flex',
+            maxWidth: '100%',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            width: '100%',
+            height: '234px',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0',
+            paddingTop: '0',
+            paddingRight: '80px',
+            paddingBottom: '0',
+            paddingLeft: '80px'
+          }}>
+              <div data-id="div-mt9uiobo-1m" data-name="Paragraph" style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              width: '1031px',
+              height: '15px',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0'
+            }}>
+                <p data-id="p-mt9uiobo-1n" data-name="Outcomes" style={{
+                color: '#6B6864',
+                fontFamily: '"DM Mono", sans-serif',
+                fontSize: '10.88px',
+                fontStyle: 'normal',
+                fontWeight: '400',
+                lineHeight: '1.333',
+                letterSpacing: '1.958px',
+                textTransform: 'uppercase',
+                width: '66px',
+                margin: '0px',
+                height: 'auto',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '0'
+              }}>
+                  Outcomes
+                </p>
+              </div>
+              <div data-id="div-mt9uiobo-1o" data-name="Container:margin" style={{
+              display: 'flex',
+              paddingTop: '56px',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              width: '100%',
+              height: '219px',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '1'
+            }}>
+                <div data-id="div-mt9uiobo-1p" data-name="Container" style={{
+                display: 'flex',
+                height: '163px',
+                borderLeft: '1px solid rgba(245, 242, 236, 0.08)',
+                width: '100%',
+                position: 'relative',
+                flex: '0 0 auto',
+                order: '0',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                  <div data-id="div-mt9uiobo-1q" data-name="Container" data-pinned="true" style={{
+                  display: 'flex',
+                  padding: '40px 32px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gridRow: '1 / span 1',
+                  gridColumn: '1 / span 1',
+                  justifySelf: 'stretch',
+                  borderRight: '1px solid rgba(245, 242, 236, 0.08)',
+                  borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+                  height: '163.21099853515625px',
+                  position: 'relative',
+                  flex: '1 0 0px',
+                  order: '0'
+                }}>
+                    <div data-id="div-mt9uiobo-1r" data-name="Container" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    width: '192.5px',
+                    height: '57px',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-1s" data-name="+210%" style={{
+                      color: '#E8FF47',
+                      fontFamily: '"Barlow Condensed", sans-serif',
+                      fontSize: '56.35px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1',
+                      letterSpacing: '-1.127px',
+                      width: '125px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        +210%
+                      </p>
+                    </div>
+                    <div data-id="div-mt9uiobo-1t" data-name="Container" style={{
+                    display: 'flex',
+                    width: '192.5px',
+                    height: 'min-content',
+                    paddingTop: '12px',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '1'
+                  }}>
+                      <p data-id="p-mt9uiobo-1u" data-name="Avg. session duration" style={{
+                      color: '#6B6864',
+                      fontFamily: '"DM Mono", sans-serif',
+                      fontSize: '10.4px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.333',
+                      letterSpacing: '1.04px',
+                      textTransform: 'uppercase',
+                      width: '152px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0',
+                      whiteSpace: 'nowrap'
+                    }}>
+                        Avg. session duration
+                      </p>
+                    </div>
+                  </div>
+                  <div data-id="div-mt9uiobo-1v" data-name="Container" data-pinned="true" style={{
+                  display: 'flex',
+                  padding: '40px 32px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gridRow: '1 / span 1',
+                  gridColumn: '2 / span 1',
+                  justifySelf: 'stretch',
+                  borderRight: '1px solid rgba(245, 242, 236, 0.08)',
+                  borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+                  height: '163.21099853515625px',
+                  position: 'relative',
+                  flex: '1 0 0px',
+                  order: '1'
+                }}>
+                    <div data-id="div-mt9uiobo-1w" data-name="Container" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    width: '192.5px',
+                    height: '57px',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-1x" data-name="4.2s" style={{
+                      color: '#E8FF47',
+                      fontFamily: '"Barlow Condensed", sans-serif',
+                      fontSize: '56.35px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1',
+                      letterSpacing: '-1.127px',
+                      width: '75px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        4.2s
+                      </p>
+                    </div>
+                    <div data-id="div-mt9uiobo-1y" data-name="Container" style={{
+                    display: 'flex',
+                    width: '192.5px',
+                    height: 'min-content',
+                    paddingTop: '12px',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '1'
+                  }}>
+                      <p data-id="p-mt9uiobo-1z" data-name="Avg. time to first scroll" style={{
+                      color: '#6B6864',
+                      fontFamily: '"DM Mono", sans-serif',
+                      fontSize: '10.4px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.333',
+                      letterSpacing: '1.04px',
+                      textTransform: 'uppercase',
+                      width: '181px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0',
+                      whiteSpace: 'nowrap'
+                    }}>
+                        Avg. time to first scroll
+                      </p>
+                    </div>
+                  </div>
+                  <div data-id="div-mt9uiobo-20" data-name="Container" data-pinned="true" style={{
+                  display: 'flex',
+                  padding: '40px 32px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gridRow: '1 / span 1',
+                  gridColumn: '3 / span 1',
+                  justifySelf: 'stretch',
+                  borderRight: '1px solid rgba(245, 242, 236, 0.08)',
+                  borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+                  height: '163.21099853515625px',
+                  position: 'relative',
+                  flex: '1 0 0px',
+                  order: '2'
+                }}>
+                    <div data-id="div-mt9uiobo-21" data-name="Container" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    width: '192.5px',
+                    height: '57px',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-22" data-name="+61%" style={{
+                      color: '#E8FF47',
+                      fontFamily: '"Barlow Condensed", sans-serif',
+                      fontSize: '56.35px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1',
+                      letterSpacing: '-1.127px',
+                      width: '102px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        +61%
+                      </p>
+                    </div>
+                    <div data-id="div-mt9uiobo-23" data-name="Container" style={{
+                    display: 'flex',
+                    width: '192.5px',
+                    height: 'min-content',
+                    paddingTop: '12px',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '1'
+                  }}>
+                      <p data-id="p-mt9uiobo-24" data-name="RFP submissions" style={{
+                      color: '#6B6864',
+                      fontFamily: '"DM Mono", sans-serif',
+                      fontSize: '10.4px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.333',
+                      letterSpacing: '1.04px',
+                      textTransform: 'uppercase',
+                      width: '109px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0',
+                      whiteSpace: 'nowrap'
+                    }}>
+                        RFP submissions
+                      </p>
+                    </div>
+                  </div>
+                  <div data-id="div-mt9uiobo-25" data-name="Container" data-pinned="true" style={{
+                  display: 'flex',
+                  padding: '40px 32px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gridRow: '1 / span 1',
+                  gridColumn: '4 / span 1',
+                  justifySelf: 'stretch',
+                  borderRight: '1px solid rgba(245, 242, 236, 0.08)',
+                  borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+                  height: '163.21099853515625px',
+                  position: 'relative',
+                  flex: '1 0 0px',
+                  order: '3'
+                }}>
+                    <div data-id="div-mt9uiobo-26" data-name="Container" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    width: '192.5px',
+                    height: '57px',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-27" data-name="D&AD" style={{
+                      color: '#E8FF47',
+                      fontFamily: '"Barlow Condensed", sans-serif',
+                      fontSize: '56.35px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1',
+                      letterSpacing: '-1.127px',
+                      width: '103px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        D&AD
+                      </p>
+                    </div>
+                    <div data-id="div-mt9uiobo-28" data-name="Container" style={{
+                    display: 'flex',
+                    width: '192.5px',
+                    height: 'min-content',
+                    paddingTop: '12px',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '1'
+                  }}>
+                      <p data-id="p-mt9uiobo-29" data-name="Shortlisted 2024" style={{
+                      color: '#6B6864',
+                      fontFamily: '"DM Mono", sans-serif',
+                      fontSize: '10.4px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.333',
+                      letterSpacing: '1.04px',
+                      textTransform: 'uppercase',
+                      width: '116px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0',
+                      whiteSpace: 'nowrap'
+                    }}>
+                        Shortlisted 2024
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div data-id="div-mt9uiobo-2a" data-name="Section" style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          borderBottom: '1px solid rgba(245, 242, 236, 0.08)',
+          width: '100%',
+          height: '376.6640625px',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '4'
+        }}>
+            <div data-id="div-mt9uiobo-2b" data-name="Link" style={{
+            display: 'flex',
+            height: '375.664px',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            width: '100%',
+            overflow: 'hidden',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0'
+          }}>
+              <div data-id="div-mt9uiobo-2c" data-name="CaseStudy" style={{
+              height: '375.664px',
+              width: '100%',
+              overflow: 'hidden',
+              backgroundColor: '#1E1E1E',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0'
+            }}>
+                <div data-id="div-mt9uiobo-2d" data-name="Image (FORM STUDIO)" data-pinned="true" style={{
+                width: '100%',
+                height: '375.664px',
+                opacity: '0.3',
+                overflow: 'hidden',
+                position: 'absolute',
+                left: '0px',
+                top: '0px',
+                backgroundImage: 'url(https://assets.revyme.app/b072a507-4f93-11f1-a46a-920007cce419/055d350c-ac4d-11f1-b3b1-920007cce419/images/uploaded/bca362287f73a32f.webp)',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+              }}></div>
+                <div data-id="div-mt9uiobo-2e" data-name="Container" data-pinned="true" style={{
+                width: '100%',
+                height: '375.664px',
+                position: 'absolute',
+                left: '0px',
+                top: '0px',
+                backgroundImage: 'linear-gradient(180deg, rgba(10, 10, 10, 0.30) 0%, rgba(10, 10, 10, 0.70) 100%)'
+              }}></div>
+                <div data-id="div-mt9uiobo-2f" data-name="Container" data-pinned="true" style={{
+                display: 'flex',
+                width: '100%',
+                height: '375.664px',
+                padding: '0 24px',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                position: 'absolute',
+                left: '0px',
+                top: '0px'
+              }}>
+                  <div data-id="div-mt9uiobo-2g" data-name="Paragraph:margin" style={{
+                  display: 'flex',
+                  paddingBottom: '20px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  width: '103px',
+                  height: '35px',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '0'
+                }}>
+                    <p data-id="p-mt9uiobo-2h" data-name="Next project" style={{
+                    color: '#E8FF47',
+                    textAlign: 'center',
+                    fontFamily: '"DM Mono", sans-serif',
+                    fontSize: '11.2px',
+                    fontStyle: 'normal',
+                    fontWeight: '400',
+                    lineHeight: '1.333',
+                    letterSpacing: '2.016px',
+                    textTransform: 'uppercase',
+                    width: '103px',
+                    margin: '0px',
+                    height: 'auto',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0',
+                    whiteSpace: 'nowrap'
+                  }}>Next project</p>
+                  </div>
+                  <div data-id="div-mt9uiobo-2i" data-name="Heading 2" style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  width: '384px',
+                  height: '83px',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '1'
+                }}>
+                    <p data-id="p-mt9uiobo-2j" data-name="FORM STUDIO" style={{
+                    color: '#F5F2EC',
+                    textAlign: 'center',
+                    fontFamily: '"Barlow Condensed", sans-serif',
+                    fontSize: '90.16px',
+                    fontStyle: 'normal',
+                    fontWeight: '400',
+                    lineHeight: '0.92',
+                    letterSpacing: '-1.803px',
+                    width: '384px',
+                    margin: '0px',
+                    height: 'auto',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      FORM STUDIO
+                    </p>
+                  </div>
+                  <div data-id="div-mt9uiobo-2k" data-name="Container:margin" style={{
+                  display: 'flex',
+                  paddingTop: '32px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  width: '56px',
+                  height: '88px',
+                  position: 'relative',
+                  flex: '0 0 auto',
+                  order: '2'
+                }}>
+                    <div data-id="div-mt9uiobo-2l" data-name="Container" style={{
+                    display: 'flex',
+                    width: '56px',
+                    height: '56px',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    borderRadius: '16777200px',
+                    border: '1px solid rgba(245, 242, 236, 0.40)',
+                    position: 'relative',
+                    flex: '0 0 auto',
+                    order: '0'
+                  }}>
+                      <p data-id="p-mt9uiobo-2m" data-name="→" style={{
+                      color: '#F5F2EC',
+                      textAlign: 'center',
+                      fontFamily: 'Barlow, sans-serif',
+                      fontSize: '20px',
+                      fontStyle: 'normal',
+                      fontWeight: '400',
+                      lineHeight: '1.4',
+                      width: '20px',
+                      margin: '0px',
+                      height: 'auto',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      order: '0'
+                    }}>
+                        →
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+                  </div>
+        <div data-id="div-mt9uiobo-2v" data-name="CaseStudy" data-pinned="true" style={{
+        width: '100%',
+        height: '681.695px',
+        position: 'absolute',
+        overflow: 'hidden',
+        left: '0px',
+        top: '0px',
+        backgroundColor: '#141414',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        display: 'flex', order: '1'
+      }}>
+          <div data-id="div-mt9uiobo-2w" data-name="Image (MERIDIAN ARCHITECTS)" data-pinned="true" style={{
+          width: '100%',
+          height: '681.695px',
+          opacity: '0.35',
+          overflow: 'hidden',
+          position: 'absolute',
+          backgroundImage: \`url(\${item.untitled19})\`,
+          backgroundRepeat: 'no-repeat',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          flex: '0 0 auto',
+          left: '0px',
+          top: '0.15354207397052733px'
+        }}></div>
+          <div data-id="div-mt9uiobo-2x" data-name="Container" data-pinned="true" style={{
+          width: '100%',
+          position: 'absolute',
+          backgroundImage: 'linear-gradient(180deg, rgba(10, 10, 10, 0.20) 0%, rgba(10, 10, 10, 0.85) 100%)',
+          left: '0px',
+          top: '0px',
+          height: '682px'
+        }}></div>
+          <div data-id="div-mt9uiobo-2y" data-name="Container" data-pinned="true" style={{
+          display: 'flex',
+          width: '100%',
+          maxWidth: '100%',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          position: 'relative',
+          flex: '1 0 0px',
+          paddingTop: '0px',
+          paddingRight: '48px',
+          paddingBottom: '80px',
+          paddingLeft: '48px',
+          justifyContent: 'flex-end'
+        }}>
+            <div data-id="div-mt9uiobo-2z" data-name="Paragraph" style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            width: '100%',
+            height: '15px',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0'
+          }}>
+              <p data-id="p-mt9uiobo-30" data-name="02 — Web Experience — 2024" style={{
+              color: '#E8FF47',
+              fontFamily: '"DM Mono", sans-serif',
+              fontSize: '11.2px',
+              fontStyle: 'normal',
+              fontWeight: '400',
+              lineHeight: '1.333',
+              letterSpacing: '2.016px',
+              textTransform: 'uppercase',
+              width: '100%',
+              margin: '0px',
+              height: 'auto',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0'
+            }}>{item.title}</p>
+            </div>
+            <div data-id="div-mt9uiobo-31" data-name="Heading 1" style={{
+            display: 'flex',
+            width: '100%',
+            height: 'min-content',
+            paddingTop: '16px',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '1'
+          }}>
+              <p data-id="p-mt9uiobo-32" data-name="MERIDIAN ARCHITECTS" style={{
+              color: '#F5F2EC',
+              fontFamily: '"Barlow Condensed", sans-serif',
+              fontSize: '101.43px',
+              fontStyle: 'normal',
+              fontWeight: '400',
+              lineHeight: '0.92',
+              letterSpacing: '-2.536px',
+              width: '717px',
+              margin: '0px',
+              height: 'auto',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0'
+            }}>{item.untitled}</p>
+            </div>
+            <div data-id="div-mt9uiobo-33" data-name="Paragraph" style={{
+            display: 'flex',
+            width: '100%',
+            height: '58px',
+            maxWidth: '672px',
+            paddingTop: '24px',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '2'
+          }}>
+              <p data-id="p-mt9uiobo-34" data-name="A digital portfolio that matches the ambition of t" style={{
+              color: '#C8C4BC',
+              fontFamily: 'Barlow, sans-serif',
+              fontSize: '22.4px',
+              fontStyle: 'normal',
+              fontWeight: '400',
+              lineHeight: '1.5',
+              width: '100%',
+              margin: '0px',
+              height: 'auto',
+              position: 'relative',
+              flex: '0 0 auto',
+              order: '0'
+            }}>{item.untitled2}</p>
+            </div>
+          </div>
+        </div>
+        <div data-id="div-mt9uiobo-35" data-name="CaseStudy" data-pinned="true" style={{
+        display: 'flex',
+        width: '100%',
+        height: '80px',
+        padding: '0 48px',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        position: 'absolute',
+        borderBottom: '1px solid rgba(245, 242, 236, 0.06)',
+        backdropFilter: 'blur(12px)',
+        left: '0px',
+        top: '0px',
+        backgroundColor: 'rgba(10, 10, 10, 0.92)', order: '1'
+      }}>
+          <div data-id="div-mt9uiobo-36" data-name="Link" style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          width: '55px',
+          height: '28px',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '0'
+        }}>
+            <p data-id="p-mt9uiobo-37" data-name="ATELIER." style={{
+            color: '#E8FF47',
+            fontFamily: '"Barlow Condensed", sans-serif',
+            fontSize: '20px',
+            fontStyle: 'normal',
+            fontWeight: '400',
+            lineHeight: '1.4',
+            letterSpacing: '-0.5px',
+            width: '55px',
+            margin: '0px',
+            height: 'auto',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0'
+          }}>
+              ATELIER.
+            </p>
+          </div>
+          <div data-id="div-mt9uiobo-38" data-name="Button" style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          width: '53px',
+          height: '15px',
+          position: 'relative',
+          flex: '0 0 auto',
+          order: '1'
+        }}>
+            <p data-id="p-mt9uiobo-39" data-name="← Back" style={{
+            color: '#6B6864',
+            textAlign: 'center',
+            fontFamily: '"DM Mono", sans-serif',
+            fontSize: '11.2px',
+            fontStyle: 'normal',
+            fontWeight: '400',
+            lineHeight: '1.333',
+            letterSpacing: '1.568px',
+            textTransform: 'uppercase',
+            width: '53px',
+            margin: '0px',
+            height: 'auto',
+            position: 'relative',
+            flex: '0 0 auto',
+            order: '0'
+          }}>
+              ← Back
+            </p>
+          </div>
+        </div>
+      </div></div>;
+}
+const canvasNodes = <>
+  <BaRoLe data-id="BaRoLe-mtu5f85o-2" data-name="BaRoLe" data-canvas-node="true" style={{
+    position: 'absolute',
+    height: '81px',
+    width: '1440px',
+    flex: '0 0 auto',
+    left: '-1117px',
+    top: '346px'
+  }}></BaRoLe>
+</>;`,
+    'app/page.tsx': `import PageClient from './page.client';
+
+export const metadata = {};
+
+export default function Page() {
+  return <PageClient />;
+}
+`,
+    'app/page.client.tsx': `'use client';
+export default function Page() { return <div data-id="root" style={{ width: '100%', minHeight: '400px' }}></div>; }
+`,
+    'components/BaRoLe.tsx': `'use client';
+/** @label "BaRoLe" */
+/** @comment "stub" */
+/** @defaultWidth 1440 */
+/** @defaultHeight 81 */
+/** @controls {} */
+import { withResponsiveProps } from '@revyme/runtime';
+function BaRoLe({ ...props }: { [key: string]: any }) {
+  return <div {...props} style={{ position: 'relative', width: '100%', height: '100%', background: '#222', ...props.style }} />;
+}
+export default withResponsiveProps(BaRoLe);
+`,
+    'cms/collection-1.schema.json': "{\"slug\": \"collection-1\", \"name\": \"Collection 1\", \"fields\": [{\"id\": \"title\", \"name\": \"title\", \"type\": \"text\"}, {\"id\": \"untitled\", \"name\": \"untitled\", \"type\": \"text\"}, {\"id\": \"untitled10\", \"name\": \"untitled10\", \"type\": \"image\"}, {\"id\": \"untitled19\", \"name\": \"untitled19\", \"type\": \"image\"}, {\"id\": \"untitled2\", \"name\": \"untitled2\", \"type\": \"text\"}, {\"id\": \"untitled20\", \"name\": \"untitled20\", \"type\": \"text\"}, {\"id\": \"untitled21\", \"name\": \"untitled21\", \"type\": \"text\"}, {\"id\": \"untitled22\", \"name\": \"untitled22\", \"type\": \"text\"}, {\"id\": \"untitled23\", \"name\": \"untitled23\", \"type\": \"text\"}, {\"id\": \"untitled3\", \"name\": \"untitled3\", \"type\": \"text\"}, {\"id\": \"untitled4\", \"name\": \"untitled4\", \"type\": \"text\"}, {\"id\": \"untitled5\", \"name\": \"untitled5\", \"type\": \"text\"}, {\"id\": \"untitled6\", \"name\": \"untitled6\", \"type\": \"text\"}, {\"id\": \"untitled7\", \"name\": \"untitled7\", \"type\": \"text\"}, {\"id\": \"untitled8\", \"name\": \"untitled8\", \"type\": \"image\"}, {\"id\": \"untitled9\", \"name\": \"untitled9\", \"type\": \"image\"}]}",
+    'cms/collection-1.json': "[{\"_id\": \"i1\", \"_slug\": \"meridian\", \"_status\": \"published\", \"_createdAt\": \"2026-09-01T00:00:00.000Z\", \"_updatedAt\": \"2026-09-01T00:00:00.000Z\", \"title\": \"02 \\u2014 Web Experience \\u2014 2024\", \"untitled\": \"MERIDIAN ARCHITECTS\", \"untitled10\": \"https://images.unsplash.com/photo-1545897398-2aba891843b6?w=800\", \"untitled19\": \"https://images.unsplash.com/photo-1545897398-2aba891843b6?w=800\", \"untitled2\": \"A digital portfolio that matches the ambition of the practice.\", \"untitled20\": \"UNTITLED20\", \"untitled21\": \"UNTITLED21\", \"untitled22\": \"UNTITLED22\", \"untitled23\": \"UNTITLED23\", \"untitled3\": \"UNTITLED3\", \"untitled4\": \"UNTITLED4\", \"untitled5\": \"UNTITLED5\", \"untitled6\": \"UNTITLED6\", \"untitled7\": \"UNTITLED7\", \"untitled8\": \"https://images.unsplash.com/photo-1545897398-2aba891843b6?w=800\", \"untitled9\": \"https://images.unsplash.com/photo-1545897398-2aba891843b6?w=800\"}]",
+  },
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// INSTANCE_CANVAS_3VP — three page viewports (desktop primary, tablet,
+// mobile) and a DESIGN-COMPONENT INSTANCE (`components/Card.tsx`, flex root
+// that forwards `{...rest}`) parked on the open canvas between the desktop and
+// tablet tiles. Used for: dragging a component instance into a REPLICA must
+// show it ONLY there — inline `display:'none'` on the tag (the primary-range
+// hide no @media band can express), the entered band restoring the master
+// ROOT's `flex`, the other replica hidden (2026-09-09: instances skipped the
+// inline hide and stayed visible on desktop).
+// ─────────────────────────────────────────────────────────────────────────
+export const INSTANCE_CANVAS_3VP: ProjectData = {
+  format: 'revyme-v1',
+  files: {
+    'app/page.tsx': `import PageClient from './page.client';\n\nexport const metadata = {};\n\nexport default function Page() {\n  return <PageClient />;\n}\n`,
+    'app/page.client.tsx': `/** @canvas {
+  "viewports": [
+    { "id": "desktop", "label": "Desktop", "width": 1440, "isPrimary": true, "order": 0 },
+    { "id": "tablet", "label": "Tablet", "width": 768, "isPrimary": false, "order": 1 },
+    { "id": "mobile", "label": "Mobile", "width": 375, "isPrimary": false, "order": 2 }
+  ],
+  "positions": {
+    "desktop": { "x": 0, "y": 0 },
+    "tablet": { "x": 1960, "y": 0 },
+    "mobile": { "x": 2860, "y": 0 }
+  }
+} */
+'use client';
+import Card from '@/components/Card';
+
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Page" style={{
+      display: 'flex', flexDirection: 'column', gap: '24px',
+      width: '100%', minHeight: '900px', position: 'relative',
+      background: '#0d0d1a', padding: '40px',
+    }}>
+      <div data-id="hero" data-name="Hero" style={{
+        width: '100%', height: '200px', background: '#1a1a3a',
+        position: 'relative', flex: '0 0 auto',
+      }}></div>
+    </div>
+  );
+}
+const canvasNodes = (<>
+  <Card data-id="card-inst" data-name="Card" data-canvas-node="true" style={{
+    position: 'absolute', left: '1540px', top: '120px', width: '300px', height: '200px',
+  }} />
+</>);
+`,
+    'components/Card.tsx': `'use client';
+
+/** @name "Card" */
+
+import React from 'react';
+import { motion, LayoutGroup } from 'framer-motion';
+import { withResponsiveProps } from '@revyme/runtime';
+
+const variantConfig = [{ name: 'default', label: 'Card', x: 0, y: 0, isPrimary: true }];
+
+function Card({ style, initialVariant = 'default', ...rest }: { style?: React.CSSProperties; initialVariant?: string; [key: string]: any }) {
+  return <LayoutGroup>
+    <motion.div layout={true} data-id="card-root" initial={['default', initialVariant]} animate={['default', initialVariant]} {...rest} data-name="Card" style={{
+      position: 'absolute',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '12px',
+      width: '300px',
+      height: '200px',
+      padding: '24px',
+      backgroundColor: '#97cffc',
+      borderRadius: '12px',
+      left: '0px',
+      top: '0px',
+      ...style
+    }}>
+      <motion.p layout={true} data-id="card-text" data-name="Text" style={{ fontSize: '24px', color: '#000000', position: 'relative' }}>Card</motion.p>
+    </motion.div>
+  </LayoutGroup>;
+}
+export default withResponsiveProps(Card);
+`,
+  },
+};
+
 export const SEEDS = {
   REPLICA_EXIT_TO_FRAME,
   NEGATIVE_MARGIN_ROW,
@@ -1271,6 +4902,11 @@ export const SEEDS = {
   COMPONENT_MASTER,
   REPLICA_ABSOLUTE_EXIT,
   ROTATED_FLEX_FRAME,
+  CMS_LIST_ROWS,
+  FLEX_WITH_ABSOLUTE_HERO,
+  USER_HERO_BEFORE,
+  USER_HERO_AFTER,
+  INSTANCE_CANVAS_3VP,
 } as const;
 
 export type SeedName = keyof typeof SEEDS;

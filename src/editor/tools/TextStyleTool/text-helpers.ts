@@ -65,3 +65,30 @@ export function mixedColorGradient(colors: string[]): string {
   if (colors.length <= 1) return colors[0] || 'transparent';
   return `linear-gradient(90deg, ${colors.join(', ')})`;
 }
+
+
+/** What the Text → Color row's swatch paints. Priority: the gradient+spans
+ *  "Mixed" preview → a mixed selection's colors blended as a gradient (the
+ *  Fill row has done this since day one; the Color row fell through to the
+ *  solid default and painted a BLACK chip under the word "Mixed",
+ *  2026-09-09) → the text gradient → the solid color. `fallbackColors` = the
+ *  base color + the span colors, used when the property reader reports mixed
+ *  without listing the values. */
+export function rowSwatchBackground(i: {
+  nodeMixed: boolean;
+  mixedSwatchCSS: string;
+  isMixed: boolean;
+  livePreviewColor?: string | null;
+  isGradient: boolean;
+  gradientCSS: string;
+  solidSwatch: string;
+  mixedValues?: string[];
+  fallbackColors?: string[];
+}): string {
+  if (i.nodeMixed && i.mixedSwatchCSS) return i.mixedSwatchCSS;
+  if (i.isMixed && i.livePreviewColor == null) {
+    const colors = (i.mixedValues && i.mixedValues.length > 0 ? i.mixedValues : (i.fallbackColors ?? [])).filter(Boolean);
+    if (colors.length > 0) return mixedColorGradient(colors);
+  }
+  return i.isGradient ? i.gradientCSS : i.solidSwatch;
+}

@@ -26,6 +26,7 @@ import { CmsBoundPill } from '../../../controls/CmsBoundPill';
 import { presetTokensAtom, livePresetTokenAtom } from '@/code/stores/preset-store';
 import { resolveTokenValue } from '@/code/project/preset-ops';
 import { trace } from '@/shared/debug-trace';
+import { rowSwatchBackground } from '../text-helpers';
 import LocaleBoundPill, { useLocaleStyleOverrides } from '@/editor/controls/LocaleBoundPill';
 import { parseVarRef } from '@/shared/css-utils';
 
@@ -555,7 +556,14 @@ export function TextColorControl() {
   // During a solid-color drag, the live raw color overrides the committed
   // value/preset so the row swatch + hex track the picker in real time.
   const solidSwatch = (!isGradient && livePreviewColor != null) ? livePreviewColor : (resolvedColor || '#000000');
-  const swatchBg = nodeMixed ? mixedSwatchCSS : (isGradient ? gradientCSS : solidSwatch);
+  const swatchBg = rowSwatchBackground({
+    nodeMixed, mixedSwatchCSS,
+    isMixed: colorResult.isMixed, livePreviewColor,
+    isGradient, gradientCSS, solidSwatch,
+    mixedValues: colorResult.mixedValues,
+    // Mixed without listed values (whole-node read): the base color + the span colors.
+    fallbackColors: [resolvedColor || styles.color || '', ...spanTextColors].filter(Boolean),
+  });
   // Label always shows the HEX equivalent — rgb / rgba / hsl / oklch / named
   // are all converted (var()/gradient pass through untouched), matching the
   // Fill control and every other color swatch in the editor.

@@ -37,6 +37,7 @@ import { visibleViewportsAtom, interactingViewportIdAtom } from '@/code/stores/v
 import { isDefaultLocaleAtom } from '@/code/stores/locale-store';
 import { getScreenCornersById, getElementCenter } from '@/canvas/resize/geometry-utils';
 import { buildDuplicateDescriptor, queueBorderOverlayDuplicates, queueReplicaCreationUnhide } from '@/canvas/creators/creator-utils';
+import { isInstanceLike, instanceReplicaUnhideDisplay } from './instance-replica-visibility';
 import { tileContextFor } from '@/canvas/replica-bake';
 import { queueMutation, flushNow, setForceRender, setDeferNextFanOut, hasQueuedMutations } from '@/code/mutation/mutation-queue';
 import { isComponentLikeFilePath } from '@/code/project/file-path-kind';
@@ -1231,7 +1232,11 @@ export class DragCoordinator {
         }
         // On a replica: stamp the inline `display: 'none'` hide-baseline
         // before creating so every OTHER vp renders it hidden by default.
-        const originalDisplay = descriptor.styles.display;
+        // A duplicated INSTANCE re-shows with the master ROOT's display (never
+        // `unset`) — see instance-replica-visibility.ts.
+        const originalDisplay = isInstanceLike(sourceNode)
+          ? instanceReplicaUnhideDisplay(sourceNode, this.context.nodes)
+          : descriptor.styles.display;
         if (isReplica) {
           descriptor.styles.display = 'none';
         }

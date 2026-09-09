@@ -265,6 +265,25 @@ export function bindFieldInCode(
   return bindStyleFieldInCode(code, nodeId, property, fieldId, itemVar);
 }
 
+/** Does THIS node's inline `style={{…}}` declare `styleProp`? Node-scoped on
+ *  purpose: the previous whole-file regex saw any other node's `backgroundSize`
+ *  and skipped seeding this one, so a CMS-bound image rendered at its natural
+ *  size (huge, stretched) while the panel showed "Cover" (2026-09-09). */
+export function nodeHasStyleEntry(code: string, nodeId: string, styleProp: string): boolean {
+  const elStart = findJSXElementByDataId(code, nodeId);
+  if (elStart === -1) return false;
+  const openTagEnd = findTagClose(code, elStart + 1);
+  if (openTagEnd === -1) return false;
+  const tagSlice = code.slice(elStart, openTagEnd + 1);
+  const styleOpenMatch = tagSlice.match(/style=\{\{/);
+  if (!styleOpenMatch || styleOpenMatch.index === undefined) return false;
+  const styleObjStart = elStart + styleOpenMatch.index + 'style={{'.length;
+  const objEndCandidate = findStyleObjectEnd(code, styleObjStart);
+  const objEnd = objEndCandidate === -1 ? code.length - 1 : objEndCandidate;
+  const objBody = code.slice(styleObjStart, objEnd);
+  return new RegExp(`(^|[\\s{,])${styleProp}\\s*:`).test(objBody);
+}
+
 /** Bind an image field as `backgroundImage: \`url(${item.field})\``. Adds
  *  cover-sized + centered defaults so the image actually shows; the user
  *  can override via the regular Image / Mask controls afterwards. */
@@ -276,11 +295,60 @@ function bindBackgroundImageFieldInCode(
 ): string {
   const urlValue = `\`url(\${${itemVar}.${fieldId}})\``;
   let result = setStyleEntryInCode(code, nodeId, 'backgroundImage', urlValue);
-  if (!/backgroundSize\s*:/.test(result)) {
+  return seedBoundImageSizing(result, nodeId);
+}
+
+/** `backgroundSize: 'cover'` + `backgroundPosition: 'center'` on a node whose own
+ *  style lacks them — what every builder image-fill path writes, so a bound image
+ *  fits its frame like a picked one. Idempotent; node-scoped. */
+export function seedBoundImageSizing(code: string, nodeId: string): string {
+  let result = code;
+  if (!nodeHasStyleEntry(result, nodeId, 'backgroundSize')) {
     result = setStyleEntryInCode(result, nodeId, 'backgroundSize', `'cover'`);
   }
-  if (!/backgroundPosition\s*:/.test(result)) {
+  if (!nodeHasStyleEntry(result, nodeId, 'backgroundPosition')) {
     result = setStyleEntryInCode(result, nodeId, 'backgroundPosition', `'center'`);
+  }
+  return result;
+}
+
+/** Does the node's own `backgroundImage` entry carry a CMS url() binding —
+ *  base form (`\`url(${item.x})\``) OR inside a per-variant / per-viewport
+ *  ternary (`v === 'a' ? \`url(${item.y})\` : \`url(${item.x})\``)? Node-scoped
+ *  like nodeHasStyleEntry. */
+export function nodeHasBoundBackgroundImage(code: string, nodeId: string): boolean {
+  const elStart = findJSXElementByDataId(code, nodeId);
+  if (elStart === -1) return false;
+  const openTagEnd = findTagClose(code, elStart + 1);
+  if (openTagEnd === -1) return false;
+  const tagSlice = code.slice(elStart, openTagEnd + 1);
+  const styleOpenMatch = tagSlice.match(/style=\{\{/);
+  if (!styleOpenMatch || styleOpenMatch.index === undefined) return false;
+  const styleObjStart = elStart + styleOpenMatch.index + 'style={{'.length;
+  const objEndCandidate = findStyleObjectEnd(code, styleObjStart);
+  const objEnd = objEndCandidate === -1 ? code.length - 1 : objEndCandidate;
+  const objBody = code.slice(styleObjStart, objEnd);
+  const keyIdx = objBody.search(/(^|[\s{,])backgroundImage\s*:/);
+  if (keyIdx === -1) return false;
+  // The value runs to the next top-level `,` / end of object — ternary
+  // branches have no top-level commas, so a newline-or-comma bound suffices.
+  const value = objBody.slice(keyIdx).split(/,\s*\n|\n\s*\}?$/)[0];
+  return value.includes('`url(${');
+}
+
+/** LOAD HEAL: every node carrying a CMS image binding
+ *  (`backgroundImage: \`url(${item.x})\``, base OR per-variant ternary) without
+ *  its own backgroundSize gets the cover/center seed the bind should have
+ *  written (files bound while the whole-file check was in place). Returns
+ *  the code unchanged when nothing is missing. */
+export function healBoundImageSizing(code: string): string {
+  if (!code.includes('`url(${')) return code;
+  let result = code;
+  const ids = new Set<string>();
+  for (const m of code.matchAll(/(?<!\[)data-id="([^"]+)"/g)) ids.add(m[1]);
+  for (const id of ids) {
+    if (!nodeHasBoundBackgroundImage(result, id)) continue;
+    result = seedBoundImageSizing(result, id);
   }
   return result;
 }

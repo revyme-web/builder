@@ -12,6 +12,7 @@
 
 import { trace } from '@/shared/debug-trace';
 import type { CanvasNode } from '@/code/parsing/parser';
+import { PARSER_TRANSPARENT_TAGS, enclosingTagName } from '@/code/parsing/transparent-tags';
 
 /** JSX-attribute data-ids only. The negative lookbehind for `[` excludes CSS
  *  selectors inside generated `<style>` blocks (`[data-id="x"] { … }`) and
@@ -24,7 +25,14 @@ const JSX_DATA_ID_RE = /(?<!\[)data-id="([^"]+)"/g;
  *  map covers every id the code declares. Pure — unit tested. */
 export function findCodeIdMissingFromMap(code: string, nodes: ReadonlyMap<string, CanvasNode>): string | null {
   for (const m of code.matchAll(JSX_DATA_ID_RE)) {
-    if (!nodes.has(m[1])) return m[1];
+    if (nodes.has(m[1])) continue;
+    // A data-id on a parser-transparent wrapper (`<RevymeSplitText data-id=…>`,
+    // stamped by the instance-id healer) is NEVER in the map — it is not a
+    // node. Counting it as missing skipped every forced render on the page
+    // (collection ghosts stayed displaced after a row drop, 2026-09-09).
+    const tag = enclosingTagName(code, m.index ?? 0);
+    if (tag && PARSER_TRANSPARENT_TAGS.has(tag)) continue;
+    return m[1];
   }
   return null;
 }

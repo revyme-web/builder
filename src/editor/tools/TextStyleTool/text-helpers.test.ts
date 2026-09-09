@@ -4,6 +4,7 @@ import {
   formatTextShadowEntries,
   createDefaultTextShadow,
   textShadowSummary,
+  rowSwatchBackground,
 } from './text-helpers';
 
 describe('text-shadow multi-entry utils', () => {
@@ -62,5 +63,26 @@ describe('text-shadow multi-entry utils', () => {
 
   it('summary shows x · y', () => {
     expect(textShadowSummary({ id: 'a', x: 4, y: 8, blur: 0, color: '#000' })).toBe('4px · 8px');
+  });
+});
+
+
+describe('rowSwatchBackground (Text → Color row swatch)', () => {
+  const base = { nodeMixed: false, mixedSwatchCSS: '', isGradient: false, gradientCSS: '', solidSwatch: '#000000' };
+  it('a mixed selection paints the blend of its colors, never the black default', () => {
+    expect(rowSwatchBackground({ ...base, isMixed: true, mixedValues: ['#ffffff', '#e2ff31'] }))
+      .toBe('linear-gradient(90deg, #ffffff, #e2ff31)');
+  });
+  it('mixed without listed values → base color + span colors', () => {
+    expect(rowSwatchBackground({ ...base, isMixed: true, fallbackColors: ['#ffffff', '#e2ff31'] }))
+      .toBe('linear-gradient(90deg, #ffffff, #e2ff31)');
+  });
+  it('a live picker drag overrides the mixed blend with the dragged solid', () => {
+    expect(rowSwatchBackground({ ...base, isMixed: true, mixedValues: ['#fff', '#ff0'], livePreviewColor: '#123456', solidSwatch: '#123456' })).toBe('#123456');
+  });
+  it('gradient + spans "Mixed" preview wins; plain gradient / solid otherwise', () => {
+    expect(rowSwatchBackground({ ...base, nodeMixed: true, mixedSwatchCSS: 'linear-gradient(90deg, red 0% 50%, blue 50% 100%)', isMixed: false })).toContain('red 0% 50%');
+    expect(rowSwatchBackground({ ...base, isMixed: false, isGradient: true, gradientCSS: 'linear-gradient(red, blue)' })).toBe('linear-gradient(red, blue)');
+    expect(rowSwatchBackground({ ...base, isMixed: false, solidSwatch: '#abcdef' })).toBe('#abcdef');
   });
 });

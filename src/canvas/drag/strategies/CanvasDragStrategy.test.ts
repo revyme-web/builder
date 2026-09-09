@@ -910,6 +910,53 @@ describe('entry into a REPLICA writes the visibility pair', () => {
     expect(forceCanvasRenderDeferredDuringDrag).not.toHaveBeenCalled();
   });
 
+  test('a COMPONENT INSTANCE entering a replica writes the same pair, unhiding with the master ROOT display', async () => {
+    // Instances used to skip both halves ("the bounded @media hides cover
+    // the primary range") — they never did: a primary-width band is dropped
+    // by the generator, so the instance hid on mobile and stayed visible on
+    // desktop (2026-09-09). The unhide is the master root's display (never
+    // `unset`, which collapses the canvas wrapper <div> to inline).
+    const { getDefaultStore } = await import('jotai');
+    const { codeAtom } = await import('@/code/stores/store');
+    getDefaultStore().set(codeAtom, NO_RULES);
+
+    const nodes = replicaNodes();
+    nodes.set('node-1', {
+      id: 'node-1', type: 'Card', tag: 'Card', parentId: null, children: ['node-1:card-root'],
+      styles: { position: 'absolute', left: '100px', top: '200px' }, attrs: {},
+      isComponentInstance: true, componentFile: 'components/Card.tsx', isCanvasNode: true,
+    });
+    nodes.set('node-1:card-root', {
+      id: 'node-1:card-root', type: 'motion.div', tag: 'div', parentId: 'node-1', children: [],
+      styles: { display: 'flex', gap: '8px' }, attrs: {}, componentInstanceId: 'node-1', isComponentRoot: true,
+    });
+    const ctx = makeContext({
+      draggedNodes: [makeDraggedNode({ id: 'node-1', startLeft: 100, startTop: 200, startParentId: null })],
+      startMouse: { x: 200, y: 300 },
+      viewportPrefix: '',
+      nodes,
+    });
+    const s = new CanvasDragStrategy();
+    s.onStart(ctx);
+    for (let i = 0; i < 3; i++) s.onMove(ctx, { x: 220, y: 320 });
+
+    // Half one — the inline hide baseline, on the instance tag like any node.
+    expect(queueMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'move', nodeId: 'node-1', styles: expect.objectContaining({ display: 'none' }),
+    }));
+    // Half two — the entered (tablet) band restores the ROOT's `flex`, not `unset`.
+    expect(queueMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'updateContainerStyle', nodeId: 'node-1', maxWidth: 768, styles: { display: 'flex' },
+    }));
+    const containerWrites = (queueMutation as any).mock.calls
+      .map((c: any[]) => c[0])
+      .filter((m: any) => m.type === 'updateContainerStyle' && m.nodeId === 'node-1');
+    expect(containerWrites.some((m: any) => m.styles?.display === 'unset')).toBe(false);
+    // No primary-width band write — the inline none owns the primary.
+    expect(containerWrites.some((m: any) => m.maxWidth === 1440 && m.styles?.display === 'none')).toBe(false);
+    expect(flushNow).toHaveBeenCalled();
+  });
+
   test('the PRIMARY entry with nothing to change still takes the cheap path', async () => {
     const { getDefaultStore } = await import('jotai');
     const { codeAtom } = await import('@/code/stores/store');

@@ -19,6 +19,7 @@ import { commitOrderAssignments } from '@/canvas/drag/strategies/order-commit';
 import { queuePendingUpdates } from '@/canvas/arrow-nudge';
 import { getReplicaContext } from '@/canvas/drag/replica-context';
 import { queueReplicaCreationUnhide } from '@/canvas/creators/creator-utils';
+import { isInstanceLike, instanceReplicaUnhideDisplay } from '@/canvas/drag/instance-replica-visibility';
 import {
   calculatePosition,
   findRootNodes,
@@ -97,7 +98,13 @@ function applyReplicaCascade(
       const enteredWidth = ctx.viewportWidths![vpId];
       queueMutation({ type: 'updateStyles', nodeId: newId, styles: { display: 'none' } });
       if (typeof enteredWidth === 'number') {
-        queueReplicaCreationUnhide(newId, vpId, enteredWidth, cn?.styles?.display);
+        // A pasted INSTANCE re-shows with the master ROOT's display — its own
+        // styles carry none, and `unset` collapses the canvas wrapper to
+        // inline (0×0). See instance-replica-visibility.ts.
+        const unhideDisplay = cn && isInstanceLike(cn)
+          ? instanceReplicaUnhideDisplay(cn)
+          : cn?.styles?.display;
+        queueReplicaCreationUnhide(newId, vpId, enteredWidth, unhideDisplay);
       }
     }
     if (rctx.isComponent) {

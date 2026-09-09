@@ -23,6 +23,7 @@ import { dropLineOps } from '@/canvas/selection/drop-line-store';
 import { parentHighlightOps } from '@/canvas/selection/parent-highlight-store';
 import { toolbarGhostOps } from './toolbar-ghost-atom';
 import { getReplicaContext } from '../replica-context';
+import { instanceReplicaUnhideDisplay } from '../instance-replica-visibility';
 import { getViewportWidths } from '@/code/stores/viewport-store';
 import { isComponentFilePath } from '@/code/project/active-file-store';
 import { projectFS, installBuiltInCodeComponent } from '@/code/project/project-fs';
@@ -536,19 +537,17 @@ export class ToolbarDragStrategy implements DragStrategy {
     // Without this trio, the new node either appears on every viewport
     // (primary leaks) or nowhere (over-hidden everywhere).
     //
-    // Component-instance exception: when the dropped item is a component
-    // instance (uppercase tag like `<YouTubeEmbed>`), inline styles get
-    // MERGED onto the component's inner root at parse time
-    // (`expandComponent`). The `@media display: unset` rule targets the
-    // wrapper's data-id — not the inner root — so the inner root stays
-    // `display: none` and nothing renders. Skip the inline write for
-    // instances; the per-viewport @media hide rules from `hideInAllOthers`
-    // already cover the primary range (every breakpoint emits a bounded
-    // `@media (max-width:X) and (min-width:Y+1)` thanks to generator-styles'
-    // breakpoint sort), so no primary leak.
+    // Component instances (uppercase tag like `<YouTubeEmbed>`) take the
+    // same inline hide. They used to skip it on the theory that the bounded
+    // per-viewport @media hides "cover the primary range" — they never did
+    // (the generator drops a primary-width band), so an instance dropped on
+    // tablet stayed visible on desktop. `expandComponent` keeps the tag's
+    // `display:none` off the inner root (the wrapper owns hiding), and the
+    // entered band restores the master ROOT's display below — see
+    // instance-replica-visibility.ts.
     const isReplicaDrop = this.currentVpId !== null && !isPrimaryViewport(this.currentVpId);
     const isComponentInstance = /^[A-Z]/.test(this.item.elementType);
-    if (isReplicaDrop && !isComponentInstance) {
+    if (isReplicaDrop) {
       styles.display = 'none';
     }
 
@@ -619,32 +618,33 @@ export class ToolbarDragStrategy implements DragStrategy {
       // emitted as PendingUpdates so they ride the same onCommit path as the
       // `add` mutation (no race between flushNow and queueMutation).
       //
-      // Component-instance exception: skip the unhide entirely. We didn't
-      // write the inline `display:'none'` (because that would merge onto the
-      // inner root and break rendering — see comment above), so there's
-      // nothing to override on the entered viewport. The wrapper renders
-      // as a `<div>` (Renderer.VALID_TAGS fallback) with default
-      // `display: block`. Writing `display: 'unset' !important` here would
-      // FORCE the wrapper to `display: inline` (CSS `unset` resolves to
-      // the initial value, which is `inline` for any element when an
-      // !important author rule beats the UA stylesheet), and inline boxes
-      // ignore width/height — the embed renders at 0×0.
-      if (!isComponentInstance) {
-        if (isComponent) {
-          updates.push({
-            nodeId,
-            type: 'updateVariantStyle',
-            variantName: vpId,
-            styles: { display: 'unset' },
-          });
-        } else {
-          updates.push({
-            nodeId,
-            type: 'updateContainerStyle',
-            maxWidth: vpWidths[vpId] ?? 0,
-            styles: { display: 'unset' },
-          });
-        }
+      // Component instances restore the master ROOT's display instead of
+      // `unset`: `unset !important` forces the canvas wrapper <div> to
+      // `display: inline` (0×0), and on the live site the band rule lands on
+      // the root itself. The master is looked up by tag name in the
+      // component registry (a CDN item has no file → `block`).
+      const unhideDisplay = isComponentInstance
+        ? instanceReplicaUnhideDisplay({
+            type: this.item.elementType,
+            styles,
+            isComponentInstance: true,
+            componentFile: this.item.cdnUrl ?? null,
+          })
+        : 'unset';
+      if (isComponent) {
+        updates.push({
+          nodeId,
+          type: 'updateVariantStyle',
+          variantName: vpId,
+          styles: { display: unhideDisplay },
+        });
+      } else {
+        updates.push({
+          nodeId,
+          type: 'updateContainerStyle',
+          maxWidth: vpWidths[vpId] ?? 0,
+          styles: { display: unhideDisplay },
+        });
       }
 
       trace.action('toolbar-drag:replica-writes', {

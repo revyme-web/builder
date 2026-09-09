@@ -6,7 +6,7 @@
 // the canvas double-positions the card visually.
 
 import { describe, it, expect } from 'vitest';
-import { parseProjectFile, clearComponentParseCache, resolveInstancePropOverrides } from './project-parser';
+import { parseProjectFile, clearComponentParseCache, resolveInstancePropOverrides, readMasterRootDisplay } from './project-parser';
 import { InMemoryProjectFS } from '@/code/project/project-fs';
 
 describe('toggle conditional prop resolves by JS truthiness (canvas matches live)', () => {
@@ -1565,5 +1565,57 @@ describe('project-parser: default variant entry is baked into the expanded insta
     const root = nodes.get('button-2:formsubmit-root')!;
     expect(root.styles.backgroundColor).toBe('#3b82f6');
     expect(root.styles.pointerEvents).toBe('none');
+  });
+});
+
+describe('project-parser: the instance tag\'s `display: none` stays on the WRAPPER', () => {
+  // The replica-entry hide baseline for instances is an inline `display: 'none'`
+  // on the tag (instance-replica-visibility.ts). The Renderer lets `none`
+  // through its wrapper allow-list and the entered viewport's band unhide
+  // targets the wrapper's data-id — so the root must keep the MASTER's
+  // display, or the embed stays blank on the one viewport it should show.
+  it('display:none on the tag → wrapper none, root keeps the master display', () => {
+    const fs = new InMemoryProjectFS(new Map([
+      ['app/page.tsx', `
+        import React from 'react';
+        import Card from '@/components/Card';
+        export default function Page() {
+          return (
+            <div data-id="root">
+              <Card data-id="card1" style={{ position: 'relative', display: 'none' }} />
+            </div>
+          );
+        }
+      `],
+      ['components/Card.tsx', CARD_TSX],
+    ]));
+    const nodes = parseProjectFile('app/page.tsx', fs);
+    expect(nodes.get('card1')!.styles.display).toBe('none');
+    expect(nodes.get('card1:card')!.styles.display).toBe('flex');
+  });
+
+  it('any OTHER display on the tag still flows onto the root (authored customisation)', () => {
+    const fs = new InMemoryProjectFS(new Map([
+      ['app/page.tsx', `
+        import React from 'react';
+        import Card from '@/components/Card';
+        export default function Page() {
+          return (
+            <div data-id="root">
+              <Card data-id="card1" style={{ position: 'relative', display: 'grid' }} />
+            </div>
+          );
+        }
+      `],
+      ['components/Card.tsx', CARD_TSX],
+    ]));
+    const nodes = parseProjectFile('app/page.tsx', fs);
+    expect(nodes.get('card1:card')!.styles.display).toBe('grid');
+  });
+
+  it('readMasterRootDisplay reads the root\'s base display from the component file', () => {
+    const fs = new InMemoryProjectFS(new Map([['components/Card.tsx', CARD_TSX]]));
+    expect(readMasterRootDisplay(fs, 'components/Card.tsx')).toBe('flex');
+    expect(readMasterRootDisplay(fs, 'components/Missing.tsx')).toBeUndefined();
   });
 });

@@ -595,6 +595,10 @@ export function removeCollectionItem(slug: string, itemId: string): void {
 export function reorderCollectionItems(slug: string, orderedIds: string[]): void {
   const items = getCollectionData(slug);
   const byId = new Map(items.map(i => [i._id, i]));
+  if (byId.size !== items.length) {
+    trace.error('cms-ops:reorderCollectionItems:duplicate-ids', { slug });
+    return;
+  }
   const seen = new Set<string>();
   const reordered: CollectionItem[] = [];
   for (const id of orderedIds) {
@@ -792,6 +796,68 @@ export function addCollectionField(
   if (newField.defaultValue !== undefined) syncFieldDefaultToItems(slug, id, newField.defaultValue);
   trace.action('cms-ops:addCollectionField', { slug, id, type: field.type });
   return id;
+}
+
+/** The collection's TITLE is "the first text-type field" (cmsItemLabel, the
+ *  auto-slug source, panel labels). Given a desired field order, return it
+ *  adjusted so that field stays the first text-type field: if another text
+ *  field would come first, the title is moved to sit right before it. Non-text
+ *  fields may sit anywhere. Pure; used by every reorder writer (UI drag clamps
+ *  per gesture, the plugin SDK gets an arbitrary order). */
+export function keepTitleFieldFirst(fields: readonly FieldDefinition[], orderedIds: readonly string[]): string[] {
+  const titleId = fields.find(f => f.type === 'text')?.id;
+  if (!titleId) return [...orderedIds];
+  const typeOf = new Map(fields.map(f => [f.id, f.type]));
+  const order = orderedIds.filter(id => typeOf.has(id));
+  const firstTextIdx = order.findIndex(id => typeOf.get(id) === 'text');
+  if (firstTextIdx === -1 || order[firstTextIdx] === titleId) return [...orderedIds];
+  const without = order.filter(id => id !== titleId);
+  const insertAt = without.findIndex(id => typeOf.get(id) === 'text');
+  without.splice(insertAt, 0, titleId);
+  return without;
+}
+
+/** Reorder a collection's schema fields to match `orderedFieldIds`. The schema
+ *  array order IS the display order everywhere fields are listed (the Fields tab,
+ *  the item editor's Content form, binding pickers), so this is the single source
+ *  of truth for field order. Same defensive contract as reorderCollectionItems:
+ *  unknown ids are ignored, fields missing from the order are appended in their
+ *  existing relative order, and an unchanged order is a no-op (no write / autosave).
+ *
+ *  NOTE: the collection's TITLE is "the first text-type field" (cmsItemLabel, the
+ *  slug auto-derivation, the CMS panel labels). Callers that must keep the title
+ *  stable clamp the order before calling (CmsEditorOverlay does) — this function
+ *  applies exactly what it is given. Returns true when the schema changed. */
+export function reorderCollectionFields(slug: string, orderedFieldIds: string[]): boolean {
+  const schema = getCollectionSchema(slug);
+  if (!schema) {
+    trace.error('cms-ops:reorderCollectionFields:not-found', { slug });
+    return false;
+  }
+  const byId = new Map(schema.fields.map(f => [f.id, f]));
+  // Duplicate field ids (reachable via the plugin SDK's addFields) would
+  // collapse in the map and the reorder would silently DROP a definition.
+  if (byId.size !== schema.fields.length) {
+    trace.error('cms-ops:reorderCollectionFields:duplicate-ids', { slug });
+    return false;
+  }
+  const seen = new Set<string>();
+  const reordered: FieldDefinition[] = [];
+  for (const id of orderedFieldIds) {
+    const f = byId.get(id);
+    if (f && !seen.has(id)) { reordered.push(f); seen.add(id); }
+  }
+  for (const f of schema.fields) {
+    if (!seen.has(f.id)) reordered.push(f);
+  }
+  const unchanged = reordered.length === schema.fields.length && reordered.every((f, i) => f.id === schema.fields[i].id);
+  if (unchanged) {
+    trace.fn('cms-ops:reorderCollectionFields:no-op', { slug });
+    return false;
+  }
+  saveCollectionSchema(slug, { ...schema, fields: reordered });
+  trace.action('cms-ops:reorderCollectionFields', { slug, order: reordered.map(f => f.id) });
+  return true;
 }
 
 /** Patch an existing field. Returns false if the collection or field is

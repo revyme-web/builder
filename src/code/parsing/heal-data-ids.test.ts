@@ -59,4 +59,25 @@ describe('healMissingInstanceDataIds', () => {
     expect(r.code).toMatch(/^<Nav data-id="Nav-[a-z0-9-]+" style/);
     expect(r.code).toContain('onOpen={() => setOpen(v => !v)} />');
   });
+
+  it('never stamps the RevymeSplitText text-effect wrapper, and strips an id a past heal put there', () => {
+    const src = `<p data-id="t-1" data-text-anim='{}'><RevymeSplitText spec={{ a: 1 }}>Hi</RevymeSplitText></p>`;
+    const r1 = healMissingInstanceDataIds(src);
+    expect(r1.code).toBe(src);
+    expect(r1.healed).toBe(0);
+    const stamped = `<p data-id="t-1"><RevymeSplitText data-id="RevymeSplitText-old-1" spec={{ a: 1 }}>Hi</RevymeSplitText></p>`;
+    const r2 = healMissingInstanceDataIds(stamped);
+    expect(r2.code).toBe(`<p data-id="t-1"><RevymeSplitText spec={{ a: 1 }}>Hi</RevymeSplitText></p>`);
+    expect(r2.strippedJunk).toBe(1);
+    expect(r2.healed).toBe(0);
+  });
+
+  it('treats PageTransitions like the other transparent wrappers (never stamped, stamped id stripped)', () => {
+    const src = `<PageTransitions><div data-id="root" /></PageTransitions>`;
+    expect(healMissingInstanceDataIds(src).code).toBe(src);
+    const stamped = `<PageTransitions data-id="PageTransitions-old-1"><div data-id="root" /></PageTransitions>`;
+    const r = healMissingInstanceDataIds(stamped);
+    expect(r.code).toBe(src);
+    expect(r.strippedJunk).toBe(1);
+  });
 });

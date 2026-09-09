@@ -21,6 +21,9 @@ import {
   removeCollectionItem,
   generateItemId,
   slugify,
+  reorderCollectionFields,
+  keepTitleFieldFirst,
+  addCollectionField,
 } from '@/code/project/cms-ops';
 import type {
   Collection,
@@ -160,20 +163,16 @@ export const cmsHandlers: Record<string, RpcHandler> = {
     }
     const schema = getCollectionSchema(p.collectionId);
     if (!schema) throw new Error(`cms.addFields: collection not found: ${p.collectionId}`);
+    // Delegate to the builder's own writer: it uniquifies the NAME and the id
+    // (a pushed `slugify(name)` could duplicate an existing id, and a later
+    // reorder refuses duplicate ids to avoid dropping a definition).
     const ids: string[] = [];
     for (const f of p.fields) {
       if (!f || typeof f !== 'object') continue;
       const ff = f as { name: string; type: string; required?: boolean };
-      const id = slugify(ff.name);
-      schema.fields.push({
-        id,
-        name: ff.name,
-        type: ff.type as FieldDefinition['type'],
-        required: ff.required,
-      });
-      ids.push(id);
+      const id = addCollectionField(p.collectionId, { name: ff.name, type: ff.type as FieldDefinition['type'], required: ff.required });
+      if (id) ids.push(id);
     }
-    saveCollectionSchema(p.collectionId, schema);
     return ids;
   },
 
@@ -196,10 +195,10 @@ export const cmsHandlers: Record<string, RpcHandler> = {
     }
     const schema = getCollectionSchema(p.collectionId);
     if (!schema) return;
-    const indexMap = new Map<string, number>();
-    (p.fieldIds as string[]).forEach((id, i) => indexMap.set(id, i));
-    schema.fields.sort((a, b) => (indexMap.get(a.id) ?? 999) - (indexMap.get(b.id) ?? 999));
-    saveCollectionSchema(p.collectionId, schema);
+    // Same single writer as the Fields tab drag (no-op detection, unknown ids
+    // ignored, missing ids appended) and the same title rule: the first
+    // text-type field names items / seeds slugs, so it stays the first text field.
+    reorderCollectionFields(p.collectionId, keepTitleFieldFirst(schema.fields, p.fieldIds as string[]));
   },
 
   'cms.getItems': async (params): Promise<PluginCollectionItem[]> => {

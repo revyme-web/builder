@@ -13,6 +13,7 @@ import { getDefaultStore } from 'jotai';
 import { commitOrderAssignments } from '@/canvas/drag/strategies/order-commit';
 import { getReplicaContext } from '@/canvas/drag/replica-context';
 import { queueReplicaCreationUnhide } from '@/canvas/creators/creator-utils';
+import { isInstanceLike, instanceReplicaUnhideDisplay } from '@/canvas/drag/instance-replica-visibility';
 import { detectParentLayoutById, getFlexDirectionById } from '@/canvas/drag/types';
 import { queuePendingUpdates } from '@/canvas/arrow-nudge';
 import { trace } from '@/shared/debug-trace';
@@ -535,7 +536,12 @@ export function startLayerDrag(ctx: LayerDragContext, e: ReactMouseEvent, layerI
       //      base values until it's unhidden elsewhere.
       if (enteringReplica) {
         const enteredVpWidth = vpWidths[dropVpId] ?? vpConfigs.find(v => v.id === dropVpId)?.width ?? 0;
-        queueReplicaCreationUnhide(draggedId, dropVpId, enteredVpWidth, draggedNode.styles?.display ?? '');
+        // An instance restores the master ROOT's display (never `unset`, which
+        // collapses its canvas wrapper to inline) — see instance-replica-visibility.ts.
+        const unhideDisplay = isInstanceLike(draggedNode)
+          ? instanceReplicaUnhideDisplay(draggedNode, nodes)
+          : (draggedNode.styles?.display ?? '');
+        queueReplicaCreationUnhide(draggedId, dropVpId, enteredVpWidth, unhideDisplay);
         const rctx = getReplicaContext(dropVpId, activeFilePath, vpWidths);
         for (const hideUpdate of rctx.hideInAllOthers(draggedId)) {
           if (hideUpdate.type === 'updateContainerStyle') {

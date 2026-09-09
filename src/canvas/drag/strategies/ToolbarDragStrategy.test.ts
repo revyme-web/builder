@@ -137,53 +137,52 @@ describe('ToolbarDragStrategy', () => {
       expect(tabletUnhide).toBeDefined();
     });
 
-    test('component instance drop into a replica does NOT set inline display:none', async () => {
-      // Component instances merge inline `style` onto their inner root via
-      // expandComponent. If we set inline display:none here, the inner root
-      // would be hidden and the @media display:unset on the wrapper data-id
-      // wouldn't reach the inner root → the embed renders blank in every
-      // viewport. Instead the per-viewport @media hide rules cover the
-      // primary range on their own.
+    test('component instance drop into a replica: inline display:none + the master ROOT display as the unhide', async () => {
+      // Instances used to skip the inline hide on the theory that the bounded
+      // @media hides "cover the primary range" — they never did (the
+      // generator drops a primary-width band), so an instance dropped on
+      // tablet stayed visible on desktop. Now: same inline hide as any node,
+      // and the entered band restores the master ROOT's display (the live
+      // band rule lands on that root; `unset` would collapse the canvas
+      // wrapper <div> to inline). See instance-replica-visibility.ts.
       const { setStyleContext } = await import('@/canvas/node-ops');
       const { syncViewportWidths } = await import('@/code/stores/viewport-store');
+      const { projectFS } = await import('@/code/project/project-fs');
 
       setStyleContext('app/page.tsx', 'desktop', 1440);
       syncViewportWidths({ desktop: 1440, tablet: 768, mobile: 375 });
+      projectFS.writeFile('components/FlexCard.tsx', `
+import React from 'react';
+import { motion } from 'framer-motion';
+import { withResponsiveProps } from '@revyme/runtime';
+function FlexCard({ style, ...rest }) {
+  return <motion.div data-id="fc-root" {...rest} style={{ position: 'relative', display: 'flex', ...style }} />;
+}
+export default withResponsiveProps(FlexCard);
+`);
 
-      const strategy = new ToolbarDragStrategy();
-      // Uppercase elementType = component instance (e.g. <YouTubeEmbed/>).
-      strategy.setToolbarItem(makeItem({ elementType: 'YouTubeEmbed' }));
-      strategy.onStart(makeContext());
-      strategy._setTestState({
-        isOverCanvas: true,
-        dropParentId: 'parent-1',
-        currentVpId: 'tablet',
-      });
+      const run = (elementType: string) => {
+        const strategy = new ToolbarDragStrategy();
+        strategy.setToolbarItem(makeItem({ elementType }));
+        strategy.onStart(makeContext());
+        strategy._setTestState({ isOverCanvas: true, dropParentId: 'parent-1', currentVpId: 'tablet' });
+        return strategy.onEnd(makeContext());
+      };
 
-      const updates = strategy.onEnd(makeContext());
-
-      // 1. Inline display is NOT set on the descriptor — the entire point.
+      // A master with a flex root → the tablet band restores `flex`.
+      const updates = run('FlexCard');
       const addUpdate = updates.find(u => u.type === 'add')!;
-      expect(addUpdate.descriptor!.styles.display).toBeUndefined();
+      expect(addUpdate.descriptor!.styles.display).toBe('none');
+      const tabletUnhide = updates.find(u => u.type === 'updateContainerStyle' && u.maxWidth === 768);
+      expect(tabletUnhide?.styles).toEqual({ display: 'flex' });
+      expect(updates.some(u => u.type === 'updateContainerStyle' && u.maxWidth === 375 && u.styles?.display === 'none')).toBe(true);
+      // Never `unset` for an instance.
+      expect(updates.some(u => u.type === 'updateContainerStyle' && u.styles?.display === 'unset')).toBe(false);
 
-      // 2. Hide rules still emitted for desktop + mobile (primary range
-      //    covered by the bounded @media rule, no inline needed).
-      const containerHides = updates.filter(
-        u => u.type === 'updateContainerStyle' && u.styles?.display === 'none',
-      );
-      const hideMaxWidths = new Set(containerHides.map(u => u.maxWidth));
-      expect(hideMaxWidths.has(1440)).toBe(true);
-      expect(hideMaxWidths.has(375)).toBe(true);
-
-      // 3. Tablet does NOT get the `display: 'unset'` unhide. The wrapper
-      //    renders as a `<div>` (Renderer.VALID_TAGS fallback) with default
-      //    `display: block`. Writing `display: 'unset' !important` here
-      //    would force `display: inline` (initial value beats UA stylesheet
-      //    under !important author rule) and the embed would render at 0×0.
-      const tabletUnhide = updates.find(
-        u => u.type === 'updateContainerStyle' && u.maxWidth === 768 && u.styles?.display === 'unset',
-      );
-      expect(tabletUnhide).toBeUndefined();
+      // An unknown component (no file in the registry, e.g. a CDN embed) → block.
+      const updates2 = run('YouTubeEmbed');
+      expect(updates2.find(u => u.type === 'add')!.descriptor!.styles.display).toBe('none');
+      expect(updates2.find(u => u.type === 'updateContainerStyle' && u.maxWidth === 768)?.styles).toEqual({ display: 'block' });
     });
 
     test('replica drop emits hide/unhide CSS updates BEFORE the add', async () => {

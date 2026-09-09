@@ -2,6 +2,7 @@
 // groups. All code moved VERBATIM from check-file.ts (Phase 7.1 god-file split).
 
 import _traverse from '@babel/traverse';
+import { PARSER_TRANSPARENT_TAGS } from '@/code/parsing/transparent-tags';
 import type { NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
 import { TEXT_TAGS } from '@/shared/constants';
@@ -23,7 +24,10 @@ export interface OracleViolation {
 /** Tags the parser treats as transparent wrappers — no data-id needed, never a node.
  *  `PageTransitions` is the generated Page-Effects controller: it wraps {children} and renders them
  *  through unchanged (a SPA View-Transitions pass-through), so it's never a canvas box. */
-const TRANSPARENT_TAGS = new Set(['AnimatePresence', 'LayoutGroup', 'MotionConfig', 'Fragment', 'React.Fragment', 'PageTransitions', 'RevymeSplitText']);
+// ONE list for the three consumers (oracle, data-id healer, forced-render
+// integrity guard) — they diverged once and a healed `<PageTransitions data-id>`
+// made every forced render on a template skip (review find 2026-09-09).
+const TRANSPARENT_TAGS = new Set<string>([...PARSER_TRANSPARENT_TAGS]);
 
 /** Inline rich-text runs inside a text element — not structural nodes. */
 const INLINE_RUN_TAGS = new Set(['span', 'strong', 'em', 'b', 'i', 'u', 'br', 'sup', 'sub']);

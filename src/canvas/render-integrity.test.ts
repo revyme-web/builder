@@ -37,4 +37,24 @@ describe('render-integrity — forced renders must not ship maps that lag the co
     expect(findCodeIdMissingFromMap('', mapOf())).toBeNull();
     expect(findCodeIdMissingFromMap('no jsx here', mapOf('root'))).toBeNull();
   });
+
+  it('ignores a data-id on a parser-transparent wrapper (healed <RevymeSplitText data-id>)', () => {
+    // The wrapper is never a node, so its id is never in the map — it must not
+    // read as "missing" or every forced render on the page is skipped forever.
+    const code = `<div data-id="root"><p data-id="t-1" data-text-anim='{}'><RevymeSplitText data-id="RevymeSplitText-x-1" spec={{ a: 1 }}>Hi</RevymeSplitText></p></div>`;
+    expect(findCodeIdMissingFromMap(code, mapOf('root', 't-1'))).toBeNull();
+    // …while a real node id in the same file still counts.
+    const code2 = code.replace('</p>', '</p><div data-id="frame-new-9"></div>');
+    expect(findCodeIdMissingFromMap(code2, mapOf('root', 't-1'))).toBe('frame-new-9');
+  });
+
+  it('still detects a missing id on a tag with an arrow-function prop before data-id', () => {
+    const code = `<div data-id="root"><button onClick={() => go(1)} data-id="btn-1">x</button></div>`;
+    expect(findCodeIdMissingFromMap(code, mapOf('root'))).toBe('btn-1');
+  });
+
+  it('ignores a data-id on the PageTransitions template wrapper too', () => {
+    const code = `<PageTransitions data-id="PageTransitions-x-1"><div data-id="root">x</div></PageTransitions>`;
+    expect(findCodeIdMissingFromMap(code, mapOf('root'))).toBeNull();
+  });
 });

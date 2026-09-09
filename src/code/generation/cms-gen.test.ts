@@ -7,8 +7,7 @@ import {
   findClosingTag,
   findJSXElementByDataId,
   findCollectionChainHead,
-  buildChainCode,
-} from './cms-gen';
+  buildChainCode, healBoundImageSizing } from './cms-gen';
 
 describe('findClosingTag — self-closing same-tag children', () => {
   // Regression: a container with self-closing <div … /> children (CMS card
@@ -143,6 +142,37 @@ export default function Page() {
 });
 
 // ─── bindFieldInCode ────────────────────────────────────────────────────────
+
+describe('bindFieldInCode — image fill sizing is NODE-scoped', () => {
+  // Another node already declares backgroundSize → the bound node must STILL get
+  // its own cover/center (the old whole-file regex skipped it: huge stretched
+  // avatar while the panel said "Cover", 2026-09-09).
+  const CODE = `<div data-id="root" style={{ backgroundImage: 'url(a.jpg)', backgroundSize: 'cover' }}>
+  <div data-id="avatar" style={{ width: '40px', height: '40px', backgroundColor: '#ccc' }}></div>
+</div>`;
+  it('seeds backgroundSize/backgroundPosition on the bound node even when a sibling has them', () => {
+    const out = bindFieldInCode(CODE, 'avatar', 'backgroundColor', 'photo', 'item', 'image');
+    const avatarTag = out.slice(out.indexOf('data-id="avatar"'), out.indexOf('</div>', out.indexOf('data-id="avatar"')));
+    expect(avatarTag).toContain('backgroundImage: `url(${item.photo})`');
+    expect(avatarTag).toContain("backgroundSize: 'cover'");
+    expect(avatarTag).toContain("backgroundPosition: 'center'");
+    expect(avatarTag).not.toContain('backgroundColor');
+  });
+  it('does not clobber a size the node already declares', () => {
+    const withSize = CODE.replace("backgroundColor: '#ccc'", "backgroundColor: '#ccc', backgroundSize: 'contain'");
+    const out = bindFieldInCode(withSize, 'avatar', 'backgroundColor', 'photo', 'item', 'image');
+    expect(out).toContain("backgroundSize: 'contain'");
+    expect((out.match(/backgroundSize/g) || []).length).toBe(2); // root + avatar, no duplicate
+  });
+  it('healBoundImageSizing seeds legacy bound nodes and is a no-op otherwise', () => {
+    const legacy = `<div data-id="root" style={{ backgroundSize: 'cover' }}><div data-id="pic" style={{ backgroundImage: \`url(\${item.photo})\` }}></div></div>`;
+    const healed = healBoundImageSizing(legacy);
+    const pic = healed.slice(healed.indexOf('data-id="pic"'));
+    expect(pic).toMatch(/backgroundImage: `url\(\$\{item\.photo\}\)`\s*,\s*backgroundSize: 'cover',\s*backgroundPosition: 'center'/);
+    expect(healBoundImageSizing(healed)).toBe(healed);
+    expect(healBoundImageSizing(CODE)).toBe(CODE);
+  });
+});
 
 describe('bindFieldInCode', () => {
   it('binds text content with expression', () => {

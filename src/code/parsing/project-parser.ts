@@ -55,6 +55,26 @@ function parseComponentNodesCached(code: string): Map<string, CanvasNode> {
 }
 
 /** Test/diagnostic hook — drop all memoised component parses. */
+/** The master ROOT's own base `display` (e.g. `flex`), or undefined when the
+ *  file is unreadable/unparseable or the root declares none. Used by the
+ *  replica-entry recipe for instances (instance-replica-visibility.ts): the
+ *  entered band must restore the ROOT's display because on the live site the
+ *  instance's `display:none` and the band rule both land on that root. */
+export function readMasterRootDisplay(fs: ProjectFS, filePath: string): string | undefined {
+  let code: string | null | undefined;
+  try { code = fs.readFile(filePath); } catch { return undefined; }
+  if (!code) return undefined;
+  let nodes: Map<string, CanvasNode>;
+  try { nodes = parseComponentNodesCached(code); } catch { return undefined; }
+  for (const [, node] of nodes) {
+    // Same root test as expandComponent: top-level, not a canvas node, not an overlay.
+    if (!node.parentId && !node.isCanvasNode && !node.attrs?.['data-overlay']) {
+      return node.styles?.display || undefined;
+    }
+  }
+  return undefined;
+}
+
 export function clearComponentParseCache(): void {
   componentParseCache.clear();
   trace.action('project-parser:clearComponentParseCache', {});
@@ -935,6 +955,13 @@ function expandComponent(
       for (const [k, v] of Object.entries(instanceNode.styles)) {
         if (WRAPPER_ONLY_STYLE_PROPS.has(k)) continue;
         if (k === 'display' && instHasVisibilityControl) continue;
+        // A plain `display: 'none'` on the tag is the replica-entry hide
+        // baseline (see instance-replica-visibility.ts) — the WRAPPER owns it
+        // (the Renderer lets `none` through its wrapper allow-list), and the
+        // entered viewport's band unhide targets the wrapper's data-id, never
+        // the root's. Baked onto the root it would keep the embed blank on
+        // the one viewport the instance is meant to show.
+        if (k === 'display' && v === 'none') continue;
         if (dimInPropChannel(k)) continue;
         instanceStylesForRoot[k] = v;
       }

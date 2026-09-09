@@ -21,9 +21,14 @@
 import { generateNodeId } from '@/shared/id-utils';
 import { findTagClose } from '@/code/generation/generator-utils';
 import { trace } from '@/shared/debug-trace';
+import { PARSER_TRANSPARENT_TAGS } from './transparent-tags';
 
-/** Parser-transparent wrappers — never node-bearing, never healed. */
-const TRANSPARENT_TAGS = new Set(['LayoutGroup', 'MotionConfig', 'AnimatePresence', 'Fragment']);
+/** Parser-transparent wrappers — never node-bearing, never healed. A data-id
+ *  that an earlier heal DID stamp on one (RevymeSplitText joined the list on
+ *  2026-09-09) is stripped again: it is junk that made the forced-render
+ *  integrity guard skip every render on the page. */
+const TRANSPARENT_TAGS = PARSER_TRANSPARENT_TAGS;
+const STAMPED_ID_RE = / data-id="[^"]*"/;
 
 /** Attributes literally named `data-` — corruption remnants, never legitimate. */
 const JUNK_ATTR_RE = / data-(?:=(?:"[^"]*"|'[^']*'|\{[^}]*\}))?(?=[\s/>])/g;
@@ -42,7 +47,19 @@ export function healMissingInstanceDataIds(code: string): { code: string; healed
     if (!m) break;
     const tagName = m[1];
     const tagStart = m.index;
-    if (TRANSPARENT_TAGS.has(tagName)) { searchFrom = tagStart + 1 + tagName.length; continue; }
+    if (TRANSPARENT_TAGS.has(tagName)) {
+      const tEnd = findTagClose(out, tagStart);
+      if (tEnd !== -1) {
+        const tc = out.slice(tagStart, tEnd + 1);
+        if (STAMPED_ID_RE.test(tc)) {
+          const cleaned = tc.replace(STAMPED_ID_RE, '');
+          out = out.slice(0, tagStart) + cleaned + out.slice(tEnd + 1);
+          strippedJunk++;
+        }
+      }
+      searchFrom = tagStart + 1 + tagName.length;
+      continue;
+    }
     // The MotionLink declaration renders `<Link>`/`<div>` in its own body —
     // module scaffolding, never node-bearing. Stamping a data-id into it
     // (2026-08-26) mutated the canonical declaration line. The declaration

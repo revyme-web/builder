@@ -42,6 +42,8 @@ import {
   updateCollectionItem,
   removeCollectionItem,
   reorderCollectionItems,
+  reorderCollectionFields,
+  keepTitleFieldFirst,
   renameCollection,
   duplicateCollection,
   createBlankCollection,
@@ -573,6 +575,71 @@ describe('reorderCollectionItems', () => {
     reorderCollectionItems('team', ['a', 'b']);
     // Early-returned before re-serializing, so the stored content is byte-identical.
     expect(fsStore.get('cms/team.json')).toBe(before);
+  });
+});
+
+// ── reorderCollectionFields ─────────────────────────────────────────────────
+
+describe('reorderCollectionFields', () => {
+  const fields = () => [
+    { id: 'title', name: 'Title', type: 'text' as const },
+    { id: 'bio', name: 'Bio', type: 'textarea' as const },
+    { id: 'first', name: 'First name', type: 'text' as const },
+    { id: 'last', name: 'Last name', type: 'text' as const },
+  ];
+  const seedSchema = () => fsStore.set('cms/team.schema.json', JSON.stringify({ ...makeSchema('team', 'Team'), fields: fields() }));
+  const order = () => (getCollectionSchema('team')!.fields).map(f => f.id);
+
+  test('reorders the schema fields to the given id order and reports the change', () => {
+    seedSchema();
+    expect(reorderCollectionFields('team', ['title', 'first', 'last', 'bio'])).toBe(true);
+    expect(order()).toEqual(['title', 'first', 'last', 'bio']);
+  });
+
+  test('keeps every field: unknown ids ignored, missing ids appended in place order', () => {
+    seedSchema();
+    reorderCollectionFields('team', ['last', 'ghost', 'title']);
+    expect(order()).toEqual(['last', 'title', 'bio', 'first']);
+  });
+
+  test('unchanged order is a no-op (no rewrite) and returns false', () => {
+    seedSchema();
+    const before = fsStore.get('cms/team.schema.json')!;
+    expect(reorderCollectionFields('team', ['title', 'bio', 'first', 'last'])).toBe(false);
+    expect(fsStore.get('cms/team.schema.json')).toBe(before);
+  });
+
+  test('missing collection → false, nothing written', () => {
+    expect(reorderCollectionFields('nope', ['a'])).toBe(false);
+    expect(fsStore.has('cms/nope.schema.json')).toBe(false);
+  });
+
+  test('duplicate field ids → refuses (never drops a definition)', () => {
+    fsStore.set('cms/team.schema.json', JSON.stringify({ ...makeSchema('team', 'Team'), fields: [...fields(), { id: 'bio', name: 'Bio 2', type: 'textarea' }] }));
+    const before = fsStore.get('cms/team.schema.json')!;
+    expect(reorderCollectionFields('team', ['last', 'title'])).toBe(false);
+    expect(fsStore.get('cms/team.schema.json')).toBe(before);
+  });
+});
+
+describe('keepTitleFieldFirst', () => {
+  const fields = [
+    { id: 'quote', name: 'Quote', type: 'richtext' as const },
+    { id: 'name', name: 'Name', type: 'text' as const },     // title = first TEXT field
+    { id: 'company', name: 'Company', type: 'text' as const },
+    { id: 'avatar', name: 'Avatar', type: 'image' as const },
+  ];
+  test('an order that keeps the title as the first text field passes through', () => {
+    expect(keepTitleFieldFirst(fields, ['avatar', 'name', 'quote', 'company'])).toEqual(['avatar', 'name', 'quote', 'company']);
+    expect(keepTitleFieldFirst(fields, ['name', 'company', 'quote', 'avatar'])).toEqual(['name', 'company', 'quote', 'avatar']);
+  });
+  test('another text field moved above the title → the title is pulled right before it', () => {
+    expect(keepTitleFieldFirst(fields, ['company', 'quote', 'name', 'avatar'])).toEqual(['name', 'company', 'quote', 'avatar']);
+    expect(keepTitleFieldFirst(fields, ['quote', 'company', 'avatar', 'name'])).toEqual(['quote', 'name', 'company', 'avatar']);
+  });
+  test('non-text fields may go anywhere; no text field → untouched', () => {
+    expect(keepTitleFieldFirst(fields, ['avatar', 'quote', 'name', 'company'])).toEqual(['avatar', 'quote', 'name', 'company']);
+    expect(keepTitleFieldFirst([{ id: 'a', name: 'A', type: 'image' as const }], ['a'])).toEqual(['a']);
   });
 });
 

@@ -35,6 +35,8 @@ import { setCredits } from '@/code/stores/credits-store';
 import { migrateLegacyLocaleTextOverrides, ensureIntlScaffold } from '@/code/project/translation-ops';
 import { migrateCmsLocalization } from '@/code/project/cms-locale-migrate';
 import { migrateLoadMoreLabelNowrap } from '@/code/generation/cms-pagination-gen';
+import { migrateBoundImageSizing } from '@/code/generation/cms-image-size-migrate';
+import { migrateOutOfFlowSiblingOrders } from '@/canvas/drag/out-of-flow-order-migrate';
 import { migrateFormSubmitDisplayTransitions } from '@/code/generation/form-submit-gen';
 import { getI18nConfig } from '@/code/project/locale-ops';
 import { openPluginIdAtom } from '@/plugins/registry';
@@ -79,6 +81,12 @@ export default function ProjectLoader() {
         // Patched in place — regenerating would discard the user's own styling.
         try { migrateFormSubmitDisplayTransitions(); } catch (err) { trace.error('formsubmit-migration-failed', err); }
         try { migrateLoadMoreLabelNowrap(); } catch (err) { trace.error('loadmore-nowrap-migration-failed', err); }
+        // CMS image bindings without their own backgroundSize (whole-file presence
+        // check bug, fixed 2026-09-09) → seed cover/center so they fit their frame.
+        try { migrateBoundImageSizing(); } catch (err) { trace.error('cms-image-size-migration-failed', err); }
+        // Absolute/fixed flex children left at order 0 while flow siblings were
+        // renumbered ≥ 1 paint BEHIND them (Flexbox §4.1) — give them their DOM order.
+        try { migrateOutOfFlowSiblingOrders(); } catch (err) { trace.error('out-of-flow-order-migration-failed', err); }
         try { ensureIntlScaffold(); } catch (err) { trace.error('intl-scaffold-failed', err); }
         setUser(null);
         // Expose the dev introspection hook for E2E tests even in
@@ -300,6 +308,10 @@ export default function ProjectLoader() {
         // Patched in place — regenerating would discard the user's own styling.
         try { migrateFormSubmitDisplayTransitions(); } catch (err) { trace.error('formsubmit-migration-failed', err); }
         try { migrateLoadMoreLabelNowrap(); } catch (err) { trace.error('loadmore-nowrap-migration-failed', err); }
+        try { migrateBoundImageSizing(); } catch (err) { trace.error('cms-image-size-migration-failed', err); }
+        // Absolute/fixed flex children left at order 0 while flow siblings were
+        // renumbered ≥ 1 paint BEHIND them (Flexbox §4.1) — give them their DOM order.
+        try { migrateOutOfFlowSiblingOrders(); } catch (err) { trace.error('out-of-flow-order-migration-failed', err); }
         try { ensureIntlScaffold(); } catch (err) { trace.error('intl-scaffold-failed', err); }
 
       // 4c. Restore each file's saved camera (pan/zoom) from `_meta/page-camera.json`

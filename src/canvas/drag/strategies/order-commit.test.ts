@@ -280,3 +280,28 @@ describe('commitOrderAssignments — template chrome excluded + healed', () => {
     expect(updates.filter(u => u.nodeId === 'layout::Footer')).toHaveLength(1);
   });
 });
+
+describe('commitOrderAssignments — out-of-flow siblings get z-index 1 (Chrome paints them as order 0)', () => {
+  beforeEach(() => {
+    patchNodeStyles.mockClear();
+    mockActiveFilePath = 'pages/home.tsx';
+    mockNodes = {
+      wrap: { id: 'wrap', parentId: 'root', children: ['hdr', 'body', 'hero', 'bar'], styles: { display: 'flex' } },
+      hdr: { id: 'hdr', parentId: null, children: [], styles: {} }, // dragged canvas node: cache still parentless
+      body: { id: 'body', parentId: 'wrap', children: [], styles: { position: 'relative', order: '0' } },
+      hero: { id: 'hero', parentId: 'wrap', children: [], styles: { position: 'absolute' } },
+      bar: { id: 'bar', parentId: 'wrap', children: [], styles: { position: 'fixed', zIndex: '3' } },
+    };
+  });
+  it('primary: overlays after the renumbered section get zIndex 1; an authored z-index is kept', () => {
+    const updates = commitOrderAssignments([{ nodeId: 'hdr', order: 0 }, { nodeId: 'body', order: 1 }], document.createElement('div'), 'desktop');
+    const styles = updates.map(u => [u.nodeId, (u as any).styles]);
+    expect(styles).toEqual([['hdr', { order: '0' }], ['body', { order: '1' }], ['hero', { zIndex: '1' }]]);
+  });
+  it('page replica: the z-index rides the same band as the orders', () => {
+    const updates = commitOrderAssignments([{ nodeId: 'hdr', order: 0 }, { nodeId: 'body', order: 1 }], document.createElement('div'), 'tablet');
+    const hero = updates.find(u => u.nodeId === 'hero') as any;
+    expect(hero?.type).toBe('updateContainerStyle');
+    expect(hero?.styles).toEqual({ zIndex: '1' });
+  });
+});

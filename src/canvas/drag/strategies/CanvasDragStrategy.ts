@@ -38,6 +38,7 @@ import { getPendingReplicaExtraction, clearPendingReplicaExtraction } from '../p
 import { commitExitToCanvas, flushExitToCanvas } from '../exit-commit';
 import { buildCanvasCloneDescriptor } from '../clone-descriptor';
 import { queueBorderOverlayDuplicates, queueReplicaCreationUnhide } from '@/canvas/creators/creator-utils';
+import { isInstanceLike, instanceReplicaUnhideDisplay } from '@/canvas/drag/instance-replica-visibility';
 import { commitOrderAssignments } from './order-commit';
 import { queueMutation, flushNow, flushNowDeferredDuringDrag, getCurrentCode } from '@/code/mutation/mutation-queue';
 import { getViewportWidths } from '@/code/stores/viewport-store';
@@ -2092,21 +2093,15 @@ export class CanvasDragStrategy implements DragStrategy {
           // the element by default. The entered viewport's container/variant
           // override below flips it back to visible.
           //
-          // Component-instance exception (mirrors ToolbarDragStrategy): when
-          // the dragged node is a component instance, inline `style` is
-          // merged onto the component's INNER root via `expandComponent`. The
-          // `@media display: unset` rule targets the wrapper's data-id —
-          // not the inner root — so the inner root stays `display: none`
-          // and the embed renders blank. Skip the inline; per-viewport
-          // @media hide rules below already cover the primary range with
-          // bounded `(max-width:X) and (min-width:Y+1)` selectors.
-          const draggedNode = context.nodes.get(node.id);
-          // Code-component / code component instances skipped by `expandComponent`
-          // never get `isComponentInstance`; check both flags so they ride
-          // the same no-inline-display path as design-component instances.
-          const isInstance =
-            draggedNode?.isComponentInstance === true ||
-            draggedNode?.isCodeComponent === true;
+          // Component instances take the SAME inline hide as any node. They
+          // used to skip it on the theory that the bounded per-viewport
+          // @media hides "cover the primary range" — they never did: a band
+          // keyed at the primary width is dropped by the generator
+          // (`normalizeResponsiveBandKeys`), so a component dragged into
+          // tablet hid on mobile and stayed visible on desktop (2026-09-09).
+          // The inner root never receives this `none` (expandComponent skips
+          // it — the wrapper owns hiding) and the entered band restores the
+          // master ROOT's display below; see instance-replica-visibility.ts.
           // Component master files: variant visibility is owned by
           // `setVariantVisibility` (AnimatePresence wrapper). Skip the
           // legacy inline `display: 'none'` write — it freezes into
@@ -2114,7 +2109,7 @@ export class CanvasDragStrategy implements DragStrategy {
           // produces the dual-pattern (wrapper AND variant display)
           // that causes the asymmetric jump on variant transitions.
           const isComponentFile = isComponentFilePath(getActiveFilePath());
-          if (enteringNonPrimaryVp && !isInstance && !isComponentFile) {
+          if (enteringNonPrimaryVp && !isComponentFile) {
             moveStyles.display = 'none';
             // Half one of the visibility pair — see `writesVpVisibility`.
             writesVpVisibility = true;
@@ -2285,19 +2280,18 @@ export class CanvasDragStrategy implements DragStrategy {
             // @container would fight the entered's display:'unset').
             const draggedNode = context.nodes.get(node.id);
             // Both design-component instances (`isComponentInstance`) and
-            // code-component / code component instances (`isCodeComponent`) need the
-            // same wrapper-vs-inner-root treatment. Code components are
-            // skipped by `expandComponent` (project-parser.ts:91) so they
-            // never get the `isComponentInstance` flag — checking only
-            // that field misses them and the legacy "inline display:none +
-            // unset !important" path runs, which collapses the wrapper to
-            // `display: inline` (zero-area) for the entered viewport.
-            const isInstance =
-              draggedNode?.isComponentInstance === true ||
-              draggedNode?.isCodeComponent === true;
+            // code components (`isCodeComponent`, skipped by `expandComponent`
+            // so they never get the instance flag) restore the master ROOT's
+            // display in the entered band instead of `unset` — see
+            // instance-replica-visibility.ts for why neither `unset` (canvas
+            // wrapper → inline, 0×0) nor `block` (live root layout) works.
+            const isInstance = isInstanceLike(draggedNode);
             const hideUpdates = rctx.hideInAllOthers(node.id);
             for (const hideUpdate of hideUpdates) {
-              if (!isInstance && hideUpdate.type === 'updateContainerStyle') {
+              // The PRIMARY is hidden by the inline `display:'none'` the move
+              // wrote — for every node kind. (A primary-width band would be
+              // dropped by the generator's band-key normalizer anyway.)
+              if (hideUpdate.type === 'updateContainerStyle') {
                 const targetVpId = Object.keys(vpWidths).find(
                   k => vpWidths[k] === hideUpdate.maxWidth,
                 );
@@ -2317,15 +2311,7 @@ export class CanvasDragStrategy implements DragStrategy {
                 getNodeFromCache(node.id)?.styles?.display ?? '',
               );
             }
-            // Component instances skip the unhide. `display: 'unset' !important`
-            // would force the wrapper to `display: inline` (initial value
-            // beats UA stylesheet under !important author rule), and inline
-            // boxes ignore width/height — the embed renders at 0×0. Other
-            // replicas' @media hides leave the entered viewport with no
-            // override, so the wrapper renders with its natural
-            // `display: block` (Renderer creates `<div>` for instances per
-            // the VALID_TAGS fallback).
-            if (!isInstance) {
+            {
               // Read the element's existing `display` from the live
               // cache. For a canvas-node that had `display: 'flex'` /
               // `'grid'` / etc. (e.g. a layout-frame the user drew on
@@ -2336,8 +2322,14 @@ export class CanvasDragStrategy implements DragStrategy {
               // (hide-baseline) we write next overrides it everywhere
               // EXCEPT the entered vp via the `@container display:
               // <original>` write.
+              //
+              // Instances restore the master ROOT's display (live: the band
+              // rule lands on the root; canvas: the wrapper <div> tolerates
+              // it) — never `unset`, which collapses the wrapper to `inline`.
               const cachedNode = getNodeFromCache(node.id);
-              const originalDisplay = cachedNode?.styles?.display ?? '';
+              const originalDisplay = isInstance && draggedNode
+                ? instanceReplicaUnhideDisplay(draggedNode, context.nodes)
+                : (cachedNode?.styles?.display ?? '');
               queueReplicaCreationUnhide(node.id, enteredVpId, vpWidths[enteredVpId] ?? 0, originalDisplay);
               // Half two of the visibility pair — the STYLESHEET half, the one
               // no imperative patch can express. See `writesVpVisibility`.
@@ -3157,33 +3149,20 @@ export class CanvasDragStrategy implements DragStrategy {
               // the node SNAPS into its slot instantly on the reparentLive move.
               transform: this.originalTransforms.get(node.id) ?? '',
             };
-            // Component instances skip the inline `display:'none'` —
-            // inline gets merged onto the inner root via `expandComponent`,
-            // so the wrapper's `@media display:'unset'` would never reach
-            // the inner root and the embed renders blank. Page-replica
-            // bounded `@media` hides cover the primary range on their own.
-            // (Same exception as ToolbarDragStrategy + the no-layout
-            // entry path above.)
+            // Component instances take the inline `display:'none'` like any
+            // node — the bounded `@media` hides never covered the primary
+            // range (the generator drops a primary-width band). The entered
+            // band restores the master ROOT's display below; see
+            // instance-replica-visibility.ts (and the no-layout entry above).
             const draggedNode = context.nodes.get(node.id);
             // Pin to `0 0 auto` when entering a flex parent (unless it already
             // sizes itself) — else the flow child shrinks to ~0 and collapses
             // (the "disappears on drop into a flex layout" bug).
             const enterFlex = flexForFlowChildEnteringFlex(draggedNode?.styles, parentLayout);
             if (enterFlex) moveStyles.flex = enterFlex;
-            // Both design-component instances (`isComponentInstance`) and
-            // code-component / code component instances (`isCodeComponent`) need the
-            // same wrapper-vs-inner-root treatment. Code components are
-            // skipped by `expandComponent` (project-parser.ts:91) so they
-            // never get the `isComponentInstance` flag — checking only
-            // that field misses them and the legacy "inline display:none +
-            // unset !important" path runs, which collapses the wrapper to
-            // `display: inline` (zero-area) for the entered viewport.
-            const isInstance =
-              draggedNode?.isComponentInstance === true ||
-              draggedNode?.isCodeComponent === true;
             // Component master files use AnimatePresence (setVariantVisibility)
             // for variant visibility — skip the legacy inline display:'none'.
-            if (enteringNonPrimaryFlexVp && !isInstance && !isComponentFile) moveStyles.display = 'none';
+            if (enteringNonPrimaryFlexVp && !isComponentFile) moveStyles.display = 'none';
             updates.push({
               nodeId: node.id,
               type: 'move',
@@ -3311,41 +3290,35 @@ export class CanvasDragStrategy implements DragStrategy {
               // JSX panel — burying the hide in a @container rule means
               // they can't unhide by toggling an inline style.
               //
-              // Component instances skip the unhide entirely — they
-              // also skipped the inline display above, so there's
-              // nothing to override on the entered viewport. Writing
-              // `display: 'unset' !important` would force the wrapper
-              // to `display: inline` (CSS `unset` resolves to initial
-              // = `inline` when an !important author rule beats the UA
-              // stylesheet) and inline boxes ignore width/height.
+              // Component instances restore the master ROOT's display
+              // instead of `unset`: `unset !important` forces the canvas
+              // wrapper <div> to `display: inline` (0×0), and on the live
+              // site the band rule lands on the root itself, whose layout a
+              // wrong keyword would break. See instance-replica-visibility.ts.
               const draggedNode = context.nodes.get(node.id);
-              const isInstance =
-                draggedNode?.isComponentInstance === true ||
-                draggedNode?.isCodeComponent === true;
-              if (!isInstance) {
-                updates.push({
-                  nodeId: node.id,
-                  type: 'updateContainerStyle',
-                  maxWidth: vpWidths[enteredVp] ?? 0,
-                  styles: { display: 'unset' },
-                });
-              }
-              // For component instances we skipped the inline `display:'none'`
-              // above, so the primary's @container hide must be kept — it's
-              // the only thing keeping the instance hidden on the primary
-              // range. Regular tags keep the original "skip primary
-              // @container" optimization.
+              const isInstance = isInstanceLike(draggedNode);
+              updates.push({
+                nodeId: node.id,
+                type: 'updateContainerStyle',
+                maxWidth: vpWidths[enteredVp] ?? 0,
+                styles: {
+                  display: isInstance && draggedNode
+                    ? instanceReplicaUnhideDisplay(draggedNode, context.nodes)
+                    : 'unset',
+                },
+              });
+              // The PRIMARY is hidden by the inline `display:'none'` the move
+              // wrote — for every node kind (a primary-width band would be
+              // dropped by the generator's band-key normalizer anyway).
               for (const hideUpdate of rctx.hideInAllOthers(node.id)) {
                 if (hideUpdate.type !== 'updateContainerStyle') {
                   updates.push(hideUpdate);
                   continue;
                 }
-                if (!isInstance) {
-                  const targetVpId = Object.keys(vpWidths).find(
-                    k => vpWidths[k] === hideUpdate.maxWidth,
-                  );
-                  if (targetVpId && isPrimaryViewport(targetVpId)) continue;
-                }
+                const targetVpId = Object.keys(vpWidths).find(
+                  k => vpWidths[k] === hideUpdate.maxWidth,
+                );
+                if (targetVpId && isPrimaryViewport(targetVpId)) continue;
                 updates.push(hideUpdate);
               }
             }

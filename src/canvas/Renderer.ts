@@ -168,6 +168,14 @@ const VALID_TAGS = new Set([
 // patches, locale overrides, slot/wrapper decorations) are NOT covered by
 // the clear, by design.
 const _prevPatchedKeys = new WeakMap<HTMLElement, Set<string>>();
+// Inline style keys the CMS binding pass wrote on a TEMPLATE element in the
+// previous patch (`applyNodeCmsBindings` → `styleKeys`). Companion to
+// `_prevPatchedKeys`: the stale-clear above only reconciles what the style
+// pass wrote, so a bound `backgroundImage` that stopped being bound (× on the
+// Fill pill removes the key from the source) stayed painted on item 0 until a
+// page switch while the ghosts — rebuilt from the binding signature — went
+// clean (user report 2026-09-09).
+const _prevBoundStyleKeys = new WeakMap<HTMLElement, Set<string>>();
 
 // ─── Collection-list ghost binding signature ──────────────────────────────
 // Which CMS fields the template subtree is bound to, recorded on the list
@@ -2069,7 +2077,7 @@ function syncBgVideoChild(hostEl: HTMLElement, bgVideo: CanvasNode['bgVideo']): 
   }
 }
 
-function patchElement(
+export function patchElement(
   el: HTMLElement,
   node: CanvasNode,
   allNodes: Map<string, CanvasNode>,
@@ -2137,6 +2145,13 @@ function patchElement(
   // commit path got here (mutation-queue → setCode → re-render). Without
   // this the lifted-time computed font/color values would persist on the
   // element forever, even though the user never set them in JSX.
+  // A lift that never went through restoreNode (strategy handoff, cancelled
+  // gesture on a reused element) must not leave the lift markers behind:
+  // `data-lift-inline-snapshot` now also gates the sandbox's ghost mirroring
+  // (ghostFanOutAllowed), so a stale marker would silently freeze ghost
+  // updates for that node (review find 2026-09-09).
+  if (el.hasAttribute('data-lift-inline-snapshot')) el.removeAttribute('data-lift-inline-snapshot');
+  if (el.hasAttribute('data-lift-tracked-keys')) el.removeAttribute('data-lift-tracked-keys');
   const preservedAttr = el.getAttribute('data-lift-preserved-props');
   if (preservedAttr) {
     for (const k of preservedAttr.split(',')) {
@@ -2497,8 +2512,25 @@ function patchElement(
 
   // Apply bindings from collection data (overrides base styles/text for template
   // item 0), honoring per-viewport rebind / unbind→default at vpWidth.
-  if (bindingData) {
-    applyNodeCmsBindings(el, node, bindingData, vpWidth, variantName, { skipHref: true });
+  {
+    const boundNow = bindingData
+      ? applyNodeCmsBindings(el, node, bindingData, vpWidth, variantName, { skipHref: true }).styleKeys
+      : [];
+    // BOUND-KEY STALE-CLEAR: a key the binding pass owned last patch but not
+    // now — and that the model's own styles don't set either — must go, or the
+    // last bound value (e.g. the row-0 image url) lingers on the template.
+    const prevBound = _prevBoundStyleKeys.get(el);
+    if (prevBound) {
+      const nowSet = new Set(boundNow);
+      for (const k of prevBound) {
+        if (nowSet.has(k)) continue;
+        if ((resolvedStyles as Record<string, unknown>)[k] !== undefined && (resolvedStyles as Record<string, unknown>)[k] !== '') continue;
+        clearElStyle(el, k);
+        trace.dom('renderer:bound-style-stale-clear', { nodeId: node.id, idPrefix, key: k });
+      }
+    }
+    if (boundNow.length > 0) _prevBoundStyleKeys.set(el, new Set(boundNow));
+    else if (prevBound) _prevBoundStyleKeys.delete(el);
   }
 
   // Patch HTML attributes (neutralize href on canvas — links must not navigate in the editor)
