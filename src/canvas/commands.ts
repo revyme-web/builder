@@ -15,6 +15,7 @@ import { parseIconSetConfig } from '@/code/icons/icon-set-config';
 import { removeIconFromSet } from '@/code/icons/icon-set-ops';
 import { projectFS } from '@/code/project/project-fs';
 import { getViewportWidths } from '@/code/stores/viewport-store';
+import { isViewerMode } from '@/code/stores/viewer-mode-store';
 import { parseCanvasConfig, updateCanvasConfigInCode } from '@/code/project/canvas-config';
 import { clearContainerStylesForWidth, removeResponsiveBreakpoint } from '@/code/generation/generator-styles';
 import { modifyProjectFile } from '@/code/project/modify-file';
@@ -414,14 +415,38 @@ export function deleteNode(nodeIdOrIds: string | string[], contentEl: HTMLElemen
   }
 }
 
-/** Toggle lock on a node (prevents selection/drag) */
+/** Toggle lock on a node (prevents selection/drag).
+ *
+ *  Lock is a WHOLE-NODE property — never per viewport or per variant. It used
+ *  to go through `updateNodeStyles`, whose routing sends a write made while a
+ *  REPLICA row is active into that viewport's @media band (component master:
+ *  the variant's styles). The padlock (`node.styles.pointerEvents`) and the
+ *  hit-test (`isNodeLockedById`) both read the BASE, so a lock pressed on the
+ *  tablet row flipped nothing and locked nothing (2026-09-09). Write the base
+ *  inline style directly, then mirror it into the cache and every painted tile
+ *  so the icon and the hit-test agree immediately. */
 export function toggleLock(nodeId: string, contentEl: HTMLElement, nodesMap: Map<string, CanvasNode>): void {
+  if (isViewerMode()) return;
   const node = nodesMap.get(nodeId);
   if (!node) return;
   const isLocked = node.styles.pointerEvents === 'none';
   const newValue = isLocked ? '' : 'none';
   trace.action('node-ops:toggle-lock', { nodeId, locked: !isLocked });
-  updateNodeStyles({ id: nodeId, styles: { pointerEvents: newValue }, contentEl });
+  queueMutation({ type: 'updateStyles', nodeId, styles: { pointerEvents: newValue } });
+  // PER-TILE VALUES ARE LEFT ALONE. `pointerEvents` is also a first-class panel
+  // row (Styles > Pointer Events), which on a replica writes an @media band —
+  // and nothing distinguishes such an authored `none` from one the old
+  // viewport-routed lock wrote there. Clearing on lock (or unlock) silently
+  // destroyed the user's own per-breakpoint setting, so we never touch bands:
+  // the padlock owns the base, the Pointer row owns the tiles, and a leftover
+  // from the old bug shows up in that row (accented, with Reset Override).
+  const vpWidths = getViewportWidths();
+  // Cache + every painted copy NOW: the padlock and the hit-test read the
+  // cache, and no tile should wait for the flush render.
+  updateNodeInCache(nodeId, { pointerEvents: newValue });
+  for (const vpId of Object.keys(vpWidths)) {
+    patchNodeStyles(contentEl, nodeId, getViewportPrefix(vpId), { pointerEvents: newValue });
+  }
 }
 
 /** Toggle visibility on a node */

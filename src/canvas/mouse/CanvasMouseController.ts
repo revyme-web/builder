@@ -76,6 +76,8 @@ import {
   componentEditorFileAtom,
 } from '@/code/stores/component-editor-store';
 import { leftPanelAtom } from '@/code/stores/left-panel-store';
+import { cmsPageMetaAtom, activePreviewItemAtom } from '@/code/stores/cms-page-store';
+import { collectionDataAtom, collectionSchemasAtom } from '@/code/stores/cms-store';
 import { isDefaultLocaleAtom } from '@/code/stores/locale-store';
 import {
   getViewportPrefix,
@@ -184,8 +186,6 @@ export interface CanvasMouseControllerOpts {
   openCmsEditor: (opts: { collection: string; itemId?: string | null; fieldId?: string | null }) => void;
   setLeftPanel: (p: string) => void;
   setToolMode: (m: string) => void;
-  // cmsData for bound text double-click
-  getCmsData: () => Map<string, any[]>;
 }
 
 export class CanvasMouseController {
@@ -920,13 +920,24 @@ export class CanvasMouseController {
       // edit on the wrapper (no geometry child → the shape editor crashed).
       // The click redirect already moved the hit from the <p> to the wrapper
       // (redirectToFitTextWrapper), so resolve back down to the inner text.
+      // A FIT wrapper whose inner text is CMS-BOUND must reach the CMS branch
+      // below, not text edit: `startEdit` refuses bound nodes, so calling it
+      // here made the double-click do nothing at all. `cmsTargetId` carries the
+      // inner id so the CMS branch reads the bound node, not the <svg>.
+      let cmsTargetId: string | null = null;
       if (redirectedNode2 && redirectedNode2.type === 'svg') {
         const fitInnerId = findFitInnerTextId(redirectedNode2, this.store.get(nodesAtom));
         if (fitInnerId) {
-          trace.action('canvas:text-edit-from-dblclick-fit', { wrapperId: redirectedId, nodeId: fitInnerId, vpId });
-          this.opts.startTextEdit(fitInnerId + ghostSuffix, null, '', vpId);
-          this.lastClick = null;
-          return;
+          const fitInner = this.store.get(nodesAtom).get(fitInnerId);
+          if (fitInner?.binding?.property === 'text') {
+            cmsTargetId = fitInnerId;
+            trace.action('canvas:dblclick-fit-cms-bound', { wrapperId: redirectedId, nodeId: fitInnerId });
+          } else {
+            trace.action('canvas:text-edit-from-dblclick-fit', { wrapperId: redirectedId, nodeId: fitInnerId, vpId });
+            this.opts.startTextEdit(fitInnerId + ghostSuffix, null, '', vpId);
+            this.lastClick = null;
+            return;
+          }
         }
       }
       if (redirectedNode2 && redirectedNode2.type === 'svg') {
@@ -1107,10 +1118,33 @@ export class CanvasMouseController {
       }
 
       // CMS-bound text → open CMS overlay focused on that field.
-      const cmsNode = this.store.get(nodesAtom).get(nodeId);
-      const cmsBoundField = cmsNode?.binding?.property === 'text' ? cmsNode.binding.field : null;
+      // `cmsTargetId` is set when the click landed on a FIT wrapper whose inner
+      // text carries the binding (see above).
+      const cmsNodeId = cmsTargetId ?? nodeId;
+      const cmsNode = this.store.get(nodesAtom).get(cmsNodeId);
+      let cmsBoundField = cmsNode?.binding?.property === 'text' ? cmsNode.binding.field : null;
+      // A node parked on the CANVAS of its own `[slug]` page keeps its binding
+      // in the orphan stash, never as a live `{item.field}` — `canvasNodes` is
+      // module scope, where `item` isn't declared. It is still bound as far as
+      // the user is concerned, so the double-click belongs in the CMS overlay
+      // too, not in inline text edit (report 2026-09-09). Gated on the field
+      // really being in THIS page's collection, the same rule the pill and the
+      // rehydrate use — a row dragged out of a nested list stays detached.
+      if (!cmsBoundField) {
+        const stashed = cmsNode?.orphanBindings?.find((o) => o.prop === '__text')?.field;
+        const detail = this.store.get(cmsPageMetaAtom);
+        if (stashed && detail?.kind === 'detail'
+          && this.store.get(collectionSchemasAtom).get(detail.collection)?.fields.some((f) => f.id === stashed)) {
+          cmsBoundField = stashed;
+        }
+      }
       if (cmsBoundField) {
-        let cursor: typeof cmsNode | undefined = cmsNode;
+        // `isCollectionTemplate` (set by the parser on every node inside a
+        // `.map()` callback) is what makes this a ROW — a bare ancestor walk
+        // also succeeds for a node that merely sits inside the list CONTAINER,
+        // which on a detail page with a related-items list would open the
+        // wrong collection. Same rule as `findCmsListScope`.
+        let cursor: typeof cmsNode | undefined = cmsNode?.isCollectionTemplate ? cmsNode : undefined;
         let cmsSlug: string | null = null;
         while (cursor) {
           if (cursor.collectionList) {
@@ -1119,21 +1153,51 @@ export class CanvasMouseController {
           }
           cursor = cursor.parentId ? this.store.get(nodesAtom).get(cursor.parentId) : undefined;
         }
+        let targetItem: { _id?: string } | null = null;
+        let source: 'collection-list' | 'detail-page' = 'collection-list';
         if (cmsSlug) {
           const rowIdx = this.store.get(mapItemIndexAtom) ?? 0;
-          const items = this.opts.getCmsData().get(cmsSlug) ?? [];
-          const targetItem = items[rowIdx];
-          if (targetItem) {
-            trace.action('canvas:dblclick-cms-bound', {
-              nodeId, slug: cmsSlug, itemId: targetItem._id, field: cmsBoundField,
-            });
-            this.opts.openCmsEditor({
-              collection: cmsSlug, itemId: targetItem._id, fieldId: cmsBoundField,
-            });
-            this.lastClick = null;
-            return;
+          // From the STORE, not an opts getter: the mouse controller is built
+          // once per sandbox, so a captured `cmsData` map is the one that
+          // existed then — items added later resolved to the wrong row (or
+          // none). The atom re-derives from ProjectFS on every version bump.
+          targetItem = this.store.get(collectionDataAtom).get(cmsSlug)?.[rowIdx] ?? null;
+        } else {
+          // DETAIL ([slug]) PAGE — the binding comes from the page's
+          // `@cmsPage` context, NOT a `.map()`, so there is no
+          // `collectionList` ancestor to walk to (parser.ts falls back to
+          // `ctx.detailPageContext`). Without this branch the dblclick fell
+          // through to text edit and the commit rewrote `{item.field}` into a
+          // literal string — the binding silently vanished from the panel
+          // even when the user typed nothing (2026-09-09).
+          //
+          // Atoms read from the store, not through an opts getter: the mouse
+          // controller is constructed once per sandbox and a captured value
+          // would be the item previewed at construction time.
+          const meta = this.store.get(cmsPageMetaAtom);
+          if (meta?.kind === 'detail') {
+            cmsSlug = meta.collection;
+            targetItem = this.store.get(activePreviewItemAtom);
+            source = 'detail-page';
           }
         }
+        if (cmsSlug && targetItem?._id) {
+          trace.action('canvas:dblclick-cms-bound', {
+            nodeId: cmsNodeId, slug: cmsSlug, itemId: targetItem._id, field: cmsBoundField, source,
+          });
+          this.opts.openCmsEditor({
+            collection: cmsSlug, itemId: targetItem._id, fieldId: cmsBoundField,
+          });
+          this.lastClick = null;
+          return;
+        }
+        // Bound but unresolvable (no items yet / malformed annotation): still
+        // NEVER enter text edit — the commit would overwrite the binding with
+        // a literal. `startEdit` refuses these too; bail here so the click
+        // doesn't fall through to the generic text-edit branch below.
+        trace.action('canvas:dblclick-cms-bound-unresolved', { nodeId: cmsNodeId, field: cmsBoundField, cmsSlug });
+        this.lastClick = null;
+        return;
       }
 
       // Component-variable-bound text → open the Variable modal on that variable

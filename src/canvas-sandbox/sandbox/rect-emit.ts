@@ -360,6 +360,76 @@ export function emitElementRefresh(el: HTMLElement, emit: (e: SandboxEvent) => v
   });
 }
 
+/** Descendant budget above which a queued refresh goes through the BATCHED
+ *  measure funnel instead of per-element emits. `emitSubtreeRefresh` posts TWO
+ *  messages per element, so a page-sized scope is thousands of them;
+ *  `emitAllMeasures` ships the same geometry as a few envelopes (and replays
+ *  overlay placements on the way).
+ *
+ *  The trade is that the batched sweep measures the WHOLE page, not just the
+ *  scope — worth it only once the message count is the dominant cost, so the
+ *  budget sits well above a normal section-sized walk. */
+const REFRESH_BATCH_THRESHOLD = 300;
+
+/** Window over which refresh requests coalesce — long enough to span the two
+ *  patch batches one reorder commits, short enough to be invisible. */
+const REFRESH_COALESCE_MS = 40;
+
+let _pendingRefreshScopes: Set<HTMLElement> | null = null;
+let _pendingRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Coalesced `emitSubtreeRefresh`. Collects every scope requested during the
+ * current frame and runs each distinct one ONCE.
+ *
+ * A committed style batch patches each node separately, and the refresh scope
+ * is the patched element's PARENT — so reordering the 8 sections of a page
+ * asked for 8 refreshes of the SAME parent, and for root sections that parent
+ * is the whole page. Measured on a real 633-element page (2026-09-09): 8
+ * refreshes × 590 descendants ≈ 9,400 rect/corner messages, ~250ms, which is
+ * why the layers panel, the selection outline and the replica tiles all
+ * settled about a second after the DOM had already moved.
+ *
+ * Scopes nested inside another queued scope are dropped (the outer walk
+ * already covers them), and a page-sized result is handed to the batched
+ * all-rects sweep — the same funnel the settle observer and the camera-idle
+ * heal use.
+ */
+export function scheduleSubtreeRefresh(scope: HTMLElement, emit: (e: SandboxEvent) => void): void {
+  (_pendingRefreshScopes ??= new Set()).add(scope);
+  if (_pendingRefreshTimer) return;
+  // A COMMIT WINDOW, not a single frame. One reorder commits its inline
+  // `order` writes and its replica-band writes as separate patch batches that
+  // land in DIFFERENT frames, so a one-frame window still produced two
+  // page-sized sweeps back to back (~50ms each, traced 2026-09-09). A short
+  // window catches both while staying far inside the ~290ms the selection
+  // overlay takes to read the corners back, so nothing reads stale geometry.
+  _pendingRefreshTimer = setTimeout(() => {
+    _pendingRefreshTimer = null;
+    const queued = _pendingRefreshScopes ?? new Set<HTMLElement>();
+    _pendingRefreshScopes = null;
+    const live = [...queued].filter((s) => s.isConnected);
+    // Keep only the outermost scopes — an inner one's elements are already in
+    // the outer one's descendant walk.
+    const outermost = live.filter((s) => !live.some((o) => o !== s && o.contains(s)));
+    let descendants = 0;
+    for (const s of outermost) descendants += s.querySelectorAll('[data-node-id]').length;
+    const batched = descendants > REFRESH_BATCH_THRESHOLD;
+    trace.action('sandbox:subtree-refresh-batch', {
+      queued: queued.size, scopes: outermost.length, descendants, batched,
+    });
+    if (batched) { forceRemeasureAllRects(); return; }
+    for (const s of outermost) emitSubtreeRefresh(s, emit);
+  }, REFRESH_COALESCE_MS);
+}
+
+/** Test seam — drop anything queued for the next frame. */
+export function clearPendingSubtreeRefresh(): void {
+  if (_pendingRefreshTimer) clearTimeout(_pendingRefreshTimer);
+  _pendingRefreshTimer = null;
+  _pendingRefreshScopes = null;
+}
+
 export function emitSubtreeRefresh(parent: HTMLElement, emit: (e: SandboxEvent) => void): void {
   // The scope element ITSELF first — when callers pass a layout PARENT
   // (sibling-scope refresh below), its own box can change too (auto-height

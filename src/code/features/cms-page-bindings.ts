@@ -69,6 +69,30 @@ export function applyDetailPageBindings(
       }
     }
 
+    // DORMANT bindings (`data-cms-orphan`). A node dragged onto the canvas of
+    // its own detail page cannot keep a live `{item.field}` — `canvasNodes` is
+    // module scope, where `item` is not declared — so the binding is stashed
+    // and the row's value baked into the JSX as a literal. That literal is a
+    // SNAPSHOT: editing the field left the canvas copy showing the old text
+    // (report 2026-09-09). Painting the stash here makes the canvas follow the
+    // field like every other bound node, while the source keeps the safe
+    // literal. A field this page's item doesn't have is skipped, so a row
+    // dragged out of a NESTED collection list stays on its baked value.
+    if (node.orphanBindings) {
+      for (const ob of node.orphanBindings) {
+        if (item[ob.field] === undefined) continue;
+        if (!cloned) cloned = { ...node };
+        if (ob.prop === '__text') {
+          cloned.textContent = String(item[ob.field] ?? '');
+        } else if (ob.prop.startsWith('__style.')) {
+          const cssProp = ob.prop.slice('__style.'.length);
+          cloned.styles = { ...cloned.styles, [cssProp]: formatBoundStyleValue(cssProp, item[ob.field] ?? '') };
+        } else {
+          cloned.attrs = { ...cloned.attrs, [ob.prop]: String(item[ob.field] ?? '') };
+        }
+      }
+    }
+
     if (cloned) {
       out.set(id, cloned);
       mutatedCount++;

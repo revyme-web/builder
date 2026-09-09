@@ -377,40 +377,71 @@ describe('deleteNode', () => {
 // Note: node-ops mock already declared above with all needed mocks
 
 describe('toggleLock', () => {
+  // Lock is a WHOLE-NODE property: the padlock and the hit-test both read the
+  // BASE `pointerEvents`, so the write must land on the base inline style no
+  // matter which viewport row / variant is active — never through the
+  // viewport-routed `updateNodeStyles` (a tablet-row lock used to land in the
+  // tablet @media band and flip nothing, 2026-09-09).
   let mockUpdateNodeStyles: ReturnType<typeof vi.fn>;
+  let mockQueueMutation: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     const nodeOps = await import('./node-ops');
     mockUpdateNodeStyles = nodeOps.updateNodeStyles as ReturnType<typeof vi.fn>;
     mockUpdateNodeStyles.mockClear();
+    const mq = await import('@/code/mutation/mutation-queue');
+    mockQueueMutation = mq.queueMutation as ReturnType<typeof vi.fn>;
+    mockQueueMutation.mockClear();
+    const { getDefaultStore } = await import('jotai');
+    const { codeAtom } = await import('@/code/stores/store');
+    getDefaultStore().set(codeAtom, '');
   });
 
-  it('locks an unlocked node (sets pointerEvents to none)', () => {
+  it('locks an unlocked node on the BASE style (sets pointerEvents to none), not via the viewport router', () => {
     const contentEl = document.createElement('div');
     const nodesMap = buildMap([makeNode('n1', null, [], { pointerEvents: '' })]);
     toggleLock('n1', contentEl, nodesMap);
-    expect(mockUpdateNodeStyles).toHaveBeenCalledWith({
-      id: 'n1',
-      styles: { pointerEvents: 'none' },
-      contentEl,
-    });
+    expect(mockQueueMutation).toHaveBeenCalledWith({ type: 'updateStyles', nodeId: 'n1', styles: { pointerEvents: 'none' } });
+    expect(mockUpdateNodeStyles).not.toHaveBeenCalled();
+    // No per-tile write when no tile carries an override.
+    expect(mockQueueMutation.mock.calls.some(c => c[0].type === 'updateContainerStyle')).toBe(false);
   });
 
-  it('unlocks a locked node (clears pointerEvents)', () => {
+  it('unlocks a locked node (clears pointerEvents on the base)', () => {
     const contentEl = document.createElement('div');
     const nodesMap = buildMap([makeNode('n1', null, [], { pointerEvents: 'none' })]);
     toggleLock('n1', contentEl, nodesMap);
-    expect(mockUpdateNodeStyles).toHaveBeenCalledWith({
-      id: 'n1',
-      styles: { pointerEvents: '' },
-      contentEl,
-    });
+    expect(mockQueueMutation).toHaveBeenCalledWith({ type: 'updateStyles', nodeId: 'n1', styles: { pointerEvents: '' } });
+  });
+
+  it('never touches a per-viewport `pointer-events` band — the Styles > Pointer row owns those', async () => {
+    // Nothing distinguishes an authored per-breakpoint value from one the old
+    // viewport-routed lock left behind, so clearing either way silently
+    // destroyed the user's own setting on lock+unlock.
+    const { getDefaultStore } = await import('jotai');
+    const { codeAtom } = await import('@/code/stores/store');
+    getDefaultStore().set(codeAtom, `export default function Page(){ return (<div data-id="root"><div data-id="n1" style={{ position: 'relative' }} /><style>{\`
+    @media (max-width: 768px) and (min-width: 375.02px) {
+      [data-id="n1"] { pointer-events: none !important; }
+    }
+\`}</style></div>); }`);
+    const contentEl = document.createElement('div');
+    for (const base of ['', 'none']) {
+      mockQueueMutation.mockClear();
+      toggleLock('n1', contentEl, buildMap([makeNode('n1', null, [], { pointerEvents: base })]));
+      expect(mockQueueMutation).toHaveBeenCalledWith({
+        type: 'updateStyles', nodeId: 'n1', styles: { pointerEvents: base === 'none' ? '' : 'none' },
+      });
+      expect(mockQueueMutation.mock.calls.some(c => c[0].type === 'updateContainerStyle')).toBe(false);
+      expect(mockQueueMutation.mock.calls.some(c => c[0].type === 'updateVariantStyle')).toBe(false);
+    }
   });
 
   it('does nothing for unknown node', () => {
     const contentEl = document.createElement('div');
     const nodesMap = buildMap([]);
     toggleLock('nonexistent', contentEl, nodesMap);
+    expect(mockQueueMutation).not.toHaveBeenCalled();
     expect(mockUpdateNodeStyles).not.toHaveBeenCalled();
   });
 });

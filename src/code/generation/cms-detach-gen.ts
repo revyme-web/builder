@@ -16,6 +16,8 @@
 
 import { findJSXDataIdIndex, findTagClose, findMatchingCloseTagIndex } from './generator-utils';
 import { getEnclosingMapIteratorForNode } from './map-gen';
+import { parseCmsPageMeta } from '@/code/project/cms-page-meta';
+import { getCollectionSchema } from '@/code/project/cms-ops';
 import { trace } from '@/shared/debug-trace';
 
 const CMS_ORPHAN_ATTR = 'data-cms-orphan';
@@ -572,7 +574,7 @@ function dormantizeCmsStyleBinding(code: string, nodeId: string, iterVar: string
  *   • STYLE/template interp `${iter.field}`    → stripped (`url(${item.image})` → `url()`)
  * Repairs state created before the drag-out dormantize ran. Idempotent.
  */
-export function healDanglingCanvasNodeBindings(code: string): string {
+export function healDanglingCanvasNodeBindings(code: string, row?: Record<string, any> | null): string {
   if (code.indexOf('const canvasNodes') === -1) return code;
   let result = code;
 
@@ -585,8 +587,12 @@ export function healDanglingCanvasNodeBindings(code: string): string {
     while ((m = re.exec(result)) !== null) {
       const nodeId = m[1], iter = m[2];
       if (getEnclosingMapIteratorForNode(result, nodeId) === null) {
-        const next = dormantizeCmsTextBinding(result, nodeId, iter);
-        if (next !== result) { result = next; healed = true; trace.action('cms-detach:heal-dangling-text', { nodeId, iter }); break; }
+        let next = dormantizeCmsTextBinding(result, nodeId, iter);
+        // Bake the row the node was SHOWING over the humanized placeholder. On
+        // a detail page the caller passes the previewed item; without it the
+        // heading became "Untitled" the moment it was dragged to the canvas.
+        if (next !== result && row) next = bakeCmsOrphanValuesInCode(next, nodeId, row);
+        if (next !== result) { result = next; healed = true; trace.action('cms-detach:heal-dangling-text', { nodeId, iter, baked: !!row }); break; }
       }
     }
     if (!healed) break;
@@ -604,8 +610,9 @@ export function healDanglingCanvasNodeBindings(code: string): string {
     while ((m = re.exec(result)) !== null) {
       const nodeId = m[1], iter = m[2];
       if (getEnclosingMapIteratorForNode(result, nodeId) === null) {
-        const next = dormantizeCmsStyleBinding(result, nodeId, iter);
-        if (next !== result) { result = next; healed = true; trace.action('cms-detach:heal-dangling-style', { nodeId, iter }); break; }
+        let next = dormantizeCmsStyleBinding(result, nodeId, iter);
+        if (next !== result && row) next = bakeCmsOrphanValuesInCode(next, nodeId, row);
+        if (next !== result) { result = next; healed = true; trace.action('cms-detach:heal-dangling-style', { nodeId, iter, baked: !!row }); break; }
       }
     }
     if (!healed) break;
@@ -614,19 +621,46 @@ export function healDanglingCanvasNodeBindings(code: string): string {
   return result;
 }
 
+/** The iterator in scope on a CMS DETAIL (`[slug]`) page, or null.
+ *
+ *  A detail page binds against ONE row declared at the top of the component
+ *  (`const item = collection.find(…) ?? collection[0]`) instead of a `.map()`
+ *  callback, so `getEnclosingMapIteratorForNode` finds nothing there and every
+ *  rehydrate bailed: duplicating a bound node ON its own slug page left the
+ *  copy dormant, showing "Missing" even though the very same `item` was in
+ *  scope (user report 2026-09-09). The name is fixed at `item` — what the
+ *  detail-page scaffold emits and what the parser assumes (`detailPageContext`)
+ *  — and we re-check that the declaration is really there, so this can never
+ *  emit a reference to a variable the file does not define.
+ */
+function detailPageIterator(code: string, fields: string[]): string | null {
+  const meta = parseCmsPageMeta(code);
+  if (meta?.kind !== 'detail') return null;
+  if (!/\b(?:const|let|var)\s+item\s*=/.test(code)) return null;
+  // The stashed fields must belong to THIS page's collection. A detail page can
+  // also host a collection list of its own; a node dragged out of that list
+  // carries the OTHER collection's fields, and binding those to `item` would
+  // render undefined — worse than the honest "Missing" pill, which is what
+  // such a node keeps.
+  const schema = getCollectionSchema(meta.collection);
+  if (!schema) return 'item'; // schema unreadable — trust the stash
+  const ids = new Set(schema.fields.map((f) => f.id));
+  return fields.every((f) => ids.has(f)) ? 'item' : null;
+}
+
 /**
- * ENTRY: the node is now inside a `.map()`. If it carries a `data-cms-orphan`
- * stash, re-bind each remembered prop to the NEW iterator (`prop={dstIter.field}`)
- * and drop the stash. Optimistic by design — if the destination collection
- * lacks `field`, `dstIter.field` is simply `undefined` at runtime (renders the
- * prop default, never crashes); the panel surfaces that as a "Missing" pill
- * because the field won't be in the collection's schema. No-op when the node
- * isn't inside a `.map()` (stays dormant → "Missing") or has no stash.
+ * ENTRY: the node is now inside a collection scope — a `.map()` callback, or
+ * the `item` of a CMS detail (`[slug]`) page. If it carries a
+ * `data-cms-orphan` stash, re-bind each remembered prop to that iterator
+ * (`prop={dstIter.field}`) and drop the stash. Optimistic for a `.map()` — if
+ * the destination collection lacks `field`, `dstIter.field` is simply
+ * `undefined` at runtime (renders the prop default, never crashes) and the
+ * panel surfaces it as a "Missing" pill. The detail-page iterator is NOT
+ * optimistic: it is used only when every stashed field is in that page's
+ * schema (see `detailPageIterator`). No-op with no scope in reach (stays
+ * dormant → "Missing") or no stash.
  */
 export function rehydrateCmsBindings(code: string, nodeId: string): string {
-  const dstIter = getEnclosingMapIteratorForNode(code, nodeId);
-  if (!dstIter) return code; // still detached → leave it dormant ("Missing")
-
   const tag = findOpeningTag(code, nodeId);
   if (!tag) return code;
   let openTag = code.slice(tag.tagStart, tag.tagEnd + 1);
@@ -634,6 +668,11 @@ export function rehydrateCmsBindings(code: string, nodeId: string): string {
   const orphanMatch = openTag.match(new RegExp(`\\s${CMS_ORPHAN_ATTR}="([^"]*)"`));
   if (!orphanMatch) return code;
   const orphans = parseOrphanBindings(orphanMatch[1]);
+
+  // A `.map()` in scope wins; a detail page binds against its own `item`.
+  const dstIter = getEnclosingMapIteratorForNode(code, nodeId)
+    ?? detailPageIterator(code, orphans.map((o) => o.field));
+  if (!dstIter) return code; // still detached → leave it dormant ("Missing")
 
   // Drop the stash attr first.
   openTag = openTag.replace(orphanMatch[0], '');

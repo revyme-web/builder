@@ -75,10 +75,16 @@ describe('instanceReplicaUnhideDisplay', () => {
     expect(instanceReplicaUnhideDisplay({ type: 'Card', componentFile: 'components/Card.tsx', styles: {} }, null, fs)).toBe('block');
   });
 
-  it('code components and CDN components → block (their root is opaque)', () => {
+  it('a LOCAL code component parses its own root display (never a blind block)', () => {
+    // Its root is a plain element we can read — forcing `block` on a flex (or
+    // inline) root broke the layout on the very tile the instance shows on.
     const fs = fsWith({ 'components/Shader.tsx': FLEX_MASTER });
-    expect(instanceReplicaUnhideDisplay({ type: 'Shader', isCodeComponent: true, componentFile: 'components/Shader.tsx', styles: {} }, null, fs)).toBe('block');
+    expect(instanceReplicaUnhideDisplay({ type: 'Shader', isCodeComponent: true, componentFile: 'components/Shader.tsx', styles: {} }, null, fs)).toBe('flex');
+  });
+
+  it('a CDN component → block: its source is fetched async (and may be closed), so the root is unknowable at drop time', () => {
     expect(instanceReplicaUnhideDisplay({ type: 'Widget', isComponentInstance: true, componentFile: 'https://cdn.example.com/widget.js', styles: {} }, null, fsWith({}))).toBe('block');
+    expect(instanceReplicaUnhideDisplay({ type: 'Widget', isCodeComponent: true, componentFile: 'https://assets.revyme.app/components/abc.js', styles: {} }, null, fsWith({}))).toBe('block');
   });
 
   it('keyword resets on the root never leak into the band (they collapse the wrapper)', () => {

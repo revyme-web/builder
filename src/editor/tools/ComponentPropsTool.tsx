@@ -64,7 +64,7 @@ import { propertyHasPresets, buildPresetSubmenuItems } from '../controls/control
 import { presetTokensAtom } from '@/code/stores/preset-store';
 import { flushNow, queueMutation } from '@/code/mutation/mutation-queue';
 import { useControl } from '../controls/ControlProvider';
-import { CmsBoundPill, CmsMissingPill, CmsFieldPill, cmsFieldLabel } from '../controls/CmsBoundPill';
+import { CmsBoundPill, CmsMissingPill, CmsFieldPill, cmsFieldLabel, cmsOrphanInScope } from '../controls/CmsBoundPill';
 import { getScrollVariant, setScrollVariantInCode, rehydrateScrollVariant } from '@/code/generation/scroll-variant-gen';
 import { getActiveAnimationScope } from '@/editor/tools/AnimationTool/animation-scope-source';
 import { isComponentLikeFilePath, isTemplateFilePath } from '@/code/project/active-file-store';
@@ -89,6 +89,7 @@ import { viewportsConfigAtom } from '@/code/stores/viewport-store';
 import { interactingViewportIdAtom } from '@/code/stores/viewport-store';
 import { trace } from '@/shared/debug-trace';
 import { expediteStableAtomSync } from '@/canvas/hooks/useStableAtomSync';
+import { cmsPageMetaAtom } from '@/code/stores/cms-page-store';
 
 // Lifted-out row components + helpers (Phase 7 god-file split, item 7.5) — see
 // ./ComponentPropsTool/. The public API below is re-exported so existing
@@ -171,6 +172,7 @@ export default function ComponentPropsTool() {
   // margin / shadow / border).
   const presetTokens = useAtomValue(presetTokensAtom);
   const isReplica = useAtomValue(isReplicaViewportAtom);
+  const cmsPageMeta = useAtomValue(cmsPageMetaAtom);
   const vpWidth = useAtomValue(interactingViewportWidthAtom);
   // Component-file routing: when the user is on a non-default variant in a
   // component master, prop changes (especially `initialVariant`) must land in
@@ -1004,6 +1006,12 @@ export default function ComponentPropsTool() {
 
   const handlePropChange = useCallback((propName: string, value: string, defaultValue: string | null) => {
     if (!selectedId || !componentInfo) return;
+    // Panel-originated write: the label accent / value this tool shows derive
+    // from the STABLE code mirror, which otherwise waits out the 450ms
+    // canvas-paint budget (the DOM updated instantly, the label ~1s later —
+    // user report 2026-09-09 on Reset Override). One-shot, see
+    // useStableAtomSync.
+    expediteStableAtomSync();
     // Hold the chosen value on screen through the async commit/parse churn.
     setPropOptimistic(propName, value);
 
@@ -1136,6 +1144,7 @@ export default function ComponentPropsTool() {
   // stay an expression. One-shot (no preview/commit deferral); viewport-agnostic
   // so it writes the base attr, not a data-responsive override.
   const handleSetLinkExpr = useCallback((propName: string, expr: string) => {
+    expediteStableAtomSync();
     if (!selectedId || !componentInfo) return;
     trace.action('component-props:set-link-expr', { nodeId: selectedId, propName, expr });
     modifyProjectFile(activeFile, (code) => setInstanceProp(code, selectedId, componentInfo.name, propName, expr, true));
@@ -1163,6 +1172,9 @@ export default function ComponentPropsTool() {
   const handleResetOverride = useCallback((propName: string) => {
     if (!selectedId || !componentInfo) return;
     trace.action('component-props:reset-override', { nodeId: selectedId, propName, vpWidth });
+    // The accent on this row reads the STABLE mirror — expedite it so the
+    // label drops its override colour with the click, not 450ms+ later.
+    expediteStableAtomSync();
     modifyProjectFile(activeFile, (currentCode) => {
       return resyncScrollResting(
         setResponsiveOverride(currentCode, selectedId, componentInfo.name, vpWidth, propName, '', null));
@@ -1178,6 +1190,7 @@ export default function ComponentPropsTool() {
     const scope = getActiveAnimationScope();
     if (!scope || !('query' in scope)) return;
     trace.action('component-props:reset-attr-var', { nodeId: selectedId, propName, query: scope.query });
+    expediteStableAtomSync();
     modifyProjectFile(activeFile, (currentCode) =>
       resetResponsiveInstancePropVarInCode(currentCode, selectedId, componentInfo.name, scope.query, propName));
     const newCode = projectFS.readFile(activeFile);
@@ -1264,6 +1277,9 @@ export default function ComponentPropsTool() {
   // On component-file non-default variant: writes a JSX ternary so the choice
   // applies only to that parent variant (per-parent-variant child variant).
   const handleVariantSelect = (variantName: string) => {
+    // Panel write — see handlePropChange: the Variant row's accent/value
+    // read the stable mirror.
+    expediteStableAtomSync();
     if (!selectedId || !componentInfo) return;
     trace.action('component-tool:variant-change', {
       nodeId: selectedId, variant: variantName,
@@ -1654,6 +1670,9 @@ export default function ComponentPropsTool() {
           const hasInlineVpVariant = isReplica && vpWidth != null && selectedId != null
             && nodes.get(selectedId)?.responsiveAttrPropValues?.initialVariant?.[vpWidth] != null;
           const variantResetOverride = !variantOverridden ? undefined : () => {
+            // Every branch below is a panel write whose result is THIS label's
+            // accent — the stable mirror must not wait out the canvas budget.
+            expediteStableAtomSync();
             // Per-PARENT-VARIANT override (variable OR literal) → Reset Override drops THIS variant's branch
             // so it re-inherits the base/default; every other parent variant + the base are untouched.
             if (cvVariantBranch && isComponentVariant && activeComponentVariant && selectedId && componentInfo) {
@@ -1748,6 +1767,7 @@ export default function ComponentPropsTool() {
       reset: () => {
         const defVal = map['default'] ?? '';
         setPropOptimistic(propName, defVal);
+        expediteStableAtomSync();
         modifyProjectFile(activeFile, (c) =>
           setConditionalInstanceProp(c, selectedId, componentInfo.name, propName, activeComponentVariant, defVal));
         trace.action('component-props:reset-variant-override', { propName, variant: activeComponentVariant });
@@ -2431,7 +2451,7 @@ export default function ComponentPropsTool() {
                         label: v.label,
                         show: true,
                         hoverColor: 'accent-secondary' as const,
-                        onClick: () => modifyProjectFile(activeFile, (c) => setInstanceProp(c, selectedId, componentInfo.name, prop.name, v.name, true)),
+                        onClick: () => { expediteStableAtomSync(); modifyProjectFile(activeFile, (c) => setInstanceProp(c, selectedId, componentInfo.name, prop.name, v.name, true)); },
                       })),
                     });
                   }
@@ -2507,6 +2527,7 @@ export default function ComponentPropsTool() {
                     <ControlLabel label={prop.label || prop.name} property={cssProp ?? ''} plain />
                     <CmsMissingPill
                       field={orphanField}
+                      label={cmsOrphanInScope(orphanField, cmsBinding, cmsPageMeta?.kind === 'detail') ?? undefined}
                       onClear={() => { if (selectedId) queueMutation({ type: 'clearCmsOrphan', nodeId: selectedId, propName: prop.name }); }}
                     />
                   </div>

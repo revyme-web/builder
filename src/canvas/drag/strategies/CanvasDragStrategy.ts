@@ -38,6 +38,8 @@ import { getPendingReplicaExtraction, clearPendingReplicaExtraction } from '../p
 import { commitExitToCanvas, flushExitToCanvas } from '../exit-commit';
 import { buildCanvasCloneDescriptor } from '../clone-descriptor';
 import { queueBorderOverlayDuplicates, queueReplicaCreationUnhide } from '@/canvas/creators/creator-utils';
+import { stripGhostSuffix } from '@/shared/ghost-id';
+import { isInstanceOwnedNode } from '@/canvas/drag/instance-drop-guard';
 import { isInstanceLike, instanceReplicaUnhideDisplay } from '@/canvas/drag/instance-replica-visibility';
 import { commitOrderAssignments } from './order-commit';
 import { queueMutation, flushNow, flushNowDeferredDuringDrag, getCurrentCode } from '@/code/mutation/mutation-queue';
@@ -97,7 +99,13 @@ const ENTRY_GRACE_FRAMES = 3;
  *  corrupt the page. Covers design components (`componentFile` /
  *  `isComponentInstance`), code/Code components (`isCodeComponent`), and
  *  icon-set instances (`componentFile`). */
-function hitIsOverComponentInstance(hitId: string, nodes: DragContext['nodes']): boolean {
+export function hitIsOverComponentInstance(rawHitId: string, nodes: DragContext['nodes']): boolean {
+  // GHOST ROWS: every element of a `.map()` row past the first carries a
+  // `__N` suffix on its id, so `nodes.get(hitId)` missed and an instance
+  // inside a collection list did not block the drop — the drag showed
+  // insert lines INSIDE the component, which can never be a drop target
+  // (report 2026-09-09). The model only ever holds the template id.
+  const hitId = stripGhostSuffix(rawHitId);
   const isInst = (n: any): boolean =>
     !!n && (!!n.componentFile || n.isComponentInstance === true || n.isCodeComponent === true);
   // An ABSOLUTE / FIXED instance is an out-of-flow OVERLAY (e.g. a GradientAura
@@ -128,7 +136,8 @@ function hitIsOverComponentInstance(hitId: string, nodes: DragContext['nodes']):
  *  master's internal children — user report 2026-08-05 round 2). Climb the
  *  parent chain until the true wrapper; null when the hit isn't
  *  instance-related. */
-function instanceWrapperIdForHit(hitId: string, nodes: DragContext['nodes']): string | null {
+export function instanceWrapperIdForHit(rawHitId: string, nodes: DragContext['nodes']): string | null {
+  const hitId = stripGhostSuffix(rawHitId); // ghost rows — see hitIsOverComponentInstance
   // Seed: the hit itself, or the colon form's outer id (`inst:internal`).
   const colon = hitId.indexOf(':');
   let curId: string | null | undefined = nodes.has(hitId)
@@ -1189,6 +1198,9 @@ export class CanvasDragStrategy implements DragStrategy {
         // (content owned by the master). Cursor over one BLOCKS the drop: bail
         // with no candidate rather than falling through to an ancestor behind.
         if (hitIsOverComponentInstance(hit.id, nodes)) { bestCandidate = null; break; }
+        // Out-of-flow instance (or one of its internals): see THROUGH it to
+        // whatever is behind — never adopt it as the parent.
+        if (isInstanceOwnedNode(hit.id, candidateNode as any)) continue;
         const tag = (candidateNode as any).tag || candidateNode.type || 'div';
         if (!nodeAcceptsChildren(candidateNode)) continue;
         const hitVpId = hit.vpPrefix ? vpIdFromPrefix(hit.vpPrefix) : startVpId;
@@ -1418,6 +1430,7 @@ export class CanvasDragStrategy implements DragStrategy {
       }
       const candidateNode = nodes.get(hit.id);
       if (!candidateNode) continue;
+      if (isInstanceOwnedNode(hit.id, candidateNode as any)) continue; // see the single path
       if (!nodeAcceptsChildren(candidateNode)) continue;
       const layout = detectParentLayoutById(hit.id, hoverVpId);
       if (layout === 'flex' || layout === 'grid') {
@@ -1655,6 +1668,7 @@ export class CanvasDragStrategy implements DragStrategy {
       }
       const node = nodes.get(hit.id);
       if (!node) { reject(hit, 'not-in-node-map'); continue; }
+      if (isInstanceOwnedNode(hit.id, node as any)) { reject(hit, 'instance-owned'); continue; }
       const tag = (node as any).tag || node.type || 'div';
       if (!nodeAcceptsChildren(node)) { reject(hit, `no-children:${tag}`); continue; }
       const rect = findNodeRect(hit.id, hoverVpId);

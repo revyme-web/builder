@@ -641,3 +641,72 @@ describe('bakeCmsOrphanValuesInCode', () => {
     expect(out).toContain("backgroundColor: '#ff0055'");
   });
 });
+
+
+// ─── Detail ([slug]) pages bind against `item`, not a `.map()` iterator ─────
+// Duplicating a bound node ON its own slug page round-trips through the same
+// dormantize → rehydrate path a collection list uses. Rehydration used to
+// require an enclosing `.map()`, which a detail page never has, so the copy
+// stayed dormant and the Content row read "Missing" even though the very same
+// `item` was in scope (user report 2026-09-09).
+describe('rehydrateCmsBindings — CMS detail ([slug]) page', () => {
+  const DETAIL = (body: string) => `/** @cmsPage { "collection": "case-study", "kind": "detail" } */
+'use client';
+import caseStudy from '@/cms/case-study.json';
+
+export default function Page({ params }) {
+  const item = caseStudy.find((i) => i._slug === params?.slug) ?? caseStudy[0];
+  return (
+    <div data-id="root">
+${body}
+    </div>
+  );
+}`;
+
+  test('re-binds a duplicated text node against the page item and drops the stash', () => {
+    const code = DETAIL(`      <p data-id="copy-1" data-cms-orphan="__text:title">MERIDIAN ARCHITECTS</p>`);
+    const out = rehydrateCmsBindings(code, 'copy-1');
+    expect(out).toContain('{item.title}');
+    expect(out).not.toContain('data-cms-orphan');
+    expect(out).not.toContain('MERIDIAN ARCHITECTS');
+  });
+
+  test('re-binds attribute + style props too', () => {
+    const code = DETAIL(`      <img data-id="copy-2" data-cms-orphan="src:cover" src="https://cdn/baked.png" />`);
+    const out = rehydrateCmsBindings(code, 'copy-2');
+    expect(out).toContain('src={item.cover}');
+    expect(out).not.toContain('data-cms-orphan');
+  });
+
+  test('an INDEX page (not `detail`) stays dormant', () => {
+    const code = DETAIL(`      <p data-id="copy-1" data-cms-orphan="__text:title">x</p>`)
+      .replace('"kind": "detail"', '"kind": "index"');
+    expect(rehydrateCmsBindings(code, 'copy-1')).toBe(code);
+  });
+
+  test('a detail page that declares no `item` stays dormant — never emit a dangling ref', () => {
+    const code = DETAIL(`      <p data-id="copy-1" data-cms-orphan="__text:title">x</p>`)
+      .replace(/\n\s*const item = [^\n]*\n/, '\n');
+    expect(code).not.toMatch(/const item =/);
+    expect(rehydrateCmsBindings(code, 'copy-1')).toBe(code);
+  });
+
+  test('a field that does NOT belong to this page\'s collection stays dormant (a nested list\'s row dragged out)', async () => {
+    const { projectFS } = await import('@/code/project/project-fs');
+    projectFS.writeFile('cms/case-study.schema.json', JSON.stringify({
+      slug: 'case-study', name: 'Case study',
+      fields: [{ id: 'title', name: 'Title', type: 'text' }, { id: 'cover', name: 'Cover', type: 'image' }],
+    }));
+    const foreign = DETAIL(`      <p data-id="copy-3" data-cms-orphan="__text:authorBio">x</p>`);
+    expect(rehydrateCmsBindings(foreign, 'copy-3')).toBe(foreign);
+    // …while a field the page's own collection defines still re-binds.
+    const own = DETAIL(`      <p data-id="copy-4" data-cms-orphan="__text:title">x</p>`);
+    expect(rehydrateCmsBindings(own, 'copy-4')).toContain('{item.title}');
+    projectFS.deleteFile?.('cms/case-study.schema.json');
+  });
+
+  test('a plain page with no @cmsPage annotation stays dormant', () => {
+    const code = `<><p data-id="copy-1" data-cms-orphan="__text:title">x</p></>`;
+    expect(rehydrateCmsBindings(code, 'copy-1')).toBe(code);
+  });
+});

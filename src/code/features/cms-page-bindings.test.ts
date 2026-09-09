@@ -139,3 +139,52 @@ describe('applyDetailPageBindings', () => {
     });
   });
 });
+
+// ─── A canvas copy keeps FOLLOWING the field ──────────────────────────────
+// Dragged onto the canvas of its own detail page, a bound node cannot keep a
+// live `{item.field}` (module scope, no `item`), so the binding is stashed in
+// `data-cms-orphan` and the row's value baked into the JSX. That literal is a
+// snapshot — editing the field left the canvas copy showing the old text
+// (report 2026-09-09). The canvas paints the stash instead.
+describe('applyDetailPageBindings — dormant (canvas) bindings', () => {
+  it('paints the live field over a stale baked text literal', () => {
+    const nodes = new Map<string, CanvasNode>([
+      ['parked', makeNode({
+        id: 'parked', type: 'p',
+        textContent: '2103344',                       // baked when it left the page
+        orphanBindings: [{ prop: '__text', field: 'outcome1' }],
+      } as any)],
+    ]);
+    const out = applyDetailPageBindings(nodes, { outcome1: '210334455' });
+    expect(out.get('parked')!.textContent).toBe('210334455');
+  });
+
+  it('paints stashed attribute and style bindings too', () => {
+    const nodes = new Map<string, CanvasNode>([
+      ['pic', makeNode({
+        id: 'pic', type: 'img',
+        orphanBindings: [
+          { prop: 'src', field: 'cover' },
+          { prop: '__style.backgroundImage', field: 'cover' },
+        ],
+      } as any)],
+    ]);
+    const out = applyDetailPageBindings(nodes, { cover: 'https://cdn/x.png' });
+    expect(out.get('pic')!.attrs!.src).toBe('https://cdn/x.png');
+    // Same formatter the live-bound path uses (quoted url()).
+    expect(out.get('pic')!.styles.backgroundImage).toBe('url("https://cdn/x.png")');
+  });
+
+  it('leaves a stash whose field this page does not have (a nested list row) on its baked value', () => {
+    const nodes = new Map<string, CanvasNode>([
+      ['other', makeNode({
+        id: 'other', type: 'p',
+        textContent: 'baked from another collection',
+        orphanBindings: [{ prop: '__text', field: 'authorBio' }],
+      } as any)],
+    ]);
+    const out = applyDetailPageBindings(nodes, { outcome1: '210334455' });
+    expect(out.get('other')!.textContent).toBe('baked from another collection');
+    expect(out.get('other')).toBe(nodes.get('other')); // untouched by reference
+  });
+});

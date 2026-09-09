@@ -7,7 +7,7 @@
 
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  initHistory, pushHistory, pushHistoryImmediate, undo, redo, finishPendingRestore,
+  initHistory, pushHistory, pushHistoryImmediate, pushHistoryNavigation, undo, redo, finishPendingRestore,
   type UiLocation,
 } from './history';
 import { projectFS } from '../project/project-fs';
@@ -167,5 +167,88 @@ describe('component breadcrumb trail travels with undo/redo', () => {
     expect(ui.breadcrumb).toEqual(['app/page.client.tsx']);
     redoNow();
     expect(ui.breadcrumb).toEqual(['app/page.client.tsx', 'components/Header.tsx']);
+  });
+});
+
+// ─── Breadcrumb navigation is its own history step ────────────────────────
+// Clicking a breadcrumb segment changes NO file, so the diff-based pushes
+// record nothing and Cmd+Z sailed past the navigation into an unrelated edit
+// (user report 2026-09-09). A navigation entry carries no diffs at all: undo
+// restores the side the user came from, redo the side they went to.
+describe('navigation history', () => {
+  let ui: UiLocation;
+  let activeFile: string;
+  let selection: string[];
+  const navigated: string[] = [];
+
+  const wire = () => initHistory(
+    'v1', () => {}, () => activeFile, () => {},
+    {
+      get: () => selection,
+      set: (ids: string[]) => { selection = ids; },
+      // The node map of whatever file is now open — a real restore validates
+      // the remembered selection against it.
+      getNodeIds: () => new Set(['card-root', 'hero']),
+      navigateToFile: (path: string) => { navigated.push(path); activeFile = path; return true; },
+    },
+    { get: () => ({ ...ui }), set: (loc) => { ui = { ...loc }; } },
+  );
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    navigated.length = 0;
+    activeFile = 'components/Card.tsx';
+    ui = { breadcrumb: ['app/page.client.tsx'] };
+    selection = ['card-root'];
+    projectFS.loadSnapshot(new Map([['app/page.client.tsx', 'v1'], ['components/Card.tsx', 'v1']]));
+    wire();
+  });
+
+  afterEach(() => { vi.useRealTimers(); });
+
+  /** The user clicks the page segment: the app navigates, then records it. */
+  const clickBreadcrumbToPage = () => {
+    const from = { activeFile, uiLocation: { ...ui }, selection: [...selection] };
+    activeFile = 'app/page.client.tsx';
+    ui = { breadcrumb: [] };
+    selection = [];
+    pushHistoryNavigation(from);
+  };
+
+  test('undo walks back to the file, breadcrumb and selection the user left', () => {
+    clickBreadcrumbToPage();
+
+    expect(undoNow()).toBe(true);
+    expect(activeFile).toBe('components/Card.tsx');
+    expect(ui).toEqual({ breadcrumb: ['app/page.client.tsx'] });
+    expect(selection).toEqual(['card-root']);
+  });
+
+  test('redo returns to where the click went', () => {
+    clickBreadcrumbToPage();
+    undoNow();
+
+    expect(redoNow()).toBe(true);
+    expect(activeFile).toBe('app/page.client.tsx');
+    expect(ui).toEqual({ breadcrumb: [] });
+  });
+
+  test('a navigation that goes nowhere records nothing', () => {
+    const from = { activeFile, uiLocation: { ...ui }, selection: [...selection] };
+    pushHistoryNavigation(from);          // same file, same breadcrumb
+    expect(undoNow()).toBe(false);
+  });
+
+  test('it changes no files — undoing a navigation leaves the project untouched', () => {
+    projectFS.writeFile('components/Card.tsx', 'v2');
+    pushHistoryImmediate('');             // a real edit lands first
+    clickBreadcrumbToPage();
+
+    undoNow();                            // undoes only the navigation
+    expect(projectFS.readFile('components/Card.tsx')).toBe('v2');
+    expect(activeFile).toBe('components/Card.tsx');
+
+    undoNow();                            // now the edit itself
+    expect(projectFS.readFile('components/Card.tsx')).toBe('v1');
   });
 });

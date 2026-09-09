@@ -3,6 +3,7 @@
 // Never auto-selected by DragCoordinator (canHandle = false). Invoked explicitly.
 
 import type { DragContext, DragStrategy, DragMoveResult } from '../types';
+import { isInstanceOwnedNode } from '@/canvas/drag/instance-drop-guard';
 import { normalizeLayoutDescriptor } from '../layout-normalize';
 import type { ToolbarItem } from '../toolbar-item-config';
 import type { PendingUpdate, Point } from '@/shared/types';
@@ -93,6 +94,9 @@ function findDeepestFrameAtPoint(
     if (hit.id.startsWith('layout::') || hit.id === 'children-slot') continue;
     const node = nodes.get(hit.id);
     if (!node) continue;
+    // A component master owns its children — an instance (or any element of
+    // its expansion) can never receive a dropped element.
+    if (isInstanceOwnedNode(hit.id, node as any)) continue;
     const tag = node.type || 'div';
     if (!nodeAcceptsChildren(node)) continue;
     const rect = findNodeRect(hit.id, vpId);

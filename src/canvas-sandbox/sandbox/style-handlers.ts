@@ -11,7 +11,7 @@ import { coerceCssNumberToPx, toKebab } from '@/shared/css-utils';
 import { findElByNodeId, findAllByNodeId } from '../sandbox-dom-utils';
 import { syncEditorFromLiveSvg as syncShapeEditorFromLiveSvg } from '../shape-edit-host';
 import { contentRoot, emit } from './sandbox-state';
-import { cornersForElement, shouldRefreshSubtree, emitSubtreeRefresh, emitElementRefresh, cornersAreDecoupled } from './rect-emit';
+import { cornersForElement, shouldRefreshSubtree, emitSubtreeRefresh, emitElementRefresh, cornersAreDecoupled, scheduleSubtreeRefresh } from './rect-emit';
 import { isSandboxDndInteracting } from '../sandbox-dnd-host';
 
 /** Two-pass style application — clear empty values first, then set non-empty.
@@ -249,7 +249,11 @@ export function patchStyles(nodeId: string, vpPrefix: string, styles: Record<str
     // border-radius, opacity, …) so the cheap drag paths stay cheap.
     if (shouldRefreshSubtree(styles)) {
       if (isSandboxDndInteracting()) emitElementRefresh(el, emit);
-      else emitSubtreeRefresh(subtreeRefreshScope(el), emit);
+      // COALESCED: a committed batch patches each node separately and they
+      // usually share one scope (all root sections have the same parent), so
+      // the refresh runs once per frame per distinct scope — see
+      // `scheduleSubtreeRefresh`.
+      else scheduleSubtreeRefresh(subtreeRefreshScope(el), emit);
     }
 }
 
@@ -390,7 +394,7 @@ export function patchMultipleStyles(updates: PatchUpdate[]): void {
       // on an auto-sized box, transform on a viewport root, etc.).
       if (shouldRefreshSubtree(update.styles)) {
         if (isSandboxDndInteracting()) emitElementRefresh(primary, emit);
-        else emitSubtreeRefresh(subtreeRefreshScope(primary), emit);
+        else scheduleSubtreeRefresh(subtreeRefreshScope(primary), emit);
       }
     }
 }

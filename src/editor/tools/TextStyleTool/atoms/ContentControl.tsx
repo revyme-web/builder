@@ -11,15 +11,17 @@
 
 import { ToolInput, ControlLabel } from '../../../controls';
 import { LegacyVariableBoundPill } from '../../../controls/VariableBoundPill';
-import { CmsBoundPill, CmsMissingPill } from '../../../controls/CmsBoundPill';
+import { CmsBoundPill, CmsMissingPill, cmsOrphanInScope } from '../../../controls/CmsBoundPill';
 import { useControl } from '../../../controls/ControlProvider';
 import { useTextStyles } from '../../../hooks/useTextStyles';
 import { useAtomValue, useAtom } from 'jotai';
 import { useNodesComputed } from '@/code/stores/node-family';
+import { mapItemIndexAtom } from '@/code/stores/store';
 import { resolveCmsRowValues } from '@/code/generation/cms-row-resolve';
 import { interactingViewportIdAtom, viewportsConfigAtom } from '@/code/stores/viewport-store';
 import { activeLocaleAtom, isDefaultLocaleAtom, localeOverridesAtom, i18nConfigAtom } from '@/code/stores/locale-store';
 import { activeFilePathAtom, isComponentFilePath } from '@/code/project/active-file-store';
+import { activePreviewSlugAtom, cmsPageMetaAtom } from '@/code/stores/cms-page-store';
 import { setNodeOverride } from '@/code/project/locale-ops';
 import { commitTranslationText } from '@/code/project/translation-ops';
 import { resolveTranslatedContent } from './content-translation';
@@ -141,10 +143,20 @@ export function ContentControl() {
   // The row value behind a CMS text binding — see the branch that uses it.
   // Computed through the node map so it re-resolves when the collection data or
   // the previewed row changes.
+  // `useNodesComputed` is a selectAtom memoised on its deps, so it recomputes
+  // only when `nodesAtom` or a dep changes. The resolver reads the previewed
+  // row imperatively (the detail page's item, the list's row index) and
+  // NEITHER is part of nodesAtom — without them here, switching the previewed
+  // slug left this value on the PREVIOUS item, and the × then injected that
+  // item's text. Both deps are primitives, so the selector identity stays
+  // stable between renders (see the rebuild tripwire in node-family.ts).
+  const previewSlug = useAtomValue(activePreviewSlugAtom);
+  const cmsPageMeta = useAtomValue(cmsPageMetaAtom);
+  const mapItemIndex = useAtomValue(mapItemIndexAtom);
   const cmsRowText = useNodesComputed<string>((nodes) => {
     if (textNode?.binding?.property !== 'text') return '';
     return resolveCmsRowValues(textNode, nodes).__text ?? '';
-  }, [textNode]);
+  }, [textNode, previewSlug, mapItemIndex]);
 
   let displayValue: string;
   let isOverride = false;
@@ -198,12 +210,20 @@ export function ContentControl() {
   // the stash (text reverts to a plain editable placeholder); dragging back into a
   // collection re-binds it.
   const textOrphanField = node?.orphanBindings?.find((o) => o.prop === '__text')?.field ?? null;
+  // On a `[slug]` page the whole file is that item's scope, so a node parked on
+  // the canvas is not "Missing" — its field is right there in the page's own
+  // collection and re-attaches on the way back in.
+  const orphanLabel = cmsOrphanInScope(textOrphanField, cmsBinding, cmsPageMeta?.kind === 'detail');
   if (textOrphanField && node) {
     return (
       <div className="flex items-center justify-between w-full">
         <ControlLabel label="Content" property="textContent" />
         <CmsMissingPill
           field={textOrphanField}
+          label={orphanLabel ?? undefined}
+          title={orphanLabel
+            ? `Bound to CMS field "${orphanLabel}" — this page's item. Dropped back into the page it re-attaches automatically.`
+            : undefined}
           onClear={() => queueMutation({ type: 'clearCmsOrphan', nodeId: node.id, propName: '__text' })}
         />
       </div>

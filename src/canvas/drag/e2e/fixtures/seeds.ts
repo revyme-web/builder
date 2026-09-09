@@ -4868,6 +4868,133 @@ export default withResponsiveProps(Card);
   },
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────
+// INSTANCE_VARIANT_OVERRIDE_3VP — three page viewports and a two-variant
+// design-component instance INSIDE the page root whose tablet tile carries a
+// per-viewport `initialVariant` override (`data-responsive`). Used for: the
+// Component Props "Variant" label must drop its override accent the moment
+// Reset Override is clicked — the panel reads the STABLE code mirror, which
+// waits out a 450ms canvas budget unless the panel write expedites it
+// (2026-09-09: DOM updated instantly, label ~1s later).
+// ─────────────────────────────────────────────────────────────────────────
+export const INSTANCE_VARIANT_OVERRIDE_3VP: ProjectData = {
+  format: 'revyme-v1',
+  files: {
+    'app/page.tsx': `import PageClient from './page.client';\n\nexport const metadata = {};\n\nexport default function Page() {\n  return <PageClient />;\n}\n`,
+    'app/page.client.tsx': `/** @canvas {
+  "viewports": [
+    { "id": "desktop", "label": "Desktop", "width": 1440, "isPrimary": true, "order": 0 },
+    { "id": "tablet", "label": "Tablet", "width": 768, "isPrimary": false, "order": 1 },
+    { "id": "mobile", "label": "Mobile", "width": 375, "isPrimary": false, "order": 2 }
+  ],
+  "positions": {
+    "desktop": { "x": 0, "y": 0 },
+    "tablet": { "x": 1560, "y": 0 },
+    "mobile": { "x": 2450, "y": 0 }
+  }
+} */
+'use client';
+import Card from '@/components/Card';
+
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Page" style={{
+      display: 'flex', flexDirection: 'column', gap: '24px',
+      width: '100%', minHeight: '900px', position: 'relative',
+      background: '#0d0d1a', padding: '40px',
+    }}>
+      <Card data-id="card-inst" data-name="Card" initialVariant="default" data-responsive='{"768":{"initialVariant":"variant-1"},"_bp":[1440,768,375]}' style={{
+        position: 'relative', width: '300px', height: '200px', flex: '0 0 auto',
+      }} />
+    </div>
+  );
+}
+`,
+    'components/Card.tsx': `'use client';
+
+/** @name "Card" */
+
+import React from 'react';
+import { motion, LayoutGroup } from 'framer-motion';
+import { withResponsiveProps } from '@revyme/runtime';
+
+const variantConfig = [
+  { name: 'default', label: 'Default', x: 0, y: 0, isPrimary: true },
+  { name: 'variant-1', label: 'Hover', x: 500, y: 0 },
+];
+
+const cardRootVariants = {
+  default: { backgroundColor: '#97cffc' },
+  'variant-1': { backgroundColor: '#ff2d75' },
+};
+
+function Card({ style, initialVariant = 'default', ...rest }: { style?: React.CSSProperties; initialVariant?: string; [key: string]: any }) {
+  return <LayoutGroup>
+    <motion.div layout={true} data-id="card-root" variants={cardRootVariants} initial={['default', initialVariant]} animate={['default', initialVariant]} {...rest} data-name="Card" style={{
+      position: 'absolute',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '12px',
+      width: '300px',
+      height: '200px',
+      padding: '24px',
+      backgroundColor: '#97cffc',
+      borderRadius: '12px',
+      left: '0px',
+      top: '0px',
+      ...style
+    }}>
+      <motion.p layout={true} data-id="card-text" data-name="Text" style={{ fontSize: '24px', color: '#000000', position: 'relative' }}>Card</motion.p>
+    </motion.div>
+  </LayoutGroup>;
+}
+export default withResponsiveProps(Card);
+`,
+  },
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// CMS_SLUG_PAGE — a `[slug]` DETAIL page: the `@cmsPage` annotation puts the
+// whole body in scope of one `item`, so bound text is `{item.field}` with NO
+// `.map()` anywhere. Used for: the CMS logic that resolves "which collection /
+// which row" by walking ancestors for a `collectionList` finds nothing here —
+// double-click used to fall through to text edit (destroying the binding) and
+// Unbind injected an empty string (the text vanished). 2026-09-09.
+// ─────────────────────────────────────────────────────────────────────────
+export const CMS_SLUG_PAGE: ProjectData = {
+  format: 'revyme-v1',
+  files: {
+    'app/page.tsx': `import PageClient from './page.client';\n\nexport const metadata = {};\n\nexport default function Page() {\n  return <PageClient />;\n}\n`,
+    'app/page.client.tsx': `/** @canvas { "viewports": [{"id":"desktop","width":900}] } */
+/** @cmsPage { "collection": "case-study", "kind": "detail" } */
+'use client';
+import caseStudy from '@/cms/case-study.json';
+
+export default function Page({ params }: { params: { slug: string } }) {
+  const item = caseStudy.find((i) => i._slug === params.slug) ?? caseStudy[0];
+  return (
+    <div data-id="root" data-name="Page" style={{ position: 'relative', width: '900px', minHeight: '700px', background: '#0d0d1a', display: 'flex', flexDirection: 'column', gap: '16px', padding: '60px' }}>
+      <p data-id="title" data-name="Title" style={{ fontSize: '32px', color: '#ffffff', position: 'relative', flex: '0 0 auto' }}>{item.title}</p>
+      <p data-id="overview" data-name="Overview" style={{ fontSize: '16px', color: '#c8c4bc', position: 'relative', flex: '0 0 auto' }}>{item.overview}</p>
+    </div>
+  );
+}
+`,
+    'cms/case-study.schema.json': JSON.stringify({
+      slug: 'case-study', name: 'Case study', fields: [
+        { id: 'title', name: 'Title', type: 'text' },
+        { id: 'overview', name: 'Overview', type: 'text' },
+      ],
+    }),
+    'cms/case-study.json': JSON.stringify([
+      { _id: 'i1', _slug: 'meridian', _status: 'published', title: 'MERIDIAN ARCHITECTS', overview: 'A forty-person practice known for civic buildings.' },
+      { _id: 'i2', _slug: 'other', _status: 'published', title: 'OTHER STUDIO', overview: 'Second item.' },
+    ]),
+  },
+};
+
 export const SEEDS = {
   REPLICA_EXIT_TO_FRAME,
   NEGATIVE_MARGIN_ROW,
@@ -4907,6 +5034,8 @@ export const SEEDS = {
   USER_HERO_BEFORE,
   USER_HERO_AFTER,
   INSTANCE_CANVAS_3VP,
+  INSTANCE_VARIANT_OVERRIDE_3VP,
+  CMS_SLUG_PAGE,
 } as const;
 
 export type SeedName = keyof typeof SEEDS;

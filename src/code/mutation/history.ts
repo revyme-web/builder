@@ -411,6 +411,54 @@ export function pushHistoryFileOp(activeFileBefore: string): void {
   }
 }
 
+/**
+ * Record a pure NAVIGATION (no file changed) as its own history step.
+ *
+ * Clicking a breadcrumb segment moves the editor between a page and its
+ * component masters without touching a single file, so the diff-based pushes
+ * above produce nothing and Cmd+Z skipped straight past it — undoing an edit
+ * made minutes earlier on another file instead of walking the user back
+ * (report 2026-09-09). This entry carries no diffs at all: undo restores the
+ * `from` side (file + breadcrumb + selection), redo the `to` side, and the
+ * project content is untouched either way.
+ *
+ * Call AFTER the navigation has been applied, so the live state IS the
+ * destination. `from` describes where the user just left.
+ */
+export function pushHistoryNavigation(from: {
+  activeFile: string;
+  uiLocation?: UiLocation;
+  selection?: string[];
+}): void {
+  // Any pending edit seals as its OWN entry first — otherwise the navigation
+  // folds into it and one Cmd+Z would undo both.
+  sealPendingHistory();
+  const to = liveActiveFile();
+  const toUi = liveUiLocation();
+  if (from.activeFile === to
+    && JSON.stringify(from.uiLocation?.breadcrumb ?? []) === JSON.stringify(toUi.breadcrumb ?? [])) {
+    return; // went nowhere
+  }
+  const entry: HistoryEntry = {
+    diffs: [],
+    selBefore: from.selection ?? [],
+    selAfter: liveSelection(),
+    activeFile: to,
+    activeFileBefore: from.activeFile,
+    uiLocation: from.uiLocation ?? {},
+    uiLocationAfter: toUi,
+  };
+  undoStack.push(entry);
+  if (undoStack.length > MAX_HISTORY) undoStack.shift();
+  // A navigation changes no files, so the snapshot the next diff is measured
+  // against must stay exactly as it is.
+  redoStack = [];
+  trace.action('history:push-navigation', {
+    from: from.activeFile, to, undoSize: undoStack.length,
+    fromCrumb: from.uiLocation?.breadcrumb?.length ?? 0, toCrumb: toUi.breadcrumb?.length ?? 0,
+  });
+}
+
 /** Sync history when code changes from external source (Monaco typing) */
 export function syncHistoryCode(code: string): void {
   pushHistory(code);

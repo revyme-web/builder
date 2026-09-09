@@ -28,6 +28,7 @@
 //   4. onCancel — restore everything; emit nothing.
 
 import type { Point, PendingUpdate } from '@/shared/types';
+import { isInstanceOwnedNode } from '@/canvas/drag/instance-drop-guard';
 import type { CanvasNode } from '@/code/parsing/parser';
 import type { DragContext, DragStrategy, DragMoveResult } from '../types';
 import { commitOrderAssignments } from './order-commit';
@@ -609,6 +610,7 @@ export class GridDragStrategy implements DragStrategy {
         if (originalAncestors.has(hit.id)) continue;
         const node = context.nodes.get(hit.id);
         if (!node) continue;
+        if (isInstanceOwnedNode(hit.id, node as any)) continue; // master-owned — never a parent
         const tag = (node as any).tag || node.type || 'div';
         if (!nodeAcceptsChildren(node)) continue;
         foundNewParent = hit.id;

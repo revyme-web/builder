@@ -1170,7 +1170,6 @@ export default function Canvas() {
       openCmsEditor,
       setLeftPanel: (p: string) => setLeftPanel(p as any),
       setToolMode: (m: string) => setToolMode(m as any),
-      getCmsData: () => cmsData,
     });
     controller.bindNodeMouseDown(nodeMouseDownRef);
     mouseControllerRef.current = controller;

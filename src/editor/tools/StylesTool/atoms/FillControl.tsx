@@ -4,12 +4,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useLivePreview } from '../../../hooks/useLivePreview';
 import { useAtomValue, useSetAtom } from 'jotai';
+import { cmsPageMetaAtom } from '@/code/stores/cms-page-store';
 import LocaleBoundPill, { useLocaleStyleOverrides } from '@/editor/controls/LocaleBoundPill';
 import { UnifiedControlProvider, useControlContext, useControlContextOptional, ShowControlLabels } from '../../../controls/unified';
 import { UsedByRow } from '../../../controls/unified/UsedByRow';
 import { VariableBoundPill, LegacyVariableBoundPill } from '../../../controls/VariableBoundPill';
 import { useControlOptional } from '../../../controls/ControlProvider';
-import { CmsBoundPill, CmsMissingPill } from '../../../controls/CmsBoundPill';
+import { CmsBoundPill, CmsMissingPill, cmsOrphanInScope } from '../../../controls/CmsBoundPill';
 import type { MenuItem } from '../../../controls/control-menu-items';
 import { createDefaultGradient, formatGradient } from '@/shared/gradient-utils';
 import { toHexDisplay } from '../../../ui/color-utils';
@@ -1213,6 +1214,7 @@ function FillPopupContent({ styles, onUpdate, onChangeMultiple, nodeId: nodeIdPr
 function FillAtom() {
   const { node, onChangeMultiple, binding, mode, allProps, hasVariable } = useControlContext();
   const legacyCtl = useControlOptional();
+  const fillCmsPageMeta = useAtomValue(cmsPageMetaAtom);
   const styles = allProps;
   const btnRef = useRef<HTMLSpanElement>(null);
   const allTokens = useAtomValue(presetTokensAtom);
@@ -1313,11 +1315,15 @@ function FillAtom() {
   );
   if (fillOrphan && legacyCtl?.node) {
     const orphanNodeId = legacyCtl.node.id;
+    // See ContentControl: on a `[slug]` page the field is this page's own, so
+    // the pill names it instead of claiming it went missing.
+    const fillOrphanLabel = cmsOrphanInScope(fillOrphan.field, legacyCtl.cmsBinding, fillCmsPageMeta?.kind === 'detail');
     return (
       <div className="flex items-center justify-between w-full">
         <ControlLabel label="Fill" property="backgroundColor" />
         <CmsMissingPill
           field={fillOrphan.field}
+          label={fillOrphanLabel ?? undefined}
           onClear={() => queueMutation({ type: 'clearCmsOrphan', nodeId: orphanNodeId, propName: fillOrphan.prop })}
         />
       </div>

@@ -17,6 +17,8 @@ import { getDefaultStore } from 'jotai';
 import { getEnclosingMapSourceForNode } from './map-gen';
 import { getCollectionData } from '@/code/project/cms-ops';
 import { mapItemIndexAtom } from '@/code/stores/store';
+import { cmsPageMetaAtom, activePreviewItemAtom } from '@/code/stores/cms-page-store';
+import { parseCmsPageMeta } from '@/code/project/cms-page-meta';
 import type { CanvasNode } from '@/code/parsing/parser';
 import { trace } from '@/shared/debug-trace';
 
@@ -40,21 +42,40 @@ export function resolveCmsRowValues(node: CanvasNode, nodes: Map<string, CanvasN
   ];
   if (bindings.length === 0) return {};
 
-  // Walk up to the collection list that owns this template row.
-  let list: CanvasNode | undefined = node.parentId ? nodes.get(node.parentId) : undefined;
+  // Walk up to the collection list that owns this template row — but ONLY for
+  // a node the parser marked as living inside the `.map()` callback. A bare
+  // ancestor walk also succeeds for a node that is merely a DESCENDANT of the
+  // list container (a sibling of the `.map()` expression), which on a detail
+  // page holding a related-items list would resolve that list's row for a node
+  // actually bound to the page's own `item`. Same rule as `findCmsListScope`.
+  let list: CanvasNode | undefined = node.isCollectionTemplate && node.parentId ? nodes.get(node.parentId) : undefined;
   while (list && !list.collectionList) list = list.parentId ? nodes.get(list.parentId) : undefined;
   const source = list?.collectionList?.source;
-  if (!source) return {};
 
   let row: Record<string, any> | undefined;
-  try {
-    const rowIndex = getDefaultStore().get(mapItemIndexAtom) ?? 0;
-    const offset = list!.collectionList!.offset ?? 0;
-    const items = getCollectionData(source);
-    row = items[offset + rowIndex] ?? items[offset] ?? items[0];
-  } catch (err) {
-    trace.error('cms-detach:row-resolve-failed', err);
-    return {};
+  if (source) {
+    try {
+      const rowIndex = getDefaultStore().get(mapItemIndexAtom) ?? 0;
+      const offset = list!.collectionList!.offset ?? 0;
+      const items = getCollectionData(source);
+      row = items[offset + rowIndex] ?? items[offset] ?? items[0];
+    } catch (err) {
+      trace.error('cms-detach:row-resolve-failed', err);
+      return {};
+    }
+  } else {
+    // DETAIL ([slug]) PAGE — the bindings come from the page's `@cmsPage`
+    // context, so there is no `.map()` ancestor to walk to and this used to
+    // return {}. Every caller then had NO values: unbinding a field on a slug
+    // page injected an empty string and the text vanished from the canvas
+    // (user report 2026-09-09), and a detach/copy baked placeholders instead
+    // of what the node was showing. The row is the item the page is
+    // PREVIEWING — the same one the canvas paints from, so the baked value is
+    // exactly the text on screen.
+    const store = getDefaultStore();
+    if (store.get(cmsPageMetaAtom)?.kind !== 'detail') return {};
+    row = store.get(activePreviewItemAtom) ?? undefined;
+    trace.action('cms-detach:detail-page-row', { nodeId: node.id, hasRow: !!row });
   }
   if (!row) return {};
 
@@ -63,7 +84,7 @@ export function resolveCmsRowValues(node: CanvasNode, nodes: Map<string, CanvasN
     const v = row[b.field];
     if (v != null && v !== '') values[b.prop] = String(v);
   }
-  trace.action('cms-detach:row-values-resolved', { nodeId: node.id, source, props: Object.keys(values) });
+  trace.action('cms-detach:row-values-resolved', { nodeId: node.id, source: source ?? 'detail-page', props: Object.keys(values) });
   return values;
 }
 
@@ -99,3 +120,31 @@ export function resolveCmsRowForNodeInCode(code: string, nodeId: string): Record
   trace.action('cms-detach:resolve-row-in-code', { nodeId, slug, iterVar: src.iterVar, sliceStart, displayIdx, found: !!row });
   return row;
 }
+
+/**
+ * The row a CMS DETAIL (`[slug]`) page is showing, resolved from the FILE — the
+ * companion of `resolveCmsRowForNodeInCode` for pages that have no `.map()`.
+ *
+ * Used at flush time by the dangling-binding heal: a node dragged out of a
+ * detail page's body lands in `canvasNodes` at MODULE scope, where `item` is
+ * not declared, so its `{item.field}` must be dormantized. Without a row the
+ * heal wrote the humanized field name and the user watched their heading turn
+ * into "Untitled" (report 2026-09-09); with it, the detached node keeps the
+ * words it was showing.
+ *
+ * Falls back to the collection's first row when no slug is being previewed —
+ * the same fallback `activePreviewSlugAtom` and the generated page itself use.
+ */
+export function resolveDetailPageRow(code: string): Record<string, any> | null {
+  const meta = parseCmsPageMeta(code);
+  if (meta?.kind !== 'detail') return null;
+  try {
+    const previewed = getDefaultStore().get(activePreviewItemAtom);
+    if (previewed) return previewed;
+    return getCollectionData(meta.collection)[0] ?? null;
+  } catch (err) {
+    trace.error('cms-detach:detail-page-row-failed', err);
+    return null;
+  }
+}
+

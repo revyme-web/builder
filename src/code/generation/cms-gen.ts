@@ -3,6 +3,7 @@
 // Handles collection list creation, field binding/unbinding, and filter/sort/limit config.
 
 import { trace } from '@/shared/debug-trace';
+import { escapeJsxText } from '@/code/parsing/rich-text-runs';
 import { findTagClose, findMatchingCloseTagIndex, findStyleObjectEnd, insertAfterLastImportLine } from './generator-utils';
 import type { FilterGroup, SortConfig } from '@/shared/types';
 
@@ -608,8 +609,13 @@ function unbindTextFieldInCode(code: string, nodeId: string, staticValue: string
     return code;
   }
 
-  // Replace content (which should be {item.something}) with static text
-  const result = code.slice(0, closing.contentStart) + staticValue + code.slice(closing.closeTagStart);
+  // Replace content (which should be {item.something}) with static text.
+  // ESCAPED: the value is a real CMS field — a richtext/textarea body can hold
+  // `<`, `>` or braces, and splicing those raw either turns the row's content
+  // into live markup or makes the file unparseable. `escapeJsxText` is the same
+  // entity escape the detach/copy bake uses, and the parser decodes it back
+  // when it reads textContent, so the canvas still shows the original words.
+  const result = code.slice(0, closing.contentStart) + escapeJsxText(staticValue) + code.slice(closing.closeTagStart);
 
   trace.action('cms-gen:unbindTextField:done', { nodeId });
   return result;
@@ -632,7 +638,13 @@ function unbindAttributeFieldInCode(code: string, nodeId: string, attrName: stri
 
   // Match expression attribute: attrName={something}
   const exprAttrRegex = new RegExp(`${attrName}=\\{[^}]*\\}`);
-  const staticAttr = `${attrName}="${staticValue}"`;
+  // Entity-escape: an `alt`/`href` field value containing a quote (or `<`)
+  // would otherwise terminate the attribute and corrupt the tag. JSX decodes
+  // these back, so the rendered value is unchanged.
+  const escapedAttr = staticValue
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const staticAttr = `${attrName}="${escapedAttr}"`;
 
   if (exprAttrRegex.test(tagSlice)) {
     const newTagSlice = tagSlice.replace(exprAttrRegex, staticAttr);

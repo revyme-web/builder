@@ -80,8 +80,24 @@ export interface ScrollAnimData {
  * Finds: useRef, useScroll, useTransform, useSpring patterns.
  * Then scans JSX for ref={} and style={{ prop: motionValue }} bindings.
  */
+// Single-slot memo. `parseScrollHooks` is a PURE function of the code string,
+// and the motion generators call it once per candidate node — the all-node
+// compose/decompose passes ran it 46 times for ONE animation edit on a 444KB
+// page, 13.6ms each (measured 2026-09-09). The code string is immutable
+// between passes, so the last result is always reusable; one slot is enough
+// because every caller in a flush sees the same string.
+let _memoCode: string | null = null;
+let _memoResult: ScrollAnimData | null = null;
+
+/** Drop the memo. Only needed by tests that assert the parse ran. */
+export function clearScrollHooksMemo(): void {
+  _memoCode = null;
+  _memoResult = null;
+}
+
 export function parseScrollHooks(code: string): ScrollAnimData {
   if (!code.includes('useScroll')) return { refs: [], sources: [], transforms: [], bindings: [] };
+  if (_memoCode === code && _memoResult) return _memoResult;
   trace.fn('scroll-parser:parse', { codeLength: code.length });
 
   const refs: ScrollRef[] = [];
@@ -407,7 +423,10 @@ export function parseScrollHooks(code: string): ScrollAnimData {
     multiSection: multiSection.length,
   });
 
-  return { refs, sources, transforms, bindings, multiSection: multiSection.length > 0 ? multiSection : undefined };
+  const _out = { refs, sources, transforms, bindings, multiSection: multiSection.length > 0 ? multiSection : undefined };
+  _memoCode = code;
+  _memoResult = _out;
+  return _out;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

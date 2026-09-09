@@ -25,6 +25,7 @@ import { cmsItemDisplayLabel as itemLabel, prettyCollectionName as prettyCollect
 import { openCmsEditorAtom } from '@/code/stores/cms-editor-store';
 import { leftPanelAtom } from '@/code/stores/left-panel-store';
 import { flushNow, syncQueueCode } from '@/code/mutation/mutation-queue';
+import { pushHistoryNavigation } from '@/code/mutation/history';
 import { projectFS } from '@/code/project/project-fs';
 import { PageDocumentIcon, CmsIcon, CmsItemIcon } from '@/shared/icons';
 import { stopHoverProbe } from './useSuppressCanvasHover';
@@ -53,6 +54,7 @@ export default function SlugPageBreadcrumb() {
   const [filePath, setActiveFile] = useAtom(activeFilePathAtom);
   const setPreviewSlugMap = useSetAtom(previewSlugByFileAtom);
   const setSelectedIds = useSetAtom(selectedIdsAtom);
+  const selectedIds = useAtomValue(selectedIdsAtom);
   const referrerMap = useAtomValue(slugPageReferrerByFileAtom);
   const openCmsEditor = useSetAtom(openCmsEditorAtom);
   const setLeftPanel = useSetAtom(leftPanelAtom);
@@ -122,6 +124,9 @@ export default function SlugPageBreadcrumb() {
     const fresh = projectFS.readFile(filePath);
     if (fresh) syncQueueCode(fresh);
     flushNow();
+    // Where the user is leaving — the navigation is its own undo step, same as
+    // the component breadcrumb's segments.
+    const navFrom = { activeFile: filePath, selection: selectedIds };
     setActiveFile(originFile);
     setSelectedIds([]);
     syncUrlToPage(originFile);
@@ -129,6 +134,7 @@ export default function SlugPageBreadcrumb() {
     // collection segment likely left it on the CMS panel).
     setLeftPanel('pages-layers');
     trace.action('slug-breadcrumb:back-to-origin', { from: filePath, to: originFile });
+    pushHistoryNavigation(navFrom);
   };
 
   const pillBase =

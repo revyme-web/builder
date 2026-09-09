@@ -67,7 +67,11 @@ export function readMasterRootDisplay(fs: ProjectFS, filePath: string): string |
   let nodes: Map<string, CanvasNode>;
   try { nodes = parseComponentNodesCached(code); } catch { return undefined; }
   for (const [, node] of nodes) {
-    // Same root test as expandComponent: top-level, not a canvas node, not an overlay.
+    // Same root test — and the same FIRST-root choice — as `expandComponent`,
+    // so the value agrees with what the canvas expands. A file that defines a
+    // helper component above its exported one therefore reports the helper's
+    // root; the caller validates the result against real CSS display keywords,
+    // so the worst case is a valid-but-wrong value rather than broken CSS.
     if (!node.parentId && !node.isCanvasNode && !node.attrs?.['data-overlay']) {
       return node.styles?.display || undefined;
     }

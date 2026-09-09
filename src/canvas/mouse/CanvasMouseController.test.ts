@@ -142,6 +142,9 @@ import {
   redirectToFitTextWrapper,
   redirectLayoutNodeToViewport,
 } from '@/canvas/node-ops';
+import { codeAtom } from '@/code/stores/store';
+import { activeFilePathAtom } from '@/code/project/active-file-store';
+import { projectFS } from '@/code/project/project-fs';
 import { CanvasMouseController } from './CanvasMouseController';
 
 // ─── Factory helper ───────────────────────────────────────────────────────────
@@ -207,7 +210,6 @@ function makeController(storeOverride?: ReturnType<typeof createStore>) {
     openCmsEditor: vi.fn(),
     setLeftPanel: vi.fn(),
     setToolMode: vi.fn((m: string) => store.set(toolModeAtom, m as any)),
-    getCmsData: vi.fn(() => new Map()),
   };
 
   const controller = new CanvasMouseController(opts);
@@ -398,5 +400,142 @@ describe('CanvasMouseController — FIT text double-click', () => {
     expect(opts.setShapeEditingId).not.toHaveBeenCalledWith('fit-svg');
     expect(opts.startTextEdit).toHaveBeenCalled();
     expect((opts.startTextEdit as any).mock.calls[0][0]).toBe('fit-p');
+  });
+});
+
+
+// ─── CMS-bound text double-click (2026-09-09) ──────────────────────────────
+// A text node bound to a collection field is NOT editable inline: its content
+// IS `{item.field}`, and the text-edit exit commit writes TipTap's HTML back
+// as a JSX string literal — the binding vanished even when nothing was typed.
+// Double-click must open the CMS overlay on that item + field instead.
+//
+// The regression was SLUG pages specifically: the resolver only walked
+// ancestors for a `collectionList` (a `.map()` repeater), which a `[slug]`
+// detail page does not have — its binding comes from the `@cmsPage`
+// annotation — so the click fell through to text edit.
+describe('CanvasMouseController — CMS-bound text double-click', () => {
+  // Real page sources: the node's `binding` is produced by the PARSER, so the
+  // test covers the actual path (slug pages get their itemVar from the
+  // `@cmsPage` annotation via `detailPageContext`, list pages from the
+  // enclosing `.map()`), not a hand-made node shape.
+  const SLUG_PAGE_LINES = [
+    '/** @cmsPage { "collection": "case-study", "kind": "detail" } */',
+    "'use client';",
+    "import caseStudy from '@/cms/case-study.json';",
+    '',
+    'export default function Page() {',
+    '  const item = caseStudy[0];',
+    '  return (',
+    '    <div data-id="root" style={{ position: \'relative\' }}>',
+    '      <p data-id="overview" style={{ position: \'relative\' }}>{item.untitled3}</p>',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  const SLUG_PAGE = SLUG_PAGE_LINES;
+
+  const LIST_PAGE = [
+    "'use client';",
+    "import caseStudy from '@/cms/case-study.json';",
+    '',
+    'export default function Page() {',
+    '  return (',
+    '    <div data-id="root" style={{ position: \'relative\' }}>',
+    '      {caseStudy.map((item) => (',
+    '        <div data-id="row" key={item._id} style={{ position: \'relative\' }}>',
+    '          <p data-id="title" style={{ position: \'relative\' }}>{item.title}</p>',
+    '        </div>',
+    '      ))}',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+
+  const ITEMS = [
+    { _id: 'item-2', _slug: 'meridian', title: 'Meridian', untitled3: 'Meridian Architects is a forty-person practice' },
+    { _id: 'item-3', _slug: 'other', title: 'Other', untitled3: 'Other' },
+  ];
+
+  function loadPage(store: ReturnType<typeof createStore>, code: string, filePath: string) {
+    projectFS.writeFile('cms/case-study.json', JSON.stringify(ITEMS));
+    store.set(activeFilePathAtom, filePath);
+    store.set(codeAtom, code);
+    return store.get(nodesAtom); // real parse — produces the `binding` fields
+  }
+
+  function dblclick(controller: CanvasMouseController, nodeId: string) {
+    // Identity for the instance redirect (the module default) — the dblclick
+    // branch looks the node up by the redirected id; a null redirect blanks it.
+    vi.mocked(redirectToComponentInstance).mockImplementation(((id: string) => id) as any);
+    vi.mocked(redirectLayoutNodeToViewport).mockReturnValue(null);
+    vi.mocked(redirectToFitTextWrapper).mockReturnValue(null);
+    (controller as any).lastClick = { nodeId, vpId: 'desktop', time: Date.now() - 120, x: 10, y: 10 };
+    controller.handleNodeMouseDown(nodeId, makeMouseEvent({ button: 0, clientX: 10, clientY: 10 } as any), 'desktop');
+  }
+
+  test('SLUG page: opens the CMS overlay on the previewed item + the clicked field, never text edit', () => {
+    const { controller, store, opts } = makeController();
+    const nodes = loadPage(store, SLUG_PAGE, 'app/work/[slug]/page.client.tsx');
+    // The parser really did bind it (otherwise the assertions below are vacuous).
+    expect((nodes.get('overview') as any)?.binding).toEqual({ field: 'untitled3', property: 'text' });
+
+    dblclick(controller, 'overview');
+
+    expect(opts.openCmsEditor).toHaveBeenCalledWith({
+      collection: 'case-study', itemId: 'item-2', fieldId: 'untitled3',
+    });
+    expect(opts.startTextEdit).not.toHaveBeenCalled();
+  });
+
+  test('collection LIST page: still resolves through the .map() ancestor', () => {
+    const { controller, store, opts } = makeController();
+    const nodes = loadPage(store, LIST_PAGE, 'app/work/page.client.tsx');
+    expect((nodes.get('title') as any)?.binding).toEqual({ field: 'title', property: 'text' });
+
+    dblclick(controller, 'title');
+
+    expect(opts.openCmsEditor).toHaveBeenCalledWith({
+      collection: 'case-study', itemId: 'item-2', fieldId: 'title',
+    });
+    expect(opts.startTextEdit).not.toHaveBeenCalled();
+  });
+
+  test('a CANVAS node whose binding lives in the orphan stash still opens the CMS overlay', () => {
+    // `canvasNodes` is module scope — `item` is not declared there, so a node
+    // dragged out of the page body keeps its binding in `data-cms-orphan`
+    // rather than as a live `{item.field}`. It is still bound to the user, so
+    // the double-click belongs in the overlay, not inline text edit.
+    const { controller, store, opts } = makeController();
+    const page = SLUG_PAGE.replace(
+      '</div>\n  );\n}',
+      '</div>\n  );\n}\n\nconst canvasNodes = <>\n  <p data-id="parked" data-cms-orphan="__text:untitled3" data-canvas-node="true" style={{ position: \'absolute\' }}>Meridian Architects is a forty-person practice</p>\n</>;',
+    );
+    projectFS.writeFile('cms/case-study.schema.json', JSON.stringify({
+      slug: 'case-study', name: 'Case study',
+      fields: [{ id: 'untitled3', name: 'Overview', type: 'text' }],
+    }));
+    const nodes = loadPage(store, page, 'app/work/[slug]/page.client.tsx');
+    expect((nodes.get('parked') as any)?.orphanBindings).toEqual([{ prop: '__text', field: 'untitled3' }]);
+
+    dblclick(controller, 'parked');
+
+    expect(opts.openCmsEditor).toHaveBeenCalledWith({
+      collection: 'case-study', itemId: 'item-2', fieldId: 'untitled3',
+    });
+    expect(opts.startTextEdit).not.toHaveBeenCalled();
+  });
+
+  test('bound but UNRESOLVABLE (collection has no items): refuses text edit rather than overwriting the binding', () => {
+    const { controller, store, opts } = makeController();
+    projectFS.writeFile('cms/case-study.json', '[]');
+    store.set(activeFilePathAtom, 'app/work/[slug]/page.client.tsx');
+    store.set(codeAtom, SLUG_PAGE);
+    store.get(nodesAtom);
+
+    dblclick(controller, 'overview');
+
+    expect(opts.openCmsEditor).not.toHaveBeenCalled();
+    expect(opts.startTextEdit).not.toHaveBeenCalled();
   });
 });

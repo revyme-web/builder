@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { parseJSX } from '@/code/parsing/ast-utils';
 import {
   createCollectionListInCode,
   bindFieldInCode,
@@ -768,5 +769,42 @@ describe('localized collection chain head', () => {
   it('leaves an unlocalized list unwrapped', () => {
     expect(buildChainCode('programme', undefined, null, 3, null, 0, false))
       .toBe('programme.slice(0, 3)');
+  });
+});
+
+
+// ─── Unbind injects a REAL field value — it must be escaped ────────────────
+// Detaching a CMS field writes the row's own text into JSX. A richtext /
+// textarea body legitimately contains `<`, `>` and braces; splicing those raw
+// turned the content into live markup or made the file unparseable. (The
+// exposure widened when detail pages started resolving row values at all —
+// before that the injected value was always the empty string there.)
+describe('unbindFieldInCode — the injected literal is entity-escaped', () => {
+  const PAGE = `export default function Page() {
+  return (
+    <div data-id="root">
+      <p data-id="body">{item.body}</p>
+      <img data-id="pic" src={item.photo} alt={item.alt} />
+    </div>
+  );
+}`;
+
+  it('escapes angle brackets, braces and ampersands in text content', () => {
+    const out = unbindFieldInCode(PAGE, 'body', 'textContent', 'A <b>bold</b> claim & {braces}');
+    expect(out).toContain('A &lt;b&gt;bold&lt;/b&gt; claim &amp; &#123;braces&#125;');
+    expect(out).not.toContain('<b>bold</b>');
+    // Still a parseable file.
+    expect(parseJSX(out)).toBeTruthy();
+  });
+
+  it('escapes quotes in an attribute value so the tag cannot be broken', () => {
+    const out = unbindFieldInCode(PAGE, 'pic', 'alt', 'A "quoted" caption');
+    expect(out).toContain('alt="A &quot;quoted&quot; caption"');
+    expect(parseJSX(out)).toBeTruthy();
+  });
+
+  it('plain text is untouched', () => {
+    const out = unbindFieldInCode(PAGE, 'body', 'textContent', 'A forty-person practice.');
+    expect(out).toContain('>A forty-person practice.<');
   });
 });

@@ -432,3 +432,52 @@ describe('translation mode blocks inline text edit', () => {
     expect((controller as any).editingNodeId ?? null).toBeNull();
   });
 });
+
+
+// ─── CMS-bound text is never editable inline (2026-09-09) ──────────────────
+// `startEdit` is the funnel every entry point passes through (double-click,
+// creators, programmatic). A node whose text is `{item.field}` must be
+// refused here too: the exit commit writes TipTap's HTML back as a JSX string
+// literal and the binding is gone — which happened on a slug page even when
+// the user typed nothing at all.
+describe('CanvasTextEditController — CMS-bound text', () => {
+  function boundController(binding: { field: string; property: string }) {
+    const node = { ...makeNode({ id: 'node1' }), binding } as any;
+    const store = makeStore([
+      [nodesAtom, new Map([['node1', node]])],
+      [isDefaultLocaleAtom, true],
+      [activeLocaleAtom, 'en'],
+      [viewportsConfigAtom, [{ id: 'desktop', width: 1440, isPrimary: true }]],
+      [mapItemIndexAtom, null],
+      [activeFilePathAtom, 'app/work/[slug]/page.client.tsx'],
+      [i18nConfigAtom, { defaultLocale: 'en' }],
+    ]);
+    const bridge = makeBridge();
+    const controller = new CanvasTextEditController({
+      jotaiStore: store as any,
+      bridge: bridge as any,
+      iframeRef: makeIframeRef(),
+      renderer: makeRenderer() as any,
+      getInteractingVpId: () => 'desktop',
+    });
+    return { controller, bridge };
+  }
+
+  test('startEdit refuses a node with a text binding and never opens the editor', () => {
+    const { controller, bridge } = boundController({ field: 'untitled3', property: 'text' });
+
+    controller.startEdit('node1', 'Meridian Architects');
+
+    expect(bridge.startTextEdit).not.toHaveBeenCalled();
+    expect((controller as any).editingNodeId ?? null).toBeNull();
+  });
+
+  test('an ATTRIBUTE binding (src/href) does not block text edit', () => {
+    const { controller, bridge } = boundController({ field: 'photo', property: 'src' });
+
+    controller.startEdit('node1', 'Hello');
+
+    expect(bridge.startTextEdit).toHaveBeenCalled();
+    expect((controller as any).editingNodeId).toBe('node1');
+  });
+});

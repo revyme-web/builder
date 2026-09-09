@@ -189,7 +189,29 @@ export function CmsBoundPill({ property, fallbackValue, onUnbound }: CmsBoundPil
  * Standalone (no `useControl`) so it renders even when the node is fully
  * detached and there's no collection context to provide a binding.
  */
-export function CmsMissingPill({ field, onClear }: { field: string; onClear: () => void }) {
+/** An orphan stash that the CURRENT page can still resolve — a detail
+ *  (`[slug]`) page whose own collection defines the field. The node is on the
+ *  canvas (module scope, where `item` isn't declared, so the JSX cannot hold a
+ *  live `{item.field}`), but the binding is remembered and re-attaches the
+ *  moment the node goes back into the page. Reading "Missing" there was wrong:
+ *  nothing is missing, the field is right in this page's collection. */
+export function cmsOrphanInScope(
+  field: string | null | undefined,
+  cmsBinding: { fields?: ReadonlyArray<{ id: string; name?: string }> } | null | undefined,
+  isDetailPage: boolean,
+): string | null {
+  if (!field || !isDetailPage) return null;
+  const known = cmsBinding?.fields?.some((f) => f.id === field);
+  return known ? cmsFieldLabel(cmsBinding?.fields, field) : null;
+}
+
+export function CmsMissingPill({ field, onClear, label, title }: {
+  field: string;
+  onClear: () => void;
+  /** Shown instead of "Missing" — see `cmsOrphanInScope`. */
+  label?: string;
+  title?: string;
+}) {
   const handleClear = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     onClear();
@@ -198,12 +220,12 @@ export function CmsMissingPill({ field, onClear }: { field: string; onClear: () 
   return (
     <div
       className="w-full min-w-0 h-8 flex items-center gap-1.5 pl-1 pr-2 bg-[var(--accent)] cut-corners border border-transparent bg-clip-padding text-xs font-medium text-[var(--accent-fg)] truncate"
-      title={`Was bound to CMS field "${field}" — drop this into a collection list that has this field to reconnect`}
+      title={title ?? `Was bound to CMS field "${field}" — drop this into a collection list that has this field to reconnect`}
     >
       <span className="w-5 h-5 flex items-center justify-center shrink-0 text-[var(--accent-fg)]">
         <CmsLinkIcon />
       </span>
-      <span className="truncate flex-1 text-left">Missing</span>
+      <span className="truncate flex-1 text-left">{label ?? 'Missing'}</span>
       <span
         role="button"
         tabIndex={0}

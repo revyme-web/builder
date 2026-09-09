@@ -98,6 +98,14 @@ export function extractCodeComponentProps(node: CanvasNode): Record<string, any>
     const innerStyle: Record<string, string> = {};
     for (const [key, value] of Object.entries(node.styles)) {
       if (WRAPPER_ONLY_STYLE_PROPS.has(key)) continue;
+      // `display` belongs to the WRAPPER, like the placement props above. The
+      // instance's base style carries `display: 'none'` when it was dropped
+      // into a replica (the only write that can hide the primary — see
+      // drag/instance-replica-visibility.ts); the entered tile's band unhides
+      // the CONTAINER. Forwarding the base value inward hid the component on
+      // every tile INCLUDING the one it was dropped on, because this forward
+      // is not per-viewport.
+      if (key === 'display') continue;
       innerStyle[key] = value;
     }
     if (isUrlImportedComponent) {

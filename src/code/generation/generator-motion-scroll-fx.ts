@@ -174,6 +174,57 @@ function injectScrollFxAttr(code: string, nodeId: string, spec: ScrollFxSpec): s
  *  ensure the imports the composed hooks need. The COMBINED div carries a
  *  `data-scroll-fx` spec so the panel still detects + edits each effect. No-op
  *  when there are no conflicts. */
+/** Node ids that a compose/decompose pass could possibly act on.
+ *
+ *  Both all-node passes used to walk EVERY `data-id` in the file — 853 of them
+ *  on a real page — and each per-node helper re-scans the whole source with a
+ *  fresh RegExp built from that node's name. That is ~4,000 full-file scans per
+ *  animation edit: measured 822ms (decompose) + 699ms (compose) on a 444KB page,
+ *  which is what made every click on an animation value take ~3s (2026-09-09).
+ *
+ *  Both are precisely filterable:
+ *   · DECOMPOSE only fires for a node that owns a `const <name>… = useMotionValue(`
+ *     / `useTransform(` declaration (all four decompose forms are named after the
+ *     node), so an id whose var-name prefixes no such declaration cannot match.
+ *   · COMPOSE additionally needs a driver ATTRIBUTE on the node's own tag
+ *     (`whileInView` / `animate` / `whileHover` / `whileTap` / `data-loop`).
+ *
+ *  The filters are supersets of what the per-node helpers check, so behaviour is
+ *  unchanged — only the ids that could never match are skipped. */
+function motionDeclPrefixes(code: string): string[] {
+  const out: string[] = [];
+  for (const m of code.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(?:useMotionValue|useTransform)\s*\(/g)) {
+    out.push(m[1]);
+  }
+  return out;
+}
+
+/** Ids whose var-name prefixes at least one motion-value/transform declaration. */
+function idsOwningMotionDecls(code: string, ids: string[]): string[] {
+  const decls = motionDeclPrefixes(code);
+  if (decls.length === 0) return [];
+  return ids.filter((id) => {
+    const cn = nodeIdToVarName(id);
+    return decls.some((d) => d.startsWith(cn));
+  });
+}
+
+/** Ids whose own opening tag carries an effect DRIVER attribute. Walks the few
+ *  driver occurrences rather than every tag. */
+function idsWithDriverAttr(code: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of code.matchAll(/\s(?:whileInView|whileHover|whileTap|animate|data-loop)=/g)) {
+    const at = m.index ?? 0;
+    const lt = code.lastIndexOf('<', at);
+    if (lt === -1) continue;
+    const gt = findTagClose(code, at);
+    if (gt === -1) continue;
+    const idm = /data-id="([^"]+)"/.exec(code.slice(lt, gt + 1));
+    if (idm) out.add(idm[1]);
+  }
+  return out;
+}
+
 export function composeAllScrollAppearConflicts(code: string): string {
   // Fast path: a compose needs ≥2 effects sharing something — a reveal
   // (`whileInView`/`animate=`), a gesture (`whileHover`/`whileTap`), or a loop. A
@@ -182,7 +233,13 @@ export function composeAllScrollAppearConflicts(code: string): string {
   const hasDriver = code.includes('whileInView') || code.includes('animate=')
     || code.includes('whileHover') || code.includes('whileTap') || code.includes('data-loop=');
   if (!hasDriver) return code;
-  const ids = [...new Set([...code.matchAll(/data-id="([^"]+)"/g)].map(m => m[1]))];
+  const allIds = [...new Set([...code.matchAll(/data-id="([^"]+)"/g)].map(m => m[1]))];
+  // Only nodes that own a motion declaration OR carry a driver attribute can
+  // conflict — see the note on `motionDeclPrefixes`.
+  const drivers = idsWithDriverAttr(code);
+  const owning = new Set(idsOwningMotionDecls(code, allIds));
+  const ids = allIds.filter((id) => drivers.has(id) || owning.has(id));
+  trace.fn('compose-all:candidates', { total: allIds.length, candidates: ids.length });
   let result = code;
   let composed = false;
   for (const id of ids) {
@@ -376,7 +433,11 @@ export function decomposeScrollAppearInCode(code: string, nodeId: string): strin
 export function decomposeAllScrollConflicts(code: string): string {
   // Fast path: combined forms always declare a `… = useMotionValue(` reveal.
   if (!code.includes('= useMotionValue(')) return code;
-  const ids = [...new Set([...code.matchAll(/data-id="([^"]+)"/g)].map(m => m[1]))];
+  const allIds = [...new Set([...code.matchAll(/data-id="([^"]+)"/g)].map(m => m[1]))];
+  // A combined form is always named after its node, so only ids owning such a
+  // declaration can decompose — see the note on `motionDeclPrefixes`.
+  const ids = idsOwningMotionDecls(code, allIds);
+  trace.fn('decompose-all:candidates', { total: allIds.length, candidates: ids.length });
   let result = code;
   for (const id of ids) {
     // Decompose in REVERSE compose order (outermost first). Compose runs hover THEN

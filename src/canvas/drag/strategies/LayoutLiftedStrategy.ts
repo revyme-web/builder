@@ -13,6 +13,7 @@
 // Placeholders created via bridge.createPlaceholder, nodes lifted via bridge.liftNode.
 
 import type { Point, PendingUpdate, Rect, NewNodeDescriptor } from '@/shared/types';
+import { isInstanceOwnedNode } from '@/canvas/drag/instance-drop-guard';
 import { nextFrames } from '@/shared/dom-utils';
 import { buildCanvasCloneDescriptor } from '../clone-descriptor';
 import { queueBorderOverlayDuplicates } from '@/canvas/creators/creator-utils';
@@ -1463,6 +1464,7 @@ export class LayoutLiftedStrategy implements DragStrategy {
           if (originalAncestors.has(hit.id)) continue;
           const node = context.nodes.get(hit.id);
           if (!node) continue;
+          if (isInstanceOwnedNode(hit.id, node as any)) continue; // master-owned — never a parent
           const tag = (node as any).tag || node.type || 'div';
           if (!nodeAcceptsChildren(node)) continue;
           foundNewParent = hit.id;
@@ -1839,6 +1841,7 @@ export class LayoutLiftedStrategy implements DragStrategy {
       for (const [candidateId, candidateNode] of context.nodes) {
         if (draggedIds.has(candidateId)) continue;
         if (candidateId === this.parentNodeId) continue;
+        if (isInstanceOwnedNode(candidateId, candidateNode as any)) continue; // master-owned
         const tag = candidateNode.type || 'div';
         if (!nodeAcceptsChildren(candidateNode)) continue;
 

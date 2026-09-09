@@ -135,3 +135,26 @@ describe('extractCodeComponentProps', () => {
     expect(props.fontSize).toBe(20);
   });
 });
+
+
+// ─── `display` is the WRAPPER's, never the inner root's ────────────────────
+// An instance dropped into a replica carries a base `display: 'none'` — the
+// only write that can hide the primary viewport (a band keyed at the primary
+// width is dropped by the generator). The entered tile's band unhides the
+// CONTAINER. This forward is not per-viewport, so passing the base value
+// inward hid the component on every tile INCLUDING the one it was dropped on.
+describe('extractCodeComponentProps — display stays on the wrapper', () => {
+  it('does not forward `display` (the replica hide would blank every tile)', () => {
+    const props = extractCodeComponentProps(makeNode({
+      styles: { width: '100%', height: '200px', display: 'none' },
+    }));
+    expect(props.style).toEqual({ width: '100%', height: '200px' });
+  });
+
+  it('does not forward an authored display either — the container carries it', () => {
+    const props = extractCodeComponentProps(makeNode({
+      styles: { display: 'flex', gap: '8px' },
+    }));
+    expect(props.style).toEqual({ gap: '8px' });
+  });
+});

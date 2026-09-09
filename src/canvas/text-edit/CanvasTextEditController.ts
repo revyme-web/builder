@@ -718,6 +718,20 @@ export class CanvasTextEditController {
       trace.action('text-edit:blocked-translation-mode', { nodeId });
       return;
     }
+    // CMS-BOUND TEXT is not editable on the canvas — its content IS the
+    // collection field (`{item.field}`), and the exit commit writes whatever
+    // TipTap holds back as a JSX string literal, silently destroying the
+    // binding even when the user typed nothing (slug-page report
+    // 2026-09-09). The double-click routes to the CMS overlay instead
+    // (CanvasMouseController); this is the funnel every OTHER entry point
+    // (creators, Enter, programmatic) passes through, so the binding can't be
+    // lost from any of them. Same contract as component-variable text
+    // (`textVariable`), which the mouse controller already diverts.
+    const boundNode = this.store.get(nodesAtom).get(stripGhostSuffix(nodeId));
+    if (boundNode?.binding?.property === 'text') {
+      trace.action('text-edit:blocked-cms-bound', { nodeId, field: boundNode.binding.field });
+      return;
+    }
     // Already editing? Commit current session first so we don't end up with
     // two editors live in the iframe.
     if (this.editingNodeId && this.editingNodeId !== nodeId) {

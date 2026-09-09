@@ -59,10 +59,21 @@ export function isInstanceLike(node: InstanceLikeNode | null | undefined): boole
   return !!node.componentFile && !node.componentInstanceId;
 }
 
-/** A display value the unhide can restore. `none` defeats the unhide; the
- *  keyword resets collapse the canvas wrapper to `inline`. */
+/** Every plain CSS `display` keyword the unhide may restore. */
+const REAL_DISPLAYS = new Set([
+  'block', 'inline', 'inline-block', 'flex', 'inline-flex', 'grid', 'inline-grid',
+  'flow-root', 'contents', 'table', 'inline-table', 'table-row', 'table-cell',
+  'list-item', 'ruby', 'ruby-base', 'ruby-text',
+]);
+
+/** A value the band can safely restore. Rejects `none` (defeats the unhide),
+ *  the keyword resets (they collapse the canvas wrapper to `inline`) and
+ *  anything that is not a plain display keyword — a parsed root can hand back
+ *  a prop reference or a ternary remnant (`variant === 'x' ? 'flex' : ''`),
+ *  and writing that into the band is invalid CSS the browser drops, leaving
+ *  the instance hidden on the very tile it was dropped into. */
 function usable(d: string | null | undefined): d is string {
-  return !!d && d !== 'none' && d !== 'auto' && d !== 'unset' && d !== 'initial' && d !== 'inherit' && d !== 'revert';
+  return !!d && REAL_DISPLAYS.has(d.trim());
 }
 
 /**
@@ -90,7 +101,13 @@ export function instanceReplicaUnhideDisplay(
       break;
     }
   }
-  if (!display && !node.isCodeComponent) {
+  if (!display) {
+    // Any LOCAL file can be read — design masters and code components alike
+    // (a code component's root is a plain element whose display we can parse;
+    // `AnimatedCounter`'s is a `<span>`, so the old blanket `block` broke it
+    // on the entered tile). A CDN component is the one case we cannot
+    // resolve: its source is fetched async and may be closed-source, so its
+    // root display is unknowable at drop time — see the `block` note below.
     const file = node.componentFile
       || (/^[A-Z]/.test(node.type) ? buildComponentRegistry(fs).get(node.type)?.filePath : undefined);
     if (file && !/^https?:/i.test(file)) {
@@ -98,7 +115,16 @@ export function instanceReplicaUnhideDisplay(
       if (usable(d)) { display = d; source = 'master-file'; }
     }
   }
+  // LAST RESORT — an opaque root (a CDN component, or a local file with no
+  // parseable root). `block` is a GUESS: if that root is really `flex`, the
+  // band forces it to block on the tile it shows on. Traced as a guess so the
+  // case is visible in a trace rather than silent. It is still the least-bad
+  // option: no unhide at all would hide the instance everywhere, and no CSS
+  // keyword ("unset" / "revert") can restore an inline display it is
+  // overriding.
   const result = display ?? 'block';
-  trace.action('instance-replica-visibility:unhide-display', { type: node.type, display: result, source });
+  trace.action('instance-replica-visibility:unhide-display', {
+    type: node.type, display: result, source, guessed: source === 'block-fallback',
+  });
   return result;
 }
