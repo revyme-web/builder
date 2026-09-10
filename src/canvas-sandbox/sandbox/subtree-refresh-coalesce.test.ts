@@ -9,6 +9,7 @@
 // the replica tiles settled about a second after the DOM had already moved.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { scheduleSubtreeRefresh, clearPendingSubtreeRefresh } from './rect-emit';
+import * as dndHost from '../sandbox-dnd-host';
 
 /** Wait past the scheduler's coalescing window and let its work run. */
 const settle = () => new Promise<void>((r) => setTimeout(r, 80));
@@ -65,12 +66,33 @@ describe('scheduleSubtreeRefresh', () => {
   });
 
   it('hands a PAGE-sized scope to the batched sweep instead of per-element messages', async () => {
+    // Not just cheaper — the per-element walk has no culled-tile gate, so
+    // walking an offscreen (`display:none`) viewport tile emits all-ZERO rects
+    // that the host stores verbatim and whose zero-centre corners pass its 8px
+    // stale check. The batched pass replays the whole tile instead.
     const { root } = tree(8, 40);           // 329 elements — over the budget
     const emit = vi.fn();
     for (let i = 0; i < 8; i++) scheduleSubtreeRefresh(root, emit);
     await settle();
     // Nothing goes out one element at a time; the all-rects funnel ships it.
     expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('DEFERS past a gesture that started after the patch, then lands', async () => {
+    // The caller's drag gate is tested at patch time; a gesture can start
+    // inside the coalescing window (DragCoordinator.startDrag patches `order`
+    // via onStart BEFORE it sets the interacting flag). Running then would race
+    // the drag's own imperative cache writes.
+    const { root } = tree(4, 3);            // 17 elements — under the batch budget
+    const emit = vi.fn();
+    const spy = vi.spyOn(dndHost, 'isSandboxDndInteracting').mockReturnValue(true);
+    scheduleSubtreeRefresh(root, emit);
+    await settle();
+    expect(emit).not.toHaveBeenCalled();    // held, not dropped
+    spy.mockReturnValue(false);             // gesture ends
+    await settle();
+    const rectEvents = emit.mock.calls.filter((c) => c[0]?.type === 'rectUpdate').length;
+    expect(rectEvents).toBe(17);            // the owed walk lands
   });
 
   it('coalesces requests that arrive in different frames (one reorder = two patch batches)', async () => {

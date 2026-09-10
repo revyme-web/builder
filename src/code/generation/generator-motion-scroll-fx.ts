@@ -209,20 +209,43 @@ function idsOwningMotionDecls(code: string, ids: string[]): string[] {
   });
 }
 
-/** Ids whose own opening tag carries an effect DRIVER attribute. Walks the few
- *  driver occurrences rather than every tag. */
+/** Ids whose own opening tag carries an effect DRIVER attribute.
+ *
+ *  Anchored on the `data-id` and sliced FORWARD with `findTagClose`, exactly
+ *  the way every per-node detector reads its tag — so the filter agrees with
+ *  them by construction. An earlier version searched backwards from the driver
+ *  with `lastIndexOf('<')`, which is not string-aware: a `<` anywhere in
+ *  between (a layer renamed `Card <Fancy>` writes `data-name="Card <Fancy>"`
+ *  right after the data-id) made the slice start mid-value, the data-id was
+ *  lost, and the node was dropped from the compose pass while the
+ *  declaration-based decompose pass still visited it — the node came back in
+ *  the separate form and its reveal/hover died silently.
+ *
+ *  Bias: OVER-include. A spurious candidate costs one re-check in a per-node
+ *  helper that returns false; a missing one loses the effect. */
 function idsWithDriverAttr(code: string): Set<string> {
   const out = new Set<string>();
-  for (const m of code.matchAll(/\s(?:whileInView|whileHover|whileTap|animate|data-loop)=/g)) {
-    const at = m.index ?? 0;
-    const lt = code.lastIndexOf('<', at);
-    if (lt === -1) continue;
-    const gt = findTagClose(code, at);
+  for (const m of code.matchAll(/data-id="([^"]+)"/g)) {
+    const idIdx = m.index ?? 0;
+    const gt = findTagClose(code, idIdx);
     if (gt === -1) continue;
-    const idm = /data-id="([^"]+)"/.exec(code.slice(lt, gt + 1));
-    if (idm) out.add(idm[1]);
+    const lt = code.lastIndexOf('<', idIdx);
+    if (DRIVER_ATTR_RE.test(code.slice(lt === -1 ? idIdx : lt, gt + 1))) out.add(m[1]);
   }
   return out;
+}
+
+const DRIVER_ATTR_RE = /\s(?:whileInView|whileHover|whileTap|animate|data-loop)=/;
+
+/** The candidate rule, shared by BOTH passes: a node that owns a motion
+ *  declaration or carries a driver attribute. Compose and decompose use the
+ *  SAME set on purpose — when they disagreed, decompose could take a node
+ *  apart that compose would then refuse to put back together, which writes the
+ *  separate form to the user's file and silently kills the effect. */
+export function motionPassCandidates(code: string, allIds: string[]): string[] {
+  const drivers = idsWithDriverAttr(code);
+  const owning = new Set(idsOwningMotionDecls(code, allIds));
+  return allIds.filter((id) => drivers.has(id) || owning.has(id));
 }
 
 export function composeAllScrollAppearConflicts(code: string): string {
@@ -236,9 +259,7 @@ export function composeAllScrollAppearConflicts(code: string): string {
   const allIds = [...new Set([...code.matchAll(/data-id="([^"]+)"/g)].map(m => m[1]))];
   // Only nodes that own a motion declaration OR carry a driver attribute can
   // conflict — see the note on `motionDeclPrefixes`.
-  const drivers = idsWithDriverAttr(code);
-  const owning = new Set(idsOwningMotionDecls(code, allIds));
-  const ids = allIds.filter((id) => drivers.has(id) || owning.has(id));
+  const ids = motionPassCandidates(code, allIds);
   trace.fn('compose-all:candidates', { total: allIds.length, candidates: ids.length });
   let result = code;
   let composed = false;
@@ -434,9 +455,10 @@ export function decomposeAllScrollConflicts(code: string): string {
   // Fast path: combined forms always declare a `… = useMotionValue(` reveal.
   if (!code.includes('= useMotionValue(')) return code;
   const allIds = [...new Set([...code.matchAll(/data-id="([^"]+)"/g)].map(m => m[1]))];
-  // A combined form is always named after its node, so only ids owning such a
-  // declaration can decompose — see the note on `motionDeclPrefixes`.
-  const ids = idsOwningMotionDecls(code, allIds);
+  // The SAME candidate rule compose uses. A declaration-only filter would be
+  // tighter, but the two passes must never disagree: decompose taking a node
+  // apart that compose won't rebuild leaves the separate form in the file.
+  const ids = motionPassCandidates(code, allIds);
   trace.fn('decompose-all:candidates', { total: allIds.length, candidates: ids.length });
   let result = code;
   for (const id of ids) {

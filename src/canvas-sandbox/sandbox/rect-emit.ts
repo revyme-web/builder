@@ -362,12 +362,22 @@ export function emitElementRefresh(el: HTMLElement, emit: (e: SandboxEvent) => v
 
 /** Descendant budget above which a queued refresh goes through the BATCHED
  *  measure funnel instead of per-element emits. `emitSubtreeRefresh` posts TWO
- *  messages per element, so a page-sized scope is thousands of them;
- *  `emitAllMeasures` ships the same geometry as a few envelopes (and replays
- *  overlay placements on the way).
+ *  messages per element with an un-memoised `cornersForElement` each, so a
+ *  page-sized scope is a thousand-plus of them; `emitAllMeasures` ships the
+ *  same geometry as three envelopes, replays overlay placements on the way,
+ *  and — unlike the per-element walk — has a CULLED-TILE gate. That gate
+ *  matters for correctness, not just cost: an offscreen viewport tile is
+ *  `display:none`, so walking it per element emits all-ZERO rects, which
+ *  `rectUpdate` stores verbatim and whose zero-centre corners then sail
+ *  through the host's 8px stale check — corrupting both caches for every node
+ *  in that tile. The batched pass replays the whole tile instead.
  *
- *  The trade is that the batched sweep measures the WHOLE page, not just the
- *  scope — worth it only once the message count is the dominant cost, so the
+ *  The trade is that the batched sweep measures the WHOLE page and its
+ *  `allRects` CLEARS the host's caches, rebuilding offscreen sections from
+ *  re-projected pre-patch geometry. That is the pre-existing behaviour of every
+ *  render, the settle observer and the gesture-end reconcile — and the same DOM
+ *  mutation already armed a settle sweep ~110ms later, which `force` supersedes
+ *  rather than adds to. Worth it only once the message count dominates, so the
  *  budget sits well above a normal section-sized walk. */
 const REFRESH_BATCH_THRESHOLD = 300;
 
@@ -377,10 +387,11 @@ const REFRESH_COALESCE_MS = 40;
 
 let _pendingRefreshScopes: Set<HTMLElement> | null = null;
 let _pendingRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let _pendingRefreshEmit: ((e: SandboxEvent) => void) | null = null;
 
 /**
  * Coalesced `emitSubtreeRefresh`. Collects every scope requested during the
- * current frame and runs each distinct one ONCE.
+ * current commit window and walks each distinct one ONCE.
  *
  * A committed style batch patches each node separately, and the refresh scope
  * is the patched element's PARENT — so reordering the 8 sections of a page
@@ -388,15 +399,18 @@ let _pendingRefreshTimer: ReturnType<typeof setTimeout> | null = null;
  * is the whole page. Measured on a real 633-element page (2026-09-09): 8
  * refreshes × 590 descendants ≈ 9,400 rect/corner messages, ~250ms, which is
  * why the layers panel, the selection outline and the replica tiles all
- * settled about a second after the DOM had already moved.
+ * settled about a second after the DOM had already moved. Collapsing them to
+ * one walk is the whole win.
  *
  * Scopes nested inside another queued scope are dropped (the outer walk
  * already covers them), and a page-sized result is handed to the batched
- * all-rects sweep — the same funnel the settle observer and the camera-idle
- * heal use.
+ * all-rects sweep — the same funnel the settle observer, every render and the
+ * gesture-end reconcile use. See REFRESH_BATCH_THRESHOLD for why batching a
+ * big scope is the more CORRECT path, not merely the cheaper one.
  */
 export function scheduleSubtreeRefresh(scope: HTMLElement, emit: (e: SandboxEvent) => void): void {
   (_pendingRefreshScopes ??= new Set()).add(scope);
+  _pendingRefreshEmit = emit;
   if (_pendingRefreshTimer) return;
   // A COMMIT WINDOW, not a single frame. One reorder commits its inline
   // `order` writes and its replica-band writes as separate patch batches that
@@ -404,23 +418,46 @@ export function scheduleSubtreeRefresh(scope: HTMLElement, emit: (e: SandboxEven
   // page-sized sweeps back to back (~50ms each, traced 2026-09-09). A short
   // window catches both while staying far inside the ~290ms the selection
   // overlay takes to read the corners back, so nothing reads stale geometry.
-  _pendingRefreshTimer = setTimeout(() => {
-    _pendingRefreshTimer = null;
-    const queued = _pendingRefreshScopes ?? new Set<HTMLElement>();
-    _pendingRefreshScopes = null;
-    const live = [...queued].filter((s) => s.isConnected);
-    // Keep only the outermost scopes — an inner one's elements are already in
-    // the outer one's descendant walk.
-    const outermost = live.filter((s) => !live.some((o) => o !== s && o.contains(s)));
-    let descendants = 0;
-    for (const s of outermost) descendants += s.querySelectorAll('[data-node-id]').length;
-    const batched = descendants > REFRESH_BATCH_THRESHOLD;
-    trace.action('sandbox:subtree-refresh-batch', {
-      queued: queued.size, scopes: outermost.length, descendants, batched,
+  _pendingRefreshTimer = setTimeout(flushPendingSubtreeRefresh, REFRESH_COALESCE_MS);
+}
+
+function flushPendingSubtreeRefresh(): void {
+  _pendingRefreshTimer = null;
+  // MID-GESTURE RE-CHECK. The caller's drag gate is tested at PATCH time, but
+  // this work runs up to a commit window later — and a gesture can start in
+  // between. `DragCoordinator.startDrag` calls a strategy's `onStart` (which
+  // patches `order` on lifted layout children) BEFORE it sets the interacting
+  // flag, so the patch legitimately passes the gate and the walk would then
+  // land inside the gesture, racing the drag's own imperative cache writes.
+  // The refresh is still OWED: keep the scopes and re-arm. The gesture-end
+  // reconcile runs its own full sweep, and anything still queued lands right
+  // after it.
+  if (isSandboxDndInteracting()) {
+    trace.action('sandbox:subtree-refresh-deferred-mid-drag', {
+      queued: _pendingRefreshScopes?.size ?? 0,
     });
-    if (batched) { forceRemeasureAllRects(); return; }
-    for (const s of outermost) emitSubtreeRefresh(s, emit);
-  }, REFRESH_COALESCE_MS);
+    if (_pendingRefreshScopes?.size) {
+      _pendingRefreshTimer = setTimeout(flushPendingSubtreeRefresh, REFRESH_COALESCE_MS);
+    }
+    return;
+  }
+  const queued = _pendingRefreshScopes ?? new Set<HTMLElement>();
+  const emit = _pendingRefreshEmit;
+  _pendingRefreshScopes = null;
+  _pendingRefreshEmit = null;
+  if (!emit) return;
+  const live = [...queued].filter((s) => s.isConnected);
+  // Keep only the outermost scopes — an inner one's elements are already in
+  // the outer one's descendant walk.
+  const outermost = live.filter((s) => !live.some((o) => o !== s && o.contains(s)));
+  let descendants = 0;
+  for (const s of outermost) descendants += s.querySelectorAll('[data-node-id]').length;
+  const batched = descendants > REFRESH_BATCH_THRESHOLD;
+  trace.action('sandbox:subtree-refresh-batch', {
+    queued: queued.size, scopes: outermost.length, descendants, batched,
+  });
+  if (batched) { forceRemeasureAllRects(); return; }
+  for (const s of outermost) emitSubtreeRefresh(s, emit);
 }
 
 /** Test seam — drop anything queued for the next frame. */
@@ -428,6 +465,7 @@ export function clearPendingSubtreeRefresh(): void {
   if (_pendingRefreshTimer) clearTimeout(_pendingRefreshTimer);
   _pendingRefreshTimer = null;
   _pendingRefreshScopes = null;
+  _pendingRefreshEmit = null;
 }
 
 export function emitSubtreeRefresh(parent: HTMLElement, emit: (e: SandboxEvent) => void): void {
