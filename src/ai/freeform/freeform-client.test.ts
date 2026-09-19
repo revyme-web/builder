@@ -280,7 +280,7 @@ describe('runFreeformEdit', () => {
 
 // ─── the gate itself (shared by the freeform loop and the MCP bridge) ─────────
 
-import { gateTurnFiles, commitTurnFiles } from './freeform-client';
+import { gateTurnFiles, commitTurnFiles } from '@/code/oracle/gate';
 import { getHistoryState } from '@/code/mutation/history';
 
 describe('gateTurnFiles — path discipline + stateful guards', () => {

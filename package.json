@@ -69,7 +69,8 @@
     "react-window": "^2.2.7",
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
-    "svg-pathdata": "^6.0.3"
+    "svg-pathdata": "^6.0.3",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

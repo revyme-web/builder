@@ -14,6 +14,10 @@ import { trace } from '@/shared/debug-trace';
 // Writes are fire-and-forget postMessage commands.
 
 export interface CanvasBridge {
+  /** Monotonic cache epoch, when the transport tracks one. Lets a reader
+   *  tell whether a measurement predates its own write. Optional: a
+   *  transport without epochs simply reports none. */
+  getCacheEpoch?(): CacheEpoch | null;
   /** Get bounding rect of a canvas element in screen space. */
   getRect(nodeId: string, vpPrefix: string): DOMRect | null;
 
@@ -212,4 +216,31 @@ export function setActiveBridge(bridge: CanvasBridge): void {
 export function resetActiveBridge(): void {
   _activeBridge = new NullBridge();
   trace.action('canvas-bridge:resetActiveBridge', {});
+}
+
+/** Current project version, or null when no reader is registered. */
+export function readProjectVersion(): number | null {
+  try {
+    return _projectVersionReader ? _projectVersionReader() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Which cache generation an observation measured against. */
+/** Set by ProjectFS so bridge consumers can read the project version
+ *  without importing it (would be a cycle). */
+let _projectVersionReader: (() => number) | null = null;
+
+export interface CacheEpoch {
+  /** Bridge render sequence the caches were filled against. */
+  renderSeq: number;
+  /** Project version at fill time — null when no reader is registered
+   *  (tests, early boot): the measurement's freshness is then unknowable. */
+  projectVersion: number | null;
+}
+
+/** Register the project-version reader (called once from project-fs land). */
+export function registerProjectVersionReader(fn: () => number): void {
+  _projectVersionReader = fn;
 }

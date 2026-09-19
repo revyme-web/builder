@@ -19,7 +19,7 @@
 
 export interface TraceEntry {
   ts: number;              // timestamp (ms since page load)
-  type: 'action' | 'fn' | 'before' | 'after' | 'dom' | 'error' | 'state';
+  type: 'action' | 'fn' | 'before' | 'after' | 'dom' | 'error' | 'state' | 'warn';
   category: string;        // e.g., 'drag:start', 'generator.updateNodeStyles'
   data: any;               // payload
 }
@@ -164,6 +164,15 @@ class DebugTrace {
   }
 
   /** Record an error */
+  /** Record a WARNING: abnormal but non-fatal — a disabled timeout, a
+   *  retried delivery, a write refused by a guard. Console-visible like an
+   *  error so it can't be missed, but stored under its own type so a trace
+   *  read (or a CI grep) can tell "we handled this" from "this broke". */
+  warn(category: string, data?: any): void {
+    console.warn(`[${category}]`, data ?? '');
+    this.add('warn', category, data);
+  }
+
   error(category: string, err: any): void {
     // Always log to DevTools console for immediate visibility
     console.error(`[${category}]`, err?.message || String(err), err);
@@ -199,6 +208,7 @@ class DebugTrace {
         after: '📝',
         dom: '🏗',
         error: '❌',
+        warn: '⚠️',
         state: '💾',
       }[entry.type] || '•';
 

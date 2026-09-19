@@ -1501,3 +1501,30 @@ export function checkFile(
   trace.action('oracle:check-file', { kind, violations: v.length, codes: v.map((x) => x.code) });
   return v;
 }
+
+/** Sync-agent flush bounce set (T1a/T3). Pure — unit-tested in killer-corpus. */
+export function isAgentBlockingOracleViolation(code: string): boolean {
+  // Import-shape is shadow, never bounce (T3) — every other FORBIDDEN_* stays
+  // blocking (e.g. FORBIDDEN_ALIGN_VALUE).
+  if (isOracleImportViolation(code)) return false;
+  if (
+    code === 'SYNTAX_ERROR' ||
+    code === 'MISSING_DATA_ID' ||
+    code === 'DISPLAY_TOGGLE_VISIBILITY' ||
+    code === 'TEXT_EXPRESSION' ||
+    code === 'UNRESOLVABLE_TERNARY' ||
+    code === 'WOULD_CRASH' ||
+    code.startsWith('FORBIDDEN_')
+  ) {
+    return true;
+  }
+  return AGENT_CRASH_CODES.has(code);
+}
+
+/** I4a crash-family codes that bounce the agent sync flush (T3). */
+const AGENT_CRASH_CODES = new Set(['PAGE_ROOT_REQUIRED', 'RESOLVE_EMPTY', 'RESOLVE_THROW']);
+
+/** Import-shape codes: shadow at flush, blocking at gate (T3). */
+export function isOracleImportViolation(code: string): boolean {
+  return code === 'FORBIDDEN_IMPORT' || code === 'GSAP_FORBIDDEN';
+}

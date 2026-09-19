@@ -4,7 +4,7 @@ import {
   updateContainerQueryStyle, updateVariantStyleInCode, setConditionalStyleInCode,
   rewriteResponsiveBreakpoints, addResponsiveBreakpoint, removeResponsiveBreakpoint,
   setConditionalOrderInCode, clearContainerStylesInSubtree,
-  rewriteContainerBreakpoints, clearContainerStylesForNode,
+  rewriteContainerBreakpoints, clearContainerStylesForNode, removeScopedChildRulesInCode,
 } from './generator-styles';
 import { updateNodeInCode } from './generator-crud';
 import { parseJSXToNodes } from '../parsing/parser';
@@ -1854,5 +1854,73 @@ describe('band re-serialization preserves NON-band top-level rules (the vanished
     expect(out).toContain('select[data-id="interest-select"]');
     expect(out).toContain('@keyframes pulse-x');
     expect(out).not.toContain('padding: 24px !important');
+  });
+
+  // A component instance's children get render-time ids of the form
+  // `<instanceId>:<childId>`. They are not in the instance's JSX, so deleting the
+  // instance is the only chance to shed their rules.
+  const INSTANCE_PAGE = `export default function Page() {
+  return (
+    <div data-id="root">
+      <style>{\`
+    @media (max-width: 810px) {
+      [data-id="frame-mu84qri4-1"] { display: none !important; }
+      [data-id="frame-mu84qri4-1:header-root"] { flex-direction: column !important; }
+      [data-id="frame-mu84qri4-1:header-nav"] { display: none !important; }
+      [data-id="keep-me"] { gap: 4px !important; }
+    }
+  \`}</style>
+    </div>
+  );
+}`;
+
+  test('clearContainerStylesForNode leaves instance-scoped child rules alone by default', () => {
+    const out = clearContainerStylesForNode(INSTANCE_PAGE, 'frame-mu84qri4-1');
+    expect(out).not.toContain('[data-id="frame-mu84qri4-1"]');
+    expect(out).toContain('[data-id="frame-mu84qri4-1:header-root"]');
+  });
+
+  test('clearContainerStylesForNode sheds instance-scoped child rules when asked', () => {
+    const out = clearContainerStylesForNode(INSTANCE_PAGE, 'frame-mu84qri4-1', true);
+    expect(out).not.toContain('frame-mu84qri4-1');
+    expect(out).toContain('[data-id="keep-me"]');
+  });
+
+  // The prefix must be the full id plus ':' — never a bare startsWith, or deleting
+  // `hero` would take `hero-title` with it.
+  test('clearContainerStylesForNode does not eat ids that merely share a prefix', () => {
+    const page = INSTANCE_PAGE.replace('[data-id="keep-me"]', '[data-id="frame-mu84qri4-11"]');
+    const out = clearContainerStylesForNode(page, 'frame-mu84qri4-1', true);
+    expect(out).toContain('[data-id="frame-mu84qri4-11"]');
+    expect(out).not.toContain('[data-id="frame-mu84qri4-1:header-nav"]');
+  });
+
+  test('removeScopedChildRulesInCode sheds pseudo/hover rules an instance child owned', () => {
+    const page = `export default function Page() {
+  return (
+    <div data-id="root">
+      <style>{\`
+    [data-id="inst-1:link"]:hover { color: red; }
+    [data-id="inst-1:field"]::placeholder {
+      color: #999;
+      opacity: 1;
+    }
+    [data-id="inst-1"]:hover { color: blue; }
+    [data-id="inst-11:other"]:hover { color: green; }
+    [data-id="keep"]:hover { color: black; }
+  \`}</style>
+    </div>
+  );
+}`;
+    const out = removeScopedChildRulesInCode(page, 'inst-1');
+    expect(out).not.toContain('inst-1:link');
+    expect(out).not.toContain('inst-1:field');
+    // Multi-line decl blocks come out whole — no orphaned tail.
+    expect(out).not.toContain('opacity: 1');
+    // The instance's OWN rule is the exact-selector removers' job, not this one.
+    expect(out).toContain('[data-id="inst-1"]:hover');
+    // A longer id that merely shares the prefix is untouched.
+    expect(out).toContain('inst-11:other');
+    expect(out).toContain('[data-id="keep"]:hover');
   });
 });

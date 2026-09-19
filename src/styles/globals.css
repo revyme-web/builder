@@ -628,3 +628,40 @@ html.theme-transition *::after {
    * answer to exactly that (see builder-themes.ts). */
   color: var(--accent-fg) !important;
 }
+
+/* Agent transcript — the step that is running right now.
+ *
+ * A static grey line and a finished grey line look identical, so between tool
+ * calls the panel reads as frozen. A highlight sweeping through the TEXT (via
+ * background-clip) says "this one is live" without adding a spinner, a colour
+ * or any layout: the row is the same size whether it is shimmering or not, so
+ * nothing shifts when the step completes.
+ *
+ * Tokens, not literals — the sweep has to stay legible on every builder theme,
+ * and `--text-primary` over `--text-tertiary` is exactly the contrast step the
+ * rest of the transcript already uses. */
+@keyframes agent-step-shimmer {
+  from { background-position: 150% 0; }
+  to   { background-position: -50% 0; }
+}
+.agent-step-live {
+  background-image: linear-gradient(
+    100deg,
+    var(--text-tertiary) 35%,
+    var(--text-primary) 50%,
+    var(--text-tertiary) 65%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: agent-step-shimmer 1.9s linear infinite;
+}
+/* Someone who has asked for less motion gets the contrast without the sweep. */
+@media (prefers-reduced-motion: reduce) {
+  .agent-step-live {
+    animation: none;
+    background-image: none;
+    color: var(--text-secondary);
+  }
+}

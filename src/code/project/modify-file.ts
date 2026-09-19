@@ -195,3 +195,22 @@ export function modifyProjectFile(
   trace.fn('modifyProjectFile', { filePath, changed: finalResult !== code, isQueueOwned, isJsxFile });
   return finalResult;
 }
+
+/** Oracle dialect codes treated as BLOCKERS for a `modifyProjectFile`
+ *  transform: a file carrying one of these is refused rather than written.
+ *
+ *  Exported so a caller can pre-flight a transform and explain a refusal
+ *  (the branch-apply pipeline does this to report which file bounced and
+ *  why). It is never a bypass — `modifyProjectFile` always re-verifies
+ *  before writing; this only lets callers predict the answer. */
+export function isBlockingModifyViolation(code: string): boolean {
+  if (code === 'SYNTAX_ERROR') return true;
+  if (code === 'MISSING_DATA_ID') return true;
+  if (code === 'DISPLAY_TOGGLE_VISIBILITY') return true;
+  if (code === 'TEXT_EXPRESSION') return true;
+  if (code === 'UNRESOLVABLE_TERNARY') return true;
+  if (code === 'WOULD_CRASH') return true;
+  if (code.startsWith('FORBIDDEN_')) return true;
+  return false;
+}
+

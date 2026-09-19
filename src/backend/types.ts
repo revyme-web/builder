@@ -9,15 +9,36 @@ export const PROJECT_FORMAT = 'revyme-v1' as const;
  * the migration — an old export, a hand-restored backup — still hydrates
  * instead of silently loading as an empty project.
  */
-export type ProjectFormat = 'revyme-v1' | 'canvas-poc-v1';
+// 'revyme-v2' adds the `branches` envelope. A project with no non-main
+// branch still serializes as v1, so the payload of every existing site is
+// byte-identical to before branching shipped.
+export type ProjectFormat = 'revyme-v1' | 'revyme-v2' | 'canvas-poc-v1';
 
 export function isKnownProjectFormat(value: unknown): value is ProjectFormat {
-  return value === 'revyme-v1' || value === 'canvas-poc-v1';
+  return value === 'revyme-v1' || value === 'revyme-v2' || value === 'canvas-poc-v1';
 }
 
 export interface ProjectData {
   format: ProjectFormat;
+  /** MAIN's files — the publish / export / backup truth, in BOTH formats.
+   *  Branches are stored beside it, never instead of it, so every consumer
+   *  that reads `files` keeps working and never needs to know about them. */
   files: Record<string, string>;  // ProjectFS snapshot: { filePath: fileContent }
+  /** v2 only: non-main branches, each with its working files and the merge
+   *  base it was cut from. Absent while the project has no branches. */
+  branches?: Record<string, {
+    files?: Record<string, string>;
+    baseSnapshot?: Record<string, string>;
+    status?: string;
+    parentId?: string | null;
+    order?: number;
+    createdAt?: number;
+    lastEditedAt?: number | null;
+  }>;
+  /** v2 only: which branch the editor was last sitting on. Falls back to main
+   *  when it names a branch that no longer exists. */
+  activeBranchId?: string;
+  mainBranchId?: string;
   settings?: {
     fonts?: string[];
     pages?: string[];

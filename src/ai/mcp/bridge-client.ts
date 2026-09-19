@@ -48,7 +48,8 @@ import { createDefaultTypoTokens, TYPO_SUFFIXES } from '@/editor/tools/typograph
 import { createCmsIndexPageFile, createCmsDetailPageFile } from '@/code/project/cms-page-ops';
 import { executeCmsTool } from '@/ai/cms-agent/cms-tool-executors';
 import type { PresetToken } from '@/shared/types';
-import { gateTurnFiles, commitTurnFiles, formatBounce, type TurnFile } from '@/ai/freeform/freeform-client';
+import { gateTurnFiles, commitTurnFiles, formatBounce, type TurnFile } from '@/code/oracle/gate';
+import { agentToolManifest, agentToolCall, agentRunStart, agentRunEnd, agentRunAbort } from '@/ai/agent/bridge-tools';
 import { creditRead, checkStaleWrites } from './read-tracker';
 import { shareComponent } from '@/cloud/components/component-share';
 import { hasComponentControls } from '@/code/components/controls-parser';
@@ -890,6 +891,16 @@ export const bridgeHandlers: Record<string, BridgeHandler> = {
     trace.action('mcp-bridge:submit-committed', { written });
     return { committed: true, written };
   },
+
+  // ─── Agent (brain in ai-generator, hands here) ────────────────────────────
+  // The turn loop runs in the service; these four methods are the only way it
+  // reaches the project. The tools themselves are the SAME ones the in-editor
+  // agent used — one registry, one oracle, one checkpoint.
+  'agent.manifest': async () => agentToolManifest(),
+  'agent.run_start': async (params: any) => agentRunStart(params ?? {}),
+  'agent.tool': async (params: any) => agentToolCall(params ?? {}),
+  'agent.run_end': async (params: any) => agentRunEnd(params ?? {}),
+  'agent.abort': async () => agentRunAbort(),
 };
 
 let source: EventSource | null = null;

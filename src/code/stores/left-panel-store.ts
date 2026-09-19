@@ -17,6 +17,7 @@ export type LeftPanelId =
   | 'media'
   | 'locale'
   | 'cms'
+  | 'branches'     // Branch workspaces: create / switch / review / apply.
   | 'vibe';         // VIBE AI chat (docked). Has no PANEL_MAP entry — the chat
                     // component renders its own self-positioned panel overlay
                     // when this is active. See LeftPanel.tsx / VibeDockShell.

@@ -154,7 +154,7 @@ const MOTION_TRANSFORM_NEUTRAL: Record<string, string> = {
  *  sever inheritance — those are excluded deliberately, and the dialect
  *  writes text styles inline on text nodes anyway (the inline base wins the
  *  seed before this tier). */
-const CSS_NEUTRAL_FALLBACK: Record<string, string> = {
+export const CSS_NEUTRAL_FALLBACK: Record<string, string> = {
   flex: '0 1 auto', flexGrow: '0', flexShrink: '1', flexBasis: 'auto',
   alignSelf: 'auto', order: '0',
   // Flex-CONTAINER props: UA stylesheets never set these, so their spec
@@ -628,9 +628,15 @@ export function stripBandedOrderForNode(code: string, nodeId: string): string {
 /**
  * Remove ALL @media rules for a specific node across ALL breakpoints.
  * Used before re-applying a typography preset to clear stale breakpoint rules.
+ *
+ * `includeScopedChildren` also sheds the `<nodeId>:<childId>` rules that a component
+ * instance's children own. Those ids are synthesized at render time and never appear in
+ * the instance's JSX, so deleting the instance is the ONLY chance to collect them —
+ * otherwise they outlive it as dead CSS. Off by default: the preset path re-applies to
+ * one node and has no business touching an instance's interior.
  */
-export function clearContainerStylesForNode(code: string, nodeId: string): string {
-  trace.fn('generator.clearContainerStylesForNode', { nodeId });
+export function clearContainerStylesForNode(code: string, nodeId: string, includeScopedChildren = false): string {
+  trace.fn('generator.clearContainerStylesForNode', { nodeId, includeScopedChildren });
 
   const styleBlockRegex = /(<style>\s*\{[`'])([\s\S]*?)([`']\}\s*<\/style>)/s;
   const blockMatch = styleBlockRegex.exec(code);
@@ -642,9 +648,14 @@ export function clearContainerStylesForNode(code: string, nodeId: string): strin
   const rules = parseContainerRules(lang.css);
 
   // Remove this node from every breakpoint
+  const scopePrefix = `${nodeId}:`;
   let removed = 0;
   for (const [, selectorMap] of rules) {
     if (selectorMap.delete(nodeId)) removed++;
+    if (!includeScopedChildren) continue;
+    for (const id of [...selectorMap.keys()]) {
+      if (id.startsWith(scopePrefix) && selectorMap.delete(id)) removed++;
+    }
   }
 
   if (removed === 0) return code; // nothing to clear
@@ -1434,6 +1445,38 @@ export function updateHoverStyleInCode(code: string, nodeId: string, styles: Rec
   } else {
     return createStyleBlockInCode(code, existingCSS);
   }
+}
+
+/**
+ * Shed every rule owned by a component instance's RENDER-TIME children —
+ * selectors headed `[data-id="<nodeId>:<childId>"]`, whatever trails them
+ * (`:hover`, `::before`, `::after`, `::placeholder`, the caret rule, the border
+ * overlay). The per-feature removers above each target one exact selector, so
+ * none of them can see these; and the ids never appear in the instance's JSX,
+ * so nothing downstream can collect them either. Delete is the last chance.
+ *
+ * The banded `@media` copies are handled by clearContainerStylesForNode's
+ * includeScopedChildren pass, which runs first and re-serializes the block.
+ */
+export function removeScopedChildRulesInCode(code: string, nodeId: string): string {
+  trace.fn('generator.removeScopedChildRulesInCode', { nodeId });
+
+  const styleBlockRegex = /(<style>\s*\{[`'])([\s\S]*?)([`']\}\s*<\/style>)/s;
+  const blockMatch = styleBlockRegex.exec(code);
+  if (!blockMatch) return code;
+
+  // `[^}]*` spans newlines, so multi-line declaration blocks come out whole —
+  // a line filter would leave their tails behind.
+  const head = escapeRegExp(`[data-id="${nodeId}:`);
+  const ruleRegex = new RegExp(`\\s*${head}[^"]*"\\][^{}]*\\{[^}]*\\}`, 'g');
+
+  const newCSS = blockMatch[2].replace(ruleRegex, '');
+  if (newCSS === blockMatch[2]) return code;
+
+  trace.action('generator.removeScopedChildRulesInCode:cleared', { nodeId });
+
+  const [fullMatch, prefix, , suffix] = blockMatch;
+  return code.slice(0, blockMatch.index!) + prefix + newCSS + suffix + code.slice(blockMatch.index! + fullMatch.length);
 }
 
 /**
@@ -2358,7 +2401,14 @@ export function updateVariantStyleInCode(
   // (the Illustration/Chat live-jank find). No-op otherwise; idempotent.
   // A default entry seeded from a VARIABLE-bound base reads a prop, which only
   // exists inside the component: move such a variants const in.
-  return ensureRootPerfIsolation(scopeVariantConstsReadingProps(updateVariantStyleInCodeImpl(code, nodeId, variantName, styles)));
+  // `ensureInitialVariantParam` runs LAST: variant wiring references the
+  // `initialVariant` prop, so a master that never declared it would fail the
+  // oracle gate (WOULD_CRASH) and the whole mutation would revert — the write
+  // reports success while nothing lands. Declaring it here keeps every
+  // variant-entry writer honest, panel and agent alike.
+  return ensureInitialVariantParam(
+    ensureRootPerfIsolation(scopeVariantConstsReadingProps(updateVariantStyleInCodeImpl(code, nodeId, variantName, styles))),
+  );
 }
 
 function updateVariantStyleInCodeImpl(
@@ -3784,3 +3834,149 @@ export function setConditionalStyleInCode(
   return result;
 }
 
+/**
+ * Ensure the component declares the `initialVariant` prop it now references.
+ *
+ * Variant wiring (`initial={['default', initialVariant]}` / ternaries keyed off
+ * `initialVariant`) is only valid when the component function destructures that
+ * param — a master extracted before variants existed (e.g. `{ style }`) has no
+ * such binding, so the emitted reference is an undeclared identifier and the
+ * oracle blocks the whole write as WOULD_CRASH (tier 3). After the wiring step,
+ * when the file references an UNDECLARED `initialVariant` (Babel scope globals —
+ * the validator's own detection, so strings/comments never count) and the
+ * exported component's first param is an object pattern lacking it, append
+ * `initialVariant = 'default'` to the destructuration and `initialVariant?:
+ * string` to the object type literal when one is present. Param-only when there
+ * is no type literal (nothing else invented); no object destructuration at all
+ * (`function Foo()`, `(props)`, `export default function Page()`) is a
+ * documented no-op. Never duplicates an existing declaration; byte-identical
+ * otherwise.
+ */
+export function ensureInitialVariantParam(code: string): string {
+  if (!code.includes('initialVariant')) return code;
+  const ast = parseJSX(code);
+  if (!ast) return code;
+  // Undeclared use? Program scope globals are exactly the validator's signal:
+  // a declared param never appears here, strings/comments never parse as
+  // identifiers, so this is both precise and conservative.
+  let hasUndeclared = false;
+  try {
+    traverseAst(ast, {
+      Program(p) {
+        const globals = Object.keys(
+          (p.scope as unknown as { globals?: Record<string, unknown> } | undefined)?.globals ?? {},
+        );
+        if (globals.includes('initialVariant')) hasUndeclared = true;
+      },
+    });
+  } catch {
+    return code;
+  }
+  if (!hasUndeclared) return code;
+
+  // Bound the heal to variant-system participants: only a file carrying a
+  // `variantConfig` declaration gets the param. Pages never do (their
+  // `initialVariant` references are a different dialect violation the CMS
+  // rules demote, never legitimize) — without this guard the heal would
+  // graft a component param onto `export default function Page`.
+  if (!/\bconst\s+variantConfig\s*=/.test(code)) return code;
+
+  const exportName =
+    code.match(/export default function (\w+)/)?.[1] ??
+    code.match(/export default \w+\((\w+)\)\s*;/)?.[1] ??
+    code.match(/export default (\w+)\s*;/)?.[1] ??
+    null;
+
+  // Holder (not a bare `let … | null`): assignments happen inside traverse
+  // callbacks, which control-flow analysis cannot see — a bare variable would
+  // still be narrowed to its `null` initializer after the call, leaving `never`.
+  const holder: { fn: t.FunctionDeclaration | t.FunctionExpression | t.ArrowFunctionExpression | null } = { fn: null };
+  try {
+    traverseAst(ast, {
+      FunctionDeclaration(path) {
+        if (holder.fn || !exportName) return;
+        if (path.node.id?.name === exportName) holder.fn = path.node;
+      },
+      VariableDeclarator(path) {
+        if (holder.fn || !exportName) return;
+        const id = path.node.id;
+        const init = path.node.init;
+        if (id.type !== 'Identifier' || id.name !== exportName) return;
+        if (init && (t.isArrowFunctionExpression(init) || t.isFunctionExpression(init))) holder.fn = init;
+      },
+      ExportDefaultDeclaration(path) {
+        if (holder.fn || exportName) return;
+        const decl = path.node.declaration;
+        if (t.isFunctionDeclaration(decl) || t.isFunctionExpression(decl) || t.isArrowFunctionExpression(decl)) {
+          holder.fn = decl;
+        }
+      },
+    });
+  } catch {
+    return code;
+  }
+  const targetFn = holder.fn;
+  if (!targetFn) return code;
+
+  const firstParam = targetFn.params[0];
+  if (!firstParam) return code; // no params at all — documented no-op.
+  let objPat: t.ObjectPattern | null = null;
+  if (t.isObjectPattern(firstParam)) objPat = firstParam;
+  else if (t.isAssignmentPattern(firstParam) && t.isObjectPattern(firstParam.left)) objPat = firstParam.left;
+  else return code; // no object destructuration (`(props)`, `()`) — documented no-op.
+
+  const hasParam = objPat.properties.some((p) => {
+    if (!t.isObjectProperty(p)) return false;
+    if (t.isIdentifier(p.key)) return p.key.name === 'initialVariant';
+    if (t.isStringLiteral(p.key)) return p.key.value === 'initialVariant';
+    return false;
+  });
+  if (hasParam) return code; // never duplicate.
+
+  type Splice = { pos: number; text: string };
+  const splices: Splice[] = [];
+  if (objPat.properties.length === 0) {
+    const patStart = objPat.start;
+    if (patStart == null) return code;
+    splices.push({ pos: patStart + 1, text: `initialVariant = 'default'` });
+  } else {
+    const last = objPat.properties[objPat.properties.length - 1];
+    const lastEnd = last.end;
+    if (lastEnd == null) return code;
+    splices.push({ pos: lastEnd, text: `, initialVariant = 'default'` });
+  }
+
+  // Object type literal (`: { style?: … }`) — append the optional prop. No
+  // literal (or a non-literal annotation like `: Props`) means param alone.
+  const typeAnn = (objPat as unknown as { typeAnnotation?: t.TSTypeAnnotation }).typeAnnotation?.typeAnnotation;
+  if (typeAnn && t.isTSTypeLiteral(typeAnn)) {
+    const members = typeAnn.members;
+    const hasTypeMember = members.some((m) => {
+      if (!t.isTSPropertySignature(m)) return false;
+      if (t.isIdentifier(m.key)) return m.key.name === 'initialVariant';
+      if (t.isStringLiteral(m.key)) return m.key.value === 'initialVariant';
+      return false;
+    });
+    if (!hasTypeMember) {
+      if (members.length === 0) {
+        const litStart = typeAnn.start;
+        if (litStart == null) return code;
+        splices.push({ pos: litStart + 1, text: `initialVariant?: string` });
+      } else {
+        const lastM = members[members.length - 1];
+        const lastMEnd = lastM.end;
+        if (lastMEnd == null) return code;
+        const lastMStart = lastM.start ?? lastMEnd;
+        const lastText = code.slice(lastMStart, lastMEnd);
+        const endsWithSep = /[;,]\s*$/.test(lastText);
+        splices.push({ pos: lastMEnd, text: endsWithSep ? ` initialVariant?: string` : `; initialVariant?: string` });
+      }
+    }
+  }
+
+  splices.sort((a, b) => b.pos - a.pos);
+  let out = code;
+  for (const s of splices) out = out.slice(0, s.pos) + s.text + out.slice(s.pos);
+  trace.action('generator:ensure-initial-variant-param', { component: exportName ?? 'default' });
+  return out;
+}

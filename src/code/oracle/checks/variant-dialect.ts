@@ -9,6 +9,7 @@ import { parseConnections } from '@/code/variants/connection-config';
 import { traverse, jsxTagName, jsxAttrs, stringAttr, findSetVariantArg, endsWithVariantFallthrough, isRootCandidate } from './shared';
 import type { OracleViolation } from './shared';
 import { styleValueIncludes } from './style-object';
+import { CSS_NEUTRAL_FALLBACK } from '@/code/generation/generator-styles';
 
 // ─── variant dialect (design components) ─────────────────────────────────────
 //
@@ -651,6 +652,15 @@ function checkVariantDialect(code: string, ast: t.File, v: OracleViolation[]): v
             }
             continue;
           }
+          // A default value that IS the CSS neutral is the builder's OWN
+          // animate-back seed, not a value the panel can't see: the neutral
+          // is exactly what the control shows for an absent property, so the
+          // entry hides nothing. Same exemption the MOTION_ONLY props above
+          // already get for their neutral (0 / 1) seeds — plain CSS props
+          // simply never got it, and the seeder emits them on any variant
+          // write touching a property the element has no inline base for.
+          const neutralCss = CSS_NEUTRAL_FALLBACK[k];
+          if (neutralCss !== undefined && t.isStringLiteral(p.value) && p.value.value === neutralCss) continue;
           if (!inline.has(k)) missing.push(k);
         }
         if (missing.length > 0) {

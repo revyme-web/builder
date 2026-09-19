@@ -11,6 +11,7 @@ import LibraryPanel from './panels/LibraryPanel';
 import MediaGalleryPanel from './panels/MediaGalleryPanel';
 import LocalePanel from './panels/LocalePanel';
 import CmsPanel from './panels/CmsPanel';
+import BranchesPanel from './panels/BranchesPanel';
 import { trace } from '@/shared/debug-trace';
 
 // Wrapper to pass mode='presets' to LibraryPanel
@@ -34,6 +35,7 @@ const PANEL_MAP: Record<string, React.ComponentType> = {
   'media': MediaGalleryPanel,
   'locale': LocalePanel,
   'cms': CmsPanel,
+  'branches': BranchesPanel,
   // NOTE: 'vibe' has no entry on purpose — the docked AI chat is a
   // self-positioned overlay (`VibeDockShell`, rendered by PageChat /
   // IconSetChat) that sits in this same slot. When 'vibe' is active this

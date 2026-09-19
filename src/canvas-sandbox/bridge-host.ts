@@ -22,6 +22,7 @@ import type { ViewportConfig } from '@/shared/types';
 import type { CanvasNode } from '@/code/parsing/parser';
 import { trace } from '@/shared/debug-trace';
 import { viewportBandPinOps } from '@/canvas/resize/viewport-band-pin-store';
+import { readProjectVersion, type CacheEpoch } from '@/canvas/canvas-bridge';
 
 export class PostMessageBridge implements CanvasBridge {
   private iframe: HTMLIFrameElement | null = null;
@@ -56,6 +57,18 @@ export class PostMessageBridge implements CanvasBridge {
   // captured mid-drag — visible bug: hover hit-test lands on the wrong
   // element after a reorder commit.
   private cacheGeneration = 0;
+
+  /** Render sequence + project version the caches were FILLED against.
+   *  Cleared with the caches, so a wiped cache never parades as a fresh
+   *  measurement. Single-entry updates (rectUpdate/computedUpdate) do not
+   *  move it — same fill, same epoch. */
+  private cacheEpoch: CacheEpoch | null = null;
+
+  /** CanvasBridge surface for the epoch — lets a reader tell whether a
+   *  measurement predates its own write. */
+  getCacheEpoch(): CacheEpoch | null {
+    return this.cacheEpoch;
+  }
 
   // Computed style cache — prefetched before continuous interactions, kept fresh via computedUpdate events.
   // Key: "vpPrefix:nodeId", Value: map of CSS property → computed value
@@ -944,6 +957,7 @@ export class PostMessageBridge implements CanvasBridge {
     this.containerRectCache = null;
     this.computedCache.clear();
     this.cornersCache.clear();
+    this.cacheEpoch = null;
   }
 
   /** CanvasBridge interface alias for clearRectCache — called by
@@ -1047,6 +1061,13 @@ export class PostMessageBridge implements CanvasBridge {
         this.computedCache.clear();
         this.cornersCache.clear();
         this.cacheGeneration++;
+        // Stamp what this fill measured against: the echoed renderSeq (falling
+        // back to the latest one we sent when the sandbox omits it) plus the
+        // project version right now.
+        this.cacheEpoch = {
+          renderSeq: event.renderSeq ?? this.renderSeq,
+          projectVersion: readProjectVersion(),
+        };
         for (const { nodeId, vpPrefix, rect } of event.rects) {
           this.rectCache.set(`${vpPrefix}:${nodeId}`, new DOMRect(rect.left, rect.top, rect.width, rect.height));
         }

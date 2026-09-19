@@ -17,7 +17,7 @@ import { findVariantRootId } from '@/shared/variant-root';
 import { sweepEmptyGlideWrappers } from './glide-gen';
 import { generate, findTagClose, findJSXDataIdIndex, quoteStyleValue, serializeJSXAttr, findMatchingCloseTagIndex, findStyleObjectEnd } from './generator-utils';
 import { moveNodeIntoParentFast } from './move-fast';
-import { clearContainerStylesForNode, removeHoverStyleInCode, removeBorderOverlayStyle, removePseudoStyleInCode, removeSelectCaretRuleInCode, findBandedOrderWidths, stripBandedOrderForNode } from './generator-styles';
+import { clearContainerStylesForNode, removeHoverStyleInCode, removeBorderOverlayStyle, removePseudoStyleInCode, removeSelectCaretRuleInCode, removeScopedChildRulesInCode, findBandedOrderWidths, stripBandedOrderForNode } from './generator-styles';
 import { clearNodeScrollFx, ensureTransformTemplateInCode } from './generator-motion';
 import { stripScrollTextHooks } from './text-anim-gen';
 import { parseVariantConfig } from '../variants/variant-config';
@@ -3670,12 +3670,13 @@ export function removeNodeInCode(code: string, nodeId: string): string {
       if (handled) {
         try {
           let result = generate(ast, { retainLines: false, concise: false }, code).code;
-          result = clearContainerStylesForNode(result, nodeId);
+          result = clearContainerStylesForNode(result, nodeId, true);
           result = removeHoverStyleInCode(result, nodeId);
           result = removeBorderOverlayStyle(result, nodeId);
           result = removePseudoStyleInCode(result, nodeId, 'placeholder');
           result = removePseudoStyleInCode(result, nodeId, 'before');
           result = removeSelectCaretRuleInCode(result, nodeId);
+          result = removeScopedChildRulesInCode(result, nodeId);
           trace.action('generator:removeNode-empty-map-template', { nodeId });
           return sweepEmptyGlideWrappers(removeOrphanedVariantConsts(result));
         } catch (err) {
@@ -3736,12 +3737,13 @@ export function removeNodeInCode(code: string, nodeId: string): string {
     let endIdx = rmEnd;
     while (endIdx < code.length && (code[endIdx] === '\n' || code[endIdx] === '\r')) endIdx++;
     let selfClosed = code.slice(0, rmStart) + code.slice(endIdx);
-    selfClosed = clearContainerStylesForNode(selfClosed, nodeId);
+    selfClosed = clearContainerStylesForNode(selfClosed, nodeId, true);
     selfClosed = removeHoverStyleInCode(selfClosed, nodeId);
     selfClosed = removeBorderOverlayStyle(selfClosed, nodeId);
     selfClosed = removePseudoStyleInCode(selfClosed, nodeId, 'placeholder');
     selfClosed = removePseudoStyleInCode(selfClosed, nodeId, 'before');
     selfClosed = removeSelectCaretRuleInCode(selfClosed, nodeId);
+    selfClosed = removeScopedChildRulesInCode(selfClosed, nodeId);
     return sweepEmptyGlideWrappers(removeOrphanedVariantConsts(selfClosed));
   }
 
@@ -3761,12 +3763,13 @@ export function removeNodeInCode(code: string, nodeId: string): string {
     while (trimEnd < code.length && (code[trimEnd] === '\n' || code[trimEnd] === '\r')) trimEnd++;
     let result = code.slice(0, rmStart) + code.slice(trimEnd);
     // Also clean up any @media CSS rules referencing this node
-    result = clearContainerStylesForNode(result, nodeId);
+    result = clearContainerStylesForNode(result, nodeId, true);
     result = removeHoverStyleInCode(result, nodeId);
     result = removeBorderOverlayStyle(result, nodeId);
     result = removePseudoStyleInCode(result, nodeId, 'placeholder');
     result = removePseudoStyleInCode(result, nodeId, 'before');
     result = removeSelectCaretRuleInCode(result, nodeId);
+    result = removeScopedChildRulesInCode(result, nodeId);
     // Garbage-collect the deleted element's now-orphaned variant object(s).
     result = sweepEmptyGlideWrappers(removeOrphanedVariantConsts(result));
     return result;

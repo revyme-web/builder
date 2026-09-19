@@ -17,7 +17,6 @@ import { refreshCredits } from '@/code/stores/credits-store';
 import { trace } from '@/shared/debug-trace';
 import CreditsIndicator from '@/editor/CreditsIndicator';
 import ChatUserMessage from '@/editor/ChatUserMessage';
-import VibeComingSoonGate from '@/editor/ui/VibeComingSoonGate';
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
 
@@ -272,8 +271,6 @@ export default function CmsAiPanel({ collectionName, onClose }: {
           </div>
         </div>
       </div>
-      {/* Gated while the in-house agent is offline (see VibeComingSoonGate) */}
-      <VibeComingSoonGate onClose={onClose} />
     </div>
   );
 }

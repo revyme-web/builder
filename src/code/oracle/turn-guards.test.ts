@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { checkSubmitPath, checkPreservation, checkComponentCompat, checkTokenRefs, extractComponentProps } from './turn-guards';
+import { checkSubmitPath, checkPreservation, checkComponentCompat, checkTokenRefs, extractComponentProps } from '@/code/oracle/turn-guards';
 
 const codes = (vs: { code: string }[]) => vs.map((v) => v.code);
 
@@ -203,5 +203,43 @@ describe('checkTokenRefs — var(--x) must resolve', () => {
   it('dedupes repeated refs to the same unknown token', () => {
     const code = `<div data-id="a" style={{ color: 'var(--nope)', backgroundColor: 'var(--nope)' }} />`;
     expect(checkTokenRefs(code, KNOWN)).toHaveLength(1);
+  });
+});
+
+// ── canvasNodes preservation ────────────────────────────────────────────────
+// An agent restyle of a page dropped the module-scope `canvasNodes` fragment
+// (2026-09-19). Nothing bounced it: every element living on the canvas rather
+// than inside a viewport was lost, drag-out stopped working, and there was no
+// annotation on the block for the existing guards to key on.
+describe('checkPreservation — canvasNodes', () => {
+  const withNodes = `'use client';
+const canvasNodes = (<><div data-id="note" data-canvas-node="true" style={{ position: 'absolute' }}></div></>);
+export default function Page() { return (<div data-id="root" style={{ position: 'relative' }}>{canvasNodes}</div>); }`;
+  const withoutNodes = `'use client';
+export default function Page() { return (<div data-id="root" style={{ position: 'relative' }}></div>); }`;
+
+  const codes = (a: string, b: string) => checkPreservation(a, b).map((x) => x.code);
+
+  it('bounces an edit that drops the declaration', () => {
+    expect(codes(withNodes, withoutNodes)).toContain('CANVAS_NODES_DESTROYED');
+  });
+
+  it('allows an edit that keeps it', () => {
+    const edited = withNodes.replace("data-id=\"root\"", "data-id=\"root\" data-name=\"Page\"");
+    expect(codes(withNodes, edited)).not.toContain('CANVAS_NODES_DESTROYED');
+  });
+
+  it('allows editing the fragment’s own contents', () => {
+    const edited = withNodes.replace('data-id="note"', 'data-id="note-2"');
+    expect(codes(withNodes, edited)).not.toContain('CANVAS_NODES_DESTROYED');
+  });
+
+  it('is silent on a page that never had one', () => {
+    expect(codes(withoutNodes, withoutNodes)).not.toContain('CANVAS_NODES_DESTROYED');
+  });
+
+  it('a mere mention in a comment does not satisfy the check', () => {
+    const commentOnly = `${withoutNodes}\n// canvasNodes used to live here`;
+    expect(codes(withNodes, commentOnly)).toContain('CANVAS_NODES_DESTROYED');
   });
 });

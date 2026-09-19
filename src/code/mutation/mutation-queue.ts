@@ -27,6 +27,7 @@ import { dragStateOps } from '@/canvas/drag/drag-state-store';
 import { getDefaultStore } from 'jotai';
 import { healMissingLocaleHook } from '@/code/generation/scoped-expr';
 import { trace } from '@/shared/debug-trace';
+import { isAgentWriteOpen, isBranchLocked } from '@/code/stores/agent-run-lock-store';
 import { parse } from '@babel/parser';
 import _traverse from '@babel/traverse';
 import { isViewerMode } from '../stores/viewer-mode-store';
@@ -920,7 +921,23 @@ export function syncQueueCode(code: string): void {
  * Queue a mutation. The mutation is applied to the code string asynchronously.
  * The caller should have already updated the DOM for instant visual feedback.
  */
-export function queueMutation(mutation: Mutation): void {
+/**
+ * Branch scope for a queued write / drain.
+ *
+ * PARTIALLY HONOURED. The lock gate below is live: a write aimed at a locked
+ * branch is refused today. The DRAIN is not yet partitioned — one queue, one
+ * group — so `flushNow(scope)` still drains everything pending rather than
+ * only that (branchId, file) group. Concurrent runs on different branches
+ * therefore are not yet isolated; that lands with the agent port, together
+ * with the `{author, file, branchId}` entry routing it needs.
+ */
+export interface QueueScope {
+  author?: 'human' | 'agent';
+  file?: string;
+  branchId?: string;
+}
+
+export function queueMutation(mutation: Mutation, scope?: QueueScope): void {
   // View-only gate. Every write path in the editor (drag, resize, style
   // panel, keyboard shortcuts, AI agent tools, etc.) funnels through
   // here, so one early-return at the bottom of the stack disables ALL
@@ -928,6 +945,17 @@ export function queueMutation(mutation: Mutation): void {
   // re-enforces this via requireEditAccess — defense in depth.
   if (isViewerMode()) {
     trace.fn('queueMutation:blocked-viewer', { type: mutation.type });
+    return;
+  }
+  // BRANCH LOCK gate. An agent run owns its branch for the whole run; a write
+  // aimed at a locked branch from OUTSIDE an agent write window is refused
+  // (same shape and trace as the viewer gate). Writes inside the agent's own
+  // window always pass — the lock exists to keep other authors out, not the
+  // run itself. With no branches and no run, `isBranchLocked` is false and
+  // this is a no-op for every existing write path.
+  const targetBranch = scope?.branchId ?? projectFS.getActiveBranchId();
+  if (!isAgentWriteOpen() && isBranchLocked(targetBranch)) {
+    trace.action('mutation-queue:refused-branch-locked', { type: mutation.type, branch: targetBranch });
     return;
   }
   queue.push(mutation);
@@ -967,7 +995,7 @@ export function queueMutation(mutation: Mutation): void {
 /**
  * Queue multiple mutations at once (e.g., multi-select drag).
  */
-export function queueMutations(mutations: Mutation[]): void {
+export function queueMutations(mutations: Mutation[], scope?: QueueScope): void {
   if (isViewerMode()) {
     trace.fn('queueMutations:blocked-viewer', { count: mutations.length });
     return;
@@ -1057,7 +1085,9 @@ export function refreshDeferredFlushWithExternalWrite(code: string): void {
 // (see external-write-registry.ts).
 registerExternalWriteRefresh(refreshDeferredFlushWithExternalWrite);
 
-export function flushNow(): void {
+/** Drain now. `scope` is accepted for call-site compatibility with the
+ *  branch-aware API; the drain is not partitioned yet (see QueueScope). */
+export function flushNow(scope?: QueueScope): void {
   // Cancel any pending timers
   if (flushTimer !== null) {
     cancelAnimationFrame(flushTimer);
@@ -3696,3 +3726,58 @@ function applyMutationCore(code: string, mutation: Mutation): string {
     return code;
   }
 }
+
+/**
+ * Point the editor at `path` and re-seed the mutation queue from that file's
+ * content on `branchId` (default: the active branch).
+ *
+ * `setActiveFilePath` alone leaves the queue holding the PREVIOUS file's code,
+ * so the next generator would splice into the wrong source. Reading through
+ * `readBranchFiles` (not `projectFS.readFile`) lets a caller seed from a
+ * branch it is not currently sitting on — which is what a workspace switch
+ * does, one map at a time.
+ */
+export function switchQueueFile(path: string, opts: { branchId?: string } = {}): void {
+  setActiveFilePath(path);
+  const branchId = opts.branchId ?? projectFS.getActiveBranchId();
+  const content = projectFS.readBranchFiles(branchId)?.get(path) ?? null;
+  if (content != null) {
+    syncQueueCode(content);
+    trace.action('mutation-queue:switch-queue-file', { path, branchId });
+  } else {
+    trace.action('mutation-queue:switch-queue-file-missing', { path, branchId });
+  }
+}
+
+/** The file path the queue's `currentCode` base tracks. Read-only accessor for
+ *  `restoreSnapshot` (Porte 5 / D-T3): after a snapshot restore the queue base
+ *  must be re-seeded from the restored content of THIS file — without a
+ *  getter the restore path cannot know which file the queue tracks. */
+export function getQueueActiveFilePath(): string {
+  return _activeFilePath;
+}
+
+/**
+ * Drop queued mutations aimed at `branchId`, returning how many were dropped.
+ *
+ * Our queue is NOT branch-partitioned (entries are plain mutations, not
+ * `{mutation, route}` records), so "the entries for branch X" is only
+ * answerable for the ACTIVE branch — everything queued targets whatever
+ * branch is active when it drains. Asking about any other branch therefore
+ * drops nothing and says so, rather than silently discarding another
+ * workspace's pending work. When the drain becomes partitioned this reads the
+ * route instead and the callers do not change.
+ */
+export function dropQueuedBranch(branchId: string): number {
+  if (branchId !== projectFS.getActiveBranchId()) {
+    trace.action('mutation-queue:drop-branch-noop', { branch: branchId, reason: 'not-active' });
+    return 0;
+  }
+  const dropped = queue.length;
+  if (dropped > 0) {
+    queue.length = 0;
+    trace.action('mutation-queue:drop-branch-entries', { branch: branchId, dropped });
+  }
+  return dropped;
+}
+

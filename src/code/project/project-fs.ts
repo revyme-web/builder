@@ -3,7 +3,12 @@
 // ProjectFS interface allows swapping to a real file API later
 // without touching any canvas/parser/control code.
 
-import { atom } from 'jotai';
+import { atom, getDefaultStore } from 'jotai';
+import type { ProjectData } from '@/backend/types';
+// Type-only: erased at build time, so this does NOT create a runtime cycle
+// with the branching engine (which imports projectFS).
+import type { FileConflict } from '@/code/branching/merge';
+import { registerProjectVersionReader } from '@/canvas/canvas-bridge';
 import { buildProvidersSource } from './providers-gen';
 import { trace } from '@/shared/debug-trace';
 import { parseJSX } from '@/code/parsing/ast-utils';
@@ -146,8 +151,115 @@ export interface ProjectFSWriteEvent {
   origin: 'local' | 'remote';
 }
 
+export interface BranchFileIO {
+  readFile(path: string): string | null;
+  writeFile(path: string, content: string): void;
+  deleteFile(path: string): void;
+  exists(path: string): boolean;
+}
+
+// ─── In-Memory Implementation ───────────────────────────────────────────────
+
+/**
+ * Per-mutation hook info passed to every `writeListener`. Includes the
+ * `origin` flag so collaboration subscribers can skip rebroadcasting
+ * writes that arrived FROM a remote peer (otherwise: feedback loop).
+ */
+
+export type BranchStatus = 'clean' | 'dirty' | 'conflict';
+export const MAIN_BRANCH_ID = 'main';
+
+/** One non-main branch: live files + merge base + state. Main lives in `files`. */
+export interface BranchData {
+  files: Map<string, string>;
+  baseSnapshot: Map<string, string>;
+  status: BranchStatus;
+  createdAt: number;
+  label?: string;
+  /** Parent branch at creation (tree nesting). Null for main-children roots. */
+  parentId: string | null;
+  /** Sibling order (drag-and-drop stable). */
+  order: number;
+  /** Last branch-map write (tree relative time). Null until first edit. */
+  lastEditedAt: number | null;
+}
+
+export interface BranchInfo {
+  id: string;
+  status: BranchStatus;
+  fileCount: number;
+  active: boolean;
+  /** main can never be deleted. */
+  protected: boolean;
+  /** Creation timestamp (review list relative time). 0 for main. */
+  createdAt: number;
+  /** Parent branch (tree nesting). Null for main. */
+  parentId: string | null;
+  /** Sibling order (drag-and-drop stable). */
+  order: number;
+  /** Last branch-map write. Null until first edit (main: null). */
+  lastEditedAt: number | null;
+}
+
+const BRANCH_ID_RE = /^[a-z0-9-]{1,48}$/;
+
+function mapsEqual(a: Map<string, string>, b: Map<string, string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [k, v] of a) if (b.get(k) !== v) return false;
+  return true;
+}
+
+/**
+ * Parse envelope branch records into BranchData. Skips malformed entries
+ * with a trace (never throws) — shared by fromEnvelope + hydrateBranches.
+ */
+function parseBranchRecords(rawBranches: unknown): Map<string, BranchData> {
+  const branches = new Map<string, BranchData>();
+  if (!rawBranches || typeof rawBranches !== 'object') return branches;
+  for (const [id, raw] of Object.entries(rawBranches as Record<string, unknown>)) {
+    if (id === MAIN_BRANCH_ID || !BRANCH_ID_RE.test(id)) {
+      trace.action('project-fs:envelope-branch-skipped', { id, reason: 'reserved-or-invalid-id' });
+      continue;
+    }
+    if (!raw || typeof raw !== 'object') {
+      trace.action('project-fs:envelope-branch-skipped', { id, reason: 'not-an-object' });
+      continue;
+    }
+    const rec = raw as { files?: unknown; baseSnapshot?: unknown; status?: unknown; parentId?: unknown; order?: unknown; lastEditedAt?: unknown; createdAt?: unknown };
+    if (!rec.files || typeof rec.files !== 'object') {
+      trace.action('project-fs:envelope-branch-skipped', { id, reason: 'missing-files' });
+      continue;
+    }
+    const bFiles = new Map<string, string>();
+    for (const [k, v] of Object.entries(rec.files as Record<string, unknown>)) {
+      if (typeof v === 'string') bFiles.set(k, v);
+    }
+    let base = new Map<string, string>(bFiles);
+    if (rec.baseSnapshot && typeof rec.baseSnapshot === 'object') {
+      base = new Map<string, string>();
+      for (const [k, v] of Object.entries(rec.baseSnapshot as Record<string, unknown>)) {
+        if (typeof v === 'string') base.set(k, v);
+      }
+    }
+    const status: BranchStatus = rec.status === 'dirty' || rec.status === 'conflict' ? rec.status : 'clean';
+    const parentId = typeof rec.parentId === 'string' && rec.parentId !== MAIN_BRANCH_ID ? rec.parentId : MAIN_BRANCH_ID;
+    const order = typeof rec.order === 'number' && Number.isFinite(rec.order) ? rec.order : 0;
+    const createdAt = typeof rec.createdAt === 'number' && Number.isFinite(rec.createdAt) ? rec.createdAt : Date.now();
+    const lastEditedAt = typeof rec.lastEditedAt === 'number' && Number.isFinite(rec.lastEditedAt) ? rec.lastEditedAt : null;
+    branches.set(id, { files: bFiles, baseSnapshot: base, status, createdAt, parentId, order, lastEditedAt });
+  }
+  return branches;
+}
+
 export class InMemoryProjectFS implements ProjectFS {
+  /** MAIN's files. Publish/export/backup truth — never a branch's. */
   private files: Map<string, string>;
+  /** Non-main branches. main's files live in `this.files`. */
+  private branches = new Map<string, BranchData>();
+  /** Last recorded merge conflicts per branch (review surface). Not persisted. */
+  private branchConflicts = new Map<string, FileConflict[]>();
+  /** Human/canvas truth pointer. Agent branch work addresses maps directly. */
+  private activeBranchId: string = MAIN_BRANCH_ID;
   private listeners: Set<() => void> = new Set();
   /** Per-write observers — receive the path + content + origin tag on
    *  every mutation. Distinct from `listeners` (which is a coarse
@@ -163,8 +275,18 @@ export class InMemoryProjectFS implements ProjectFS {
     this.files = new Map(initialFiles);
   }
 
+  /** Files of the ACTIVE branch (main = publish truth when active).
+   *
+   *  EVERY accessor routes through here, which is the whole reason branching
+   *  needed no reader migration: with no non-main branch this returns
+   *  `this.files` and behaviour is byte-identical to before branching existed. */
+  private activeFiles(): Map<string, string> {
+    if (this.activeBranchId === MAIN_BRANCH_ID) return this.files;
+    return this.branches.get(this.activeBranchId)?.files ?? this.files;
+  }
+
   readFile(path: string): string | null {
-    return this.files.get(path) ?? null;
+    return this.activeFiles().get(path) ?? null;
   }
 
   writeFile(path: string, content: string): void {
@@ -179,7 +301,7 @@ export class InMemoryProjectFS implements ProjectFS {
     // projects are unaffected (their files arrive via loadSnapshot / on a
     // path that does not exist yet).
     if (isSeedPageBody(content)) {
-      const existing = this.files.get(path);
+      const existing = this.activeFiles().get(path);
       if (typeof existing === 'string' && existing !== content && !isSeedPageBody(existing)) {
         trace.error('project-fs:refused-seed-overwrite', `${path}: refused to replace ${existing.length} bytes of real content with a seed page body`);
         return;
@@ -197,13 +319,14 @@ export class InMemoryProjectFS implements ProjectFS {
     // empty file is fine (CodeEditor's "New File"), so this only fires when
     // real content would be destroyed.
     if (content.trim() === '') {
-      const existing = this.files.get(path);
+      const existing = this.activeFiles().get(path);
       if (typeof existing === 'string' && existing.trim() !== '') {
         trace.error('project-fs:refused-truncation', `${path}: refused to replace ${existing.length} bytes with an empty file`);
         return;
       }
     }
-    this.files.set(path, content);
+    this.activeFiles().set(path, content);
+    this.touchActiveBranch();
     trace.action('project-fs:write', { path, size: content.length, origin });
     this.emit({ kind: 'write', path, content, origin });
     this.notify();
@@ -212,19 +335,21 @@ export class InMemoryProjectFS implements ProjectFS {
   deleteFile(path: string): void {
     const origin = this.nextOrigin;
     this.nextOrigin = 'local';
-    this.files.delete(path);
+    this.activeFiles().delete(path);
+    this.touchActiveBranch();
     trace.action('project-fs:delete', { path, origin });
     this.emit({ kind: 'delete', path, origin });
     this.notify();
   }
 
   moveFile(oldPath: string, newPath: string): void {
-    const content = this.files.get(oldPath);
+    const content = this.activeFiles().get(oldPath);
     if (content === undefined) return;
     const origin = this.nextOrigin;
     this.nextOrigin = 'local';
-    this.files.set(newPath, content);
-    this.files.delete(oldPath);
+    this.activeFiles().set(newPath, content);
+    this.activeFiles().delete(oldPath);
+    this.touchActiveBranch();
     this.emit({ kind: 'move', oldPath, newPath, origin });
     this.notify();
     trace.action('project-fs:move', { from: oldPath, to: newPath, origin });
@@ -277,13 +402,22 @@ export class InMemoryProjectFS implements ProjectFS {
   }
 
   /** Get all files as a snapshot (for serialization/export) */
+  /** Get all ACTIVE-branch files as a snapshot (for serialization/export). */
   getSnapshot(): Map<string, string> {
-    return new Map(this.files);
+    return new Map(this.activeFiles());
   }
 
   /** Replace all files (for import/reset) */
+  /** Replace all ACTIVE-branch files (import / reset / rollback). The heals
+   *  below then run against that same map, so loading into a branch heals the
+   *  branch, not main. */
   loadSnapshot(files: Map<string, string>): void {
-    this.files = new Map(files);
+    if (this.activeBranchId === MAIN_BRANCH_ID) {
+      this.files = new Map(files);
+    } else {
+      const b = this.branches.get(this.activeBranchId);
+      if (b) b.files = new Map(files); else this.files = new Map(files);
+    }
     // One-time NATIVE migration: upgrade the old seed reset (box-sizing only +
     // html/body margins) to the universal margin/padding reset the editor
     // sandboxes apply. Older projects kept the weak seed, so a <p> without an
@@ -292,9 +426,9 @@ export class InMemoryProjectFS implements ProjectFS {
     // font (live find 2026-07-14: nav menu). Exact-match on the seed block so a
     // project with a customized reset is never touched; the fix then lives IN
     // the project's own globals.css — publish ships it with no transformation.
-    const globals = this.files.get('app/globals.css');
+    const globals = this.activeFiles().get('app/globals.css');
     if (globals && globals.includes(LEGACY_SEED_RESET)) {
-      this.files.set('app/globals.css', globals.replace(LEGACY_SEED_RESET, UNIVERSAL_SEED_RESET));
+      this.activeFiles().set('app/globals.css', globals.replace(LEGACY_SEED_RESET, UNIVERSAL_SEED_RESET));
       trace.action('project-fs:migrated-seed-reset', {});
     }
     // Master ROOT MARKER heal: masters created before 2026-09-06 spread
@@ -318,7 +452,7 @@ export class InMemoryProjectFS implements ProjectFS {
         healed = insertAtRootRestSpread(healed, 'ref={ovRootRef}', true);
       }
       if (healed !== src) {
-        this.files.set(path, healed);
+        this.activeFiles().set(path, healed);
         trace.action('project-fs:migrated-master-root-marker', { path });
       }
     }
@@ -332,7 +466,7 @@ export class InMemoryProjectFS implements ProjectFS {
       if (!src.includes('[data-variant="')) continue;
       const healed = stampRootDataVariantAttr(src);
       if (healed !== src) {
-        this.files.set(path, healed);
+        this.activeFiles().set(path, healed);
         trace.action('project-fs:migrated-root-data-variant', { path });
       }
     }
@@ -347,7 +481,7 @@ export class InMemoryProjectFS implements ProjectFS {
       if (!path.endsWith('.tsx')) continue;
       const healed = healSectionOffsets(src);
       if (healed !== src) {
-        this.files.set(path, healed);
+        this.activeFiles().set(path, healed);
         trace.action('project-fs:migrated-section-offsets', { path });
       }
     }
@@ -357,7 +491,7 @@ export class InMemoryProjectFS implements ProjectFS {
       if (!path.endsWith('.tsx')) continue;
       const healed = healEventOverlayToggle(src);
       if (healed !== src) {
-        this.files.set(path, healed);
+        this.activeFiles().set(path, healed);
         trace.action('project-fs:migrated-event-overlay-toggle', { path });
       }
     }
@@ -368,7 +502,7 @@ export class InMemoryProjectFS implements ProjectFS {
       if (!path.startsWith(OVERRIDES_DIR) || !src.split('\n').some((l) => l.length > 400)) continue;
       const healed = formatOverrideSource(src);
       if (healed !== src) {
-        this.files.set(path, healed);
+        this.activeFiles().set(path, healed);
         trace.action('project-fs:formatted-override-file', { path });
       }
     }
@@ -377,12 +511,12 @@ export class InMemoryProjectFS implements ProjectFS {
     // a layout rebuilt by healLayoutFile/ensureLayoutFile, or an AI rewrite.
     // Without the mount the site silently scrolls natively.
     {
-      const layout = this.files.get('app/layout.tsx');
-      if (layout && this.files.has(SMOOTH_SCROLL_DATA_PATH) && this.files.has(SMOOTH_SCROLL_CONTROLLER_PATH)
+      const layout = this.activeFiles().get('app/layout.tsx');
+      if (layout && this.activeFiles().has(SMOOTH_SCROLL_DATA_PATH) && this.activeFiles().has(SMOOTH_SCROLL_CONTROLLER_PATH)
           && !layout.includes('<SmoothScroll')) {
         const healed = ensureSmoothScrollInLayout(layout);
         if (healed !== layout) {
-          this.files.set('app/layout.tsx', healed);
+          this.activeFiles().set('app/layout.tsx', healed);
           trace.action('project-fs:migrated-smooth-scroll-mount', {});
         }
       }
@@ -400,7 +534,7 @@ export class InMemoryProjectFS implements ProjectFS {
       const healed = stripVariantRootInsets(src);
       if (healed !== src) {
         try { parseJSX(healed); } catch { trace.error('project-fs:variant-root-inset-heal-unparseable', path); continue; }
-        this.files.set(path, healed);
+        this.activeFiles().set(path, healed);
         trace.action('project-fs:migrated-variant-root-insets', { path });
       }
     }
@@ -417,7 +551,7 @@ export class InMemoryProjectFS implements ProjectFS {
       const healed = healStyleBlockImportant(src);
       if (healed === src) continue;
       if (!parseJSX(healed)) { trace.error('project-fs:media-important-heal-unparseable', path); continue; }
-      this.files.set(path, healed);
+      this.activeFiles().set(path, healed);
       trace.action('project-fs:migrated-media-important', { path });
     }
     // Restore a WIPED reset: addPresetTokenToCSS used to REPLACE globals.css
@@ -426,11 +560,11 @@ export class InMemoryProjectFS implements ProjectFS {
     // while the sandbox reset masks it in the editor. A project with ANY
     // box-sizing rule (its own custom reset included) is never touched.
     // Inserted after leading @imports — CSS requires imports first.
-    const globalsAfter = this.files.get('app/globals.css');
+    const globalsAfter = this.activeFiles().get('app/globals.css');
     if (globalsAfter && !globalsAfter.includes('box-sizing: border-box')) {
       const importsHead = globalsAfter.match(/^(\s*(?:@import[^\n]*\n)*)/)?.[1] ?? '';
       const rest = globalsAfter.slice(importsHead.length);
-      this.files.set('app/globals.css', `${importsHead}${UNIVERSAL_SEED_RESET}\n\n${rest}`);
+      this.activeFiles().set('app/globals.css', `${importsHead}${UNIVERSAL_SEED_RESET}\n\n${rest}`);
       trace.action('project-fs:restored-seed-reset', {});
     }
     // EMPTY PAGE BODY heal: a page whose `page.client.tsx` is empty has no
@@ -445,7 +579,7 @@ export class InMemoryProjectFS implements ProjectFS {
     // canvas the user can build on rather than a dead route.
     for (const [path, src] of [...this.files]) {
       if (!path.endsWith('page.client.tsx') || src.trim() !== '') continue;
-      this.files.set(path, EMPTY_HOME_PAGE_CLIENT);
+      this.activeFiles().set(path, EMPTY_HOME_PAGE_CLIENT);
       trace.error('project-fs:healed-empty-page-body', `${path}: was 0 bytes, restored the empty page body`);
       // The server wrapper picked up a `data-id` on its `<PageClient />`
       // reference while the body was missing (the editor had nothing else to
@@ -453,13 +587,406 @@ export class InMemoryProjectFS implements ProjectFS {
       // it is not part of any wrapper this codebase generates — drop it so the
       // pair matches PAGE_SERVER_WRAPPER again.
       const serverPath = `${path.slice(0, -'.client.tsx'.length)}.tsx`;
-      const server = this.files.get(serverPath);
+      const server = this.activeFiles().get(serverPath);
       if (server && /<PageClient\s+data-id="[^"]*"\s*\/>/.test(server)) {
-        this.files.set(serverPath, server.replace(/<PageClient\s+data-id="[^"]*"\s*\/>/, '<PageClient />'));
+        this.activeFiles().set(serverPath, server.replace(/<PageClient\s+data-id="[^"]*"\s*\/>/, '<PageClient />'));
         trace.action('project-fs:healed-page-wrapper-dataid', { path: serverPath });
       }
     }
     trace.action('project-fs:load-snapshot', { fileCount: files.size });
+    this.notify();
+  }
+
+  /** Stamp the active branch's last-edited time (tree ordering + status).
+   *  No-op on main: main has no branch record and is never "dirty". */
+  private touchActiveBranch(): void {
+    if (this.activeBranchId === MAIN_BRANCH_ID) return;
+    const b = this.branches.get(this.activeBranchId);
+    if (!b) return;
+    b.lastEditedAt = Date.now();
+    b.status = mapsEqual(b.files, b.baseSnapshot) ? 'clean' : 'dirty';
+  }
+
+  getActiveBranchId(): string {
+    return this.activeBranchId;
+  }
+
+  isMainActive(): boolean {
+    return this.activeBranchId === MAIN_BRANCH_ID;
+  }
+
+  listBranches(): BranchInfo[] {
+    const out: BranchInfo[] = [
+      { id: MAIN_BRANCH_ID, status: 'clean', fileCount: this.files.size, active: this.activeBranchId === MAIN_BRANCH_ID, protected: true, createdAt: 0, parentId: null, order: 0, lastEditedAt: null },
+    ];
+    for (const [id, b] of [...this.branches.entries()].sort(([a], [c]) => (a < c ? -1 : 1))) {
+      out.push({ id, status: b.status, fileCount: b.files.size, active: id === this.activeBranchId, protected: false, createdAt: b.createdAt, parentId: b.parentId, order: b.order, lastEditedAt: b.lastEditedAt });
+    }
+    return out;
+  }
+
+  /** Direct read of a branch's files (review/merge/preview/tools). Null when unknown. */
+  readBranchFiles(branchId: string): Map<string, string> | null {
+    if (branchId === MAIN_BRANCH_ID) return new Map(this.files);
+    const b = this.branches.get(branchId);
+    return b ? new Map(b.files) : null;
+  }
+
+  /** Direct read of a branch's merge base. Null for main (base is itself) or unknown. */
+  readBranchBase(branchId: string): Map<string, string> | null {
+    const b = this.branches.get(branchId);
+    return b ? new Map(b.baseSnapshot) : null;
+  }
+
+  /** Record merge conflicts for review display (overwrites). Unknown branch → refusal. */
+  setBranchConflicts(branchId: string, conflicts: FileConflict[]): string | null {
+    if (!this.branches.has(branchId)) return `Unknown branch "${branchId}".`;
+    this.branchConflicts.set(branchId, [...conflicts]);
+    trace.action('project-fs:branch-conflicts', { branchId, count: conflicts.length });
+    this.notify();
+    return null;
+  }
+
+  /** Last recorded conflicts (empty when none). */
+  readBranchConflicts(branchId: string): FileConflict[] {
+    return [...(this.branchConflicts.get(branchId) ?? [])];
+  }
+
+  /** Clear recorded conflicts (fresh merge/apply resolved or superseded). */
+  clearBranchConflicts(branchId: string): void {
+    if (this.branchConflicts.delete(branchId)) this.notify();
+  }
+
+  /**
+   * Replace a branch map wholesale (branch rollback/restore). Mirrors
+   * loadSnapshot (seed-reset migration + notify + version bump) targeted at
+   * the branch — human maps, canvas, selection and history stacks untouched
+   * (per-branch history arrives in (vii); until then branch ops push none).
+   */
+  loadBranchSnapshot(branchId: string, files: Map<string, string>): string | null {
+    const b = this.branches.get(branchId);
+    if (!b) return `Unknown branch "${branchId}".`;
+    b.files = new Map(files);
+    const globals = b.files.get('app/globals.css');
+    if (globals && globals.includes(LEGACY_SEED_RESET)) {
+      b.files.set('app/globals.css', globals.replace(LEGACY_SEED_RESET, UNIVERSAL_SEED_RESET));
+    }
+    this.refreshBranchStatus(branchId);
+    trace.action('project-fs:load-branch-snapshot', { branch: branchId, fileCount: files.size });
+    this.notify();
+    try {
+      getDefaultStore().set(projectVersionAtom, (v: number) => v + 1);
+    } catch {
+      /* headless — same tolerance as loadSnapshot */
+    }
+    return null;
+  }
+
+  /** Direct read of one branch file. Null when branch/file unknown. */
+  readBranchFile(branchId: string, path: string): string | null {
+    if (branchId === MAIN_BRANCH_ID) return this.files.get(path) ?? null;
+    return this.branches.get(branchId)?.files.get(path) ?? null;
+  }
+
+  /** Branch file existence probe (import resolvers, scoped drains). */
+  branchFileExists(branchId: string, path: string): boolean {
+    if (branchId === MAIN_BRANCH_ID) return this.files.has(path);
+    return this.branches.get(branchId)?.files.has(path) ?? false;
+  }
+
+  /** Direct delete in a branch map (merge/file ops). Unknown branch → no-op + trace. */
+  deleteBranchFile(branchId: string, path: string): void {
+    if (branchId === MAIN_BRANCH_ID) {
+      this.deleteFile(path);
+      return;
+    }
+    const b = this.branches.get(branchId);
+    if (!b) {
+      trace.error('project-fs:delete-branch-unknown', { branchId, path });
+      return;
+    }
+    b.files.delete(path);
+    b.status = 'dirty';
+    b.lastEditedAt = Date.now();
+    trace.action('project-fs:delete-branch', { branchId, path });
+    this.emit({ kind: 'delete', path, origin: 'local' });
+  }
+
+  /**
+   * Direct write into a branch map (queue scoped commits, merge apply).
+   * Same map semantics as writeFile but WITHOUT the coarse notify pulse —
+   * coarse subscribers (panels, canvas, preview) read the ACTIVE map, which
+   * is unchanged, so pulsing them would only churn the human UI. Typed
+   * write events still emit (collab/sync correctness). The caller owns
+   * persistence (triggerAutosave) and version hygiene, exactly like the
+   * queue drain does. Unknown branch → no-op with trace (never throw —
+   * the drain refuses such entries before reaching here).
+   */
+  writeBranchFile(branchId: string, path: string, content: string): void {
+    if (branchId === MAIN_BRANCH_ID) {
+      this.writeFile(path, content);
+      return;
+    }
+    const b = this.branches.get(branchId);
+    if (!b) {
+      trace.error('project-fs:write-branch-unknown', { branchId, path });
+      return;
+    }
+    b.files.set(path, content);
+    b.status = 'dirty';
+    b.lastEditedAt = Date.now();
+    trace.action('project-fs:write-branch', { branchId, path, size: content.length });
+    this.emit({ kind: 'write', path, content, origin: 'local' });
+  }
+
+  /**
+   * Create a branch copying `from` (default: the ACTIVE map). Main is
+   * protected as a name. Returns null on success, else the refusal.
+   */
+  createBranch(id: string, opts: { from?: Map<string, string>; label?: string } = {}): string | null {
+    const clean = id.trim();
+    if (!BRANCH_ID_RE.test(clean)) {
+      return `Invalid branch id "${id}" — kebab-case letters/digits/hyphens, 1-48 chars (e.g. agent-pricing).`;
+    }
+    if (clean === MAIN_BRANCH_ID) return `Branch "${MAIN_BRANCH_ID}" is protected — main is the publish truth, never a work branch.`;
+    if (this.branches.has(clean)) return `Branch "${clean}" already exists — pick another id or delete it first.`;
+    const seed = new Map(opts.from ?? this.activeFiles());
+    let order = 0;
+    for (const b of this.branches.values()) order = Math.max(order, b.order + 1);
+    const now = Date.now();
+    this.branches.set(clean, {
+      files: new Map(seed),
+      baseSnapshot: new Map(seed),
+      status: 'clean',
+      createdAt: now,
+      parentId: this.activeBranchId,
+      order,
+      lastEditedAt: null,
+      ...(opts.label ? { label: opts.label } : {}),
+    });
+    trace.action('project-fs:branch-created', { id: clean, files: seed.size });
+    this.notify();
+    return null;
+  }
+
+  /**
+   * Point human/canvas truth at a branch. Refuses unknown ids. Queue bases,
+   * caches and version hygiene belong to the CALLER (`switchBranchFile` in
+   * branching/switch-workspace.ts — same discipline as switchActiveFile),
+   * never hidden here. Emits notify only — atoms re-derive on the caller's
+   * version bump.
+   */
+  switchBranch(id: string): string | null {
+    if (id !== MAIN_BRANCH_ID && !this.branches.has(id)) {
+      const known = [MAIN_BRANCH_ID, ...this.branches.keys()].join(', ');
+      return `Unknown branch "${id}" — known branches: ${known}.`;
+    }
+    if (id === this.activeBranchId) return null;
+    this.activeBranchId = id;
+    trace.action('project-fs:branch-switched', { id });
+    this.notify();
+    return null;
+  }
+
+  /**
+   * Delete a branch and its maps. Main is protected; the ACTIVE branch can
+   * never be deleted (switch away first — no silent data loss).
+   */
+  deleteBranch(id: string): string | null {
+    if (id === MAIN_BRANCH_ID) return `Branch "${MAIN_BRANCH_ID}" is protected and cannot be deleted.`;
+    if (!this.branches.has(id)) return `Unknown branch "${id}".`;
+    if (id === this.activeBranchId) {
+      return `Branch "${id}" is active — switch to another branch first, then delete.`;
+    }
+    this.branches.delete(id);
+    trace.action('project-fs:branch-deleted', { id });
+    this.notify();
+    return null;
+  }
+
+  /**
+   * Rename a branch (id change only — maps, base, status preserved). Main is
+   * protected. Renaming the ACTIVE branch moves the pointer with it.
+   * Recorded conflicts move along. Callers holding the old id (review UI,
+   * remembered files) re-resolve to unknown — never silently rewritten.
+   */
+  renameBranch(id: string, next: string): string | null {
+    const clean = next.trim();
+    if (id === MAIN_BRANCH_ID) return `Branch "${MAIN_BRANCH_ID}" is protected and cannot be renamed.`;
+    const b = this.branches.get(id);
+    if (!b) return `Unknown branch "${id}".`;
+    if (clean === MAIN_BRANCH_ID) return `Branch "${MAIN_BRANCH_ID}" is protected — pick another id.`;
+    if (!BRANCH_ID_RE.test(clean)) {
+      return `Invalid branch id "${next}" — kebab-case letters/digits/hyphens, 1-48 chars.`;
+    }
+    if (clean !== id && this.branches.has(clean)) return `Branch "${clean}" already exists — pick another id.`;
+    if (clean === id) return null;
+    this.branches.delete(id);
+    this.branches.set(clean, b);
+    const conflicts = this.branchConflicts.get(id);
+    if (conflicts) {
+      this.branchConflicts.delete(id);
+      this.branchConflicts.set(clean, conflicts);
+    }
+    if (this.activeBranchId === id) this.activeBranchId = clean;
+    trace.action('project-fs:branch-renamed', { from: id, to: clean });
+    this.notify();
+    return null;
+  }
+
+  /**
+   * Move a branch: re-parent and/or reorder among siblings (tree drag-drop).
+   * `into` makes newParentId the parent (appended last); `before`/`after`
+   * place the branch as a sibling of siblingId on siblingId's parent (main
+   * accepts `into` only — the trunk renders first regardless of order).
+   * Refuses unknown ids, main as source, cycles and self-parenting.
+   */
+  moveBranch(
+    sourceId: string,
+    newParentId: string,
+    position: { mode: 'into' } | { mode: 'before' | 'after'; siblingId: string },
+  ): string | null {
+    const source = this.branches.get(sourceId);
+    if (sourceId === MAIN_BRANCH_ID) return 'main cannot be moved.';
+    if (!source) return `Unknown branch "${sourceId}".`;
+    if (newParentId !== MAIN_BRANCH_ID && !this.branches.has(newParentId)) {
+      return `Target branch "${newParentId}" not found.`;
+    }
+    if (newParentId === sourceId) return 'A branch cannot be its own parent.';
+    // Cycle guard: the new parent must not descend from the source.
+    let cursor: string | null = newParentId;
+    const seen = new Set<string>();
+    while (cursor && cursor !== MAIN_BRANCH_ID && !seen.has(cursor)) {
+      seen.add(cursor);
+      if (cursor === sourceId) return 'Cannot move a branch under one of its own children.';
+      cursor = this.branches.get(cursor)?.parentId ?? null;
+    }
+    if (position.mode === 'into') {
+      source.parentId = newParentId;
+      let order = 0;
+      for (const [id, b] of this.branches) {
+        if (id !== sourceId && (b.parentId ?? MAIN_BRANCH_ID) === newParentId) {
+          order = Math.max(order, b.order + 1);
+        }
+      }
+      source.order = order;
+    } else {
+      if (position.siblingId === MAIN_BRANCH_ID) return 'main accepts branches into it, never before or after.';
+      const sibling = this.branches.get(position.siblingId);
+      if (!sibling) return `Cannot place the branch next to "${position.siblingId}".`;
+      const parent = sibling.parentId ?? MAIN_BRANCH_ID;
+      source.parentId = parent;
+      source.order = position.mode === 'before' ? sibling.order - 0.5 : sibling.order + 0.5;
+    }
+    trace.action('project-fs:branch-moved', { source: sourceId, parent: source.parentId, mode: position.mode });
+    this.notify();
+    return null;
+  }
+
+  /** Recompute a branch's status against its base (clean iff deep-equal). */
+  refreshBranchStatus(id: string): void {
+    const b = this.branches.get(id);
+    if (!b) return;
+    b.status = mapsEqual(b.files, b.baseSnapshot) ? 'clean' : 'dirty';
+  }
+
+  /** Explicit status transition (conflict marking on merge conflicts). */
+  setBranchStatus(id: string, status: BranchStatus): string | null {
+    const b = this.branches.get(id);
+    if (!b) return `Unknown branch "${id}".`;
+    b.status = status;
+    trace.action('project-fs:branch-status', { id, status });
+    this.notify();
+    return null;
+  }
+
+  /**
+   * Rebase a branch: base := newBase snapshot, files untouched, status
+   * recomputed. Used after apply (base becomes the new main). Main cannot
+   * be rebased (its base is itself). Returns null on success, else refusal.
+   */
+  rebaseBranch(id: string, newBase: Map<string, string>): string | null {
+    if (id === MAIN_BRANCH_ID) return 'Cannot rebase main — main is its own base.';
+    const b = this.branches.get(id);
+    if (!b) return `Unknown branch "${id}".`;
+    b.baseSnapshot = new Map(newBase);
+    b.status = mapsEqual(b.files, b.baseSnapshot) ? 'clean' : 'dirty';
+    trace.action('project-fs:branch-rebased', { id, status: b.status });
+    this.notify();
+    return null;
+  }
+
+  /**
+   * Serialize the envelope. v1 (files only) while no non-main branch exists
+   * — byte-identical path for non-branch users (rollback §20: `files` stays
+   * the publish truth either way). v2 once branches exist.
+   */
+  toEnvelope(): ProjectData {
+    const files = Object.fromEntries(this.files);
+    if (this.branches.size === 0) {
+      return { format: 'revyme-v1', files };
+    }
+    const branches: Record<string, { files: Record<string, string>; baseSnapshot: Record<string, string>; status: BranchStatus; parentId: string | null; order: number; createdAt: number; lastEditedAt: number | null }> = {};
+    for (const [id, b] of this.branches) {
+      branches[id] = {
+        files: Object.fromEntries(b.files),
+        baseSnapshot: Object.fromEntries(b.baseSnapshot),
+        status: b.status,
+        parentId: b.parentId,
+        order: b.order,
+        createdAt: b.createdAt,
+        lastEditedAt: b.lastEditedAt,
+      };
+    }
+    return {
+      format: 'revyme-v2',
+      files,
+      branches,
+      activeBranchId: this.activeBranchId,
+      mainBranchId: MAIN_BRANCH_ID,
+    };
+  }
+
+  /**
+   * Hydrate from an envelope (boot/import). Best-effort on branches: files
+   * always load; malformed branch entries are skipped with a trace (never a
+   * throw — a corrupt branch must not brick the project). Returns null on
+   * success, else the refusal (state untouched on refusal).
+   */
+  fromEnvelope(data: ProjectData): string | null {
+    if (!data || typeof data !== 'object' || !data.files || typeof data.files !== 'object') {
+      return 'Unusable envelope — missing files record; current state untouched.';
+    }
+    const files = new Map<string, string>();
+    for (const [k, v] of Object.entries(data.files)) {
+      if (typeof v === 'string') files.set(k, v);
+    }
+    const branches = parseBranchRecords((data as { branches?: unknown }).branches);
+    this.files = files;
+    this.branches = branches;
+    const wantActive = typeof data.activeBranchId === 'string' ? data.activeBranchId : MAIN_BRANCH_ID;
+    this.activeBranchId = wantActive === MAIN_BRANCH_ID || branches.has(wantActive) ? wantActive : MAIN_BRANCH_ID;
+    trace.action('project-fs:envelope-loaded', {
+      files: files.size,
+      branches: branches.size,
+      active: this.activeBranchId,
+    });
+    this.notify();
+    return null;
+  }
+
+  /**
+   * Boot path: load ONLY branches (+ restore the active pointer) onto an
+   * already-hydrated files map. ProjectLoader keeps its exact files logic;
+   * this adds the v2 envelope on top. Never throws; unknown active falls
+   * back to main.
+   */
+  hydrateBranches(rawBranches: unknown, wantActive: unknown): void {
+    const parsed = parseBranchRecords(rawBranches);
+    for (const [id, b] of parsed) this.branches.set(id, b);
+    const active = typeof wantActive === 'string' ? wantActive : MAIN_BRANCH_ID;
+    this.activeBranchId = active === MAIN_BRANCH_ID || this.branches.has(active) ? active : MAIN_BRANCH_ID;
+    trace.action('project-fs:branches-hydrated', { branches: parsed.size, active: this.activeBranchId });
     this.notify();
   }
 
@@ -1995,6 +2522,19 @@ export let projectFS: InMemoryProjectFS = new InMemoryProjectFS(createDefaultPro
 
 /** Jotai atom — triggers re-renders when files change. Increments on every write. */
 export const projectVersionAtom = atom(0);
+
+// Let the canvas bridge stamp its cache fills with the project version, so an
+// observation can say whether it predates the project it claims to describe.
+// This edge is code→canvas (canvas-bridge depends only on debug-trace, so no
+// cycle). Guarded: a test that partially mocks '@/canvas/canvas-bridge'
+// without this export must still load — the epoch version then stays null.
+try {
+  if (typeof registerProjectVersionReader === 'function') {
+    registerProjectVersionReader(() => getDefaultStore().get(projectVersionAtom));
+  }
+} catch {
+  /* partial canvas-bridge mock — epoch version stays null */
+}
 
 /**
  * Mirror of `projectVersionAtom` that pauses updates while the canvas is

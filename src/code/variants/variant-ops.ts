@@ -845,3 +845,85 @@ function removeVariantKeyFromAllObjects(code: string, variantName: string): stri
   // a variant deleted my whole component" (user report 2026-08-08).
   return removeObjectEntryBalanced(code, variantName);
 }
+
+/**
+ * Pure declare-variant transform (P8 (vi)): the exact body addVariant runs
+ * inside modifyProjectFile, factored so branch-bound runs can declare a
+ * variant on branch code and commit it through commitBranchFiles — the
+ * active-map modifyProjectFile stays the human/panel path. Throw-
+ * transparent (same throw points as the closure it was extracted from);
+ * callers report failures themselves.
+ */
+export function addVariantToCode(
+  code: string,
+  opts: {
+    name: string;
+    position?: { x: number; y: number };
+    label?: string;
+    sourceVariant?: string;
+    interaction?: { type: 'hover' | 'pressed'; parent: string };
+  },
+): { code: string; configs: VariantConfig[] } {
+  const { name, position, label, sourceVariant, interaction } = opts;
+  const configs = parseVariantConfig(code);
+
+  // Use provided position, or fall back to below last variant
+  let x: number, y: number;
+  if (position) {
+    x = position.x;
+    y = position.y;
+  } else {
+    let maxBottom = 0;
+    for (const v of configs) {
+      maxBottom = Math.max(maxBottom, v.y + 400);
+    }
+    x = 0;
+    y = maxBottom + VARIANT_GAP;
+  }
+
+  const newConfig: VariantConfig = {
+    name,
+    label: label || name,
+    x,
+    y,
+    isPrimary: false,
+  };
+  if (interaction) {
+    newConfig.interactionType = interaction.type;
+    newConfig.parentVariant = interaction.parent;
+  }
+  configs.push(newConfig);
+
+  // 1. Replace variantConfig in code
+  let updated = replaceVariantConfigInCode(code, configs);
+
+  // 1b. CLEAN any STALE footprint for this NAME first (variant-object entries +
+  //     conditional ternary branches). A make-component extraction can leave
+  //     entries for the SOURCE component's variants — e.g. the Logo Mark carried
+  //     `'variant-6'/'7'/'8'` from the Header — so a newly-created `variant-6`
+  //     COLLIDES with that leftover and inherits the stale value (a black dot)
+  //     instead of the source variant's (a green dot). Wipe the name, then the
+  //     add + cascade below re-seed it purely from the source.
+  updated = removeVariantKeyFromAllObjects(updated, name);
+  updated = removeVariantBranchFromConditionalTernaries(updated, name);
+
+  // 2. Add the new variant key to all `variants` objects (copy from source variant).
+  //    Interaction states (hover/pressed) REPLACE the variant via setVariant so
+  //    they seed the source's RESOLVED value (incl. default); a regular new
+  //    variant INHERITS via animate={['default', variant]} and stays sparse.
+  updated = addVariantKeyToAllObjects(updated, name, sourceVariant, !!interaction);
+
+  // 3. Cascade JSX-level conditional patterns so the new variant
+  //    matches the source variant's behavior:
+  //      - AnimatePresence visibility (`{variant === 'X' && <e/>}`)
+  //      - Conditional style ternaries (`order: variant === 'X' ? 1 : 0`)
+  //    Without this, "Add Variant" from variant-1 produced a copy
+  //    that inherited variant-1's `variants` object overrides but
+  //    NOT the JSX conditionals — so e.g. an AnimatePresence-only
+  //    child visible on variant-1 was missing on the new variant.
+  const effectiveSource = sourceVariant ?? 'default';
+  const allVariantNames = configs.map(v => v.name);
+  updated = cascadeVisibilityForNewVariant(updated, name, effectiveSource, allVariantNames);
+  updated = cascadeConditionalTernariesForNewVariant(updated, name, effectiveSource);
+  return { code: updated, configs };
+}

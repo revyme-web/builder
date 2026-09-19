@@ -156,6 +156,25 @@ export function checkPreservation(oldCode: string, newCode: string): OracleViola
     }
   }
 
+  // canvasNodes — the module-scope fragment holding every element that lives
+  // ON the canvas rather than inside a viewport (loose frames, notes, anything
+  // dragged out). It is builder-owned state with no annotation to mark it, so
+  // a whole-file rewrite that only "keeps the JSX" drops it silently and the
+  // user loses every canvas node — with nothing bounced and nothing to undo
+  // once the turn is sealed (live find 2026-09-19: an agent restyle of a page
+  // removed `canvasNodes`, after which drag-out onto the canvas stopped
+  // working and new canvas elements had nowhere to be written).
+  //
+  // Matched on the DECLARATION, not the bare word: a comment mentioning the
+  // name must not satisfy the check.
+  const CANVAS_NODES_DECL = /\b(?:const|let|var)\s+canvasNodes\b/;
+  if (CANVAS_NODES_DECL.test(oldCode) && !CANVAS_NODES_DECL.test(newCode)) {
+    v.push({
+      code: 'CANVAS_NODES_DESTROYED', tier: 2,
+      message: `This edit removes the \`canvasNodes\` declaration. It holds every element that lives on the CANVAS rather than inside a viewport — dragged-out frames, notes, anything outside the page tiles — and it is builder-owned state the user cannot get back. Copy the \`canvasNodes\` fragment across verbatim (edit its entries if the request genuinely concerns them); never drop it while rewriting the page body.`,
+    });
+  }
+
   // @pageVariables — the page-variables feature's metadata block.
   if (/@pageVariables/.test(oldCode) && !/@pageVariables/.test(newCode)) {
     v.push({

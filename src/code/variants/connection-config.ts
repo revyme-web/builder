@@ -10,7 +10,7 @@ import { modifyProjectFile } from '@/code/project/modify-file';
 import { findVariantRootId } from '@/shared/variant-root';
 import { projectFS } from '@/code/project/project-fs';
 import { isIndexInsideSlotConst } from '@/code/generation/slot-ops';
-import { ensureVariantListWiring } from '@/code/generation/generator-styles';
+import { ensureVariantListWiring, ensureInitialVariantParam } from '@/code/generation/generator-styles';
 import { stripAllTagAttrsBalanced, findBalancedBraceEnd } from '@/code/generation/generator-utils';
 import { extractImports, resolveImportPath } from '@/code/components/import-resolver';
 import { forwardEventPropsToComponentRoot } from './event-prop-forwarding';
@@ -775,7 +775,11 @@ export function generateConnectionCode(code: string, connections: Connection[]):
   }
 
   trace.action('connection-config:generate-code', { connectionCount: connections.length });
-  return result;
+  // DECLARE `initialVariant` when the pass above referenced it but the master
+  // never declared the param. Without this the reference dangles and the
+  // oracle blocks the whole write as WOULD_CRASH — silently discarding the
+  // connections while the caller reports success.
+  return ensureInitialVariantParam(result);
 }
 
 // ─── Codegen helpers ────────────────────────────────────────────────────────

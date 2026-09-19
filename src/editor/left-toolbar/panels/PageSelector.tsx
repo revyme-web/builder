@@ -15,6 +15,7 @@ import {
   activeFilePathAtom,
   switchActiveFile,
   getFileDisplayName,
+  getFriendlyFileName,
   componentBreadcrumbAtom,
 } from '@/code/project/active-file-store';
 import { selectedIdsAtom, updatingFromCanvasAtom } from '@/code/stores/store';
@@ -37,10 +38,7 @@ import SearchableDropdown from '../../ui/SearchableDropdown';
  *  (Previously this returned only the final segment — "advisors", "[slug]" —
  *  and stripped route groups AFTER the suffix, so a grouped home's bare
  *  `(Body)` had no trailing `/` to match and leaked through as the label.) */
-function getPageRouteLabel(filePath: string): string {
-  const name = getFileDisplayName(filePath);
-  return name === '/' ? 'Home' : name;
-}
+const getPageRouteLabel = getFriendlyFileName;
 
 export default function PageSelector() {
   const [activeFile, setActiveFile] = useAtom(activeFilePathAtom);

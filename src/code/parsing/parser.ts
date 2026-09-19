@@ -4396,3 +4396,25 @@ function overrideNamesFromOpening(opening: any): string[] {
     .map((e: any) => (e?.type === 'Identifier' ? e.name : e?.type === 'MemberExpression' && e.property?.type === 'Identifier' && e.object?.type === 'Identifier' ? `${e.object.name}.${e.property.name}` : null))
     .filter((n: string | null): n is string => !!n);
 }
+
+/**
+ * Extract framer-motion direct animation props (`whileHover`, `whileTap`,
+ * `whileInView`, `initial`, `animate`, `transition`, `viewport`) from a
+ * JSX opening element's attribute list.
+ *
+ * Three accepted shapes:
+ *   - string literal:           `initial="hidden"`            → `{ _variantName: 'hidden' }`
+ *   - string in expression:     `initial={"hidden"}`          → `{ _variantName: 'hidden' }`
+ *   - object expression:        `whileHover={{ scale: 1.05 }}` → `{ scale: '1.05' }`
+ *
+ * Numeric literals are stringified; negative numbers (UnaryExpression
+ * over a NumericLiteral) are handled. Other complex expressions
+ * (arrays, nested objects, identifier refs) are skipped — the
+ * AnimationTool only edits primitive values.
+ *
+ * Shared so the main JSX walker AND the `const canvasNodes = (<>...</>)`
+ * walker produce identical `motionProps` payloads — without this, a
+ * `motion.div whileHover={...}` dragged onto the canvas lost its motion
+ * props during parsing and the Animation tool stopped detecting it.
+ */
+export const MOTION_PROP_NAMES = ['whileHover', 'whileTap', 'whileInView', 'initial', 'animate', 'exit', 'transition', 'viewport'];

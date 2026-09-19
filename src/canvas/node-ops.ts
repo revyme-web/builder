@@ -3062,3 +3062,67 @@ export function reorderNode(options: {
   // 2. Queue code mutation
   queueMutation({ type: 'reorder', nodeId: id, parentId, index });
 }
+
+/**
+ * Get the bounding rect for a node in VIEWPORT CONFIG space (de-zoomed,
+ * un-translated, without the iframe/sidebar parent offset). Used by the
+ * design-audit snapshot so `auditViewportOverflow` can compare against a
+ * viewport tile that is ALWAYS in config space (`width=config.width`), not
+ * parent-screen space.
+ *
+ * Starts from the cache-baseline iframe-space rect (like `getRect` BEFORE
+ * `toParentSpace`), then removes the camera translation and divides by the
+ * camera scale via `cacheTransform`/`currentTransform`. When the bridge
+ * exposes `getRectInViewportSpace` directly (PostMessageBridge) we delegate
+ * to it; otherwise we de-zoom the parent-screen rect manually:
+ *   1. `parent - iframeOffset` → iframe-space at current camera
+ *   2. `(iframe - camera.x/y) / camera.scale` → viewport config space
+ *   3. width/height `/ scale`
+ *
+ * Returns a plain `LayoutRect` (`{x,y,width,height}`) or null when no rect
+ * is cached.
+ */
+export function getRectInViewportSpace(
+  nodeId: string,
+  vpId: string,
+): { x: number; y: number; width: number; height: number } | null {
+  const prefix = getViewportPrefix(vpId);
+  const bridge = getCanvasBridge() as unknown as {
+    getRectInViewportSpace?: (id: string, vp: string) => DOMRect | null;
+    getRect: (id: string, vp: string) => DOMRect | null;
+    getCurrentTransform?: () => { x: number; y: number; scale: number };
+    getIframeOffset?: () => { x: number; y: number };
+  };
+
+  if (typeof bridge.getRectInViewportSpace === 'function') {
+    const r = bridge.getRectInViewportSpace(nodeId, prefix);
+    if (!r) return null;
+    const x = (r as DOMRect).x ?? (r as DOMRect).left ?? 0;
+    const y = (r as DOMRect).y ?? (r as DOMRect).top ?? 0;
+    return { x, y, width: r.width ?? 0, height: r.height ?? 0 };
+  }
+
+  // Fallback: de-zoom the parent-screen rect.
+  const parent = bridge.getRect(nodeId, prefix);
+  if (!parent) return null;
+  let current = { x: 0, y: 0, scale: 1 };
+  let iframeOffset = { x: 0, y: 0 };
+  try {
+    if (typeof bridge.getCurrentTransform === 'function') current = bridge.getCurrentTransform();
+    if (typeof bridge.getIframeOffset === 'function') iframeOffset = bridge.getIframeOffset();
+  } catch {
+    // bridge is NullBridge or missing getters — fall back to raw parent rect
+  }
+  const scale = current.scale !== 0 ? current.scale : 1;
+  // parent already includes iframeOffset + camera translation/scale; invert them.
+  // Matches the dedicated bridge path: (adjusted - current) / scale, where
+  // adjusted = parent - offset.
+  const iframeX = (parent.x ?? (parent as DOMRect).left ?? 0) - iframeOffset.x;
+  const iframeY = (parent.y ?? (parent as DOMRect).top ?? 0) - iframeOffset.y;
+  return {
+    x: (iframeX - current.x) / scale,
+    y: (iframeY - current.y) / scale,
+    width: parent.width / scale,
+    height: parent.height / scale,
+  };
+}

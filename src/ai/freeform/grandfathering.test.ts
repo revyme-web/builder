@@ -11,7 +11,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { projectFS } from '@/code/project/project-fs';
-import { gateTurnFiles } from './freeform-client';
+import { gateTurnFiles } from '@/code/oracle/gate';
 
 const PAGE_PATH = 'app/gf-probe/page.client.tsx';
 

@@ -8,7 +8,6 @@ import { compileCodeComponent } from '@/canvas/code-component-runtime';
 import ComponentChat from './ComponentChat';
 import CreditsIndicator from '../CreditsIndicator';
 import { trace } from '@/shared/debug-trace';
-import VibeComingSoonGate from '@/editor/ui/VibeComingSoonGate';
 
 interface ComponentPreviewPaneProps {
   code: string;
@@ -191,9 +190,6 @@ export default function ComponentPreviewPane({ code, fileName, liveCode, onCodeC
           </div>
         )}
 
-        {/* Whole-section gate (AI Chat strip + credits included) while the
-            in-house agent is offline (see VibeComingSoonGate). */}
-        <VibeComingSoonGate />
       </div>
     </div>
   );

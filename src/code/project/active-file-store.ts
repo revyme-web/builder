@@ -606,6 +606,19 @@ export function switchActiveFile(
 
 // ─── File Operations ────────────────────────────────────────────────────────
 
+/**
+ * `getFileDisplayName` with the home route spelled out.
+ *
+ * The raw helper returns `/` for the home page, which is correct as a route and
+ * cryptic as a label. Every surface that shows a page to a person wants "Home",
+ * so the mapping lives here once rather than being re-derived per panel — it
+ * was already copied into PageSelector and FileExplorer before this existed.
+ */
+export function getFriendlyFileName(filePath: string): string {
+  const name = getFileDisplayName(filePath);
+  return name === '/' ? 'Home' : name;
+}
+
 export function getFileDisplayName(filePath: string): string {
   // app/page.client.tsx → /
   // app/about/page.client.tsx → /about
@@ -1048,3 +1061,56 @@ export function listRouteGroups(): string[] {
   }
   return [...groups].sort();
 }
+
+export interface NewPageFiles {
+  pageName: string;
+  serverPath: string;
+  clientPath: string;
+  serverCode: string;
+  clientCode: string;
+}
+
+export function buildNewPageFiles(pageName: string, slug: string, baseDir: string): NewPageFiles {
+  const serverPath = `${baseDir}/${slug}/page.tsx`;
+  const clientPath = `${baseDir}/${slug}/page.client.tsx`;
+
+  const serverCode = `import PageClient from './page.client';
+
+export const metadata = {};
+
+export default function Page() {
+  return <PageClient />;
+}
+`;
+
+  const clientCode = `'use client';
+
+${CANVAS_CONFIG_BLOCK}
+
+import React from 'react';
+
+export default function Page() {
+  return (
+<div data-id="root" data-name="${pageName}" style={{
+  position: 'relative', width: '100%', minHeight: '900px',
+  backgroundColor: '#ffffff',
+  display: 'flex', flexDirection: 'column', gap: '0'
+}}>
+</div>
+  );
+}`;
+  return { pageName, serverPath, clientPath, serverCode, clientCode };
+}
+
+const CANVAS_CONFIG_BLOCK = `/** @canvas {
+  "viewports": [
+    { "id": "desktop", "label": "Desktop", "width": 1440, "isPrimary": true, "order": 0 },
+    { "id": "tablet", "label": "Tablet", "width": 768, "isPrimary": false, "order": 1 },
+    { "id": "mobile", "label": "Mobile", "width": 375, "isPrimary": false, "order": 2 }
+  ],
+  "positions": {
+    "desktop": { "x": 0, "y": 0 },
+    "tablet": { "x": 1600, "y": 0 },
+    "mobile": { "x": 2528, "y": 0 }
+  }
+} */`;
