@@ -36,10 +36,12 @@ import { trace } from '../shared/debug-trace';
 import type { CanvasNode } from '../code/parsing/parser';
 import { getDefaultStore } from 'jotai';
 import { shapeEditingIdAtom, selectedPointAtom, groupEditingIdAtom, activeContainerIdAtom } from '../code/stores/shape-edit-store';
-import { flushNow } from '../code/mutation/mutation-queue';
+import { flushNow, syncQueueCode, setForceRender } from '../code/mutation/mutation-queue';
 import { groupSvgs, ungroupSvgs } from '../code/svg/group-svgs';
 import { buildGroupSvgsOpts } from './svg-group-helper';
-import { activeFilePathAtom, isIconSetFilePath } from '../code/project/active-file-store';
+import { activeFilePathAtom, activeCodeAtom, isIconSetFilePath, isDesignComponentFile } from '../code/project/active-file-store';
+import { detachInstance } from '../code/components/component-ops';
+import { isReplicaViewportAtom, isComponentVariantViewportAtom } from '../code/stores/viewport-store';
 import { renamingNodeIdAtom } from '../code/stores/context-menu-store';
 import { createAndOpenProject } from '../editor/header/menu-builders';
 import { nudgeSelection, flushPendingNudge, type NudgeDirection } from './arrow-nudge';
@@ -408,6 +410,41 @@ export function registerShortcuts(refs: ShortcutRefs): () => void {
   cleanups.push(keyboard.register({ key: 'r', alt: true, label: 'Rename', category: 'general', handler: () => {
     const sel = selectedIdRef.current;
     if (sel) getDefaultStore().set(renamingNodeIdAtom, sel);
+  }}));
+
+  // ─── Detach Instance (Ctrl+Alt+B) ────────────────────────────────
+  // Matches the context menu's "Detach Instance · Ctrl+Alt+B". The menu has
+  // advertised that shortcut for a while, but nothing ever registered it, so
+  // pressing it did nothing (user report 2026-09-20).
+  //
+  // Same gates as the menu item, so the two cannot diverge: a DESIGN component
+  // instance only (a code component has no inlineable node tree), and never on a
+  // replica viewport / non-default variant artboard — detach rewrites the one
+  // shared instance and replays the other viewports as @media rules, so running
+  // it from a replica would bake THAT tile's variant as everyone's base.
+  cleanups.push(keyboard.register({ key: 'b', ctrl: true, alt: true, label: 'Detach Instance', category: 'structure', handler: () => {
+    const sel = selectedIdRef.current;
+    if (!sel) return;
+    const store = getDefaultStore();
+    if (store.get(isReplicaViewportAtom) || store.get(isComponentVariantViewportAtom)) {
+      trace.action('shortcut:detach-instance-skipped-non-primary', { nodeId: sel });
+      return;
+    }
+    const inst = nodesRef.current.get(sel);
+    const compFile = inst?.componentFile;
+    if (!compFile || !isDesignComponentFile(compFile)) return;
+    const filePath = store.get(activeFilePathAtom);
+    const resolvedVariant = inst?.attrs?.initialVariant || 'default';
+    syncQueueCode(store.get(activeCodeAtom));
+    flushNow();
+    const out: { rootId?: string } = {};
+    const newCode = detachInstance(filePath, sel, compFile, resolvedVariant, out);
+    trace.action('shortcut:detach-instance', { nodeId: sel, componentFile: compFile, resolvedVariant, newRootId: out.rootId });
+    if (!newCode) return;
+    setForceRender();
+    store.set(activeCodeAtom, newCode);
+    syncQueueCode(newCode);
+    setSelectedIds(out.rootId ? [out.rootId] : []);
   }}));
 
   // ─── Copy/Paste/Cut/Duplicate ────────────────────────────────────

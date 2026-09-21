@@ -29,6 +29,18 @@ export const MOTION_TRANSFORM_PROPS = new Set<string>([
   'transformPerspective',
 ]);
 
+/** The VISUAL transform props — the family the Transform panel owns. Excludes
+ *  the translate channel (`x`/`y`/`translate*`), which belongs to the position
+ *  and anchor system: a pin's centering is stored there, so clearing it as part
+ *  of a transform reset would move the element instead of un-rotating it. Same
+ *  split TransformControl's own remove button makes. */
+export const MOTION_VISUAL_TRANSFORM_PROPS = new Set<string>([
+  'scale', 'scaleX', 'scaleY',
+  'rotate', 'rotateX', 'rotateY', 'rotateZ',
+  'skewX', 'skewY',
+  'transformPerspective',
+]);
+
 const PX_DEFAULT = new Set(['x', 'y', 'z', 'translateX', 'translateY', 'translateZ']);
 const DEG_DEFAULT = new Set(['rotate', 'rotateX', 'rotateY', 'rotateZ', 'skewX', 'skewY']);
 
@@ -168,3 +180,50 @@ export function composeTransformWithRotate(merged: Record<string, unknown>, rota
   return css ? `${css} ${motion}`.trim() : motion;
 }
 
+
+/** The transform a node actually PAINTS with on one viewport / variant tile.
+ *
+ * Rotation, scale and skew reach an element through four channels at once: the
+ * CSS `transform` string, the motion props on the base styles, the entry in
+ * `motionVariants` (with `default` always active alongside the tile's own), and
+ * inline `rotate: variant === 'v' ? … : …` conditionals on an instance. A drag
+ * has to fold all four, or the per-frame `translate(dx, dy)` write replaces a
+ * rotation the element only appeared to have.
+ *
+ * This lived twice: the drag's onStart capture folded all four for the dragged
+ * viewport, while the replica fan-out read `styles.transform` alone. So a
+ * rotation held in the `rotate` CHANNEL — how the panel stores it — was missing
+ * from every replica, which drew itself axis-aligned for the whole drag and
+ * snapped back on mouse-up (user report 2026-09-20). One function, both callers.
+ */
+export function foldEffectiveTransform(input: {
+  styles?: Record<string, unknown> | null;
+  motionVariants?: Record<string, Record<string, unknown>> | null | undefined;
+  conditionalStyles?: Record<string, Record<string, string>> | null | undefined;
+  /** This viewport's `@container` overrides ('' / 'auto' delete, as everywhere). */
+  overrides?: Map<string, string> | null;
+  /** 'default' for the primary tile, else the viewport / variant id. */
+  variantKey: string;
+}): string {
+  const effective: Record<string, unknown> = { ...(input.styles ?? {}) };
+  if (input.overrides) {
+    for (const [k, v] of input.overrides) {
+      if (v === '' || v === 'auto') delete effective[k];
+      else effective[k] = v;
+    }
+  }
+  // A tile paints base + the always-on `default` entry + its own entry.
+  const variantStyles = {
+    ...(input.motionVariants?.['default'] ?? {}),
+    ...(input.variantKey !== 'default' ? input.motionVariants?.[input.variantKey] ?? {} : {}),
+  };
+  const cond: Record<string, string> = {};
+  for (const [prop, branches] of Object.entries(input.conditionalStyles ?? {})) {
+    if (!MOTION_TRANSFORM_PROPS.has(prop)) continue;
+    const val = branches[input.variantKey] ?? branches['default'];
+    if (val != null) cond[prop] = val;
+  }
+  const motionCss = motionPropsToCSSTransform({ ...effective, ...variantStyles, ...cond });
+  const cssT = String(effective.transform ?? '').trim();
+  return [cssT === 'none' ? '' : cssT, motionCss].filter(Boolean).join(' ').trim();
+}

@@ -458,7 +458,17 @@ export function sortChildrenByVisualOrder(
   isComponentFile: boolean,
 ): string[] {
   if (!parent || childIds.length < 2) return [...childIds];
-  const display = parent.styles?.display || '';
+  // Resolve `display` for THIS viewport/variant, exactly as the `order` below
+  // is resolved. Reading `parent.styles.display` saw only the BASE value, so a
+  // frame that is flex only on a band (block or `display: none` at base, flex in
+  // an @media rule or a variant entry) bailed to JSX order here — while
+  // `isOrderedLayout` in the drag path resolved display properly and ran the
+  // commit anyway. The two disagreeing is what flattened a hand-built
+  // arrangement into source order in one drag (B18), and what left a bare JSX
+  // reorder on a parent hidden at base (user report 2026-09-21). One resolver
+  // for both, so they cannot drift apart again.
+  const display = getEffectiveLayerStyle(parent, 'display', layerVpId, vpConfigs, containerOverrides, isComponentFile)
+    || parent.styles?.display || '';
   if (display !== 'flex' && display !== 'inline-flex' && display !== 'grid' && display !== 'inline-grid') {
     return [...childIds];
   }
@@ -1144,4 +1154,67 @@ export function overlayExpandPath(
     cur = nodes.get(cur)?.parentId ?? null;
   }
   return out;
+}
+
+/** ONE ROW PER (viewport, node).
+ *
+ *  The layers tree is assembled by several loops — page children, canvas-node
+ *  roots, variant tiles, and overlays re-parented under their TRIGGER — and each
+ *  carries its own idea of what to skip. When two of them claim the same node
+ *  the panel shows it twice, which reads as corruption even though the file is
+ *  fine: a single overlay in the source rendered as four identical `Overlay`
+ *  rows (user report 2026-09-21).
+ *
+ *  A duplicate row id is always a bug in the assembly, never a legitimate state,
+ *  so the extras are dropped and returned for the caller to trace. */
+export function dedupeLayerRows<T extends { id: string }>(rows: T[]): { rows: T[]; duplicates: string[] } {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  const duplicates: string[] = [];
+  for (const row of rows) {
+    if (seen.has(row.id)) { duplicates.push(row.id); continue; }
+    seen.add(row.id);
+    out.push(row);
+  }
+  return { rows: out, duplicates };
+}
+
+/** Which nodes an eye-icon click applies to.
+ *
+ *  The eye used to write only the row that was clicked, so hiding four selected
+ *  frames hid one of them (user report 2026-09-21). A click on a row INSIDE a
+ *  multi-selection acts on the whole selection; a click on a row outside it is a
+ *  single-node action, matching every other row control.
+ *
+ *  Ids no longer in the tree are dropped — a selection can outlive a node. */
+export function visibilityToggleTargets(
+  selectedIds: readonly string[],
+  clickedId: string,
+  exists: (id: string) => boolean,
+): string[] {
+  if (selectedIds.length > 1 && selectedIds.includes(clickedId)) {
+    const live = selectedIds.filter(exists);
+    if (live.length > 0) return live;
+  }
+  return [clickedId];
+}
+
+/** The display to write when UNHIDING a node on a non-primary viewport whose
+ *  hide lives in the BASE style.
+ *
+ *  Unhide normally writes `display: ''`, which deletes the override for that
+ *  viewport. That works when the hide IS an override — but when the node is
+ *  `display: none` in its base style, deleting a tablet override that never
+ *  existed changes nothing: the node flashed visible (optimistic flip + DOM
+ *  patch) and the next render hid it again (user report 2026-09-21). Only an
+ *  explicit value can beat a base one.
+ *
+ *  Hiding overwrote whatever display the node had, so the original is gone —
+ *  but the layout properties survive it, exactly as they do for a hidden frame
+ *  (see `authoredLayoutOfParent`), and they say what the node was. */
+export function visibleDisplayForUnhide(styles: Record<string, string> | undefined): string {
+  const has = (k: string) => !!styles?.[k] && styles[k].trim() !== '';
+  if (has('gridTemplateColumns') || has('gridTemplateRows') || has('gridAutoFlow')) return 'grid';
+  if (has('flexDirection') || has('flexWrap')) return 'flex';
+  return 'block';
 }

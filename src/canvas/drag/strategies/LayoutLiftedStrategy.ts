@@ -2065,8 +2065,13 @@ export class LayoutLiftedStrategy implements DragStrategy {
         const cn = getNodeFromCache(id);
         if (!cn) return false;
         if (cn.isCanvasNode) return false;
-        const pos = cn.styles?.position || '';
-        if (pos === 'absolute' || pos === 'fixed') return false;
+        // Viewport-resolved, like the two reads above — the COMMIT had its own
+        // copy of this filter, so on a viewport whose layout lives in an @media
+        // rule every sibling dropped out here and `desiredOrder` carried only
+        // the dragged node. Its `order` was rewritten alone, against siblings
+        // that all still read `order: 0`, so the tie fell back to DOM order and
+        // the drop appeared to do nothing (user report 2026-09-21).
+        if (!this.isLayoutParticipant(id, cn)) return false;
         if (draggedIdSet.has(id)) return false;
         return true;
       }) : [];
@@ -2497,8 +2502,8 @@ export class LayoutLiftedStrategy implements DragStrategy {
           const cn = getNodeFromCache(id);
           if (!cn) return false;
           if (cn.isCanvasNode) return false;
-          const pos = cn.styles?.position || '';
-          if (pos === 'absolute' || pos === 'fixed') return false;
+          // Viewport-resolved, see isLayoutParticipant.
+          if (!this.isLayoutParticipant(id, cn)) return false;
           if (draggedIdSet.has(id)) return false;
           return true;
         }) : [];
@@ -2965,8 +2970,8 @@ export class LayoutLiftedStrategy implements DragStrategy {
       const cn = getNodeFromCache(childId);
       if (!cn) continue;
       if (cn.isCanvasNode) continue;
-      const pos = cn.styles?.position || '';
-      if (pos === 'absolute' || pos === 'fixed') continue;
+      // Viewport-resolved, see isLayoutParticipant.
+      if (!this.isLayoutParticipant(childId, cn)) continue;
       locked.push(childId);
     }
     const bridge = getCanvasBridge();
@@ -3012,8 +3017,8 @@ export class LayoutLiftedStrategy implements DragStrategy {
       const cn = getNodeFromCache(childId);
       if (!cn) continue;
       if (cn.isCanvasNode) continue;
-      const pos = cn.styles?.position || '';
-      if (pos === 'absolute' || pos === 'fixed') continue;
+      // Viewport-resolved, see isLayoutParticipant.
+      if (!this.isLayoutParticipant(childId, cn)) continue;
       const rank = this.originalChildIndices.get(childId);
       let orderValue: string;
       if (rank !== undefined) {
@@ -3368,8 +3373,8 @@ export class LayoutLiftedStrategy implements DragStrategy {
         const cn = getNodeFromCache(id);
         if (!cn) return false;
         if (cn.isCanvasNode) return false;
-        const pos = cn.styles?.position || '';
-        if (pos === 'absolute' || pos === 'fixed') return false;
+        // Viewport-resolved, see isLayoutParticipant.
+        if (!this.isLayoutParticipant(id, cn)) return false;
         if (draggedIds.has(id)) return false;
         return true;
       }) : [];
@@ -3738,9 +3743,9 @@ export class LayoutLiftedStrategy implements DragStrategy {
       if (child.id.startsWith('layout::')) continue;
       const childNode = getNodeFromCache(child.id);
       if (childNode?.isCanvasNode) continue;
-      // Skip absolute/fixed children (not layout participants)
-      const pos = childNode?.styles?.position || '';
-      if (pos === 'absolute' || pos === 'fixed') continue;
+      // Skip absolute/fixed children (not layout participants) — resolved for
+      // THIS viewport, see isLayoutParticipant.
+      if (!this.isLayoutParticipant(child.id, childNode)) continue;
       rects.push(child);
     }
     // When editing the TEMPLATE itself (LayoutClient.tsx), the `{children}`
@@ -3850,10 +3855,59 @@ export class LayoutLiftedStrategy implements DragStrategy {
       const childNode = getNodeFromCache(childId);
       if (!childNode) return false;
       if (childNode.isCanvasNode) return false;
-      const pos = childNode.styles?.position || '';
-      if (pos === 'absolute' || pos === 'fixed') return false;
-      return true;
+      return this.isLayoutParticipant(childId, childNode);
     });
+  }
+
+  /** Is this child laid out by the parent ON THE DRAG VIEWPORT?
+   *
+   *  `position` is read from the BASE style everywhere else, but a frame given
+   *  a layout on ONE viewport writes its children's `position: relative` into
+   *  THAT viewport's @media rule — the base keeps the `absolute` they had
+   *  before. Every child then failed the filter on the very viewport where the
+   *  layout exists, and the strategy saw no layout children: no reorder between
+   *  siblings, just the snap bands of a free drag (user report 2026-09-21,
+   *  "layout only on mobile, drag reorder not working AT ALL").
+   *
+   *  Shared by `getLayoutChildIds` and `getLayoutSiblingRects` — they had the
+   *  same check written twice and a comment claiming they match, so fixing one
+   *  left the other reporting `siblingCount: 0`. Same store the `order` read at
+   *  drag start consults, for the same reason: an override wins at render time
+   *  but never reaches the inline style. */
+  private isLayoutParticipant(
+    childId: string,
+    childNode: {
+      styles?: Record<string, string>;
+      motionVariants?: Record<string, Record<string, string>> | null;
+      conditionalStyles?: Record<string, Record<string, string>> | null;
+    } | null | undefined,
+  ): boolean {
+    let effective: string | undefined;
+    if (isComponentFilePath(getActiveFilePath())) {
+      // DESIGN COMPONENT: a master stores per-variant position in the variants
+      // OBJECT (and layout props as inline ternaries), not in an @media rule.
+      // Reading only the container overrides missed it, so a frame given a
+      // layout on ONE VARIANT filtered both its children out on that tile and
+      // the reorder had nothing to work with — the @media bug again, third
+      // channel (user report 2026-09-21). Renderer precedence: base, then the
+      // always-on `default` entry, then this tile's own.
+      const variantKey = isPrimaryViewport(this.currentVpId) ? 'default' : this.currentVpId;
+      const mv = childNode?.motionVariants;
+      const cond = childNode?.conditionalStyles;
+      effective = mv?.[variantKey]?.position
+        ?? cond?.position?.[variantKey]
+        ?? mv?.default?.position
+        ?? cond?.position?.['default']
+        ?? undefined;
+    } else if (!isPrimaryViewport(this.currentVpId)) {
+      try {
+        const overrides = getDefaultStore().get(containerOverridesAtom);
+        const vpWidth = getViewportWidths()[this.currentVpId] ?? 0;
+        if (overrides && vpWidth > 0) effective = getOverrideValue(overrides, childId, 'position', vpWidth) ?? undefined;
+      } catch { /* jotai graph unstubbed in tests — fall back to inline */ }
+    }
+    const pos = (effective ?? childNode?.styles?.position ?? '').trim();
+    return pos !== 'absolute' && pos !== 'fixed';
   }
 
   /**

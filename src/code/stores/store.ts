@@ -614,15 +614,24 @@ export function getVariantOverriddenKeys(nodeId: string, variantName: string): S
   const variantStyles = node.motionVariants?.[variantName];
   if (variantStyles) {
     for (const k of Object.keys(variantStyles)) keys.add(k);
-    // Motion transform props (x/y translate deltas, rotate, scale, skews —
-    // plus legacy attrX/attrY absolutes) PAINT as this variant's own
-    // `transform` (foldMotionTransforms). The component-primary mid-drag
-    // mirror writes `transform` — without this mapping it clobbers the
-    // variant's independent position/rotation live (the child visually syncs
-    // to the primary drag, then snaps back on commit; live finds 2026-06-11).
-    // A variant that owns any motion transform owns its transform.
+    // POSITION-bearing motion props (x/y translate deltas, plus legacy
+    // attrX/attrY absolutes) PAINT as this variant's own `transform`
+    // (foldMotionTransforms). The component-primary mid-drag mirror writes
+    // `transform` — without this mapping it clobbers the variant's independent
+    // POSITION live (the child visually syncs to the primary drag, then snaps
+    // back on commit; live finds 2026-06-11).
+    //
+    // A rotation/scale/skew is NOT position, and used to be listed here too.
+    // That was right while the mirror wrote a bare `translate(dx, dy)` — which
+    // would have wiped the tile's angle — but the drag fan-out now composes
+    // `translate(dx, dy)` with THAT TILE's own transform
+    // (foldEffectiveTransform), so its rotation survives. Keeping them here
+    // only froze such a tile: a variant whose sole override was `rotate` stopped
+    // following the primary's position live and jumped on mouse-up instead
+    // (user report 2026-09-21 — Tablet synced, Mobile didn't; Mobile's entry
+    // was `{ rotate: 141.9, skewX: 0 }`).
     const hasOwn = (k: string) => variantStyles[k] != null && variantStyles[k] !== '';
-    if (['x', 'y', 'attrX', 'attrY', 'rotate', 'rotateX', 'rotateY', 'rotateZ', 'scale', 'scaleX', 'scaleY', 'skewX', 'skewY'].some(hasOwn)) {
+    if (['x', 'y', 'attrX', 'attrY'].some(hasOwn)) {
       keys.add('transform');
     }
     // POSITION-channel override (top-level svg wrapper / absolute box whose

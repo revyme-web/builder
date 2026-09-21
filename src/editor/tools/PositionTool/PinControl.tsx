@@ -5,20 +5,24 @@
 // Pin buttons: T/L/R/B with blue highlight when active, center = pin/unpin all.
 // Inputs always visible, disabled when pin is inactive.
 
-import { useCallback, useMemo, useEffect } from 'react';
+import { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useLivePreview } from '../../hooks/useLivePreview';
 import { useAtomValue } from 'jotai';
 import { canvasInteractingAtom, getNodeFromCache } from '@/code/stores/store';
 import { containerOverridesAtom } from '@/code/stores/container-query-store';
 import { viewportsConfigAtom } from '@/code/stores/viewport-store';
 import { ToolInput } from '../../controls';
-import { getPinState, parsePx, mergeVariantPinStyles, type PinSide } from '@/shared/pin-utils';
+import { getPinState, mergeVariantPinStyles, type PinSide } from '@/shared/pin-utils';
 import { isPrimaryViewport } from '@/shared/constants';
 import { type VisualRect, toPercentageCenter, toFixedPin, toInsetMode, fromInsetMode, stripTranslateTransforms, buildAxisCenterTransform, centeringChannel, extractAxisTranslate } from '@/shared/position-utils';
 import { applyReplicaClearSemantics } from './replica-clears';
 import { trace } from '@/shared/debug-trace';
 import { captureVisualRect } from '@/canvas/visual-rect';
+import { findNodeComputedStyle } from '@/canvas/node-ops';
 import { livePinValues } from './live-pin-values';
+import { pinFieldDisplayPx, pinFieldCommitValue, paintedPinPx } from './pin-field-units';
+import { translateOffsetPx } from '@/canvas/resize/size-input-compensation';
+import { pinFieldEditWrite, isHorizontalSide } from './pin-field-resize';
 import { queueMutation } from '@/code/mutation/mutation-queue';
 
 /** Mark a node as user-pinned so AbsoluteInFrameStrategy stops auto-
@@ -147,6 +151,31 @@ export default function PinControl({ styles, nodeId, vpId, onUpdate, onUpdateMul
   const displayRight = livePos?.right || styles.right || '';
   const displayBottom = livePos?.bottom || styles.bottom || '';
   const allPinned = pins.left && pins.top && pins.right && pins.bottom;
+
+  // Parent box for percent↔px on the fields. A percent side has to be resolved
+  // against it or the field shows the percent NUMBER as px and commits it back
+  // as px (see pin-field-units.ts). Re-read whenever a displayed value changes
+  // — captureVisualRect is a rect-cache read, no iframe round trip.
+  const parentBox = useMemo(
+    () => captureVisualRect(nodeId, vpId),
+    [nodeId, vpId, displayLeft, displayTop, displayRight, displayBottom],
+  );
+  const parentW = parentBox?.parentWidth ?? 0;
+  const parentH = parentBox?.parentHeight ?? 0;
+
+  // A side the source does not declare still has a real painted distance. Show
+  // it, or the field reads 0 and the first chevron throws the element against
+  // that edge (see paintedPinPx).
+  const painted = useMemo(
+    () => parentBox
+      ? paintedPinPx(parentBox,
+          translateOffsetPx(styles.transform, 'x', parentBox.width),
+          translateOffsetPx(styles.transform, 'y', parentBox.height))
+      : null,
+    [parentBox, styles.transform],
+  );
+  const fieldPx = (side: PinSide, source: string, total: number): number =>
+    source ? pinFieldDisplayPx(source, total) : (painted?.[side] ?? 0);
 
   /**
    * Capture the element's visual rect via the bridge — works in iframe mode
@@ -340,11 +369,65 @@ export default function PinControl({ styles, nodeId, vpId, onUpdate, onUpdateMul
     lockNodePinning(nodeId);
   }, [allPinned, nodeId, vpId, styles.transform, captureRectViaBridge, onUpdateMultiple]);
 
-  const handleValueChange = useCallback((side: PinSide, value: string) => {
-    onUpdate(side, value);
+  // A chevron drag is ONE gesture, anchored to the state it started from —
+  // exactly what `resize:start` captures (startWidth/startHeight) and what
+  // every frame of a handle drag measures against. Deriving each frame from the
+  // PREVIOUS one instead makes the zero crossing oscillate: the box mirrors to
+  // 1px, the next step shrinks that 1px back to 0, and it ping-pongs 0-1-0-1
+  // instead of growing back out (user report 2026-09-20). Anchored to the
+  // start, the size is `startSize − totalDelta`, which passes through zero and
+  // keeps going.
+  const gesture = useRef<{ side: PinSide; startValue: number; box: VisualRect | null } | null>(null);
+  useEffect(() => { gesture.current = null; }, [nodeId, vpId]);
+
+  /** What the field reads right now, in px — the base of a fresh gesture. */
+  const currentFieldPx = useCallback((side: PinSide) => fieldPx(
+    side,
+    side === 'left' ? displayLeft : side === 'right' ? displayRight : side === 'top' ? displayTop : displayBottom,
+    isHorizontalSide(side) ? parentW : parentH,
+  ), [displayLeft, displayRight, displayTop, displayBottom, parentW, parentH, painted]);
+
+  const writeField = useCallback((side: PinSide, value: string, live: boolean) => {
+    const valuePx = parseFloat(value);
+    if (!Number.isFinite(valuePx)) { onUpdate(side, value); lockNodePinning(nodeId); return; }
+
+    // A live frame continues the gesture; anything else (arrow key, typed
+    // value) is its own one-shot measured from the current state.
+    let g = gesture.current;
+    if (!live || !g || g.side !== side) {
+      g = { side, startValue: currentFieldPx(side), box: captureRectViaBridge() };
+      if (live) gesture.current = g; else gesture.current = null;
+    }
+
+    const write = pinFieldEditWrite({
+      side, valuePx, basePx: g.startValue, styles, box: g.box,
+      parentWidth: g.box?.parentWidth ?? 0,
+      parentHeight: g.box?.parentHeight ?? 0,
+      matrixStr: findNodeComputedStyle(nodeId, vpId, 'transform') || 'none',
+    });
+    const keys = Object.keys(write);
+    if (keys.length === 1 && keys[0] === side) {
+      // A plain move: keep the caller's own unit handling (a % source stays %).
+      onUpdate(side, value);
+    } else {
+      // Same clear semantics as handlePinToggle — on a variant/band channel a
+      // '' would re-expose the base value instead of removing the property.
+      const newStyles = applyReplicaClearSemantics(nodeId, vpId, write);
+      trace.action('pin:field-edge-resize', { nodeId, side, value, live, startValue: g.startValue, newStyles });
+      onUpdateMultiple(newStyles);
+    }
     // Typing a value into a pin field counts as a manual pin choice.
     lockNodePinning(nodeId);
-  }, [onUpdate, nodeId]);
+  }, [onUpdate, onUpdateMultiple, nodeId, vpId, styles, captureRectViaBridge, currentFieldPx]);
+
+  const handleValueChange = useCallback((side: PinSide, value: string) => writeField(side, value, false), [writeField]);
+  const handleValueLive = useCallback((side: PinSide, value: string) => writeField(side, value, true), [writeField]);
+  // The release value, written as the gesture's last frame so the committed
+  // state matches the number the field ends on, then the gesture closes.
+  const handleValueCommit = useCallback((side: PinSide, value: string) => {
+    writeField(side, value, true);
+    gesture.current = null;
+  }, [writeField]);
 
   // Pin button component
   const PinBtn = ({ side }: { side: PinSide }) => {
@@ -371,8 +454,10 @@ export default function PinControl({ styles, nodeId, vpId, onUpdate, onUpdateMul
               ToolInput.roundLengthForDisplay — these fields pass a bare number,
               so they round here). */}
           <ToolInput
-            value={`${Math.round(parsePx(displayTop))}`}
-            onChange={(v) => handleValueChange('top', v.includes('px') ? v : `${v}px`)}
+            value={`${Math.round(fieldPx('top', displayTop, parentH))}`}
+            onChange={(v) => handleValueChange('top', pinFieldCommitValue(v, displayTop, parentH))}
+            onChangeLive={(v) => handleValueLive('top', pinFieldCommitValue(v, displayTop, parentH))}
+            onCommit={(v) => handleValueCommit('top', pinFieldCommitValue(v, displayTop, parentH))}
           />
         </div>
       </div>
@@ -382,8 +467,10 @@ export default function PinControl({ styles, nodeId, vpId, onUpdate, onUpdateMul
         {/* Left input */}
         <div style={{ width: 80 }}>
           <ToolInput
-            value={`${Math.round(parsePx(displayLeft))}`}
-            onChange={(v) => handleValueChange('left', v.includes('px') ? v : `${v}px`)}
+            value={`${Math.round(fieldPx('left', displayLeft, parentW))}`}
+            onChange={(v) => handleValueChange('left', pinFieldCommitValue(v, displayLeft, parentW))}
+            onChangeLive={(v) => handleValueLive('left', pinFieldCommitValue(v, displayLeft, parentW))}
+            onCommit={(v) => handleValueCommit('left', pinFieldCommitValue(v, displayLeft, parentW))}
           />
         </div>
 
@@ -407,8 +494,10 @@ export default function PinControl({ styles, nodeId, vpId, onUpdate, onUpdateMul
         {/* Right input */}
         <div style={{ width: 80 }}>
           <ToolInput
-            value={`${Math.round(parsePx(displayRight))}`}
-            onChange={(v) => handleValueChange('right', v.includes('px') ? v : `${v}px`)}
+            value={`${Math.round(fieldPx('right', displayRight, parentW))}`}
+            onChange={(v) => handleValueChange('right', pinFieldCommitValue(v, displayRight, parentW))}
+            onChangeLive={(v) => handleValueLive('right', pinFieldCommitValue(v, displayRight, parentW))}
+            onCommit={(v) => handleValueCommit('right', pinFieldCommitValue(v, displayRight, parentW))}
           />
         </div>
       </div>
@@ -417,8 +506,10 @@ export default function PinControl({ styles, nodeId, vpId, onUpdate, onUpdateMul
       <div className="flex justify-center">
         <div style={{ width: 80 }}>
           <ToolInput
-            value={`${Math.round(parsePx(displayBottom))}`}
-            onChange={(v) => handleValueChange('bottom', v.includes('px') ? v : `${v}px`)}
+            value={`${Math.round(fieldPx('bottom', displayBottom, parentH))}`}
+            onChange={(v) => handleValueChange('bottom', pinFieldCommitValue(v, displayBottom, parentH))}
+            onChangeLive={(v) => handleValueLive('bottom', pinFieldCommitValue(v, displayBottom, parentH))}
+            onCommit={(v) => handleValueCommit('bottom', pinFieldCommitValue(v, displayBottom, parentH))}
           />
         </div>
       </div>

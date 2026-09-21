@@ -3,10 +3,12 @@
 // Follows imperative-first pattern: DOM updates instantly, code catches up.
 
 import type { Direction } from './geometry-utils';
+import { isComponentVariantRootNode } from '@/canvas/variant-root';
 import { liveInsetWrites } from './live-inset-writes';
 import { isComponentFilePath, isIconSetFilePath, isVectorSetComponentFile } from '@/code/project/active-file-store';
 import { parseIconSetConfig, iconConfigPx } from '@/code/icons/icon-set-config';
 import { updateIconPosition, updateIconSize } from '@/code/icons/icon-set-ops';
+import { readFitDim, fitModeAfterHandResize, FIT_DIM_ATTR } from '@/code/icons/vector-set-fit';
 import { projectFS } from '@/code/project/project-fs';
 import { parseVariantConfig } from '@/code/variants/variant-config';
 import { syncQueueCode, queueMutation, flushNow } from '@/code/mutation/mutation-queue';
@@ -623,11 +625,7 @@ export function applySymmetricResize(
 /** Is this node a component master's variant ROOT (a tile)? Top-level, not a
  *  free canvas node, not an overlay — the rule the parser's variantConfig merge
  *  and component-navigation's findRootId share. Pure; exported for tests. */
-export function isComponentVariantRootNode(
-  node: { parentId?: string | null; isCanvasNode?: boolean; attrs?: Record<string, string> } | null | undefined,
-): boolean {
-  return !!node && !node.parentId && !node.isCanvasNode && !node.attrs?.['data-overlay'];
-}
+export { isComponentVariantRootNode };
 
 
 /** Variant tiles that INHERIT the resized axis from the primary (no own
@@ -2613,10 +2611,21 @@ export function startResize(
     // live dimensions are already applied to its own element by the
     // patchNodeStyles calls above; the cross-viewport mirror would treat
     // the page root as a regular sibling that needs replicas in sync.
-    const isComp = isComponentFilePath(getActiveFilePath());
     const syncStyles: Record<string, string> = {};
     if (!isVpNode) {
-      if (!isComp && !isOverlayNode) {
+      // A COMPONENT MASTER's variant tiles were excluded here, so mid-resize
+      // they got the new width/height but kept STALE insets: the replicas grew
+      // around the wrong anchor, wandered off, and only snapped into place on
+      // mouse-up (user report 2026-09-20). The mirror already drops keys a
+      // variant owns and already treats position as live-only (node-ops.ts
+      // :2497 — "a synced replica must follow the primary in real time"), so a
+      // master's children belong in it like any page replica.
+      //
+      // The master ROOT stays out: each tile's root sits at its own
+      // variantConfig x/y, so mirroring the primary's insets would yank every
+      // tile onto the primary's spot — the glitch the commit-time skip exists
+      // to prevent.
+      if (!isOverlayNode && !isVariantRootTile) {
         if (liveStyles.left) syncStyles.left = liveStyles.left;
         if (liveStyles.right) syncStyles.right = liveStyles.right;
         if (liveStyles.top) syncStyles.top = liveStyles.top;
@@ -2745,6 +2754,15 @@ export function startResize(
     if (isVectorSet) {
       if (liveStyles.width) finalStyles.width = liveStyles.width;
       if (liveStyles.height) finalStyles.height = liveStyles.height;
+      // "Both rows on Fit" means the variant's NATURAL size — a hand resize just
+      // left it, so the panel would go on showing auto / auto over a size that
+      // is no longer automatic. A single Fit row survives: the handles keep the
+      // aspect, which is all that row promises.
+      const nextFit = fitModeAfterHandResize(readFitDim(nodeData?.attrs));
+      if (nextFit !== undefined) {
+        trace.action('resize:vector-set-fit-cleared', { nodeId, vpId });
+        queueMutation({ type: 'updateHtmlAttrs', nodeId, attrs: { [FIT_DIM_ATTR]: nextFit } });
+      }
     }
 
     // Commit the box-centre pivot for a rotated single-shape svg so a baked-px

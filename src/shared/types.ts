@@ -82,6 +82,9 @@ export interface PendingUpdate {
   maxWidth?: number;
   variantName?: string;
   orderMap?: Record<string, number>;
+  /** Variants whose branch must be written even if it equals the default —
+   *  see `setConditionalOrderInCode`. */
+  pinVariants?: string[];
   /** For setConditionalStyle — the layout prop + its value for `variantName`. */
   prop?: string;
   value?: string;

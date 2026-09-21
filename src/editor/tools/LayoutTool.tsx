@@ -4,6 +4,7 @@
 // Also exports GridChildControls for grid child span/alignment controls.
 
 import { useCallback, useState, useRef } from 'react';
+import { CSS_LAYOUT_DEFAULTS } from '@/shared/constants';
 import { ToolSection, ToolSegmentedControl, ToolDivider, ToolPlusMinus, ToolInput, ToolSelect, ToolSlider, StyleField, ControlLabel, ControlActionRow, ColorSwatch } from '../controls';
 import { PaddingControl } from './StylesTool/atoms';
 import ColorInput from '../controls/ColorInput';
@@ -800,11 +801,29 @@ export function detectLayoutFlags(
   const display = styles.display || '';
   const hasFlexDisplay = display === 'flex' || display === 'inline-flex';
   const hasGridDisplay = display === 'grid' || display === 'inline-grid';
-  const hasFlexProps = !!styles.flexDirection
-    || !!styles.alignItems
-    || !!styles.justifyContent
-    || !!styles.flexWrap
-    || (styles.gap !== undefined && styles.gap !== '');
+  // A prop set to its CSS INITIAL is not evidence of a layout. A design
+  // component writes per-variant layout props as inline ternaries, and the
+  // "off" branch carries exactly those initials (`flexDirection: … ? 'column'
+  // : 'row'`, `alignItems: … ? 'center' : 'stretch'`) so the other variants
+  // stay neutral — the parser lifts that branch into the base styles. Counting
+  // them showed a full Flex panel on Desktop and Tablet for a frame whose
+  // layout exists only on `variant-2` (user report 2026-09-21).
+  //
+  // Only applied when there is NO `display` at all. A node explicitly
+  // `display: 'none'` with flex props keeps counting as a layout — that is the
+  // hidden-node case this function was written for, where Hide and Layout are
+  // independent concerns.
+  const isMeaningful = (prop: string) => {
+    const v = styles[prop];
+    if (v === undefined || v === '') return false;
+    if (display !== '') return true;
+    return v.trim() !== CSS_LAYOUT_DEFAULTS[prop];
+  };
+  const hasFlexProps = isMeaningful('flexDirection')
+    || isMeaningful('alignItems')
+    || isMeaningful('justifyContent')
+    || isMeaningful('flexWrap')
+    || isMeaningful('gap');
   const hasGridProps = !!styles.gridTemplateColumns
     || !!styles.gridTemplateRows
     || !!styles.gridAutoFlow

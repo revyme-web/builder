@@ -1386,6 +1386,532 @@ export default function Page() {
       p === 'app/page.tsx' ? PAGE : p === 'components/Card.tsx' ? COMPONENT : null);
   }
 
+  // DETACH MUST LOOK IDENTICAL AFTERWARDS. It turns an instance into ordinary
+  // nodes: strip the design-component machinery (variants / initial / animate /
+  // layout / key / connections), keep the visual hierarchy, keep children hidden
+  // on the resolved variant hidden, and keep the page's per-viewport config
+  // pointing at the new nodes (user spec 2026-09-19, "detach goes crazy").
+  describe('strips ALL component machinery, not just the nodes the walk reached', () => {
+    // A deeper tree than the base fixture: the recursive transform reached only
+    // the top few nodes and the rest shipped as `<motion.div variants={undefined}
+    // initial={[…]} animate={[…]} key=… data-id="<master id>">`.
+    const DEEP = `'use client';
+import React from 'react';
+import { motion } from 'framer-motion';
+const rootVariants = { default: { backgroundColor: 'green' }, 'variant-2': { backgroundColor: 'red' } };
+const barVariants = { default: { display: 'none' }, 'variant-2': { display: 'flex' } };
+function Nav({ style, initialVariant = 'default' }) {
+  return (
+    <motion.div data-id="nav-root" variants={rootVariants} initial={['default', initialVariant]} animate={['default', initialVariant]} layout={true} data-name="Mobile Opened" style={{ position: 'relative', width: initialVariant === 'variant-2' ? '375px' : 'min-content', ...style }}>
+      <motion.div data-id="nav-inner" layout={true} data-name="Frame" style={{ position: 'relative', display: 'flex' }}>
+        <motion.div data-id="nav-burger" variants={barVariants} initial={['default', initialVariant]} animate={['default', initialVariant]} key="nav-burger" data-name="Burger" onClick={() => setOpen(!open)} style={{ position: 'relative', width: '30px' }}>
+          <motion.p data-id="nav-label" layout={true} data-name="Text" style={{ position: 'relative' }}>Menu</motion.p>
+        </motion.div>
+      </motion.div>
+    </motion.div>
+  );
+}
+export default Nav;`;
+    const DEEP_PAGE = `import React from 'react';
+import Nav from '@/components/Nav';
+export default function Page() {
+  return (<div data-id="page-root"><style>{\`
+    @media (max-width: 450px) {
+      [data-id="nav-burger"] { display: unset !important; }
+      [data-id="inst"] { order: -2 !important; }
+    }
+  \`}</style><Nav data-id="inst" data-name="Navbar" style={{ position: 'relative' }} /></div>);
+}`;
+    const setupDeep = () => mockFS.readFile.mockImplementation((p: string) =>
+      p === 'app/page.tsx' ? DEEP_PAGE : p === 'components/Nav.tsx' ? DEEP : null);
+
+    const detach = () => {
+      setupDeep();
+      const out = detachInstance('app/page.tsx', 'inst', 'components/Nav.tsx', 'default')!;
+      expect(out).not.toBeNull();
+      expect(parseJSX(out)).not.toBeNull();
+      return out;
+    };
+
+    test('no node keeps variants / initial / animate / layout / key', () => {
+      const out = detach();
+      expect(out).not.toMatch(/variants=\{/);
+      expect(out).not.toMatch(/\sinitial=\{/);
+      expect(out).not.toMatch(/\sanimate=\{/);
+      expect(out).not.toMatch(/\slayout=\{/);
+      expect(out).not.toMatch(/\skey="nav-/);
+    });
+
+    // `variants={undefined}` was the fingerprint of the sweep-only path.
+    test('never emits the blanked form variants={undefined}', () => {
+      expect(detach()).not.toContain('variants={undefined}');
+    });
+
+    test('every motion.* tag becomes a plain tag', () => {
+      expect(detach()).not.toContain('motion.');
+    });
+
+    test('component-scope handlers do not survive', () => {
+      expect(detach()).not.toContain('setOpen');
+    });
+
+    test('every node gets a fresh det- id — none keeps the master\'s', () => {
+      const out = detach();
+      for (const id of ['nav-root', 'nav-inner', 'nav-burger', 'nav-label']) {
+        expect(out).not.toContain(`data-id="${id}"`);
+      }
+      // Element ids only — the style block also mentions det- ids in selectors.
+      expect((out.match(/<[a-zA-Z][^>]*data-id="det-/g) ?? []).length).toBe(4);
+    });
+
+    // `width: 'default' === 'variant-2' ? '375px' : 'min-content'` shipped as
+    // dead code the panels cannot read and the oracle rejects.
+    test('folds variant ternaries in style values to the resolved branch', () => {
+      const out = detach();
+      expect(out).not.toMatch(/'default' === '/);
+      expect(out).toContain("'min-content'");
+    });
+
+    test('the root is named after the INSTANCE, not the master\'s root node', () => {
+      const out = detach();
+      expect(out).toContain('data-name="Navbar"');
+      expect(out).not.toContain('data-name="Mobile Opened"');
+    });
+
+    // The resolved variant's own values must be baked in — `barVariants.default`
+    // hides the burger, so it stays hidden as a plain node.
+    test('a child hidden on the resolved variant stays hidden', () => {
+      const out = detach();
+      expect(out).toMatch(/display: 'none'/);
+    });
+
+    // The page's @media band rules key off the ids the instance rendered with.
+    test('the page\'s per-viewport rules follow the new ids', () => {
+      const out = detach();
+      expect(out).not.toContain('[data-id="nav-burger"]');
+      expect(out).not.toContain('[data-id="inst"]');
+      expect(out).toMatch(/@media \(max-width: 450px\)/);
+      expect(out).toMatch(/\[data-id="det-[^"]+"\] \{ display: unset !important; \}/);
+      expect(out).toMatch(/\[data-id="det-[^"]+"\] \{ order: -2 !important; \}/);
+    });
+
+    test('the visual hierarchy is preserved', () => {
+      const out = detach();
+      const ids = [...out.matchAll(/<[a-zA-Z][^>]*data-id="(det-[^"]+)"/g)].map(m => m[1]);
+      // root → inner → burger → label, in that source order
+      expect(ids).toHaveLength(4);
+      expect(out.indexOf(ids[0])).toBeLessThan(out.indexOf(ids[1]));
+    });
+  });
+
+  // A RESPONSIVE instance renders a DIFFERENT variant per viewport
+  // (`data-responsive='{"450":{"initialVariant":"variant-2"},…}'`). Detach bakes
+  // ONE variant into the nodes, so the others must be replayed as per-viewport
+  // CSS — otherwise every viewport loses its variant and the detached copy shows
+  // the UNION of all variants' children everywhere (user report 2026-09-20:
+  // "all the menu links appear").
+  describe('responsive instance — every viewport keeps its variant', () => {
+    const RESP = `'use client';
+import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+const rootVariants = { default: { width: '1200px' }, 'variant-1': { width: '760px' }, 'variant-2': { width: '375px' } };
+function Nav({ style, initialVariant = 'default' }) {
+  return (
+    <motion.div data-id="n-root" variants={rootVariants} initial={initialVariant} animate={initialVariant} data-name="Nav" style={{ position: 'relative', ...style }}>
+      <motion.div data-id="n-links" data-name="Menu links" style={{ position: 'relative' }}>Links</motion.div>
+      <AnimatePresence>{initialVariant === 'variant-2' && <motion.div data-id="n-burger" data-name="Burger" style={{ position: 'relative', display: 'flex' }}>Burger</motion.div>}</AnimatePresence>
+      <AnimatePresence>{initialVariant !== 'variant-2' && <motion.div data-id="n-cta" data-name="CTA" style={{ position: 'relative' }}>Shop</motion.div>}</AnimatePresence>
+    </motion.div>
+  );
+}
+export default Nav;`;
+    const RESP_PAGE = `import React from 'react';
+import Nav from '@/components/Nav';
+export default function Page() {
+  return (<div data-id="page-root"><Nav data-responsive='{"450":{"initialVariant":"variant-2"},"810":{"initialVariant":"variant-1"},"_bp":[450,810,1440]}' data-id="inst" data-name="Navbar" style={{ position: 'relative' }} /></div>);
+}`;
+    const detach = () => {
+      mockFS.readFile.mockImplementation((p: string) =>
+        p === 'app/page.tsx' ? RESP_PAGE : p === 'components/Nav.tsx' ? RESP : null);
+      const out = detachInstance('app/page.tsx', 'inst', 'components/Nav.tsx', 'default')!;
+      expect(out).not.toBeNull();
+      expect(parseJSX(out)).not.toBeNull();
+      return out;
+    };
+    /** fresh id of the node that came from `orig`, via its data-name. */
+    const idByName = (out: string, name: string) => {
+      const m = out.match(new RegExp(`data-id="(det-[^"]+)"[^>]*data-name="${name}"`))
+        ?? out.match(new RegExp(`data-name="${name}"[^>]*data-id="(det-[^"]+)"`));
+      return m?.[1] ?? null;
+    };
+
+    // The burger only exists on variant-2 (Mobile). It must SURVIVE detach —
+    // dropping it loses Mobile's content entirely.
+    test('keeps a node only another viewport shows', () => {
+      expect(idByName(detach(), 'Burger')).not.toBeNull();
+    });
+
+    test('that node is hidden on the baked variant', () => {
+      const out = detach();
+      const id = idByName(out, 'Burger')!;
+      const tag = out.match(new RegExp(`<[^>]*data-id="${id}"[^>]*>`))![0];
+      expect(tag).toMatch(/display: ["']none["']/);
+    });
+
+    // `display: unset` resolves to the CSS INITIAL value (`inline`), not to what
+    // the element actually was — a hidden flex container came back inline and
+    // its children collapsed (user report 2026-09-20: the hamburger bars
+    // rendered as an outlined box). The rule must restore the real value.
+    test('and is unhidden with its REAL display, not `unset`', () => {
+      const out = detach();
+      const id = idByName(out, 'Burger')!;
+      expect(out).toMatch(new RegExp(`@media \\(max-width: 450px\\)[\\s\\S]*\\[data-id="${id}"\\] \\{ display: flex !important; \\}`));
+      expect(out).not.toContain('display: unset !important');
+    });
+
+    // The CTA shows on default + variant-1 but NOT variant-2 → hidden on 450 only.
+    test('a node the baked variant shows is hidden on the viewport that hides it', () => {
+      const out = detach();
+      const id = idByName(out, 'CTA')!;
+      expect(out).toMatch(new RegExp(`@media \\(max-width: 450px\\)[\\s\\S]*\\[data-id="${id}"\\] \\{ display: none !important; \\}`));
+    });
+
+    test('per-variant STYLE differences become band overrides', () => {
+      const out = detach();
+      const id = idByName(out, 'Navbar') ?? idByName(out, 'Nav');
+      // root width: default 1200 (baked), variant-1 760 @810, variant-2 375 @450
+      expect(out).toMatch(/@media \(max-width: 810px\)[\s\S]*width: 760px !important;/);
+      expect(out).toMatch(/@media \(max-width: 450px\)[\s\S]*width: 375px !important;/);
+      expect(id).not.toBeNull();
+    });
+
+    test('bands are emitted narrowest-first, like the builder writes them', () => {
+      const out = detach();
+      const a = out.indexOf('max-width: 450px');
+      const b = out.indexOf('max-width: 810px');
+      expect(a).toBeGreaterThan(-1);
+      expect(b).toBeGreaterThan(-1);
+      expect(a).toBeLessThan(b);
+    });
+
+    // THE DOMINANT REAL MECHANISM. Most per-variant visibility is not a render
+    // gate at all — it is `display` inside the variants OBJECT
+    // (`fooVariants.default = { display: 'none' }`). Collected only where the
+    // recursive walk reached, a real navbar produced 4 band rules for dozens of
+    // differences (user report 2026-09-20), so this is collected on the
+    // full-subtree pass instead.
+    test('per-variant display in the variants OBJECT becomes band rules', () => {
+      const VOBJ = `'use client';
+import React from 'react';
+import { motion } from 'framer-motion';
+const aVariants = { default: { display: 'none' }, 'variant-2': { display: 'flex' } };
+const bVariants = { default: { display: 'flex' }, 'variant-2': { display: 'none' } };
+function Nav({ style, initialVariant = 'default' }) {
+  return (
+    <motion.div data-id="v-root" data-name="Nav" style={{ position: 'relative', ...style }}>
+      <motion.div data-id="v-burger" variants={aVariants} initial={initialVariant} animate={initialVariant} data-name="Burger" style={{ position: 'relative' }}>B</motion.div>
+      <motion.div data-id="v-links" variants={bVariants} initial={initialVariant} animate={initialVariant} data-name="Links" style={{ position: 'relative' }}>L</motion.div>
+    </motion.div>
+  );
+}
+export default Nav;`;
+      mockFS.readFile.mockImplementation((p: string) =>
+        p === 'app/page.tsx' ? RESP_PAGE : p === 'components/Nav.tsx' ? VOBJ : null);
+      const out = detachInstance('app/page.tsx', 'inst', 'components/Nav.tsx', 'default')!;
+      expect(parseJSX(out)).not.toBeNull();
+      const burger = idByName(out, 'Burger')!;
+      const links = idByName(out, 'Links')!;
+      expect(burger).not.toBeNull();
+      // Mobile (450 → variant-2) flips both.
+      expect(out).toMatch(new RegExp(`\\[data-id="${burger}"\\] \\{[^}]*display: flex !important;`));
+      expect(out).toMatch(new RegExp(`\\[data-id="${links}"\\] \\{[^}]*display: none !important;`));
+    });
+
+    // TAKEN FROM THE REAL COMPONENT (`components/CoGaCe.tsx`, the Navbar whose
+    // detach kept leaking). Its hidden mobile drawer is gated by a LITERAL:
+    //
+    //   <AnimatePresence mode="popLayout">{false && <motion.div …>…}</AnimatePresence>
+    //
+    // The eye toggle collapses a gate to a constant once an element is hidden on
+    // every variant, so this is the commonest hidden shape in a real master —
+    // and it is the one every fixture I wrote had missed, which is why three
+    // green suites sat on top of a broken detach.
+    //
+    // It must be DECIDED, not carried: React would render nothing, but the
+    // canvas renders from parsed source without executing the page, so a
+    // surviving `{false && …}` is painted in every viewport.
+    test('a literal `false` gate drops the element instead of shipping the container', () => {
+      const LIT = `'use client';
+import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+const drawerVariants = { default: { display: 'flex' } };
+function Nav({ style, initialVariant = 'default' }) {
+  return (
+    <motion.div data-id="l-root" data-name="Nav" style={{ position: 'relative', ...style }}>
+      <motion.div data-id="l-keep" data-name="Keep" style={{ position: 'relative' }}>Keep</motion.div>
+      <AnimatePresence mode="popLayout">{false && <motion.div data-id="l-drawer" variants={drawerVariants} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Drawer" style={{ position: 'relative' }}>Gloves</motion.div>}</AnimatePresence>
+    </motion.div>
+  );
+}
+export default Nav;`;
+      mockFS.readFile.mockImplementation((p: string) =>
+        p === 'app/page.tsx' ? RESP_PAGE : p === 'components/Nav.tsx' ? LIT : null);
+      const out = detachInstance('app/page.tsx', 'inst', 'components/Nav.tsx', 'default')!;
+      expect(parseJSX(out)).not.toBeNull();
+      // The hidden drawer and its content are gone entirely...
+      expect(out).not.toContain('Gloves');
+      expect(out).not.toContain('data-name="Drawer"');
+      // ...and no undecided container is left behind for the canvas to paint.
+      expect(out).not.toContain('false &&');
+      expect(out).not.toContain('AnimatePresence');
+      // The sibling that was never hidden survives.
+      expect(out).toContain('Keep');
+    });
+
+    test('a literal `true` gate keeps the element, unwrapped', () => {
+      const LIT = `'use client';
+import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+function Nav({ style, initialVariant = 'default' }) {
+  return (
+    <motion.div data-id="t-root" data-name="Nav" style={{ position: 'relative', ...style }}>
+      <AnimatePresence mode="popLayout">{true && <motion.div data-id="t-shown" data-name="Shown" style={{ position: 'relative' }}>Visible</motion.div>}</AnimatePresence>
+    </motion.div>
+  );
+}
+export default Nav;`;
+      mockFS.readFile.mockImplementation((p: string) =>
+        p === 'app/page.tsx' ? RESP_PAGE : p === 'components/Nav.tsx' ? LIT : null);
+      const out = detachInstance('app/page.tsx', 'inst', 'components/Nav.tsx', 'default')!;
+      expect(parseJSX(out)).not.toBeNull();
+      expect(out).toContain('Visible');
+      expect(out).not.toContain('true &&');
+      expect(out).not.toContain('AnimatePresence');
+    });
+
+    // TAKEN FROM THE REAL COMPONENT. Per-variant styles live in TWO places, and
+    // the second one is an inline TERNARY:
+    //
+    //   justifyContent: initialVariant === 'variant-2' ? 'space-between' : 'center'
+    //   width:          initialVariant === 'variant-2' ? '375px' : 'min-content'
+    //
+    // Detach folds those to the baked branch, so every viewport that used the
+    // other branch silently inherited the baked value — the mobile navbar lost
+    // `space-between` and its width, and its contents bunched together (user
+    // report 2026-09-20).
+    test('per-variant values in a style TERNARY become band overrides', () => {
+      const TERN = `'use client';
+import React from 'react';
+import { motion } from 'framer-motion';
+function Nav({ style, initialVariant = 'default' }) {
+  return (
+    <motion.div data-id="t-root" data-name="Nav" style={{
+      position: 'relative',
+      display: 'flex',
+      width: initialVariant === 'variant-2' ? '375px' : 'min-content',
+      justifyContent: initialVariant === 'variant-2' ? 'space-between' : 'center',
+      ...style
+    }}>
+      <motion.div data-id="t-kid" data-name="Kid" style={{ position: 'relative' }}>K</motion.div>
+    </motion.div>
+  );
+}
+export default Nav;`;
+      mockFS.readFile.mockImplementation((p: string) =>
+        p === 'app/page.tsx' ? RESP_PAGE : p === 'components/Nav.tsx' ? TERN : null);
+      const out = detachInstance('app/page.tsx', 'inst', 'components/Nav.tsx', 'default')!;
+      expect(parseJSX(out)).not.toBeNull();
+
+      // Baked (Desktop) keeps the default branch inline...
+      expect(out).toMatch(/justify-content|justifyContent: 'center'/);
+      // ...and Mobile (450 → variant-2) gets the other branch as a band rule.
+      expect(out).toMatch(/@media \(max-width: 450px\)[\s\S]*justify-content: space-between !important;/);
+      expect(out).toMatch(/@media \(max-width: 450px\)[\s\S]*width: 375px !important;/);
+      // The folded ternary must not survive as dead code either.
+      expect(out).not.toMatch(/=== 'variant-2'/);
+    });
+
+    // Tablet renders `variant-1`, which takes the SAME branch as the baked
+    // variant here — so it needs no override at all.
+    test('a viewport whose branch matches the baked one gets no rule', () => {
+      const TERN = `'use client';
+import React from 'react';
+import { motion } from 'framer-motion';
+function Nav({ style, initialVariant = 'default' }) {
+  return (
+    <motion.div data-id="t2-root" data-name="Nav" style={{
+      position: 'relative',
+      justifyContent: initialVariant === 'variant-2' ? 'space-between' : 'center',
+      ...style
+    }}><motion.div data-id="t2-kid" data-name="Kid" style={{ position: 'relative' }}>K</motion.div></motion.div>
+  );
+}
+export default Nav;`;
+      mockFS.readFile.mockImplementation((p: string) =>
+        p === 'app/page.tsx' ? RESP_PAGE : p === 'components/Nav.tsx' ? TERN : null);
+      const out = detachInstance('app/page.tsx', 'inst', 'components/Nav.tsx', 'default')!;
+      expect(out).not.toMatch(/@media \(max-width: 810px\)[\s\S]*justify-content/);
+    });
+
+    // THE ROOT IS WRAPPED. A master's root carries
+    // `variants={__applyInstanceSize(fooVariants, __instW, __instH)}` — the
+    // helper that lets an instance override width/height. Matching only a bare
+    // identifier skipped exactly one node: the root, which is where per-variant
+    // PADDING lives, so mobile kept the desktop padding (user report
+    // 2026-09-20).
+    test('reads per-variant styles through the __applyInstanceSize wrapper', () => {
+      const WRAPPED = `'use client';
+import React from 'react';
+import { motion } from 'framer-motion';
+const rootVariants = {
+  default: { paddingTop: '20px', paddingRight: '30px', paddingBottom: '20px', paddingLeft: '30px' },
+  'variant-2': { paddingTop: '15px', paddingRight: '15px', paddingBottom: '15px', paddingLeft: '15px' }
+};
+function __applyInstanceSize(variants, w, h) { return variants; }
+function Nav({ style, initialVariant = 'default' }) {
+  const { width: __instW, height: __instH, ...__instStyle } = style ?? {};
+  return (
+    <motion.div data-id="w-root" variants={__applyInstanceSize(rootVariants, __instW, __instH)} initial={['default', initialVariant]} animate={['default', initialVariant]} data-name="Nav" style={{ position: 'relative', paddingTop: '20px', ...__instStyle }}>
+      <motion.div data-id="w-kid" data-name="Kid" style={{ position: 'relative' }}>K</motion.div>
+    </motion.div>
+  );
+}
+export default Nav;`;
+      mockFS.readFile.mockImplementation((p: string) =>
+        p === 'app/page.tsx' ? RESP_PAGE : p === 'components/Nav.tsx' ? WRAPPED : null);
+      const out = detachInstance('app/page.tsx', 'inst', 'components/Nav.tsx', 'default')!;
+      expect(parseJSX(out)).not.toBeNull();
+      // Mobile (450 → variant-2) gets the 15px padding it had in the master.
+      expect(out).toMatch(/@media \(max-width: 450px\)[\s\S]*padding-top: 15px !important;/);
+      expect(out).toMatch(/@media \(max-width: 450px\)[\s\S]*padding-left: 15px !important;/);
+    });
+
+    // THE MOTIONLINK SHIM, verbatim from the real master:
+    //   const MotionLink = motion.create(React.forwardRef(function MotionLinkBase…))
+    // The argument is a CALL, not an identifier, so the local was not recognised
+    // as a motion element — its tag shipped to the page, where the const does
+    // not exist, and the whole page died with "MotionLink is not defined"
+    // (user report 2026-09-20).
+    test('a wrapped motion.create shim becomes its base tag, not an undefined local', () => {
+      const SHIM = `'use client';
+import React from 'react';
+import { motion } from 'framer-motion';
+import Link from 'next/link';
+const MotionLink = motion.create(React.forwardRef(function MotionLinkBase({ href, ...props }: any, ref: any) {
+  return href ? <Link ref={ref} href={href} {...props} /> : <div ref={ref} {...props} />;
+}));
+function Nav({ style, initialVariant = 'default' }) {
+  return (
+    <motion.div data-id="s-root" data-name="Nav" style={{ position: 'relative', ...style }}>
+      <MotionLink data-id="s-link" data-name="Logo" href="/" style={{ position: 'relative' }}>Logo</MotionLink>
+    </motion.div>
+  );
+}
+export default Nav;`;
+      mockFS.readFile.mockImplementation((p: string) =>
+        p === 'app/page.tsx' ? RESP_PAGE : p === 'components/Nav.tsx' ? SHIM : null);
+      const out = detachInstance('app/page.tsx', 'inst', 'components/Nav.tsx', 'default')!;
+      expect(parseJSX(out)).not.toBeNull();
+      // No reference to the master-scope const survives...
+      expect(out).not.toContain('MotionLink');
+      // ...it renders as the tag the shim wraps, keeping its href.
+      expect(out).toMatch(/<Link[^>]*data-id="det-/);
+      expect(out).toContain('href="/"');
+      // and the page gains the import that tag needs.
+      expect(out).toMatch(/import Link from 'next\/link'/);
+    });
+
+    // OVERLAY. The instance carries the binding
+    //   data-overlay-trigger='{"targetId":"overlay-…","trigger":"event","eventName":"event1"}'
+    // and the overlay element itself lives on the PAGE, naming its trigger by
+    // the INSTANCE's id. Detach retires that id and removes the component prop
+    // the event came from, so without carrying both the overlay is orphaned:
+    // still rendered, never openable (user report 2026-09-20).
+    describe('overlay attached to the instance', () => {
+      const OVL = `'use client';
+import React from 'react';
+import { motion } from 'framer-motion';
+function Nav({ style, initialVariant = 'default', event1 }) {
+  return (
+    <motion.div data-id="o-root" data-name="Nav" style={{ position: 'relative', ...style }} onClick={event1}>
+      <motion.div data-id="o-kid" data-name="Kid" style={{ position: 'relative' }}>K</motion.div>
+    </motion.div>
+  );
+}
+export default Nav;`;
+      const OVL_PAGE = `import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import Nav from '@/components/Nav';
+export default function Page() {
+  const [open, setOpen] = React.useState(false);
+  return (<div data-id="page-root">
+    <Nav data-id="inst" data-name="Navbar" style={{ position: 'relative' }} data-overlay-trigger='{"targetId":"overlay-inst-1","trigger":"event","dismiss":"outside","eventName":"event1"}' />
+    <AnimatePresence>{open && <motion.div data-id="overlay-inst-1" data-name="Overlay" data-overlay='{"type":"fixed","triggerId":"inst","side":"bottom","fill":"rgba(0,0,0,0.6)"}' style={{ position: 'fixed' }} />}</AnimatePresence>
+  </div>);
+}`;
+      const detachOvl = () => {
+        mockFS.readFile.mockImplementation((p: string) =>
+          p === 'app/page.tsx' ? OVL_PAGE : p === 'components/Nav.tsx' ? OVL : null);
+        const out = detachInstance('app/page.tsx', 'inst', 'components/Nav.tsx', 'default')!;
+        expect(out).not.toBeNull();
+        expect(parseJSX(out)).not.toBeNull();
+        return out;
+      };
+      const rootId = (out: string) => out.match(/data-id="(det-[^"]+)"[^>]*data-name="Navbar"/)?.[1]
+        ?? out.match(/data-name="Navbar"[^>]*data-id="(det-[^"]+)"/)?.[1];
+
+      test('the overlay element survives', () => {
+        const out = detachOvl();
+        expect(out).toContain('data-id="overlay-inst-1"');
+      });
+
+      test('the trigger binding lands on the detached ROOT', () => {
+        const out = detachOvl();
+        const id = rootId(out)!;
+        expect(id).toBeTruthy();
+        const tag = out.match(new RegExp(`<[^>]*data-id="${id}"[^>]*>`))![0];
+        expect(tag).toContain('data-overlay-trigger');
+        expect(tag).toContain('overlay-inst-1');
+      });
+
+      // The component prop is gone, so an "event" trigger could never fire.
+      test('an event trigger becomes a plain click trigger', () => {
+        const out = detachOvl();
+        expect(out).toMatch(/"trigger":"click"/);
+        expect(out).not.toMatch(/"trigger":"event"/);
+        expect(out).not.toContain('eventName');
+      });
+
+      test('the overlay repoints at the detached root, not the dead instance', () => {
+        const out = detachOvl();
+        const id = rootId(out)!;
+        expect(out).toContain(`"triggerId":"${id}"`);
+        expect(out).not.toContain('"triggerId":"inst"');
+      });
+
+      test('the component-scope handler does not survive', () => {
+        expect(detachOvl()).not.toContain('event1');
+      });
+
+      // JSX string attributes have NO escape syntax, so a double-quoted JSON
+      // attribute (`data-overlay-trigger="{\"a\":1}"`) does not parse and the
+      // page fails to load entirely. It must be single-quoted.
+      test('the JSON attribute is single-quoted so the page still parses', () => {
+        const out = detachOvl();
+        expect(out).toMatch(/data-overlay-trigger='\{"targetId"/);
+        expect(out).not.toContain('\\"targetId\\"');
+        expect(parseJSX(out)).not.toBeNull();
+      });
+    });
+
+    // A NON-responsive instance must not gain any of this.
+    test('a non-responsive instance emits no band rules', () => {
+      setupFS();
+      const out = detachInstance('app/page.tsx', 'inst', 'components/Card.tsx', 'default')!;
+      expect(out).not.toMatch(/display: unset !important/);
+    });
+  });
+
   test('carries the master\'s per-id <style> rules (::placeholder / ::after / :hover) under det- ids', () => {
     // Style-block rules key off the MASTER's data-ids; detach mints fresh
     // det- ids, so without the carry every detached copy silently lost its

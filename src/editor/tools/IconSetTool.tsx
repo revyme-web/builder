@@ -49,9 +49,10 @@ import ToolPopup from '../ui/ToolPopup';
 import Button from '@/design-system/Button';
 import { trace } from '@/shared/debug-trace';
 import { expediteStableAtomSync } from '@/canvas/hooks/useStableAtomSync';
+import { readFitDim, vectorSetResnap } from '@/code/icons/vector-set-fit';
 
 export default function IconSetTool() {
-  const { node, nodeId } = useControl();
+  const { node, nodeId, styles, updateMultipleStyles } = useControl();
   const activeFile = useAtomValue(activeFilePathAtom);
   const projectVersion = useAtomValue(stableProjectVersionAtom);
   const setActiveFile = useSetAtom(activeFilePathAtom);
@@ -173,6 +174,21 @@ export default function IconSetTool() {
     // the icon stays stuck on the old name even though the file is correct.
     renderCodeComponentDirect(nodeId, { name: iconId });
 
+    // A row on Fit (`auto`) follows the VARIANT — and the stored sizes are
+    // frozen px, so swapping to an icon with another aspect left the old icon's
+    // box around the new one. Re-derive for the variant just picked; routed per
+    // viewport / variant by the control provider, like the `name` above.
+    const picked = iconSet.icons.find(i => i.id === iconId);
+    const resnap = vectorSetResnap(
+      readFitDim(node?.attrs),
+      picked ? { width: picked.width, height: picked.height } : null,
+      { width: parseFloat(styles.width ?? ''), height: parseFloat(styles.height ?? '') },
+    );
+    if (resnap) {
+      trace.action('icon-set-tool:fit-resnap', { nodeId, iconId, ...resnap });
+      updateMultipleStyles(resnap);
+    }
+
     // Sync atoms so the panel picks up the new name immediately.
     const fresh = projectFS.readFile(activeFile);
     if (fresh) {
@@ -186,7 +202,7 @@ export default function IconSetTool() {
     // them the callback closes over their initial-render values (interacting
     // viewport 'desktop' → default branch) and every pick overwrites the base
     // name across all variants instead of the active tile.
-  }, [nodeId, iconSet, activeFile, setCode, setVersion, node, isReplica, vpWidth, isComponentVariant, activeComponentVariant]);
+  }, [nodeId, iconSet, activeFile, setCode, setVersion, node, isReplica, vpWidth, isComponentVariant, activeComponentVariant, styles, updateMultipleStyles]);
 
   // ─── Edit — open the icon-set master file ────────────────────────────────
 

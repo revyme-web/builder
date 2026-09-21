@@ -870,9 +870,15 @@ export default function ContextMenu() {
         />
         {/* Construction shortcuts — most-used surface, kept at top */}
         {/* Detach Instance — only for component instances; inlines the master's content as normal
-            nodes (resolving variables/variant/styles), keeping any NESTED instances as instances. */}
+            nodes (resolving variables/variant/styles), keeping any NESTED instances as instances.
+            GREYED on a replica viewport / non-default variant artboard: detach rewrites the ONE
+            shared instance in the page source and replays the other viewports as @media rules, so
+            it is inherently a primary-artboard action. Offering it on a replica invited a detach
+            that silently baked THAT tile's variant as the base for every viewport. Greyed rather
+            than hidden (unlike Make Component) because the node IS detachable — just not from
+            here — and a vanishing item reads as "this isn't an instance". */}
         {isDesignInstance && (
-          <MenuItem label="Detach Instance" shortcut="Ctrl+Alt+B" onClick={handleDetachInstance} disabled={!nodeId} />
+          <MenuItem label="Detach Instance" shortcut="Ctrl+Alt+B" onClick={handleDetachInstance} disabled={!nodeId || isNonPrimaryArtboard} />
         )}
         {showComponentOrMap && (
           <MenuItem label="Make Component" shortcut="Ctrl+Alt+K" onClick={handleMakeComponent} disabled={!nodeId} />

@@ -31,7 +31,7 @@ export interface IconResult {
 const SEARCH_LIBRARIES = [
   'material-symbols',
   'fa6-solid',
-  'phosphor',
+  'ph', // Phosphor — Iconify renamed the `phosphor` prefix; searches scoped to the old one return nothing
   'heroicons',
   'tabler',
   'lucide',

@@ -19,12 +19,13 @@
 // consistent visual; colorful packs (logos, openmoji, flat-color-icons,
 // etc.) bypass the filter and render in their native colors.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { normalizeIconGeometry } from '@/shared/icon-viewbox';
 import { decomposeSvgDropToShapes } from '@/canvas/drag/svg-drop-shapes';
 import { startToolbarDrag } from '@/canvas/drag/toolbar-drag-bridge';
 import { generateNodeId } from '@/shared/id-utils';
 import { trace } from '@/shared/debug-trace';
+import { loadIconData, iconDataUri, type IconData } from './icon-bulk-loader';
 
 interface IconifyIcon {
   /** Full icon name with prefix, e.g. `material-symbols:home` */
@@ -45,7 +46,7 @@ interface IconifyCollection {
 const TARGET_LIBRARIES = [
   'material-symbols',
   'fa6-solid',
-  'phosphor',
+  'ph', // Phosphor — Iconify renamed the `phosphor` prefix; the old one 404s and the pack silently vanished from the gallery
   'heroicons',
   'tabler',
   'lucide',
@@ -156,38 +157,34 @@ export function normalizeIconColors(svg: string, colorful: boolean): string {
     .replace(/stroke="(currentColor|#000|#000000|black)"/gi, `stroke="${ICON_DROP_COLOR}"`);
 }
 
+/** The drag payload for an icon, from the SAME bulk-loaded artwork the
+ *  thumbnail uses (icon-bulk-loader.ts) — this used to be a second per-icon
+ *  request, fired for every mounted cell at once, which is what got the panel
+ *  rate-limited. */
+function parsedFromIconData(iconName: string, data: IconData): ParsedSvg {
+  let inner = data.body;
+  // Drop `<defs>` blocks containing only style rules — they reference class
+  // names that don't survive the cross-tree paste. Keep `<defs>` when it
+  // carries gradients/patterns the icon actually uses.
+  inner = inner.replace(/<defs>\s*<style>[^<]*<\/style>\s*<\/defs>/gi, '');
+  inner = camelCaseSvgAttrs(inner);
+  inner = normalizeIconColors(inner, isColorfulIcon(iconName));
+  return { viewBox: `${data.left} ${data.top} ${data.width} ${data.height}`, inner };
+}
+
 function fetchSvg(iconName: string): Promise<ParsedSvg | null> {
   const cached = svgCache.get(iconName);
   if (cached) return cached;
-  const url = `https://api.iconify.design/${iconName}.svg?width=64&height=64`;
-  const promise = (async () => {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) return null;
-      const text = await res.text();
-      // Extract viewBox + inner content from `<svg ...>...</svg>`. The
-      // iconify endpoint returns a single root <svg>; we strip it so the
-      // user's canvas <svg> wrapper carries the viewBox while the inner
-      // children (path/rect/g/...) become the editable contents.
-      const viewBoxMatch = text.match(/viewBox="([^"]+)"/);
-      const innerMatch = text.match(/<svg[^>]*>([\s\S]*)<\/svg>/);
-      if (!innerMatch) return null;
-      let inner = innerMatch[1].trim();
-      // Drop `<defs>` blocks containing only style rules — they reference
-      // class names that don't survive the cross-tree paste. Keep `<defs>`
-      // when it carries gradients/patterns the icon actually uses.
-      inner = inner.replace(/<defs>\s*<style>[^<]*<\/style>\s*<\/defs>/gi, '');
-      inner = camelCaseSvgAttrs(inner);
-      inner = normalizeIconColors(inner, isColorfulIcon(iconName));
-      const viewBox = viewBoxMatch?.[1] ?? '0 0 24 24';
-      const parsed: ParsedSvg = { viewBox, inner };
-      svgResolved.set(iconName, parsed);
-      return parsed;
-    } catch {
-      svgResolved.set(iconName, null);
+  const promise = loadIconData(iconName).then((data) => {
+    if (!data) {
+      // A failed load is retryable (the loader forgets it) — so must this be.
+      svgCache.delete(iconName);
       return null;
     }
-  })();
+    const parsed = parsedFromIconData(iconName, data);
+    svgResolved.set(iconName, parsed);
+    return parsed;
+  });
   svgCache.set(iconName, promise);
   return promise;
 }
@@ -282,6 +279,44 @@ export function buildIconDragItem(
   };
 }
 
+/** An icon thumbnail that loads its artwork only when it scrolls NEAR the
+ *  viewport, through the bulk loader. A pack view mounts every cell it has
+ *  (1,402 for Font Awesome 6 Solid, 10k+ for Material Symbols); the old cell
+ *  requested its image AND prefetched its drag payload on mount, so opening a
+ *  pack was a burst of thousands of requests and the API answered 429. Now a
+ *  screenful of cells becomes a handful of bulk requests, and the one payload
+ *  serves the thumbnail and the drag (`fetchSvg` reads the same cache). */
+function IconThumb({ icon, alt, className, colorful, isDark }: {
+  icon: string; alt: string; className: string; colorful: boolean; isDark: boolean;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [uri, setUri] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      void loadIconData(icon).then((data) => {
+        if (cancelled || !data) return;
+        setUri(iconDataUri(data));
+        // Warm the drag payload from the same data — no extra request.
+        void fetchSvg(icon);
+      });
+    };
+    const el = ref.current;
+    // No IntersectionObserver (tests, very old engines): just load.
+    if (!el || typeof IntersectionObserver === 'undefined') { load(); return () => { cancelled = true; }; }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) { io.disconnect(); load(); }
+    }, { rootMargin: '300px' });
+    io.observe(el);
+    return () => { cancelled = true; io.disconnect(); };
+  }, [icon]);
+  return (
+    <span ref={ref} className={`${className} inline-flex items-center justify-center flex-shrink-0`}>
+      {uri && <img src={uri} alt={alt} className="w-full h-full" style={{ filter: getIconFilter(colorful, isDark) }} />}
+    </span>
+  );
+}
+
 interface IconCellProps {
   iconData: IconifyIcon;
   isDark: boolean;
@@ -294,9 +329,7 @@ function IconCell({ iconData, isDark }: IconCellProps) {
   // COLORFUL packs included: whether an icon can drop as native shapes is
   // decided by the decomposer probe in buildIconDragItem, not by pack name
   // (most colorful icons are plain flat-fill paths and decompose fine).
-  useEffect(() => {
-    fetchSvg(iconData.icon);
-  }, [iconData.icon]);
+
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -315,13 +348,7 @@ function IconCell({ iconData, isDark }: IconCellProps) {
       className="aspect-square flex items-center justify-center bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] cut-corners transition-colors cursor-grab active:cursor-grabbing"
       title={iconData.name}
     >
-      <img
-        src={`https://api.iconify.design/${iconData.icon}.svg?width=32&height=32`}
-        alt={iconData.name}
-        className="w-7 h-7"
-        loading="lazy"
-        style={{ filter: getIconFilter(colorful, isDark) }}
-      />
+      <IconThumb icon={iconData.icon} alt={iconData.name} className="w-7 h-7" colorful={colorful} isDark={isDark} />
     </div>
   );
 }
@@ -548,13 +575,7 @@ export function IconPanel() {
                 >
                   <div className="flex-1 flex items-center justify-center gap-2 p-3">
                     {previews.map((iconName) => (
-                      <img
-                        key={iconName}
-                        src={`https://api.iconify.design/${iconName}.svg?width=24&height=24`}
-                        alt=""
-                        className="w-6 h-6 flex-shrink-0"
-                        style={{ filter: getIconFilter(isColorfulIcon(iconName), isDark) }}
-                      />
+                      <IconThumb key={iconName} icon={iconName} alt="" className="w-6 h-6" colorful={isColorfulIcon(iconName)} isDark={isDark} />
                     ))}
                   </div>
                   <div className="px-2 pb-2 text-center">

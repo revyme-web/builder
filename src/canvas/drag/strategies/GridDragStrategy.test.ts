@@ -273,6 +273,51 @@ describe('GridDragStrategy — non-primary tiles commit CSS order, not JSX', () 
     expect(byId['c-0']).toEqual({ default: 0, 'variant-2': 0 });
   });
 
+  // THE REPORTED BUG (user, 2026-09-19): reordering on the Mobile variant moved
+  // a card on the DESKTOP tile — its order went from 5 to 1.
+  //
+  // `defaultOrders` pins the default tile's sequence into the `default` branch
+  // of each order ternary, so getting it wrong rewrites the tile it exists to
+  // protect. It used to be built by RECT-sorting the default tile; a child
+  // hidden on that variant measures (0,0,0,0), sorted first on both keys, took
+  // index 0, and shifted every sibling's computed default down one.
+  test('a child HIDDEN on the default tile does not shift the default branch', async () => {
+    const h = await onePassMocks({
+      withOrders: false,
+      viewportPrefix: 'variant-2-',
+      activeFile: 'components/TaMaNe.tsx',
+    });
+
+    // Authored default order: c-0 is hidden and sits at slot 1, so every other
+    // child's default order is its rect index EXCEPT that c-0 holds slot 1.
+    // A hidden child's rect is the origin, which is what used to mislead the sort.
+    const authored: Record<string, string> = {
+      'c-1': '0', 'c-0': '1', 'dragged': '2', 'c-3': '3',
+      'c-4': '4', 'c-5': '5', 'c-6': '6', 'c-7': '7',
+    };
+    const store = await import('@/code/stores/store');
+    vi.mocked(store.getNodeFromCache).mockImplementation(((id: string) => (
+      authored[id] !== undefined ? { id, styles: { order: authored[id] } } : undefined
+    )) as any);
+
+    const strategy = new GridDragStrategy();
+    strategy.onStart(h.context);
+    strategy.onMove(h.context, { x: 180, y: 180 });
+    const updates = strategy.onEnd(h.context);
+
+    const cond = updates.filter(u => u.type === 'setConditionalOrder') as Array<{ nodeId: string; orderMap: Record<string, number> }>;
+    const byId = Object.fromEntries(cond.map(u => [u.nodeId, u.orderMap]));
+
+    // The DEFAULT branch must reproduce the authored sequence, hidden child
+    // included — not a rect ranking that puts the hidden one first.
+    expect(byId['c-1'].default).toBe(0);
+    expect(byId['c-0'].default).toBe(1);
+    expect(byId['dragged'].default).toBe(2);
+    expect(byId['c-5'].default).toBe(5);
+
+    vi.mocked(store.getNodeFromCache).mockImplementation((() => undefined) as any);
+  });
+
   test('page replica tile: @container order for that band only, no JSX change', async () => {
     const h = await onePassMocks({ withOrders: false, viewportPrefix: 'tablet-' });
     const strategy = new GridDragStrategy();

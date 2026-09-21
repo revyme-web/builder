@@ -41,3 +41,43 @@ describe('detectLayoutFlags', () => {
     expect(detectLayoutFlags({ width: '100px', color: '#fff' }).hasLayout).toBe(false);
   });
 });
+
+// A design component writes per-variant layout props as inline ternaries, and
+// the "off" branch carries the CSS INITIALS so the other variants stay neutral
+// (`flexDirection: initialVariant === 'variant-2' ? 'column' : 'row'`). The
+// parser lifts that branch into the base styles, so Desktop and Tablet showed a
+// full Flex panel for a frame whose layout exists only on variant-2 (user
+// report 2026-09-21).
+describe('detectLayoutFlags — CSS initials are not a layout', () => {
+  it('ignores the neutral branch of a per-variant ternary', () => {
+    expect(detectLayoutFlags({
+      flexDirection: 'row', alignItems: 'stretch', justifyContent: 'flex-start',
+    }).hasLayout).toBe(false);
+  });
+
+  it('still detects a real layout with no display', () => {
+    expect(detectLayoutFlags({ flexDirection: 'column' }).hasFlex).toBe(true);
+    expect(detectLayoutFlags({ alignItems: 'center' }).hasFlex).toBe(true);
+    expect(detectLayoutFlags({ gap: '12px' }).hasFlex).toBe(true);
+  });
+
+  it('an explicit display always wins', () => {
+    expect(detectLayoutFlags({ display: 'flex', flexDirection: 'row' }).hasFlex).toBe(true);
+    expect(detectLayoutFlags({ display: 'inline-flex' }).hasFlex).toBe(true);
+  });
+
+  // The case this function was written for: Hide and Layout are independent, so
+  // a hidden frame keeps its authored layout even when the props are initials.
+  it('keeps the HIDDEN-node behaviour', () => {
+    expect(detectLayoutFlags({ display: 'none', flexDirection: 'row' }).hasFlex).toBe(true);
+    expect(detectLayoutFlags({ display: 'none', alignItems: 'stretch' }).hasFlex).toBe(true);
+  });
+
+  it('grid props are unaffected', () => {
+    expect(detectLayoutFlags({ gridTemplateColumns: '1fr 1fr' }).hasGrid).toBe(true);
+  });
+
+  it('gap: 0 alone is not a layout', () => {
+    expect(detectLayoutFlags({ gap: '0px' }).hasLayout).toBe(false);
+  });
+});

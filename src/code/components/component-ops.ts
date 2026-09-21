@@ -18,7 +18,8 @@ import { parseJSX, findFirstElementByDataId, findAttribute, traverse } from '../
 import { clearComponentCache } from './component-registry';
 import { WRAPPER_ONLY_STYLE_PROPS, PROJECTION_STYLE_PROPS } from '@/shared/constants';
 import { cssTransformToMotionProps } from '@/shared/motion-transform';
-import { toCamel } from '@/shared/css-utils';
+import { toCamel, toKebab } from '@/shared/css-utils';
+import { escapeRegExp } from '@/shared/regex-utils';
 import { updateVariantStyleInCode, setConditionalStyleInCode, syncLinkHandlerInCode, clearContainerStylesForNode, updateContainerQueryStyle, mergeDetachedStyleCSSIntoPage, moveStyleRulesForIds } from '../generation/generator-styles';
 import { parseContainerRules } from '../stores/container-query-store';
 import { extractStyleCSS } from '../parsing/parser';
@@ -1351,6 +1352,12 @@ export function detachInstance(
     const pageAst = parseJSX(pageCode);
     if (!pageAst) return null;
     let instStart = -1, instEnd = -1, instName = '';
+    /** viewport max-width → the variant THAT viewport renders (excluding the
+     *  baked `resolvedVariant`). Empty for a non-responsive instance. */
+    const responsiveVariants = new Map<number, string>();
+    /** `data-overlay-trigger` JSON read off the instance tag, re-stamped on the
+     *  detached root with its component-event trigger normalised to a DOM one. */
+    let overlayTriggerJson = '';
     const wrapperStyle: t.ObjectProperty[] = [];
     const instanceProps = new Map<string, t.Expression>();   // prop name → override value on the instance tag
     findFirstElementByDataId(pageAst, instanceNodeId, (path) => {
@@ -1366,7 +1373,37 @@ export function detachInstance(
           continue;
         }
         if (an === 'data-name') { if (t.isStringLiteral(a.value)) instName = a.value.value; continue; }
-        if (an === 'data-id' || an === 'ref' || an === 'key' || an === 'initialVariant' || an === 'data-responsive') continue;
+        // `data-responsive` is the per-breakpoint VARIANT map — the instance
+        // renders a DIFFERENT variant per viewport
+        // (`{"450":{"initialVariant":"variant-2"},"810":{…}}`). Detach bakes one
+        // variant, so without reading this the other viewports lose theirs
+        // entirely and every variant's children render everywhere (user report
+        // 2026-09-20). Captured here, replayed as per-viewport CSS below.
+        if (an === 'data-responsive') {
+          const raw = t.isStringLiteral(a.value) ? a.value.value
+            : (a.value?.type === 'JSXExpressionContainer' && t.isStringLiteral(a.value.expression)) ? a.value.expression.value : '';
+          try {
+            const parsed = raw ? JSON.parse(raw) as Record<string, unknown> : {};
+            for (const [k, v] of Object.entries(parsed)) {
+              if (k === '_bp') continue;
+              const w = parseInt(k, 10);
+              const nm = (v as { initialVariant?: string } | null)?.initialVariant;
+              if (Number.isFinite(w) && typeof nm === 'string' && nm !== resolvedVariant) responsiveVariants.set(w, nm);
+            }
+          } catch { /* malformed → treat as non-responsive */ }
+          continue;
+        }
+        // The OVERLAY TRIGGER lives on the instance tag. Falling through to the
+        // prop bucket below dropped it entirely, so a detached node lost its
+        // overlay binding while the overlay itself stayed on the page, orphaned
+        // (user report 2026-09-20). Captured here and re-stamped on the
+        // detached root.
+        if (an === 'data-overlay-trigger') {
+          overlayTriggerJson = t.isStringLiteral(a.value) ? a.value.value
+            : (a.value?.type === 'JSXExpressionContainer' && t.isStringLiteral(a.value.expression)) ? a.value.expression.value : '';
+          continue;
+        }
+        if (an === 'data-id' || an === 'ref' || an === 'key' || an === 'initialVariant') continue;
         // Everything else is a PROP override (e.g. azefazef="#244e70") — capture its value.
         let val: t.Expression | null = null;
         if (a.value == null) val = t.booleanLiteral(true);
@@ -1436,9 +1473,33 @@ export function detachInstance(
         if (t.isCallExpression(init) && t.isMemberExpression(init.callee)
             && t.isIdentifier(init.callee.object, { name: 'motion' })
             && t.isIdentifier(init.callee.property, { name: 'create' })
-            && init.arguments.length === 1 && t.isIdentifier(init.arguments[0])) {
-          motionCreateLocals.set(name, init.arguments[0].name);
-          return;
+            && init.arguments.length >= 1) {
+          const arg = init.arguments[0];
+          if (t.isIdentifier(arg)) {
+            motionCreateLocals.set(name, arg.name);
+            return;
+          }
+          // WRAPPED shim: `motion.create(React.forwardRef(function MotionLinkBase…))`
+          // — the canonical MotionLink form. The argument is a call, not an
+          // identifier, so the simple match above missed it and the local was
+          // treated as a nested COMPONENT instance: its tag survived onto the
+          // page, where the const does not exist → "MotionLink is not defined"
+          // and the whole page failed to render (user report 2026-09-20).
+          //
+          // The base tag is the first element the wrapper renders (`<Link …>`
+          // for MotionLink); `div` when it renders none, which matches the
+          // shim's own no-href fallback.
+          if (t.isExpression(arg)) {
+            let base: string | null = null;
+            traverse(t.file(t.program([t.expressionStatement(arg)])), {
+              JSXOpeningElement(jp) {
+                if (base) return;
+                if (t.isJSXIdentifier(jp.node.name)) base = jp.node.name.name;
+              },
+            });
+            motionCreateLocals.set(name, base ?? 'div');
+            return;
+          }
         }
         if (/Variants$/.test(name) && t.isObjectExpression(init)) {
           const byVariant = new Map<string, t.ObjectProperty[]>();
@@ -1569,11 +1630,43 @@ export function detachInstance(
     // variant. `{variant !== "default" && <el/>}` is the canonical AnimatePresence-
     // conditional dialect (design-component reveal rows) — supports ===/!== on
     // variant/initialVariant vs a string literal. Returns null when it isn't one.
-    const evalVariantTest = (test: t.Expression): boolean | null => {
+    const evalVariantTest = (test: t.Expression, forVariant: string = resolvedVariant): boolean | null => {
+      // A LITERAL gate — `{false && <el/>}`. The eye toggle collapses a gate to
+      // a constant once an element is hidden on every variant, so this is the
+      // commonest hidden-element shape in a real master, not an edge case.
+      //
+      // It has to be decided here or the container survives into the page. The
+      // live site would render nothing, but the CANVAS renders from PARSED
+      // source and never executes the page — it registers the element as an
+      // ordinary child and paints it in every viewport. That is why a hidden
+      // mobile drawer reappeared on desktop after detach (user report
+      // 2026-09-20) while the published page would have looked fine.
+      if (t.isBooleanLiteral(test)) return test.value;
+      // `!0` / `!1`, which minifiers and some generators emit for the same thing.
+      if (t.isUnaryExpression(test) && test.operator === '!' && t.isNumericLiteral(test.argument)) {
+        return test.argument.value === 0;
+      }
       if (t.isBinaryExpression(test) && (test.operator === '===' || test.operator === '!==')
           && t.isIdentifier(test.left) && (test.left.name === 'variant' || test.left.name === 'initialVariant')
           && t.isStringLiteral(test.right)) {
-        const eq = test.right.value === resolvedVariant;
+        const eq = test.right.value === forVariant;
+        return test.operator === '===' ? eq : !eq;
+      }
+      // ALREADY-SUBSTITUTED form: `'default' === 'variant-2'`. An earlier pass
+      // may replace the identifier with the resolved variant STRING before this
+      // test is folded, and the comparison then looks like two literals. Left
+      // alone it ships dead code the panels cannot read
+      // (`width: 'default' === 'variant-2' ? '375px' : 'min-content'`, user
+      // report 2026-09-19) and the oracle flags it as an unresolvable ternary.
+      if (t.isBinaryExpression(test) && (test.operator === '===' || test.operator === '!==')
+          && t.isStringLiteral(test.left) && t.isStringLiteral(test.right)) {
+        // A left literal equal to the baked variant IS the substituted slot, so
+        // when asking about ANOTHER viewport's variant that is what belongs
+        // there. Comparing the literals as written would answer for the baked
+        // variant every time — which silently made every per-viewport question
+        // return the baked answer, so responsive gates resolved to one variant.
+        const left = test.left.value === resolvedVariant ? forVariant : test.left.value;
+        const eq = left === test.right.value;
         return test.operator === '===' ? eq : !eq;
       }
       // CHAINED gates: a master that hides an element on several variants emits
@@ -1585,8 +1678,8 @@ export function detachInstance(
       // (unrecognisable) side is only fatal when it can still decide the result.
       if (t.isLogicalExpression(test) && (test.operator === '&&' || test.operator === '||')
           && t.isExpression(test.left) && t.isExpression(test.right)) {
-        const l = evalVariantTest(test.left);
-        const r = evalVariantTest(test.right);
+        const l = evalVariantTest(test.left, forVariant);
+        const r = evalVariantTest(test.right, forVariant);
         if (test.operator === '&&') {
           if (l === false || r === false) return false;   // short-circuits regardless of the other
           return l === true && r === true ? true : null;
@@ -1596,7 +1689,7 @@ export function detachInstance(
       }
       // Parenthesised / negated forms.
       if (t.isUnaryExpression(test) && test.operator === '!' && t.isExpression(test.argument)) {
-        const v = evalVariantTest(test.argument);
+        const v = evalVariantTest(test.argument, forVariant);
         return v === null ? null : !v;
       }
       return null;
@@ -1615,6 +1708,77 @@ export function detachInstance(
     //   • ternary renders `{variant === 'x' ? <A/> : <B/>}` → the chosen branch;
     //   • AnimatePresence/LayoutGroup/MotionConfig wrappers → replaced by their
     //     resolved children.
+    /** Per-ORIGINAL-id viewport visibility, collected while gates resolve and
+     *  replayed as `@media` rules once the fresh ids exist. */
+    const gateVisibility = new Map<string, { hiddenOnBase: boolean; showWidths: number[]; hideWidths: number[] }>();
+    /**
+     * Value a per-variant style TERNARY yields for `variant`, or null when the
+     * expression is not one (or its branches are not literals).
+     *
+     * Per-variant styles live in TWO places: the variants object, and inline
+     * ternaries like `justifyContent: initialVariant === 'variant-2' ?
+     * 'space-between' : 'center'`. Detach folds the ternary to the baked
+     * branch, so unless the other branches are captured FIRST, every viewport
+     * that used them silently inherits the baked value — the mobile navbar lost
+     * `space-between` and its width, so its contents bunched together (user
+     * report 2026-09-20).
+     */
+    const ternaryValueFor = (expr: t.Expression, variant: string): string | null => {
+      if (t.isStringLiteral(expr)) return expr.value;
+      if (t.isNumericLiteral(expr)) return String(expr.value);
+      if (t.isConditionalExpression(expr) && t.isExpression(expr.test)) {
+        const verdict = evalVariantTest(expr.test, variant);
+        if (verdict === null) return null;
+        const branch = verdict ? expr.consequent : expr.alternate;
+        return t.isExpression(branch) ? ternaryValueFor(branch, variant) : null;
+      }
+      return null;
+    };
+
+    /**
+     * Name of the variants const an element's `variants=` attribute refers to.
+     *
+     * Usually a bare identifier, but the ROOT is wrapped:
+     * `variants={__applyInstanceSize(fooVariants, __instW, __instH)}` — the
+     * helper that lets an instance override width/height. Matching only the
+     * bare form skipped exactly one node: the root — which is the node that
+     * carries the per-variant PADDING, so mobile kept the desktop padding after
+     * detach (user report 2026-09-20).
+     */
+    const variantsVarName = (expr: t.Expression): string | null => {
+      if (t.isIdentifier(expr)) return expr.name;
+      if (t.isCallExpression(expr)) {
+        for (const arg of expr.arguments) if (t.isIdentifier(arg) && variantObjs.has(arg.name)) return arg.name;
+      }
+      return null;
+    };
+
+    /** detached id → the `display` value replaced when hiding it on the baked
+     *  variant, so the per-viewport rule can restore exactly that. */
+    const hiddenOriginalDisplay = new Map<string, string>();
+    /** element ORIGINAL id → variant name → style props, for the band diff. */
+    const variantStyleByNode = new Map<string, Map<string, Map<string, string>>>();
+    const dataIdOf = (n: t.JSXElement | t.JSXFragment): string | null => {
+      if (!t.isJSXElement(n)) return null;
+      for (const a of n.openingElement.attributes) {
+        if (t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && a.name.name === 'data-id' && t.isStringLiteral(a.value)) return a.value.value;
+      }
+      return null;
+    };
+    const noteGateVisibility = (
+      n: t.JSXElement | t.JSXFragment,
+      v: { hiddenOnBase: boolean; showWidths?: number[]; hideWidths?: number[] },
+    ) => {
+      const id = dataIdOf(n);
+      if (!id) return;
+      const prev = gateVisibility.get(id) ?? { hiddenOnBase: false, showWidths: [], hideWidths: [] };
+      gateVisibility.set(id, {
+        hiddenOnBase: prev.hiddenOnBase || v.hiddenOnBase,
+        showWidths: [...new Set([...prev.showWidths, ...(v.showWidths ?? [])])],
+        hideWidths: [...new Set([...prev.hideWidths, ...(v.hideWidths ?? [])])],
+      });
+    };
+
     const resolveDetachedChildren = (children: t.JSXElement['children']): t.JSXElement['children'] =>
       children.flatMap((c): t.JSXElement['children'] => {
         if (t.isJSXExpressionContainer(c)) {
@@ -1622,8 +1786,20 @@ export function detachInstance(
           if (t.isLogicalExpression(e) && e.operator === '&&' && t.isExpression(e.left)
               && (t.isJSXElement(e.right) || t.isJSXFragment(e.right))) {
             const verdict = evalVariantTest(e.left);
-            if (verdict === false) return [];
+            // Which OTHER viewports show this element? A gate that is false for
+            // the baked variant may be true for the variant another breakpoint
+            // renders — dropping it there loses that viewport's content, and
+            // keeping it ungated shows it on ALL of them. Keep it, and record
+            // the widths so the band CSS below can hide/show it per viewport.
+            const showWidths = [...responsiveVariants].filter(([, v]) => evalVariantTest(e.left, v) === true).map(([w]) => w);
+            const hideWidths = [...responsiveVariants].filter(([, v]) => evalVariantTest(e.left, v) === false).map(([w]) => w);
+            if (verdict === false) {
+              if (showWidths.length === 0) return [];
+              noteGateVisibility(e.right, { hiddenOnBase: true, showWidths });
+              return t.isJSXFragment(e.right) ? resolveDetachedChildren(e.right.children) : resolveDetachedChildren([e.right]);
+            }
             if (verdict === true) {
+              if (hideWidths.length > 0) noteGateVisibility(e.right, { hiddenOnBase: false, hideWidths });
               return t.isJSXFragment(e.right) ? resolveDetachedChildren(e.right.children) : resolveDetachedChildren([e.right]);
             }
           }
@@ -1718,7 +1894,32 @@ export function detachInstance(
         // props on inlined nodes (nested instances keep `variants` since they're still motion-driven? no
         // — a detached page has no variants object, so drop everywhere except we already keep the spec).
         if (an === 'variants') {
-          if (a.value?.type === 'JSXExpressionContainer' && t.isIdentifier(a.value.expression)) variantVar = a.value.expression.name;
+          if (a.value?.type === 'JSXExpressionContainer' && t.isExpression(a.value.expression)
+              && variantsVarName(a.value.expression)) {
+            variantVar = variantsVarName(a.value.expression);
+            // Record EVERY variant's props for the responsive replay, here —
+            // ids are still the MASTER's at this point, which is what `idMap`
+            // translates from. (Reading them after the style merge instead
+            // missed the root, whose merge takes a different branch.)
+            if (responsiveVariants.size > 0 && variantVar) {
+              const all = variantObjs.get(variantVar);
+              const selfId = dataIdOf(el);
+              if (all && selfId) {
+                const byVariant = new Map<string, Map<string, string>>();
+                for (const [vName, props] of all) {
+                  const flat = new Map<string, string>();
+                  for (const pr of props) {
+                    const k = t.isIdentifier(pr.key) ? pr.key.name : t.isStringLiteral(pr.key) ? pr.key.value : '';
+                    if (!k) continue;
+                    if (t.isStringLiteral(pr.value)) flat.set(k, pr.value.value);
+                    else if (t.isNumericLiteral(pr.value)) flat.set(k, String(pr.value.value));
+                  }
+                  if (flat.size > 0) byVariant.set(vName, flat);
+                }
+                if (byVariant.size > 0) variantStyleByNode.set(selfId, byVariant);
+              }
+            }
+          }
           return [];
         }
         if (an === 'initial' || an === 'animate' || an === 'layout' || an === 'layoutId') return [];
@@ -1829,6 +2030,286 @@ export function detachInstance(
     };
     transform(clone, true);
 
+    // NAME the detached root after the INSTANCE, not the master's root node.
+    // `instName` was read off the instance tag at the top and then never used,
+    // so the root inherited whatever the master's root happened to be called —
+    // typically a VARIANT root, which surfaced as a node named "Mobile Opened"
+    // where the user had a "Navbar" (user report 2026-09-19).
+    if (instName) {
+      const rootOp = clone.openingElement;
+      const existing = rootOp.attributes.find(
+        (a): a is t.JSXAttribute => t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && a.name.name === 'data-name',
+      );
+      if (existing) existing.value = t.stringLiteral(instName);
+      else rootOp.attributes.push(t.jsxAttribute(t.jsxIdentifier('data-name'), t.stringLiteral(instName)));
+    }
+
+    // RE-STAMP THE OVERLAY TRIGGER on the detached root.
+    //
+    // On an instance the trigger is often `{"trigger":"event","eventName":"event1"}`
+    // — the overlay opens when the COMPONENT fires that prop, from a handler
+    // inside the master. Detach removes both the prop and the handler, so the
+    // event can never fire again; kept as-is the overlay becomes unopenable.
+    // A detached node is an ordinary node, so the equivalent is an ordinary
+    // CLICK trigger on it.
+    if (overlayTriggerJson) {
+      try {
+        const cfg = JSON.parse(overlayTriggerJson) as Record<string, unknown>;
+        if (cfg.trigger === 'event') { cfg.trigger = 'click'; delete cfg.eventName; }
+        // SINGLE-quoted, printed verbatim. JSX string attributes have no escape
+        // syntax, so babel's default double-quoted form emits
+        // `data-overlay-trigger="{\"targetId\":…}"` — which does not parse, and
+        // the whole page fails to load. `extra.raw` is how the rest of the
+        // codebase emits JSON attributes for exactly this reason.
+        const json = JSON.stringify(cfg);
+        const lit = t.stringLiteral(json);
+        (lit as unknown as { extra: { raw: string; rawValue: string } }).extra = {
+          raw: `'${json}'`, rawValue: json,
+        };
+        clone.openingElement.attributes.push(
+          t.jsxAttribute(t.jsxIdentifier('data-overlay-trigger'), lit),
+        );
+        trace.action('component-ops:detach-carried-overlay-trigger', {
+          instanceNodeId, trigger: cfg.trigger, targetId: cfg.targetId,
+        });
+      } catch { /* malformed → drop, same as before */ }
+    }
+
+    // FULL-SUBTREE FINALIZE — every node, not just the ones the recursive
+    // `transform` walk reached.
+    //
+    // That walk descends selectively (it stops at nested instances, and routes
+    // children through `resolveDetachedChildren`), and in practice it left most
+    // of the tree untouched: a real detach produced 3 cleaned nodes out of 26.
+    // The other 23 shipped to the page as component machinery with its bindings
+    // blanked — `<motion.div variants={undefined} initial={['default','default']}
+    // animate={…} key=… data-id="<master's id>">`. framer-motion still drove
+    // them, so every variant's content rendered at once and children hidden on
+    // the resolved variant became visible (user report 2026-09-19, "detach goes
+    // crazy").
+    //
+    // Rather than chase which branch skips what, sweep the whole clone: the
+    // properties below are ones a DETACHED node must never have, whatever path
+    // produced it. Idempotent — a node the walk already cleaned has nothing
+    // left to strip, and an id it already remapped is skipped by `producedIds`.
+    {
+      const producedIds = new Set(idMap.values());
+      const finalizeFile = t.file(t.program([t.expressionStatement(clone)]));
+      traverse(finalizeFile, {
+        JSXElement(fpath) {
+          const el = fpath.node;
+          const op = el.openingElement;
+          const tagName = t.isJSXIdentifier(op.name) ? op.name.name
+            : t.isJSXMemberExpression(op.name) && t.isJSXIdentifier(op.name.property) ? op.name.property.name : '';
+          const base = motionCreateLocals.get(tagName);
+          const isMotionEl = (t.isJSXMemberExpression(op.name) && t.isJSXIdentifier(op.name.object)
+            && op.name.object.name === 'motion') || !!base;
+          if (isMotionEl) {
+            const newTag = base ?? tagName;
+            op.name = t.jsxIdentifier(newTag);
+            if (el.closingElement) el.closingElement.name = t.jsxIdentifier(newTag);
+          }
+          op.attributes = op.attributes.flatMap((a): t.JSXAttribute[] => {
+            if (!t.isJSXAttribute(a) || !t.isJSXIdentifier(a.name)) return [a as t.JSXAttribute];
+            const an = a.name.name;
+            // Variant machinery + component-scope bindings. `layout`/`layoutId`
+            // drive FLIP against variants that no longer exist; `key` is a
+            // conditional-render artifact; `on*`/`ref` bind into component scope.
+            // COLLECT before dropping: this is the only pass that reaches
+            // every node, and a node's per-variant styles are the raw material
+            // for the responsive replay below. Collecting inside `transform`
+            // instead saw only the handful of nodes that walk reaches, which is
+            // why the replay emitted 4 rules for a navbar with dozens of
+            // per-variant differences (user report 2026-09-20).
+            if (an === 'variants' && responsiveVariants.size > 0
+                && a.value?.type === 'JSXExpressionContainer' && t.isExpression(a.value.expression)) {
+              const all = variantObjs.get(variantsVarName(a.value.expression) ?? '');
+              const selfId = dataIdOf(el);
+              if (all && selfId) {
+                const byVariant = new Map<string, Map<string, string>>();
+                for (const [vName, props] of all) {
+                  const flat = new Map<string, string>();
+                  for (const pr of props) {
+                    const k = t.isIdentifier(pr.key) ? pr.key.name : t.isStringLiteral(pr.key) ? pr.key.value : '';
+                    if (!k) continue;
+                    if (t.isStringLiteral(pr.value)) flat.set(k, pr.value.value);
+                    else if (t.isNumericLiteral(pr.value)) flat.set(k, String(pr.value.value));
+                  }
+                  if (flat.size > 0) byVariant.set(vName, flat);
+                }
+                if (byVariant.size > 0) variantStyleByNode.set(selfId, byVariant);
+              }
+            }
+            // Per-variant values held in an inline style TERNARY, captured
+            // before the fold collapses them to the baked branch.
+            if (an === 'style' && responsiveVariants.size > 0
+                && a.value?.type === 'JSXExpressionContainer' && t.isObjectExpression(a.value.expression)) {
+              const selfId = dataIdOf(el);
+              if (selfId) {
+                const byVariant = variantStyleByNode.get(selfId) ?? new Map<string, Map<string, string>>();
+                for (const pr of a.value.expression.properties) {
+                  if (!t.isObjectProperty(pr) || !t.isConditionalExpression(pr.value)) continue;
+                  const k = t.isIdentifier(pr.key) ? pr.key.name : t.isStringLiteral(pr.key) ? pr.key.value : '';
+                  if (!k) continue;
+                  const baked = ternaryValueFor(pr.value, resolvedVariant);
+                  for (const v of [...responsiveVariants.values(), resolvedVariant]) {
+                    const val = ternaryValueFor(pr.value, v);
+                    if (val === null) continue;
+                    if (v !== resolvedVariant && val === baked) continue;   // no override needed
+                    const bag = byVariant.get(v) ?? new Map<string, string>();
+                    bag.set(k, val);
+                    byVariant.set(v, bag);
+                  }
+                }
+                if (byVariant.size > 0) variantStyleByNode.set(selfId, byVariant);
+              }
+            }
+            if (an === 'variants' || an === 'initial' || an === 'animate'
+              || an === 'layout' || an === 'layoutId' || an === 'key'
+              || an === 'data-replica-solo' || an === 'ref' || /^on[A-Z]/.test(an)) return [];
+            // Remap any id still pointing at the MASTER's node. Ids the walk
+            // already produced are left alone — remapping twice would break the
+            // style rules that were rewritten to match them.
+            if (an === 'data-id' && t.isStringLiteral(a.value) && !producedIds.has(a.value.value)) {
+              return [t.jsxAttribute(a.name, t.stringLiteral(freshId(a.value.value)))];
+            }
+            return [a];
+          });
+        },
+      });
+    }
+
+    // HIDE ON THE BAKED VARIANT what only another viewport shows. The band
+    // rules above UNHIDE it per viewport; without this inline hide it would be
+    // visible everywhere, since the gate that used to hide it is gone.
+    if (responsiveVariants.size > 0) {
+      const hiddenOrigIds = new Set(
+        [...gateVisibility].filter(([, v]) => v.hiddenOnBase).map(([id]) => id),
+      );
+      if (hiddenOrigIds.size > 0) {
+        const wanted = new Set([...hiddenOrigIds].map(id => idMap.get(id) ?? id));
+        const hideFile = t.file(t.program([t.expressionStatement(clone)]));
+        traverse(hideFile, {
+          JSXElement(hpath) {
+            const op = hpath.node.openingElement;
+            const idAttr = op.attributes.find((a): a is t.JSXAttribute =>
+              t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && a.name.name === 'data-id' && t.isStringLiteral(a.value));
+            const id = idAttr && t.isStringLiteral(idAttr.value) ? idAttr.value.value : null;
+            if (!id || !wanted.has(id)) return;
+            const styleAttr = op.attributes.find((a): a is t.JSXAttribute =>
+              t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && a.name.name === 'style');
+            const none = t.objectProperty(t.identifier('display'), t.stringLiteral('none'));
+            if (styleAttr?.value?.type === 'JSXExpressionContainer' && t.isObjectExpression(styleAttr.value.expression)) {
+              const props = styleAttr.value.expression.properties;
+              const at = props.findIndex(pr => t.isObjectProperty(pr) && t.isIdentifier(pr.key) && pr.key.name === 'display');
+              // REMEMBER what is being replaced. The band rule below has to
+              // restore THIS value when the element's viewport shows it —
+              // `display: unset` resolves to the CSS initial (`inline`), not to
+              // whatever the element actually was, so a hidden flex container
+              // came back as an inline box and its children collapsed (user
+              // report 2026-09-20: the hamburger bars rendered as an outline).
+              if (at >= 0) {
+                const cur = (props[at] as t.ObjectProperty).value;
+                if (t.isStringLiteral(cur)) hiddenOriginalDisplay.set(id, cur.value);
+              }
+              if (at >= 0) props[at] = none; else props.push(none);
+            } else {
+              op.attributes.push(t.jsxAttribute(t.jsxIdentifier('style'),
+                t.jsxExpressionContainer(t.objectExpression([none]))));
+            }
+          },
+        });
+      }
+    }
+
+    // REPLAY THE RESPONSIVE VARIANT MAP AS PER-VIEWPORT CSS.
+    //
+    // A responsive instance renders a different variant per breakpoint. Detach
+    // bakes ONE of them into the nodes, so the others have to be expressed the
+    // only way a plain node can express per-viewport state: `@media` rules in
+    // the page's style block — the same shape the builder writes for any
+    // responsive override, so the panels can still read and edit them.
+    //
+    // Two kinds of difference are replayed:
+    //   • VISIBILITY — an element the baked variant hides but another viewport
+    //     shows (and the reverse). Without this the detached copy shows the
+    //     union of every variant's children on every viewport, which is exactly
+    //     what "all the menu links appear" was.
+    //   • STYLE — the per-variant entries of each element's variants object,
+    //     diffed against the baked variant so only genuine differences ship.
+    if (responsiveVariants.size > 0) {
+      const bandRules = new Map<number, string[]>();
+      const addRule = (w: number, rule: string) => {
+        const list = bandRules.get(w) ?? [];
+        list.push(rule);
+        bandRules.set(w, list);
+      };
+
+      for (const [origId, vis] of gateVisibility) {
+        const id = idMap.get(origId) ?? origId;
+        // Hidden on the baked variant → hide inline, then UNHIDE on each
+        // viewport whose variant shows it. `unset` (not a concrete display)
+        // because the element's own display lives in its style object.
+        // Restore the element's REAL display, not `unset`.
+        const shown = hiddenOriginalDisplay.get(id) ?? 'unset';
+        for (const w of vis.showWidths) addRule(w, `[data-id="${id}"] { display: ${shown} !important; }`);
+        for (const w of vis.hideWidths) addRule(w, `[data-id="${id}"] { display: none !important; }`);
+      }
+
+      // Per-variant STYLE diffs. `variantStyleByNode` was filled during the
+      // transform (element id → its variants object), so this can compare the
+      // entry each viewport's variant uses against the baked one.
+      for (const [origId, byVariant] of variantStyleByNode) {
+        const id = idMap.get(origId) ?? origId;
+        const baseProps = new Map<string, string>(byVariant.get(resolvedVariant) ?? []);
+        for (const [w, variant] of responsiveVariants) {
+          const vProps = byVariant.get(variant);
+          if (!vProps) continue;
+          const decls: string[] = [];
+          for (const [k, v] of vProps) {
+            if (baseProps.get(k) === v) continue;   // identical → nothing to override
+            decls.push(`${toKebab(k)}: ${v} !important;`);
+          }
+          if (decls.length > 0) addRule(w, `[data-id="${id}"] { ${decls.join(' ')} }`);
+        }
+      }
+
+      // Narrowest first, matching the builder's own band ordering.
+      for (const w of [...bandRules.keys()].sort((a, b) => a - b)) {
+        detachedStyleCSS.push(`@media (max-width: ${w}px) {\n  ${bandRules.get(w)!.join('\n  ')}\n}`);
+      }
+      // DIAGNOSTIC: every node that ended up VISIBLE on the baked variant but
+      // carries no per-viewport rule. A node here is one whose master hid it by
+      // a mechanism this replay does not read — which is exactly how content
+      // meant for one variant leaks onto all of them.
+      {
+        const ruled = new Set<string>();
+        for (const list of bandRules.values()) {
+          for (const r of list) {
+            const id = r.match(/\[data-id="([^"]+)"\]/)?.[1];
+            if (id) ruled.add(id);
+          }
+        }
+        const unruled: string[] = [];
+        traverse(t.file(t.program([t.expressionStatement(clone)])), {
+          JSXElement(dpath) {
+            const idAttr = dpath.node.openingElement.attributes.find((a): a is t.JSXAttribute =>
+              t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && a.name.name === 'data-id' && t.isStringLiteral(a.value));
+            const id = idAttr && t.isStringLiteral(idAttr.value) ? idAttr.value.value : null;
+            if (id && !ruled.has(id)) unruled.push(id);
+          },
+        });
+        trace.action('component-ops:detach-nodes-without-viewport-rules', {
+          instanceNodeId, count: unruled.length, ids: unruled.slice(0, 40),
+        });
+      }
+      trace.action('component-ops:detach-replayed-responsive-variants', {
+        instanceNodeId,
+        breakpoints: [...responsiveVariants.entries()].map(([w, v]) => `${w}:${v}`),
+        rules: [...bandRules.values()].reduce((n, l) => n + l.length, 0),
+      });
+    }
+
     // FINAL RESOLVE SWEEP — runs LAST, after every inline/bake pass, so it can
     // only touch what those left behind. Nested INSTANCES survive detach as
     // instances (they aren't inlined), so their props were copied verbatim from
@@ -1873,13 +2354,17 @@ export function detachInstance(
 
     // Report the detached root's fresh data-id so the caller can re-select it (the
     // instance is gone; its replacement is a normal node the user expects selected).
-    if (out) {
-      for (const a of clone.openingElement.attributes) {
-        if (t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && a.name.name === 'data-id' && t.isStringLiteral(a.value)) {
-          out.rootId = a.value.value;
-        }
+    // Captured unconditionally — the style-id rewrite below needs it, and
+    // `out` is optional, so reading it back from there made that rewrite depend
+    // on whether the CALLER happened to want the id. It silently did nothing for
+    // every caller that did not.
+    let detachedRootId = '';
+    for (const a of clone.openingElement.attributes) {
+      if (t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && a.name.name === 'data-id' && t.isStringLiteral(a.value)) {
+        detachedRootId = a.value.value;
       }
     }
+    if (out && detachedRootId) out.rootId = detachedRootId;
 
     // 4. Generate + splice into the page.
     let inlined = generate(clone, { concise: false, retainLines: false }).code;
@@ -1938,6 +2423,56 @@ export function detachInstance(
     //    silently vanish from preview/live (the canvas alone kept them via
     //    the instance afterCSS carry, which dies with the instance).
     result = mergeDetachedStyleCSSIntoPage(result, detachedStyleCSS.join('\n'));
+
+    // 6a. REPOINT THE OVERLAY at the detached root.
+    //
+    // The overlay element lives on the PAGE (overlays are root-level) and names
+    // its trigger by id — the INSTANCE's id, which detach retires. Left alone
+    // the overlay is orphaned: still rendered, never opened, and the panel shows
+    // it bound to a node that no longer exists. The detached root is the same
+    // element the user was pointing at, so it inherits the binding.
+    if (detachedRootId) {
+      const before = result;
+      result = result.replace(
+        new RegExp(`("triggerId"\\s*:\\s*")${escapeRegExp(instanceNodeId)}(")`, 'g'),
+        `$1${detachedRootId}$2`,
+      );
+      if (result !== before) {
+        trace.action('component-ops:detach-repointed-overlay', { instanceNodeId, detachedRootId });
+      }
+    }
+
+    // 6b. FOLLOW THE IDS in the PAGE's own style block.
+    //
+    // The page's responsive config for this instance — the `@media` band rules
+    // that hide/show/reorder its inner nodes per viewport — keys off the ids the
+    // instance rendered with. Detach gives those nodes FRESH ids, so without
+    // this every band rule is orphaned and the detached copy loses its
+    // per-viewport layout entirely: the whole point of detach is that it looks
+    // identical afterwards (user requirement 2026-09-19, "all the viewports have
+    // to stay intact").
+    //
+    // The instance's OWN id maps to the detached root; its inner ids map through
+    // the same `idMap` the elements were remapped with.
+    {
+      const rename = new Map<string, string>(idMap);
+      if (detachedRootId) rename.set(instanceNodeId, detachedRootId);
+      const styleBlock = /(<style>\s*\{[`'])([\s\S]*?)([`']\}\s*<\/style>)/;
+      const m = styleBlock.exec(result);
+      if (m) {
+        let renamed = 0;
+        const css = m[2].replace(/\[data-id="([^"]+)"\]/g, (whole, id: string) => {
+          const next = rename.get(id);
+          if (!next) return whole;
+          renamed++;
+          return `[data-id="${next}"]`;
+        });
+        if (renamed > 0) {
+          result = result.slice(0, m.index) + m[1] + css + m[3] + result.slice(m.index + m[0].length);
+          trace.action('component-ops:detach-followed-style-ids', { instanceNodeId, renamed });
+        }
+      }
+    }
     // The carried hooks need their React named imports on the page.
     if (pageHooks.length > 0) result = syncImports(result);
 

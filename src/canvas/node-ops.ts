@@ -26,6 +26,7 @@ import { queueMutation, setForceRender, flushNow } from '@/code/mutation/mutatio
 // every one of those mocks responsible for re-exporting the constant.
 import { RENDER_RESOLVED_MUTATIONS } from '@/code/mutation/render-resolved-mutations';
 import { dragStateOps } from '@/canvas/drag/drag-state-store';
+import { isComponentVariantRootNode } from '@/canvas/variant-root';
 import { injectNodeIntoCache, updateNodeInCache, removeNodeFromCache, moveNodeInCache, isComponentInstanceInCache, getVariantOverriddenKeys, getNodeFromCache } from '@/code/stores/store';
 import { DEFAULT_VIEWPORT_WIDTH, SVG_SHAPE_TAGS } from '@/shared/constants';
 import { getReplicaContext, svgChildCarrierOrigin, groupChildBoxToMotion, groupChildrenCarryVariantGeometry, compensateGroupChildVariantsForBaseBox } from '@/canvas/drag/replica-context';
@@ -108,6 +109,26 @@ const LONGHAND_TO_SHORTHAND: Record<string, string> = Object.fromEntries(
  * had independent copies of the filter, which is exactly how one of them got
  * fixed and the other kept corrupting the tiles.
  */
+
+/** Whether the variant-tile mirror must SKIP left/top/right/bottom.
+ *
+ * At commit time a component MASTER ROOT must skip: every tile's root sits at
+ * its own `variantConfig` x/y, so fanning the primary's insets out yanks each
+ * tile to the primary's spot for a frame before the re-render snaps it back.
+ * That was the original reason for the skip — but it was applied to every node
+ * in the file, so a master's CHILD kept stale insets all through a resize or a
+ * Position-panel scrub: the replicas grew around the wrong anchor, drifted, and
+ * only settled on release (user report 2026-09-20). A child shares one position
+ * across tiles, and any tile that owns its own is already dropped by
+ * `overridden`, so it mirrors like a page replica.
+ *
+ * Pages are untouched: their commit-time behaviour is unchanged. */
+function shouldSkipPositionMirror(id: string, domOnly: boolean): boolean {
+  if (domOnly) return false;                       // live tick: always mirror
+  if (!isComponentFilePath(_activeFilePath)) return true;
+  return isComponentVariantRootNode(getNodeFromCache(id));
+}
+
 function filterMirroredStyles(
   styles: Record<string, string>,
   overridden: Set<string> | null | undefined,
@@ -2500,7 +2521,7 @@ export function updateNodeStyles(options: {
         // DURING the live drag tick (domOnly) we DO mirror position: a synced replica (no
         // per-variant override — overridden keys already dropped) must follow the primary
         // in real time, exactly like a page-viewport replica. mouseup commit reconciles.
-        for (const [key, value] of Object.entries(filterMirroredStyles(styles, overridden, !domOnly))) {
+        for (const [key, value] of Object.entries(filterMirroredStyles(styles, overridden, shouldSkipPositionMirror(id, domOnly)))) {
           try {
             if (value === '') { (varEl.style as any)[key] = ''; }
             else { (varEl.style as any)[key] = value; }
@@ -2539,7 +2560,7 @@ export function updateNodeStyles(options: {
         // commit-time drop, the primary's left/top fanned onto every sibling tile for one frame on
         // resize-commit, then snapped back (the glitch). During the live drag tick (domOnly) we DO
         // mirror position so a synced replica follows the primary in real time (see DOM path above).
-        const mirrorStyles = filterMirroredStyles(styles, overridden, !domOnly);
+        const mirrorStyles = filterMirroredStyles(styles, overridden, shouldSkipPositionMirror(id, domOnly));
         if (Object.keys(mirrorStyles).length === 0) continue;
         // Variant overrides need !important to win against framer-motion's
         // animate-driven inline styles on the variant element.

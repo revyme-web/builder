@@ -40,6 +40,7 @@ import {
   resolveMediaGateTernariesInCode,
   inlineCanvasNodePropRefsInCode,
   stripCanvasNodeMotionRefsInCode,
+  flattenCanvasNodeVariantStylesInCode,
   stashCanvasNodeConnectionsInCode,
   updateNodeTextInCode,
   updateVariantTextInCode,
@@ -51,6 +52,7 @@ import {
   replaceNodeTextContent,
   stripInlineSpanStyleInCode,
   healDanglingModuleJsxInCode,
+  enforceSingleRotationChannelInCode,
   healStyleBlockSelectorAttrsInCode,
   addNodeInCode,
   addCanvasNodeInCode,
@@ -232,7 +234,7 @@ export type Mutation =
    *  toggle, doesn't pass deltas). Empty list → unwraps to plain rendering. */
   | { type: 'setVariantVisibility'; nodeId: string; hiddenVariants: string[]; allVariants: string[] }
   /** Set conditional order in style based on variant state (for layout FLIP reorder). */
-  | { type: 'setConditionalOrder'; nodeId: string; orderMap: Record<string, number> }
+  | { type: 'setConditionalOrder'; nodeId: string; orderMap: Record<string, number>; pinVariants?: string[] }
   /** Set a layout-affecting style prop as an inline `style` ternary keyed on the
    *  variant (so framer-motion `layout` FLIP engages instead of snapping). */
   | { type: 'setConditionalStyle'; nodeId: string; prop: string; variantName: string; value: string }
@@ -1183,6 +1185,11 @@ export function flushNow(scope?: QueueScope): void {
     // only fixed by a later async processQueue). Mirrors the processQueue heal.
     if (code.indexOf('const canvasNodes') !== -1) {
       code = healDanglingCanvasNodeBindings(code, resolveDetailPageRow(code));
+      // A drag-out writes the rotation into BOTH channels across two mutations
+      // of one flush (the move's fold, then the drag's own transform), and the
+      // canvas applies both — doubling the angle. Collapse to one here, where
+      // the whole batch is visible.
+      code = enforceSingleRotationChannelInCode(code);
       // A search field / dynamic CMS filter pasted onto the canvas references a
       // page useState var at module scope → "X is not defined". Neutralize it.
       code = dormantizePageVarBindingsInCanvas(code);
@@ -1492,6 +1499,21 @@ export function validateGeneratedCode(code: string): string | null {
     // `initial` next to an Appear effect's initial — the appear died at
     // runtime and the canvas missed the variant wiring).
     let dupAttr: { name: string; line?: number } | null = null;
+    // DUPLICATE data-id — the SAME node written into the file twice. Every
+    // structural generator locates a node by its data-id, so a duplicate makes
+    // the document ambiguous: the parser registers two nodes, the layers tree
+    // shows two rows, and the next edit resolves to whichever copy it finds
+    // first. Nothing downstream can repair it, because there is no longer a
+    // fact about which one is real.
+    //
+    // This is a SAFETY NET, not a fix: it exists because the ways a node can be
+    // duplicated are open-ended (a removal that silently no-ops on a wrapper
+    // shape the splice does not recognise, leaving the clone to be inserted
+    // anyway — the CMS "Load More" and overlay duplication, 2026-09-19). Each
+    // such splice bug still has to be fixed at source; this stops the corrupt
+    // file being ACCEPTED while that happens, turning silent corruption into a
+    // refused mutation.
+    let dupId: { id: string; line?: number } | null = null;
     traverse(ast, {
       JSXOpeningElement(path: any) {
         if (dupAttr) return;
@@ -1507,6 +1529,33 @@ export function validateGeneratedCode(code: string): string | null {
     if (dupAttr !== null) {
       const d = dupAttr as { name: string; line?: number };
       return `Duplicate JSX attribute \`${d.name}\` on the element at line ${d.line ?? '?'} — React keeps only the LAST one while the editor reads the FIRST, so they permanently disagree. Merge the two values into one attribute.`;
+    }
+    {
+      // Collected in one pass; only STRING-literal ids are comparable (a
+      // computed `data-id={expr}` belongs to a .map() row and is legitimately
+      // repeated per record at runtime, never in source).
+      const seenIds = new Map<string, number | undefined>();
+      traverse(ast, {
+        JSXOpeningElement(path: any) {
+          if (dupId) return;
+          for (const attr of path.node.attributes) {
+            if (attr.type !== 'JSXAttribute' || attr.name?.type !== 'JSXIdentifier') continue;
+            if (attr.name.name !== 'data-id') continue;
+            if (attr.value?.type !== 'StringLiteral') continue;
+            const id = attr.value.value as string;
+            if (seenIds.has(id)) {
+              dupId = { id, line: attr.loc?.start.line };
+              return;
+            }
+            seenIds.set(id, attr.loc?.start.line);
+          }
+        },
+      });
+      if (dupId !== null) {
+        const d = dupId as { id: string; line?: number };
+        const first = seenIds.get(d.id);
+        return `Duplicate data-id \`${d.id}\` — the same node appears twice (first at line ${first ?? '?'}, again at line ${d.line ?? '?'}). Every edit resolves a node by its data-id, so two copies make the document ambiguous: the layers panel shows the node twice and later edits hit an arbitrary one. The move/reorder that produced this removed the original from one place and inserted a copy in another without deleting it.`;
+      }
     }
     traverse(ast, {
       Program(p) {
@@ -2134,6 +2183,9 @@ function processQueue(): void {
   // dormantize it (placeholder + Missing) so it stops blocking EVERY later mutation.
   if (codeChanged && code.indexOf('const canvasNodes') !== -1) {
     code = healDanglingCanvasNodeBindings(code, resolveDetailPageRow(code));
+    // Same one-channel collapse as the synchronous drag-commit path above: the
+    // rotation must not land in `rotate` AND `transform`, or it applies twice.
+    code = enforceSingleRotationChannelInCode(code);
     // A whole <form> dragged onto the canvas carries onSubmit + FormSubmit
     // initialVariant + responsive-attr __mq gates that reference page-fn vars
     // out of scope in module-scope canvasNodes → dormantize them (no crash).
@@ -2192,7 +2244,26 @@ function processQueue(): void {
     code = healDriftedConnectionHandlersInCode(code);
   }
   const validationError = codeChanged ? validateGeneratedCode(code) : null;
-  if (validationError) {
+  // Only block damage THIS flush caused — the same contract `flushNow` has
+  // carried since 2026-07-25 (see the comment at its own gate). If the file was
+  // ALREADY invalid going in, rolling back repairs nothing and instead refuses
+  // every subsequent action, leaving the user stuck on a broken page with no way
+  // to edit out of it. The heal passes above are what actually repair such a
+  // file; this gate exists to stop NEW corruption, not to quarantine old.
+  //
+  // This matters immediately for the duplicate-`data-id` check added to
+  // `validateGeneratedCode`: pages already carrying a duplicate from the
+  // move/reorder splice bugs would otherwise become entirely uneditable the
+  // moment the check shipped.
+  const wasAlreadyInvalid = validationError ? validateGeneratedCode(currentCode) : null;
+  if (validationError && wasAlreadyInvalid) {
+    trace.error('mutation-queue:validation-failed-preexisting', {
+      error: validationError,
+      preexisting: wasAlreadyInvalid,
+      mutationTypes: mutations.map(m => m.type),
+    });
+  }
+  if (validationError && !wasAlreadyInvalid) {
     const detail: MutationErrorDetail = {
       message: validationError,
       mutationTypes: mutations.map(m => m.type),
@@ -2745,6 +2816,11 @@ function applyMutationCore(code: string, mutation: Mutation): string {
           // && <el>}` — all referencing FUNCTION-scope idents that don't exist at module scope → the validator
           // blocks the drag. Strip them (a canvas node is a static free element; it never variant-animates).
           moved = stripCanvasNodeMotionRefsInCode(moved);
+          // The per-node flatten above heals only the dragged node. A dragged SUBTREE carries its
+          // children's `variant === 'v' ? … : …` styles out too, and they reference the same
+          // out-of-scope identifier — sweep every canvas node for the style half, exactly as the
+          // line above does for the attr half.
+          moved = flattenCanvasNodeVariantStylesInCode(moved);
           // A variant CONNECTION on the dragged-out node is an `on*={() => setVariant('v')}` handler — undefined
           // at module scope. Pull the target into `data-conn-target` on the canvas node (renders the arrow on the
           // canvas to that variant + restores the live handler on drag-back) and strip the crashing handler.
@@ -3265,7 +3341,7 @@ function applyMutationCore(code: string, mutation: Mutation): string {
         return setVariantVisibilityInCode(code, mutation.nodeId, mutation.hiddenVariants, mutation.allVariants);
 
       case 'setConditionalOrder':
-        return setConditionalOrderInCode(code, mutation.nodeId, mutation.orderMap);
+        return setConditionalOrderInCode(code, mutation.nodeId, mutation.orderMap, mutation.pinVariants);
 
       case 'setConditionalStyle':
         return setConditionalStyleInCode(code, mutation.nodeId, mutation.prop, mutation.variantName, mutation.value);

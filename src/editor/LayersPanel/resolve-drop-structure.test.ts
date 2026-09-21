@@ -13,10 +13,10 @@ import { describe, it, expect } from 'vitest';
 import type { CanvasNode } from '@/code/parsing/parser';
 import { resolveLayerDropStructure, layerAcceptsInsideDrop } from './drag';
 
-function nodeMap(entries: Record<string, { parentId?: string | null; children?: string[] }>): Map<string, CanvasNode> {
+function nodeMap(entries: Record<string, { parentId?: string | null; children?: string[]; type?: string }>): Map<string, CanvasNode> {
   const map = new Map<string, CanvasNode>();
   for (const [id, n] of Object.entries(entries)) {
-    map.set(id, { id, parentId: n.parentId ?? null, children: n.children ?? [] } as unknown as CanvasNode);
+    map.set(id, { id, parentId: n.parentId ?? null, children: n.children ?? [], ...(n.type ? { type: n.type } : {}) } as unknown as CanvasNode);
   }
   return map;
 }
@@ -124,5 +124,49 @@ describe('layerAcceptsInsideDrop', () => {
   it('the CMS exemption does not leak to ordinary links', () => {
     expect(layerAcceptsInsideDrop('a', { isCmsRowTemplate: false })).toBe(false);
     expect(layerAcceptsInsideDrop('a', {})).toBe(false);
+  });
+});
+
+// FIT TEXT is a PAIR: `<svg data-id="<id>-svg" data-name="FIT"><foreignObject>
+// <p data-id="<id>">`. The layers tree shows the inner <p>, but the element
+// that actually sits in the parent is the svg WRAPPER.
+//
+// Dropping BESIDE a FIT text therefore resolved its parent to the
+// `<foreignObject>` and dropped the node INSIDE the FIT wrapper, where it is
+// invisible to every layout the user can see (user report 2026-09-20).
+describe('resolveLayerDropStructure — FIT text pair', () => {
+  const fitTree = () => nodeMap({
+    row:      { children: ['a', 'txt-svg', 'b'] },
+    a:        { parentId: 'row' },
+    'txt-svg': { parentId: 'row', children: ['fo'], type: 'svg' },
+    fo:       { parentId: 'txt-svg', children: ['txt'], type: 'foreignObject' },
+    txt:      { parentId: 'fo' },
+    b:        { parentId: 'row' },
+  });
+
+  it('resolves a drop BEFORE the inner text against the ROW, not the foreignObject', () => {
+    const r = resolveLayerDropStructure(fitTree(), { nodeId: 'txt', position: 'before' }, 'a')!;
+    expect(r.finalParentId).toBe('row');
+    expect(r.insertBeforeId).toBe('txt-svg');
+  });
+
+  it('resolves a drop AFTER the inner text against the ROW', () => {
+    const r = resolveLayerDropStructure(fitTree(), { nodeId: 'txt', position: 'after' }, 'a')!;
+    expect(r.finalParentId).toBe('row');
+    // dragged `a` is excluded from the sibling space: [txt-svg, b] → after txt-svg = 1
+    expect(r.structuralInsertIndex).toBe(1);
+    expect(r.insertBeforeId).toBe('b');
+  });
+
+  it('indexes in the ROW space, so the wrapper counts once and the inner not at all', () => {
+    const r = resolveLayerDropStructure(fitTree(), { nodeId: 'txt', position: 'before' }, 'b')!;
+    // siblings without the dragged `b`: [a, txt-svg] → before txt-svg = 1
+    expect(r.structuralInsertIndex).toBe(1);
+  });
+
+  it('a plain sibling is unaffected by the redirect', () => {
+    const r = resolveLayerDropStructure(fitTree(), { nodeId: 'b', position: 'before' }, 'a')!;
+    expect(r.finalParentId).toBe('row');
+    expect(r.insertBeforeId).toBe('b');
   });
 });

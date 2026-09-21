@@ -1924,3 +1924,70 @@ describe('band re-serialization preserves NON-band top-level rules (the vanished
     expect(out).toContain('[data-id="keep"]:hover');
   });
 });
+
+// PRUNING AN AUTHORED BRANCH IS NOT LOSS-FREE.
+//
+// `setConditionalOrderInCode` drops branches equal to the default to stop dead
+// `v1 ? 1 : 1` accumulating. Applied to an ALREADY-AUTHORED branch that is
+// only momentarily equal, it converts "Tablet is pinned at 3" into "Tablet
+// inherits Desktop" — so the NEXT primary reorder drags Tablet along. The user
+// saw exactly that: first primary drag fine, second one moved Tablet
+// (2026-09-19).
+describe('setConditionalOrderInCode — authored branches survive coinciding with the default', () => {
+  const el = (order: string) => `export default function C({ initialVariant = 'default' }) {
+  return (
+    <div data-id="root" style={{ display: 'flex' }}>
+      <div data-id="a" style={{ order: ${order} }}>A</div>
+    </div>
+  );
+}`;
+  const orderOf = (code: string) => {
+    const m = code.match(/data-id="a"[\s\S]*?order:\s*([^,\n}]+)/);
+    return m ? m[1].trim() : '-';
+  };
+
+  test('keeps a variant branch when the new default happens to equal it', () => {
+    const src = el("initialVariant === 'variant-1' ? 3 : 1");
+    const out = setConditionalOrderInCode(src, 'a', { default: 3 });
+    expect(orderOf(out)).toContain("initialVariant === 'variant-1' ? 3");
+  });
+
+  // The regression itself: after the collapse, a later default change dragged
+  // the variant with it.
+  test('a later default change does NOT move the variant', () => {
+    const src = el("initialVariant === 'variant-1' ? 3 : 1");
+    const once = setConditionalOrderInCode(src, 'a', { default: 3 });
+    const twice = setConditionalOrderInCode(once, 'a', { default: 5 });
+    expect(orderOf(twice)).toContain("initialVariant === 'variant-1' ? 3");
+    expect(orderOf(twice)).toContain(': 5');
+  });
+
+  test('several authored branches all survive', () => {
+    const src = el("initialVariant === 'variant-1' ? 2 : initialVariant === 'variant-2' ? 4 : 1");
+    const out = setConditionalOrderInCode(src, 'a', { default: 4 });
+    const o = orderOf(out);
+    expect(o).toContain("'variant-1' ? 2");
+    expect(o).toContain("'variant-2' ? 4");
+  });
+
+  // The behaviour the pruning exists for is preserved: a branch this call is
+  // INTRODUCING that equals the default is still dropped, so repeated no-op
+  // reorders don't accumulate dead branches.
+  test('still drops a NEW branch that equals the default', () => {
+    const src = el("'1'");
+    const out = setConditionalOrderInCode(src, 'a', { default: 2, 'variant-1': 2 });
+    expect(orderOf(out)).toBe("'2'");
+  });
+
+  test('a new branch that DIFFERS from the default is written', () => {
+    const src = el("'1'");
+    const out = setConditionalOrderInCode(src, 'a', { default: 2, 'variant-1': 5 });
+    expect(orderOf(out)).toContain("'variant-1' ? 5");
+    expect(orderOf(out)).toContain(': 2');
+  });
+
+  test('a plain order with no branches still collapses to a quoted literal', () => {
+    const out = setConditionalOrderInCode(el("'1'"), 'a', { default: 3 });
+    expect(orderOf(out)).toBe("'3'");
+  });
+});

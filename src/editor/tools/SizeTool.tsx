@@ -4,6 +4,9 @@
 // Fill mode: maps to CSS `flex: N 0 0px` when parent is flex along that axis.
 
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { vectorSetLinkedWrite, vectorSetUnitAction, readFitDim, isFitRow, FIT_DIM_ATTR, VECTOR_SET_DISABLED_UNITS } from '@/code/icons/vector-set-fit';
+import { parseIconSetConfig } from '@/code/icons/icon-set-config';
+import { projectFS } from '@/code/project/project-fs';
 import { useLivePreview } from '../hooks/useLivePreview';
 import { useAtomValue, useSetAtom, getDefaultStore } from 'jotai';
 import { canvasInteractingAtom, getNodesSnapshot, selectedIdsAtom } from '@/code/stores/store';
@@ -352,6 +355,26 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
   // primary's locked ratio. Only fires when a "Reset Override" is actually
   // shown (i.e. the dimension is overridden on this replica/variant).
   const isVectorSet = !!node && isVectorSetComponentFile(node.componentFile);
+  // The selected variant's NATURAL size, for the locked-aspect Fit below. A
+  // vector's aspect is fixed — Framer greys out the lock icon for exactly this
+  // reason — so Fit on one dimension means "the size that keeps this variant's
+  // aspect", derived from the OTHER dimension. The generic instance-hug path
+  // produces the variant's INTRINSIC size instead, which is why a 26px-wide
+  // icon came out 217px tall (user report 2026-09-21).
+  const vectorVariantNatural = useMemo(() => {
+    if (!isVectorSet || !node?.componentFile) return null;
+    try {
+      const code = projectFS.readFile(node.componentFile);
+      if (!code) return null;
+      const iconName = typeof node.attrs?.name === 'string' ? node.attrs.name : null;
+      const cfgs = parseIconSetConfig(code);
+      const cfg = (iconName ? cfgs.find(c => c.name === iconName) : null) ?? cfgs.find(c => c.isPrimary) ?? cfgs[0];
+      return cfg && cfg.width > 0 && cfg.height > 0 ? { width: cfg.width, height: cfg.height } : null;
+    } catch { return null; }
+  }, [isVectorSet, node?.componentFile, node?.attrs?.name]);
+  // Which row is on Fit — a display MODE held in a marker attribute, because the
+  // stored sizes are always definite px (see vector-set-fit.ts).
+  const vectorFitDim = isVectorSet ? readFitDim(node?.attrs) : null;
   const resetVectorSetSize = useCallback(
     () => onUpdateMultiple({ width: '', height: '' }),
     [onUpdateMultiple],
@@ -715,7 +738,16 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     }
   }, [selectedIdsForSize, nodeId]);
   const selfNodeSub = useNode(nodeId);
-  const isCodeComponentInstance = selfNodeSub?.isCodeComponent === true;
+  // An ICON SET is flagged `isCodeComponent` only so it LIVE-RENDERS through the
+  // Babel-standalone runtime instead of being expanded inline (project-parser's
+  // `@iconSet` branch). It is not a black box like a real code component: it
+  // renders an SVG with an intrinsic size, so Fit is as meaningful for it as
+  // for a design-component instance — and the panel greyed it out purely
+  // because the two share that one flag (user report 2026-09-21, "no height
+  // auto available on the vector set although it should act like the design
+  // component"). Gate on what the option MEANS, not on how the node renders.
+  const isIconSetInstance = isVectorSetComponentFile(selfNodeSub?.componentFile);
+  const isCodeComponentInstance = selfNodeSub?.isCodeComponent === true && !isIconSetInstance;
   const disableAutoForCode = useCallback(
     (opts: { value: string; label: string; disabled?: boolean }[]) =>
       isCodeComponentInstance
@@ -726,6 +758,13 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
 
   const widthUnitOptions = useMemo(() => {
     if (pxOnly) return UNIT_OPTIONS.map(o => o.value === 'px' ? o : { ...o, disabled: true });
+    // VECTOR SET: a viewport unit or a flex fill sizes ONE axis from outside
+    // and breaks the ratio the two dimensions share (choosing `vw` produced a
+    // 504 × 32 sliver) — listed, but disabled (user report 2026-09-21).
+    if (isIconSetInstance) {
+      return [...UNIT_OPTIONS, { value: 'fill', label: 'fill' }]
+        .map(o => VECTOR_SET_DISABLED_UNITS.has(o.value) ? { ...o, disabled: true } : o);
+    }
     // FIT text: the wrapper's width is the box the text scales INTO, so only a
     // definite Fixed (px) or Relative (%) makes sense — reference parity
     // (Fill / Fit Content greyed). auto/vw/vh/fill are disabled.
@@ -735,16 +774,23 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     }
     if (!widthCanFill) return disableAutoForCode(UNIT_OPTIONS);
     return disableAutoForCode([...UNIT_OPTIONS, { value: 'fill', label: 'fill' }]);
-  }, [widthCanFill, isTopLevel, pxOnly, disableAutoForCode, isFitSvgWrapper]);
+  }, [widthCanFill, isTopLevel, pxOnly, disableAutoForCode, isFitSvgWrapper, isIconSetInstance]);
 
   const heightUnitOptions = useMemo(() => {
     if (pxOnly) return UNIT_OPTIONS.map(o => o.value === 'px' ? o : { ...o, disabled: true });
+    // VECTOR SET: a viewport unit or a flex fill sizes ONE axis from outside
+    // and breaks the ratio the two dimensions share (choosing `vw` produced a
+    // 504 × 32 sliver) — listed, but disabled (user report 2026-09-21).
+    if (isIconSetInstance) {
+      return [...UNIT_OPTIONS, { value: 'fill', label: 'fill' }]
+        .map(o => VECTOR_SET_DISABLED_UNITS.has(o.value) ? { ...o, disabled: true } : o);
+    }
     if (isTopLevel) {
       return disableAutoForCode(UNIT_OPTIONS.map(o => o.value === 'px' || o.value === 'auto' ? o : { ...o, disabled: true }));
     }
     if (!heightCanFill) return disableAutoForCode(UNIT_OPTIONS);
     return disableAutoForCode([...UNIT_OPTIONS, { value: 'fill', label: 'fill' }]);
-  }, [heightCanFill, isTopLevel, pxOnly, disableAutoForCode]);
+  }, [heightCanFill, isTopLevel, pxOnly, disableAutoForCode, isIconSetInstance]);
 
   // Min/max width/height accept ONLY Fixed (px) or % — auto/vw/vh don't apply as a
   // constraint (clearing a min/max = REMOVE the row via its ×, not an "auto" unit).
@@ -900,12 +946,41 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
   // Live scrub twin: patch every key of the compensated write DOM-only so the
   // element stays anchored WHILE the chevron drags, not only on release.
   const liveSizeScrub = useCallback((axis: 'width' | 'height', v: string) => {
+    // VECTOR SET: patch BOTH dimensions, from the same function the commit
+    // uses — see vectorSetLinkedWrite. `liveSize` carries the other row's
+    // number so it counts along instead of sitting on the pre-scrub value.
+    const linked = isVectorSet ? vectorSetLinkedWrite(vectorVariantNatural, axis, v) : null;
+    if (linked) {
+      for (const [k, val] of Object.entries(linked)) updateStyleLive(k, val);
+      setLiveSize({ w: linked.width, h: linked.height });
+      return;
+    }
     const w = transformedSizeWrite(axis, v);
     if (!w) { updateStyleLive(axis, clampNonNegative(v)); return; }
     for (const [k, val] of Object.entries(w)) updateStyleLive(k, val);
-  }, [transformedSizeWrite, updateStyleLive]);
+  }, [transformedSizeWrite, updateStyleLive, isVectorSet, vectorVariantNatural, setLiveSize]);
 
   const handleWidthChange = useCallback((v: string) => {
+    // VECTOR SET — the two dimensions are ONE number: a vector has a single
+    // aspect, so typing either field writes BOTH as definite px through the
+    // variant's ratio. Definite px is what the live-component pipeline is built
+    // around (the sandbox wrapper bakes user dims as px); `auto` +
+    // `aspect-ratio` failed on this node twice — an auto width sat at a stale
+    // 227px because the wrapper feeds its old measurement back
+    // (`hasUserDim` counts 'auto'), and an auto height was dropped by the
+    // instance style writer, leaving the wrapper at its 40px placeholder (user
+    // reports 2026-09-21). `aspectRatio: ''` clears any ratio an earlier
+    // attempt stored, which would otherwise route the NEXT edit through the
+    // generic lock and flip a dimension back to `auto`.
+    const linkedW = isVectorSet ? vectorSetLinkedWrite(vectorVariantNatural, 'width', v) : null;
+    if (linkedW) {
+      onUpdateMultiple({ ...linkedW, aspectRatio: '' });
+      // A px written INTO a Fit row (label scrub — typing arrives as a unit
+      // change) makes it the fixed one; the label must not go on saying auto.
+      if (isFitRow(vectorFitDim, 'width')) queueMutation({ type: 'updateHtmlAttrs', nodeId, attrs: { [FIT_DIM_ATTR]: 'height' } });
+      trace.action('size:width-change-vector-set', { nodeId, ...linkedW });
+      return;
+    }
     // Currently in fill mode — changing the multiplier (preserve shrink + basis)
     if (isWidthFill) {
       const mult = Math.max(1, parseFloat(v) || 1);
@@ -931,7 +1006,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
       }
       const newUnit = (v.replace(/[\d.-]/g, '').trim() || 'px') as DimUnit;
       const heightIsAuto = styles.height === 'auto';
-      if (heightIsAuto) {
+if (heightIsAuto) {
         // Width is already the controlling dimension — straight update.
         // CSS keeps height aligned to the ratio for free.
         onUpdate('width', v);
@@ -960,7 +1035,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
       if (compensated) onUpdateMultiple(compensated);
       else onUpdate('width', clampNonNegative(v));
     }
-  }, [isWidthFill, inset, styles, nodeId, computed.parentWidth, computed.width, aspectRatioNum, onUpdate, onUpdateMultiple, transformedSizeWrite]);
+  }, [isWidthFill, inset, styles, nodeId, computed.parentWidth, computed.width, aspectRatioNum, onUpdate, onUpdateMultiple, transformedSizeWrite, isVectorSet, vectorVariantNatural, vectorFitDim]);
 
   // Shared trigger for the "switch to auto on a no-layout frame" case.
   // Called from both width AND height unit-change handlers BEFORE writing
@@ -987,6 +1062,21 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
   }, [nodeId, vpId]);
 
   const handleWidthUnitChange = useCallback((fromUnit: DimUnit, toUnit: DimUnit, typedNum?: number) => {
+    // VECTOR SET: the unit dropdown drives a Fit MODE, not the stored unit.
+    if (isVectorSet && vectorVariantNatural) {
+      const act = vectorSetUnitAction({
+        dim: 'width', toUnit, typedNum, variant: vectorVariantNatural,
+        computedWidth: computed.width, computedHeight: computed.height, fitDim: vectorFitDim,
+      });
+      if (act === 'blocked') {
+        trace.action('size:unit-change-blocked', { label: 'W', reason: 'vector-set-unit', toUnit });
+        return;
+      }
+      if (Object.keys(act.styles).length > 0) onUpdateMultiple(act.styles);
+      if (act.fitDim !== undefined) queueMutation({ type: 'updateHtmlAttrs', nodeId, attrs: { [FIT_DIM_ATTR]: act.fitDim } });
+      trace.action('size:unit-change', { label: 'W', from: fromUnit, to: toUnit, vectorSet: act });
+      if (!act.passThrough) return;
+    }
     // Switching TO fill
     if (toUnit === 'fill') {
       trace.action('size:width-fill', { nodeId, isMainAxis: widthIsMainAxis });
@@ -1019,10 +1109,17 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
       // CODE COMPONENT instance: auto is not a legal state (the option is
       // greyed out in the dropdown; this guards keyboard/legacy paths).
       // Removing the override would leave the wrapper sizeless → collapse.
-      if (selfNode?.isCodeComponent) {
+      // An ICON SET carries `isCodeComponent` only so it LIVE-RENDERS instead of
+      // being expanded inline; it paints an SVG with an intrinsic size, so auto
+      // resolves. Enabling the dropdown option alone did nothing because this
+      // guard still refused the write (user report 2026-09-21) — the two
+      // decisions have to agree, so both ask the same question.
+      if (selfNode?.isCodeComponent && !isVectorSetComponentFile(selfNode.componentFile)) {
         trace.action('size:unit-change-blocked', { label: 'W', reason: 'code-component-fixed-only' });
         return;
       }
+      // VECTOR SET: locked aspect — derive this dimension from the other rather
+      // than hugging the variant's intrinsic size. See vectorSetFitSize.
       // Exiting main-axis FILL: neutralise the grow flex in the SAME write —
       // a fit-size width with `flex: '1 0 0px'` left behind still DETECTS as
       // fill (isWidthFillMain), so the dropdown snaps back and the node keeps
@@ -1083,10 +1180,19 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     }
     onUpdate('width', newVal);
     trace.action('size:unit-change', { label: 'W', from: fromUnit, to: toUnit, currentPx, newVal });
-  }, [widthIsMainAxis, isWidthFillMain, flexVal, nodeId, computed, onUpdate, onUpdateMultiple, maybeInjectLayoutForAuto, freezeChildrenForAuto, activeComponentVariant]);
+  }, [widthIsMainAxis, isWidthFillMain, flexVal, nodeId, computed, onUpdate, onUpdateMultiple, maybeInjectLayoutForAuto, freezeChildrenForAuto, activeComponentVariant, isVectorSet, vectorVariantNatural, vectorFitDim, computed.width, computed.height]);
 
   // ─── Height change handler ────────────────────────────────────────────
   const handleHeightChange = useCallback((v: string) => {
+    // VECTOR SET — mirror of handleWidthChange: both dimensions, definite px,
+    // linked through the variant's ratio.
+    const linkedH = isVectorSet ? vectorSetLinkedWrite(vectorVariantNatural, 'height', v) : null;
+    if (linkedH) {
+      onUpdateMultiple({ ...linkedH, aspectRatio: '' });
+      if (isFitRow(vectorFitDim, 'height')) queueMutation({ type: 'updateHtmlAttrs', nodeId, attrs: { [FIT_DIM_ATTR]: 'width' } });
+      trace.action('size:height-change-vector-set', { nodeId, ...linkedH });
+      return;
+    }
     // Currently in fill mode — changing the multiplier (preserve shrink + basis)
     if (isHeightFill) {
       const mult = Math.max(1, parseFloat(v) || 1);
@@ -1159,9 +1265,24 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
       if (compensated) onUpdateMultiple(compensated);
       else onUpdate('height', clampNonNegative(v));
     }
-  }, [isHeightFill, inset, styles, nodeId, computed.parentHeight, computed.height, computed.width, computed.parentWidth, aspectRatioNum, onUpdate, onUpdateMultiple, transformedSizeWrite]);
+  }, [isHeightFill, inset, styles, nodeId, computed.parentHeight, computed.height, computed.width, computed.parentWidth, aspectRatioNum, onUpdate, onUpdateMultiple, transformedSizeWrite, isVectorSet, vectorVariantNatural, vectorFitDim]);
 
   const handleHeightUnitChange = useCallback((fromUnit: DimUnit, toUnit: DimUnit, typedNum?: number) => {
+    // VECTOR SET: the unit dropdown drives a Fit MODE, not the stored unit.
+    if (isVectorSet && vectorVariantNatural) {
+      const act = vectorSetUnitAction({
+        dim: 'height', toUnit, typedNum, variant: vectorVariantNatural,
+        computedWidth: computed.width, computedHeight: computed.height, fitDim: vectorFitDim,
+      });
+      if (act === 'blocked') {
+        trace.action('size:unit-change-blocked', { label: 'H', reason: 'vector-set-unit', toUnit });
+        return;
+      }
+      if (Object.keys(act.styles).length > 0) onUpdateMultiple(act.styles);
+      if (act.fitDim !== undefined) queueMutation({ type: 'updateHtmlAttrs', nodeId, attrs: { [FIT_DIM_ATTR]: act.fitDim } });
+      trace.action('size:unit-change', { label: 'H', from: fromUnit, to: toUnit, vectorSet: act });
+      if (!act.passThrough) return;
+    }
     // Switching TO fill
     if (toUnit === 'fill') {
       trace.action('size:height-fill', { nodeId, isMainAxis: heightIsMainAxis });
@@ -1184,10 +1305,14 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     if (toUnit === 'auto') {
       const selfNode = getNodesSnapshot().get(nodeId);
       // CODE COMPONENT instance: fixed-only — see handleWidthUnitChange.
-      if (selfNode?.isCodeComponent) {
+      // Icon sets are exempt for the same reason as the width branch above:
+      // the flag means "live-rendered", not "no intrinsic size".
+      if (selfNode?.isCodeComponent && !isVectorSetComponentFile(selfNode.componentFile)) {
         trace.action('size:unit-change-blocked', { label: 'H', reason: 'code-component-fixed-only' });
         return;
       }
+      // VECTOR SET: locked aspect — derive this dimension from the other rather
+      // than hugging the variant's intrinsic size. See vectorSetFitSize.
       // Exiting main-axis FILL: clear the grow flex in the same write — see
       // handleWidthUnitChange. Same fix mirrored here.
       const unfill = exitFillFlexPatch(heightIsMainAxis, flexVal);
@@ -1229,7 +1354,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
     }
     onUpdate('height', newVal);
     trace.action('size:unit-change', { label: 'H', from: fromUnit, to: toUnit, currentPx, newVal });
-  }, [heightIsMainAxis, isHeightFillMain, flexVal, nodeId, computed, onUpdate, onUpdateMultiple, maybeInjectLayoutForAuto, freezeChildrenForAuto, activeComponentVariant]);
+  }, [heightIsMainAxis, isHeightFillMain, flexVal, nodeId, computed, onUpdate, onUpdateMultiple, maybeInjectLayoutForAuto, freezeChildrenForAuto, activeComponentVariant, isVectorSet, vectorVariantNatural, vectorFitDim, computed.width, computed.height]);
 
   // ─── Flex shorthand parsing ──────────────────────────────────────────
   const flex = parseFlex(styles.flex || '');
@@ -1354,10 +1479,10 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
           onChangeLive={isWidthFill || inset.horizontalInset ? undefined : (v) => liveSizeScrub('width', v)}
           mirrorNegative={canMirrorThroughZero && !isWidthFill && !inset.horizontalInset}
           onUnitChange={handleWidthUnitChange}
-          computedSize={computed.width}
+          computedSize={isVectorSet && liveSize?.w ? parseFloat(liveSize.w) : computed.width}
           parentSize={computed.parentWidth}
           unitOptions={widthUnitOptions}
-          currentUnit={widthHug ? 'auto' : isWidthFill ? 'fill' : undefined}
+          currentUnit={isFitRow(vectorFitDim, 'width') ? 'auto' : widthHug ? 'auto' : isWidthFill ? 'fill' : undefined}
           hideResetStyle={isPrimary}
           overridden={isWidthFill && flexFillOverridden ? true : undefined}
           onResetOverride={isVectorSet ? resetVectorSetSize : (isWidthFill && flexFillOverridden ? resetFlexFillOverride : undefined)}
@@ -1406,16 +1531,25 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
               />
             </svg>
 
+            {/* A VECTOR SET's ratio is not a user choice — the artwork has one
+                aspect and both dimensions derive from it, so the toggle is shown
+                locked and disabled (reference parity: Framer greys this icon out
+                for a vector). Everything else keeps the normal toggle. */}
             <button
               type="button"
-              onClick={handleAspectRatioToggle}
-              className={`p-0.5 hover:bg-[var(--bg-hover)] cut-corners transition-colors absolute z-10 pointer-events-auto cursor-pointer ${
-                isAspectRatioLocked ? 'text-[var(--accent-text)]' : 'text-[var(--text-secondary)]'
+              onClick={isVectorSet ? undefined : handleAspectRatioToggle}
+              disabled={isVectorSet}
+              className={`p-0.5 cut-corners transition-colors absolute z-10 pointer-events-auto ${
+                isVectorSet
+                  ? 'text-[var(--text-secondary)] opacity-50 cursor-default'
+                  : `cursor-pointer hover:bg-[var(--bg-hover)] ${isAspectRatioLocked ? 'text-[var(--accent-text)]' : 'text-[var(--text-secondary)]'}`
               }`}
               style={{ left: -7, top: 2 }}
-              title={isAspectRatioLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}
+              title={isVectorSet
+                ? 'A vector keeps its aspect ratio'
+                : isAspectRatioLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}
             >
-              {isAspectRatioLocked ? (
+              {(isAspectRatioLocked || isVectorSet) ? (
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -1521,10 +1655,10 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
           onChangeLive={isFitSvgWrapper || isHeightFill || inset.verticalInset ? undefined : (v) => liveSizeScrub('height', v)}
           mirrorNegative={canMirrorThroughZero && !isFitSvgWrapper && !isHeightFill && !inset.verticalInset}
           onUnitChange={isFitSvgWrapper ? () => {} : handleHeightUnitChange}
-          computedSize={computed.height}
+          computedSize={isVectorSet && liveSize?.h ? parseFloat(liveSize.h) : computed.height}
           parentSize={computed.parentHeight}
           unitOptions={isFitSvgWrapper ? [{ value: 'fit', label: 'Fit' }, ...heightUnitOptions.map(o => ({ ...o, disabled: true }))] : heightUnitOptions}
-          currentUnit={heightHug ? 'auto' : isFitSvgWrapper ? 'fit' as DimUnit : isHeightFill ? 'fill' : undefined}
+          currentUnit={isFitRow(vectorFitDim, 'height') ? 'auto' : heightHug ? 'auto' : isFitSvgWrapper ? 'fit' as DimUnit : isHeightFill ? 'fill' : undefined}
           disabled={!!isFitSvgWrapper}
           hideResetStyle={isPrimary}
           overridden={isHeightFill && flexFillOverridden ? true : undefined}

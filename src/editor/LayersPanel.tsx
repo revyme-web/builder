@@ -30,7 +30,7 @@ import ToolDivider from '@/editor/controls/ToolDivider';
 // Row components + pure helpers, the drag-reorder handler, and the search filter
 // live in LayersPanel/ (Phase 7 god-file split, item 7.7). computeSelectionSets +
 // FlatLayer are re-exported below for existing importers of this module.
-import { LayerRow, computeSelectionSets, computeRangeSelection, isNodeUnderOverlay, resolveDisplayForLayer, getEffectiveLayerStyle, sortChildrenByVisualOrder, overlayExpandPath, type FlatLayer } from './LayersPanel/rows';
+import { LayerRow, dedupeLayerRows, visibilityToggleTargets, visibleDisplayForUnhide, computeSelectionSets, computeRangeSelection, isNodeUnderOverlay, resolveDisplayForLayer, getEffectiveLayerStyle, sortChildrenByVisualOrder, overlayExpandPath, type FlatLayer } from './LayersPanel/rows';
 import { startLayerDrag, vpIdFromLayerId } from './LayersPanel/drag';
 import { filterLayersForSearch } from './LayersPanel/search';
 
@@ -471,7 +471,13 @@ export default function LayersPanel() {
               // conditional-style `order` overrides that differ between
               // variants, so a flex master with CSS-order-driven reorder reads
               // correctly in EACH variant row.
-              for (const childId of sortChildrenByVisualOrder(rootChild, rootChild.children, vp.id, nodes, vpConfigs, containerOverrides, isCompMode)) {
+              // Drop re-parented overlays, exactly as `walk` does for its own
+              // descent (`realChildren`). This loop read the RAW children, so an
+              // overlay that is a direct child of the master root was emitted
+              // here AND again under its trigger — two identical rows in the
+              // layers tree (user report 2026-09-21).
+              const tileChildren = rootChild.children.filter((cid) => !reparentedOverlayIds.has(cid));
+              for (const childId of sortChildrenByVisualOrder(rootChild, tileChildren, vp.id, nodes, vpConfigs, containerOverrides, isCompMode)) {
                 walk(childId, 1, vp.id);
               }
             }
@@ -538,7 +544,17 @@ export default function LayersPanel() {
       walk(childId, 0, 'desktop'); // use desktop viewport context
     }
 
-    return result;
+    // ONE ROW PER (viewport, node). The tree is assembled by several loops —
+    // page children, canvas-node roots, variant tiles, and overlays re-parented
+    // under their trigger — and each has its own idea of what to skip. When two
+    // of them claim the same node the panel shows it twice, which is corruption
+    // as far as the user is concerned even though the file is fine (user report
+    // 2026-09-21: four identical `Overlay` rows, one overlay in the source).
+    // A duplicate row id is always a bug in this function, so drop it and say
+    // which id it was rather than rendering it.
+    const { rows: deduped, duplicates } = dedupeLayerRows(result);
+    if (duplicates.length) trace.error('layers:duplicate-rows', { count: duplicates.length, ids: duplicates.slice(0, 8) });
+    return deduped;
   }, [nodes, expanded, viewports, rootNodeIds, activeFilePath, layerSearchActive, editingOverlayId]);
 
   // ─── Layer search filter ───────────────────────────────────────────────
@@ -804,6 +820,14 @@ export default function LayersPanel() {
     const node = nodes.get(nodeId);
     if (!node) return;
 
+    // MULTI-SELECT: the eye applies to the whole selection, not just the row
+    // that was clicked (user report 2026-09-21 — four rows selected, only the
+    // last one hid). The CLICKED row decides the resulting state and every
+    // selected node is written to match it, so one click never leaves the
+    // selection half hidden. A click on a row OUTSIDE the selection stays a
+    // single-node action, as it does everywhere else in the panel.
+    const targets = visibilityToggleTargets(selectedIds, nodeId, (id) => nodes.has(id));
+
     const targetVpId = layerVpId || interactingVpId;
     let { isHidden } = resolveDisplayForLayer(node, targetVpId, vpConfigs, containerOverrides, isCompMode);
     // Same bridge-cache safety net used in the layer row render: when the
@@ -822,20 +846,37 @@ export default function LayersPanel() {
     // Hidden → write '' to remove the override (or clear base); visible →
     // write 'none' which lands either in the @media rule (replica) or
     // motionVariants (variant) per `updateNodeStyles`'s routing.
-    const newDisplay = isHidden ? '' : 'none';
+    let newDisplay = isHidden ? '' : 'none';
+    // UNHIDING on a replica when the hide lives in the BASE style: `''` deletes
+    // an override for THIS viewport, and there isn't one — the base `none` still
+    // wins, so the node flashed visible and the next render hid it again (user
+    // report 2026-09-21). Write an explicit display instead; only that outranks
+    // a base value. (On the primary, `''` is right: it clears the base itself.)
+    if (isHidden && !isPrimaryViewport(targetVpId)
+        && (node.styles?.display || '').trim() === 'none') {
+      newDisplay = visibleDisplayForUnhide(node.styles);
+      trace.action('layers:unhide-over-base-none', { nodeId, targetVpId, newDisplay });
+    }
 
     const targetVpWidth = vpWidths[targetVpId] ?? vpConfigs.find(v => v.id === targetVpId)?.width ?? 0;
     setStyleContext(activeFilePath, targetVpId, targetVpWidth, activeLocale, isDefaultLocale);
-    trace.action('layers:toggle-visibility', { nodeId, layerVpId: targetVpId, isHidden, newDisplay, isCompMode });
+    trace.action('layers:toggle-visibility', { nodeId, targets, layerVpId: targetVpId, isHidden, newDisplay, isCompMode });
     // Flip the eye INSTANTLY (optimistic) — the indicator's bridge-cache fallback is
     // stale until the canvas re-render settles, so otherwise the eye lags until a
     // click elsewhere. Clear after the render settles → indicator reconciles with the
     // real resolved/bridge state. Keyed per (nodeId, viewport) so per-variant rows
     // don't clobber each other.
-    const optKey = `${targetVpId}:${nodeId}`;
-    setOptimisticVis(m => { const n = new Map(m); n.set(optKey, !isHidden); return n; });
-    setTimeout(() => setOptimisticVis(m => { if (!m.has(optKey)) return m; const n = new Map(m); n.delete(optKey); return n; }), 350);
-    updateNodeStyles({ id: nodeId, styles: { display: newDisplay }, contentEl });
+    const optKeys = targets.map((id) => `${targetVpId}:${id}`);
+    setOptimisticVis(m => { const n = new Map(m); for (const k of optKeys) n.set(k, !isHidden); return n; });
+    setTimeout(() => setOptimisticVis(m => {
+      if (!optKeys.some((k) => m.has(k))) return m;
+      const n = new Map(m);
+      for (const k of optKeys) n.delete(k);
+      return n;
+    }), 350);
+    for (const id of targets) {
+      updateNodeStyles({ id, styles: { display: newDisplay }, contentEl });
+    }
     // The eye toggle on a COMPONENT layer routes the hide through the variant
     // visibility systems (`setVariantVisibility`/hiddenOnVariants for a normal node,
     // a per-variant `display` ternary for a CMS `.map()` row) — both of which the
@@ -846,22 +887,33 @@ export default function LayersPanel() {
     // the Styles Hide control (which does the same via `flushAndForceStructuralRender`).
     // Page-file layers patch the DOM live (@container !important) so they don't need it —
     // scope to component files plus any CMS row.
-    const parentNode = node.parentId ? nodes.get(node.parentId) : null;
-    const isCmsRow = !!parentNode?.collectionList
-      && Object.values(parentNode.collectionList.templateIds ?? {}).includes(nodeId);
+    const isCmsRow = targets.some((id) => {
+      const pn = nodes.get(id)?.parentId ? nodes.get(nodes.get(id)!.parentId!) : null;
+      return !!pn?.collectionList && Object.values(pn.collectionList.templateIds ?? {}).includes(id);
+    });
     if (isCompMode || isCmsRow) {
       flushAndForceStructuralRender();
     }
-  }, [nodes, interactingVpId, vpConfigs, vpWidths, containerOverrides, isCompMode, activeFilePath, activeLocale, isDefaultLocale]);
+  }, [nodes, selectedIds, interactingVpId, vpConfigs, vpWidths, containerOverrides, isCompMode, activeFilePath, activeLocale, isDefaultLocale]);
 
   // ─── Drag and Drop (mousemove-based) ─────────────────────────────────────
 
   const handleLayerDragStart = useCallback((e: React.MouseEvent, layerId: string, nodeId: string) => {
+    // Same FIT-pair redirect as handleSelect and handleContextMenu — drag was
+    // the ONE row handler that skipped it.
+    //
+    // A FIT text is a PAIR: `<svg data-id="<id>-svg" data-name="FIT">
+    // <foreignObject><p data-id="<id>">`. The tree shows the inner <p>, but the
+    // element that actually sits in the parent is the svg wrapper. Dragging the
+    // raw id therefore moved the <p> ALONE — it landed in the new parent as a
+    // bare paragraph with no FIT sizing, and an empty `<svg><foreignObject/>`
+    // was left orphaned behind it (user report 2026-09-20).
+    const dragNodeId = redirectToFitTextWrapper(nodeId, nodes) ?? nodeId;
     startLayerDrag({
       nodes, isCompMode, vpWidths, vpConfigs, activeFilePath,
       dragStartPos, dragThresholdMet, activeIdRef, activeLayerIdRef, dropIndicatorRef,
       setActiveId, setActiveLayerId, setDropIndicator,
-    }, e, layerId, nodeId);
+    }, e, layerId, dragNodeId);
   }, [nodes, isCompMode, vpWidths, vpConfigs, activeFilePath]);
 
   // Context menu on right-click

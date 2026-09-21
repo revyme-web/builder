@@ -14,5 +14,14 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Both files import `@revyme/runtime`'s SOURCE from a SIBLING repository
+  // (`../../../runtime/src`). A standalone checkout of this repo has no such
+  // sibling, so `tsc --noEmit` failed with "Cannot find module" in CI. They are
+  // excluded here and skipped by vitest when the package is absent (see
+  // vitest.config.ts); in a full working copy they still run.
+  "exclude": [
+    "src/canvas/runtime-variant-copies.test.tsx",
+    "src/canvas/runtime-variant-copies.hydrate.test.tsx"
+  ]
 }

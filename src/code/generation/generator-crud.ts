@@ -1596,6 +1596,145 @@ export function getInlineSpanPropertyState(
 /**
  * Reorder a node within its parent (or move to a new parent) at a specific index.
  */
+/**
+ * The thing that occupies this node's SLOT in its parent's child list.
+ *
+ * A node hidden on some variants is not a direct child of its parent — the
+ * variant-visibility system wraps it:
+ *
+ *   <AnimatePresence mode="popLayout">{initialVariant === 'x' && <el …/>}</AnimatePresence>
+ *
+ * The wrapper is the node's slot. It is what the parent actually lists, so it
+ * is what a reorder has to splice, and — unlike a MOVE, where the element
+ * leaves and the wrapper has no further purpose — the wrapper must travel WITH
+ * the node or its visibility condition is lost and a per-variant element
+ * becomes permanently visible.
+ *
+ * Deliberately narrow: it matches only `{cond && el}` / `{cond ? el : …}`
+ * (optionally inside an `AnimatePresence`) and returns the node's own path for
+ * anything else. A generic "walk up to the nearest element child" would also
+ * swallow a `.map()` collection template, where the slot is the whole list.
+ */
+function variantVisibilitySlotPath(path: any): any {
+  const cond = path.parentPath;
+  if (!cond || !(cond.isLogicalExpression?.() || cond.isConditionalExpression?.())) return path;
+  const container = cond.parentPath;
+  if (!container?.isJSXExpressionContainer?.()) return path;
+  const outer = container.parentPath;
+  if (outer?.isJSXElement?.()) {
+    const opening = outer.node.openingElement;
+    if (opening.name.type === 'JSXIdentifier' && opening.name.name === 'AnimatePresence') return outer;
+  }
+  return container;
+}
+
+/**
+ * Swap the `nodeId` element inside a cloned visibility wrapper for `replacement`.
+ *
+ * The wrapper is cloned at removal time, so its inner element is a stale copy —
+ * it predates the attribute edits a move applies (stripping `data-canvas-node`,
+ * style changes). Re-inserting that stale copy would silently revert them, so
+ * the live element is swapped in before the wrapper is spliced.
+ *
+ * Returns false when the element is not found, leaving the caller to insert the
+ * bare node rather than a wrapper around the wrong thing.
+ */
+function replaceWrappedElement(
+  /** The gating wrapper: an `AnimatePresence` element, or the bare
+   *  `{cond && …}` / `{cond ? … : …}` expression container. */
+  wrapper: t.JSXElement | t.JSXExpressionContainer,
+  nodeId: string,
+  replacement: t.JSXElement,
+): boolean {
+  let done = false;
+  const visit = (n: any, set: (v: any) => void): void => {
+    if (done || !n || typeof n !== 'object') return;
+    if (n.type === 'JSXElement') {
+      const hit = n.openingElement.attributes.some(
+        (a: any) => t.isJSXAttribute(a) && a.name.name === 'data-id'
+          && t.isStringLiteral(a.value) && a.value.value === nodeId,
+      );
+      if (hit) { set(replacement); done = true; return; }
+    }
+    for (const e of astChildEntries(n)) visit(e.get(), e.set);
+  };
+  visit(wrapper, () => {});
+  return done;
+}
+
+/** Every AST-node-valued property of `n`, with a setter for each.
+ *  Deliberately generic rather than a fixed key list: a slot can hold its
+ *  element under `expression`/`left`/`right` (a conditional), `arguments` +
+ *  `body` (a `.map()` template), or `children` — and a missed key reads as
+ *  "this slot doesn't hold the node", which is the silent-duplicate failure. */
+function astChildEntries(n: any): { get: () => any; set: (v: any) => void }[] {
+  const out: { get: () => any; set: (v: any) => void }[] = [];
+  for (const key of Object.keys(n)) {
+    if (key === 'loc' || key === 'type') continue;
+    const v = n[key];
+    if (Array.isArray(v)) {
+      v.forEach((item, i) => {
+        if (item && typeof item === 'object' && typeof item.type === 'string') {
+          out.push({ get: () => v[i], set: (nv) => { v[i] = nv; } });
+        }
+      });
+    } else if (v && typeof v === 'object' && typeof v.type === 'string') {
+      out.push({ get: () => n[key], set: (nv) => { n[key] = nv; } });
+    }
+  }
+  return out;
+}
+
+/** Does this child slot hold `nodeId` — as itself, or anywhere inside the
+ *  wrapper (a conditional, or a `.map()` template body)? */
+function slotHoldsNodeId(child: t.JSXElement['children'][number], nodeId: string): boolean {
+  let found = false;
+  const visit = (n: any): void => {
+    if (found || !n || typeof n !== 'object') return;
+    if (n.type === 'JSXElement') {
+      const hit = n.openingElement.attributes.some(
+        (a: any) => t.isJSXAttribute(a) && a.name.name === 'data-id'
+          && t.isStringLiteral(a.value) && a.value.value === nodeId,
+      );
+      if (hit) { found = true; return; }
+    }
+    for (const e of astChildEntries(n)) visit(e.get());
+  };
+  visit(child);
+  return found;
+}
+
+/**
+ * The `{coll.map(…)}` container a node's element sits inside, when that node is
+ * a collection-list ROW TEMPLATE.
+ *
+ * The template is not a child of the list's parent — the map CALL is. So a
+ * same-parent reorder has to move the whole container: that is the one slot the
+ * parent actually lists, and the list travels as a unit, which is what dragging
+ * the template's row in the tree means.
+ *
+ * Deliberately separate from `variantVisibilitySlotPath` because MOVE must not
+ * share it: dragging a row template OUT of its list empties the list
+ * (`replaceMapTemplateBodyWithNull`) rather than relocating the whole list.
+ * Returns null when the node is not a map body.
+ */
+function mapContainerSlotPath(path: any): any | null {
+  let walker = path.parentPath;
+  let sawArrow = false;
+  while (walker) {
+    if (walker.isArrowFunctionExpression?.() || walker.isFunctionExpression?.()) sawArrow = true;
+    else if (walker.isJSXExpressionContainer?.()) {
+      if (!sawArrow) return null;
+      const parent = walker.parentPath;
+      return (parent?.isJSXElement?.() || parent?.isJSXFragment?.()) ? walker : null;
+    } else if (walker.isJSXElement?.() || walker.isJSXFragment?.()) {
+      return null;   // hit a real element first — not a map body
+    }
+    walker = walker.parentPath;
+  }
+  return null;
+}
+
 export function reorderNodeInCode(
   code: string,
   nodeId: string,
@@ -1607,14 +1746,30 @@ export function reorderNodeInCode(
   if (!ast) return code;
 
   // Step 1: Find and remove the node
-  let removedNode: t.JSXElement | null = null;
+  // Widened: the thing spliced is the node's SLOT — for a gated node the
+  // conditional container, for a collection row template the `{…map()}`
+  // container. Neither is a JSXElement.
+  let removedNode: t.JSXElement | t.JSXExpressionContainer | null = null;
 
   findFirstElementByDataId(ast, nodeId, (path) => {
-    removedNode = t.cloneNode(path.node, true);
+    // Splice the SLOT, not the element. When the node is variant-wrapped its
+    // `parentPath` is a LogicalExpression, so the old `isJSXElement()` test
+    // failed, nothing was removed — and Step 2 then inserted the clone anyway.
+    // The node ended up in the file TWICE: once inside its wrapper, once bare
+    // at the new index, which the layers tree faithfully showed as two rows.
+    // A collection-list ROW TEMPLATE lives inside `{coll.map(… => <el/>)}` —
+    // its parent is the arrow function, so the plain splice below matched
+    // nothing and the clone was inserted anyway, duplicating the template (the
+    // "sdf" row duplicated by a drag, user report 2026-09-19). The container is
+    // the slot the parent actually lists, so the list moves as a unit.
+    const slot = variantVisibilitySlotPath(path) !== path
+      ? variantVisibilitySlotPath(path)
+      : (mapContainerSlotPath(path) ?? path);
+    removedNode = t.cloneNode(slot.node, true);
 
-    const parent = path.parentPath;
-    if (parent?.isJSXElement()) {
-      const idx = parent.node.children.indexOf(path.node);
+    const parent = slot.parentPath;
+    if (parent?.isJSXElement() || parent?.isJSXFragment()) {
+      const idx = parent.node.children.indexOf(slot.node);
       if (idx !== -1) {
         parent.node.children.splice(idx, 1);
         if (idx > 0 && idx <= parent.node.children.length) {
@@ -1648,19 +1803,24 @@ export function reorderNodeInCode(
         const hasDataId = child.openingElement.attributes.some(
           (a: any) => t.isJSXAttribute(a) && a.name.name === 'data-id'
         );
-        if (hasDataId) content.push(child);
+        // An `AnimatePresence` carries no data-id of its own but WRAPS a node
+        // that has one, so it occupies that node's slot. Classified as an
+        // anchor it would be pinned at a fixed content offset — the node it
+        // holds could never be reordered, and every sibling index past it would
+        // shift.
+        const isVisibilityWrapper = child.openingElement.name.type === 'JSXIdentifier'
+          && child.openingElement.name.name === 'AnimatePresence';
+        if (hasDataId || isVisibilityWrapper) content.push(child);
         else anchors.push({ node: child, after: content.length });
       } else if (child.type === 'JSXExpressionContainer') {
         content.push(child);
       }
     }
 
-    // Remove the moved node from the content slots (matched by data-id; it may
-    // already be gone if Step 1 removed it from this same parent).
-    const removeIdx = content.findIndex(n => t.isJSXElement(n) && n.openingElement.attributes.some(
-      (a: any) => t.isJSXAttribute(a) && a.name.name === 'data-id' &&
-        t.isStringLiteral(a.value) && a.value.value === nodeId
-    ));
+    // Remove the moved node from the content slots (it may already be gone if
+    // Step 1 removed it from this same parent). Matched through wrappers: the
+    // slot holding a variant-hidden node is the wrapper, not the node.
+    const removeIdx = content.findIndex(n => slotHoldsNodeId(n, nodeId));
     if (removeIdx >= 0) content.splice(removeIdx, 1);
 
     // Insert at the target CONTENT slot index.
@@ -1983,6 +2143,121 @@ export function flattenVariantConditionalStylesInCode(code: string, nodeId: stri
   const rebuilt = out.join(', ');
   trace.action('generator:flattenVariantConditionalStyles', { nodeId });
   return code.slice(0, objStart) + (rebuilt ? ` ${rebuilt} ` : '') + code.slice(pos);
+}
+
+/** One rotation channel per canvas node.
+ *
+ *  The canvas applies BOTH the CSS `transform` string and the `rotate` property, so an element
+ *  carrying `rotate: "-190.3"` alongside `transform: 'rotate(-190.3deg) …'` is rotated TWICE —
+ *  -380.6°, which is 180° from where it belongs. A flex column's children then look reordered,
+ *  which is how it was reported (user 2026-09-20: "the moment i drag it out they SWITCH order").
+ *
+ *  Two healers each write one channel and neither can see the other, because they run in DIFFERENT
+ *  mutations of the same flush: `moveNodeInCode` folds `variants.default.rotate` into the `rotate`
+ *  property while no transform exists yet, and the drag's own `updateStyles` adds the folded
+ *  `transform` afterwards. So this has to be a sweep over the finished batch rather than a guard
+ *  inside either one. The `transform` string wins — it is what a plain (non-motion) canvas element
+ *  renders from. */
+export function enforceSingleRotationChannelInCode(code: string): string {
+  if (!code.includes('canvasNodes')) return code;
+  const ast = parseJSX(code);
+  if (!ast) return code;
+  let changed = false;
+  traverse(ast, {
+    VariableDeclarator(path) {
+      if (path.node.id.type !== 'Identifier' || path.node.id.name !== 'canvasNodes' || !path.node.init) return;
+      path.traverse({
+        JSXAttribute(p) {
+          if (p.node.name.type !== 'JSXIdentifier' || p.node.name.name !== 'style') return;
+          const v = p.node.value;
+          if (v?.type !== 'JSXExpressionContainer' || v.expression.type !== 'ObjectExpression') return;
+          const keyOf = (prop: any): string =>
+            prop.type !== 'ObjectProperty' ? ''
+            : prop.key.type === 'Identifier' ? prop.key.name
+            : prop.key.type === 'StringLiteral' ? prop.key.value : '';
+          const transform = v.expression.properties.find((prop: any) => keyOf(prop) === 'transform') as any;
+          const hasRotateInTransform = !!transform
+            && transform.value?.type === 'StringLiteral'
+            && /\brotate\s*\(/.test(transform.value.value);
+          if (!hasRotateInTransform) return;
+          const before = v.expression.properties.length;
+          v.expression.properties = v.expression.properties.filter((prop: any) => keyOf(prop) !== 'rotate');
+          if (v.expression.properties.length !== before) changed = true;
+        },
+      });
+      path.stop();
+    },
+  });
+  if (!changed) return code;
+  try {
+    const out = generate(ast).code;
+    trace.action('generator:enforce-single-rotation-channel', {});
+    return out;
+  } catch {
+    return code;
+  }
+}
+
+/** Flatten `variant`/`initialVariant` conditional styles on EVERY node inside module-scope
+ *  `canvasNodes`, not just the one that was dragged.
+ *
+ *  `flattenVariantConditionalStylesInCode` takes a nodeId, so it healed the dragged node and left its
+ *  DESCENDANTS alone — and a dragged subtree carries them out too. A frame whose child held
+ *  `order: variant === 'variant-1' ? 1 : 1` therefore still referenced `variant` at module scope and the
+ *  validator blocked the whole drag ("References undefined identifier: variant", user report 2026-09-20).
+ *  Same scope as `stripCanvasNodeMotionRefsInCode`, which already sweeps every node for the ATTR half of
+ *  the same problem; this is the STYLE half. Resolving to the default branch matches the single-node
+ *  version — on the canvas there is no variant context. */
+export function flattenCanvasNodeVariantStylesInCode(code: string): string {
+  if (!code.includes('canvasNodes')) return code;
+  const ast = parseJSX(code);
+  if (!ast) return code;
+  let changed = false;
+  /** The final `alternate` of a `variant === 'x' ? … : …` chain, or null if it isn't one. */
+  const defaultBranch = (expr: any): any | null => {
+    let cursor = expr;
+    let sawVariantTest = false;
+    while (cursor?.type === 'ConditionalExpression') {
+      const t = cursor.test;
+      const isVariantTest = t?.type === 'BinaryExpression' && t.operator === '===' &&
+        t.left?.type === 'Identifier' && (t.left.name === 'variant' || t.left.name === 'initialVariant');
+      if (!isVariantTest) return null;      // some other ternary — leave it alone
+      sawVariantTest = true;
+      cursor = cursor.alternate;
+    }
+    return sawVariantTest ? cursor : null;
+  };
+  traverse(ast, {
+    VariableDeclarator(path) {
+      if (path.node.id.type !== 'Identifier' || path.node.id.name !== 'canvasNodes' || !path.node.init) return;
+      path.traverse({
+        JSXAttribute(p) {
+          if (p.node.name.type !== 'JSXIdentifier' || p.node.name.name !== 'style') return;
+          const v = p.node.value;
+          if (v?.type !== 'JSXExpressionContainer' || v.expression.type !== 'ObjectExpression') return;
+          v.expression.properties = v.expression.properties.filter((prop: any) => {
+            if (prop.type !== 'ObjectProperty') return true;
+            const def = defaultBranch(prop.value);
+            if (def === null) return true;
+            changed = true;
+            // An empty default means the property is absent on the primary — drop it.
+            if (def.type === 'StringLiteral' && def.value === '') return false;
+            prop.value = def;
+            return true;
+          });
+        },
+      });
+      path.stop();
+    },
+  });
+  if (!changed) return code;
+  try {
+    const out = generate(ast).code;
+    trace.action('generator:flatten-canvas-node-variant-styles', {});
+    return out;
+  } catch {
+    return code;
+  }
 }
 
 /** Resolve every per-viewport `__mqN ? … : …` gate ternary in a node's subtree to its BASE (else) branch.
@@ -2384,13 +2659,42 @@ export function moveNodeInCode(
   };
 
   // Step 1: Find and remove the node
-  let removedNode: t.JSXElement | null = null;
+  // Widened beyond JSXElement: when the node is gated by a bare `{cond && …}`
+  // the thing spliced into the new parent is the EXPRESSION CONTAINER, not the
+  // element. Every consumer that needs the element casts (and runs before the
+  // re-wrap), so the wider type costs nothing.
+  let removedNode: t.JSXElement | t.JSXExpressionContainer | null = null;
+  /** The visibility wrapper the node was gated by, if any — an `AnimatePresence`
+   *  or the bare `{cond && …}` container. Re-applied around the node when it
+   *  lands in a new parent so its condition survives the move. */
+  let removedWrapper: t.JSXElement | t.JSXExpressionContainer | null = null;
 
   findFirstElementByDataId(ast, nodeId, (path) => {
     removedNode = t.cloneNode(path.node, true);
 
-    const parent = path.parentPath;
-    if (parent?.isJSXElement() || parent?.isJSXFragment()) {
+    // A gated node is not a direct child — its slot is the wrapper. Check this
+    // FIRST: the plain-child branch below tests `path.parentPath`, which for
+    // `{cond && <el/>}` is a LogicalExpression, so it fell through to the
+    // AnimatePresence-only walker, matched nothing, removed nothing — and the
+    // clone was inserted anyway, duplicating the node in the file. That is the
+    // CMS "Load More" / overlay duplication (user report 2026-09-19).
+    const slot = variantVisibilitySlotPath(path);
+    const parent = slot !== path ? slot.parentPath : path.parentPath;
+    if (slot !== path && (parent?.isJSXElement() || parent?.isJSXFragment())) {
+      removedWrapper = t.cloneNode(slot.node, true);
+      const children = parent.node.children;
+      const idx = children.indexOf(slot.node);
+      if (idx !== -1) {
+        children.splice(idx, 1);
+        if (idx > 0 && children[idx - 1]?.type === 'JSXText' &&
+            (children[idx - 1] as t.JSXText).value.trim() === '') {
+          children.splice(idx - 1, 1);
+        }
+      }
+      trace.action('generator:moveNodeInCode-removed-gated-slot', {
+        nodeId, slotType: slot.node.type,
+      });
+    } else if (parent?.isJSXElement() || parent?.isJSXFragment()) {
       // Plain child of a JSXElement / JSXFragment — splice from parent.children.
       const children = parent.node.children;
       const idx = children.indexOf(path.node);
@@ -2410,12 +2714,20 @@ export function moveNodeInCode(
       // Element is wrapped — most commonly inside the AnimatePresence
       // visibility pattern: `<AnimatePresence>{cond && <element/>}</AnimatePresence>`.
       // Walk up to find the AnimatePresence wrapper and REMOVE the
-      // whole wrapper (the wrapper exists only to gate this element's
-      // visibility; with the element gone the wrapper has no purpose).
+      // whole wrapper from its old location.
       // Without this branch the element stays in the source while ALSO
       // being added to its new location — visible as a duplicate
       // data-id (one in the wrapper, one in canvasNodes), unable to
       // resize, layers panel shows it twice.
+      //
+      // The wrapper is KEPT (see `removedWrapper`) and re-applied when the node
+      // lands in a new parent. It is the node's visibility condition, so
+      // dropping it on a reparent silently UNHID a variant-hidden node: the
+      // layers row still showed the eye-slash while the canvas rendered it on
+      // every variant (user report 2026-09-19, hamburger dragged into "Menu
+      // links"). Exit-to-canvas is the exception and keeps unwrapping —
+      // canvasNodes live outside the variant system, so the condition has
+      // nothing to read there.
       let walker: any = path.parentPath;
       while (walker) {
         if (walker.isJSXElement()) {
@@ -2423,6 +2735,7 @@ export function moveNodeInCode(
           const isAnimPresence = opening.name.type === 'JSXIdentifier'
             && opening.name.name === 'AnimatePresence';
           if (isAnimPresence) {
+            removedWrapper = t.cloneNode(walker.node, true);
             const ancestor = walker.parentPath;
             if (ancestor?.isJSXElement() || ancestor?.isJSXFragment()) {
               const ancestorChildren = ancestor.node.children;
@@ -2579,6 +2892,17 @@ export function moveNodeInCode(
         openingEl.attributes.push(styleAttr);
       }
       const obj = (styleAttr.value as t.JSXExpressionContainer).expression as t.ObjectExpression;
+      // ONE CHANNEL ONLY. The drag commit may ALREADY have folded this element's
+      // motion props into a CSS `transform` string (foldEffectiveTransform), and
+      // the canvas renders BOTH channels — so adding `rotate` on top applied the
+      // angle twice: -190.3° became -380.6° (≈ -20.6°), a ~180° flip that made a
+      // flex column's children look reordered on drag-out (user report
+      // 2026-09-20). If a rotation is already represented in `transform`, this
+      // fold has nothing to add.
+      const transformProp = obj.properties.find(
+        (p) => t.isObjectProperty(p) && ((t.isIdentifier(p.key) && p.key.name === 'transform') || (t.isStringLiteral(p.key) && p.key.value === 'transform')),
+      ) as t.ObjectProperty | undefined;
+      if (transformProp && t.isStringLiteral(transformProp.value) && /\brotate\s*\(/.test(transformProp.value.value)) return;
       const existing = obj.properties.find(
         (p) => t.isObjectProperty(p) && ((t.isIdentifier(p.key) && p.key.name === 'rotate') || (t.isStringLiteral(p.key) && p.key.value === 'rotate')),
       ) as t.ObjectProperty | undefined;
@@ -2955,6 +3279,20 @@ export function moveNodeInCode(
       if (fillEmptyMapBody(path.node as t.JSXElement, removedNode as t.JSXElement)) {
         path.stop();
         return;
+      }
+      // RE-WRAP: put the node back inside its visibility condition before it is
+      // inserted. Deliberately here — AFTER the attribute edits above (which
+      // target the ELEMENT) and AFTER the map-refill branch (which needs a bare
+      // element, and would crash reading `openingElement` off a container) — so
+      // the wrapper is only ever the thing actually spliced into the parent.
+      if (removedWrapper && removedNode) {
+        const wrapper = removedWrapper;
+        if (replaceWrappedElement(wrapper, nodeId, removedNode as t.JSXElement)) {
+          removedNode = wrapper;
+          trace.action('generator:moveNodeInCode-rewrapped-visibility', {
+            nodeId, newParentId, wrapperType: wrapper.type,
+          });
+        }
       }
       // ANCHOR-FIRST: splice before the named sibling. Immune to every
       // index-space divergence (CSS `order` reorders, `<style>` children,

@@ -10,6 +10,7 @@ import { transformManager } from '@/canvas/transform';
 import { toRelative } from '@/shared/position-utils';
 import { applyReplicaClearSemantics } from './replica-clears';
 import { getCSSPropertyOptions } from '../../controls/css-property-options';
+import { useControl } from '../../controls/ControlProvider';
 import { gatePositionTypeOptions } from '@/shared/pin-utils';
 import { trace } from '@/shared/debug-trace';
 
@@ -22,6 +23,36 @@ interface Props {
 }
 
 const OPTIONS = getCSSPropertyOptions('position')!;
+
+/** What "match the primary's positioning" clears. Width/Height are excluded —
+ *  they have their own labels and resets in the Dimensions section. */
+export const POSITION_FAMILY = ['position', 'left', 'top', 'right', 'bottom'] as const;
+
+/** The write that puts a replica/variant back in sync with the primary.
+ *
+ *  Plain `''` DELETES the key on a non-primary channel (an @media decl or a
+ *  variant entry), so the primary's value cascades back — which is the whole
+ *  point. It deliberately does NOT go through `applyReplicaClearSemantics`,
+ *  which converts a `''` into an explicit neutral (`auto`) to stop the base
+ *  bleeding through: right for UNPINNING a side, exactly wrong for a reset.
+ *
+ *  `effective` is the tile's resolved styles. A size of `auto` there is not a
+ *  size the user chose — it is the NEUTRAL that entering full-inset mode wrote
+ *  (`toInsetMode` emits `width: ''`, which `applyReplicaClearSemantics` turns
+ *  into `auto` on a replica channel). Clearing the insets while leaving it
+ *  behind left the node with nothing to stretch between: it computed 0×0 and
+ *  vanished (user report 2026-09-21). So an `auto` size is part of the
+ *  positioning and clears with it, while a real px/% override is a size the
+ *  user set and survives. */
+export function positionResetStyles(effective?: Record<string, string>): Record<string, string> {
+  const cleared: Record<string, string> = {};
+  for (const k of POSITION_FAMILY) cleared[k] = '';
+  for (const k of ['width', 'height'] as const) {
+    const v = effective?.[k]?.trim();
+    if (v === 'auto' || v === '') cleared[k] = '';
+  }
+  return cleared;
+}
 
 export default function PositionTypeControl({ position, nodeId, vpId, existingTransform, onUpdateMultiple }: Props) {
   const handleChange = useCallback((newType: string) => {
@@ -84,8 +115,27 @@ export default function PositionTypeControl({ position, nodeId, vpId, existingTr
   const isViewportChild = parentId === 'root';
   const options = gatePositionTypeOptions(OPTIONS, { position, parentHasLayout, isViewportChild });
 
+  // RESET OVERRIDE for the whole positioning family. Width/Height each carry
+  // their own label (and reset), but the insets had none — so a replica or
+  // variant positioned independently could never be put back in sync with the
+  // primary (user request 2026-09-21). The Type row hosts it because it is the
+  // one row that describes the node's positioning as a whole.
+  const { hasOverride, styles: effectiveStyles } = useControl();
+  const positionOverridden = POSITION_FAMILY.some((k) => hasOverride(k));
+  const resetPositionOverride = useCallback(() => {
+    trace.action('position-type:reset-override', { nodeId, vpId, keys: POSITION_FAMILY });
+    onUpdateMultiple(positionResetStyles(effectiveStyles));
+  }, [nodeId, vpId, onUpdateMultiple, effectiveStyles]);
+
   return (
-    <ToolRow label="Type">
+    <ToolRow
+      label="Type"
+      // `position` is not a variable-able property — offering "Create Variable"
+      // here advertises something that cannot work.
+      hideCreateVariable
+      overridden={positionOverridden}
+      onResetOverride={positionOverridden ? resetPositionOverride : undefined}
+    >
       <ToolSelect value={position} onChange={handleChange} options={options} />
     </ToolRow>
   );

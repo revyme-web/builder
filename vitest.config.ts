@@ -1,6 +1,19 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
+
+// `@revyme/runtime` is published from a SIBLING repository, not from this one.
+// Two suites import its source directly (`../../../runtime/src/...`) to test
+// the SSR variant-copy behaviour end to end. A standalone checkout of this repo
+// has no sibling `runtime/`, so those files cannot resolve and CI failed before
+// a single test ran. Skip exactly those two when the package isn't present —
+// they still run in a full working copy, where the behaviour they cover lives.
+const HAS_RUNTIME_SRC = existsSync(path.resolve(__dirname, '../runtime/src'));
+const RUNTIME_DEPENDENT_TESTS = [
+  'src/canvas/runtime-variant-copies.test.tsx',
+  'src/canvas/runtime-variant-copies.hydrate.test.tsx',
+];
 
 export default defineConfig({
   plugins: [react()],
@@ -20,6 +33,10 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}'],
+    exclude: [
+      '**/node_modules/**', '**/dist/**',
+      ...(HAS_RUNTIME_SRC ? [] : RUNTIME_DEPENDENT_TESTS),
+    ],
     globals: true,
     coverage: {
       include: ['src/code/**', 'src/canvas/**', 'src/editor/**', 'src/shared/**'],

@@ -757,12 +757,44 @@ export class GridDragStrategy implements DragStrategy {
       // replicas don't consume it (their branch writes @container).
       let defaultOrders: Map<string, number> | undefined;
       if (getActiveFilePath().startsWith('components/')) {
-        const primaryVisual = findChildRects(this.parentId, 'default')
-          .slice()
-          .sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left)
-          .map((c) => c.id);
-        if (primaryVisual.length > 0) {
-          defaultOrders = new Map(primaryVisual.map((id, i) => [id, i] as const));
+        // Rank the default tile's children by their EFFECTIVE DEFAULT ORDER,
+        // never by geometry.
+        //
+        // This used to rect-sort `findChildRects(parentId, 'default')`. A child
+        // hidden on the default variant measures (0,0,0,0) — the iframe's
+        // top-left — so it sorted FIRST on both keys, took index 0, and every
+        // real sibling's computed default came out one slot low. Those wrong
+        // values are then written into the `default` branch of each order
+        // ternary, so a reorder on ONE variant silently re-sequenced the
+        // default tile (user report 2026-09-19: reordering Mobile moved a card
+        // on Desktop from order 5 to 1). `defaultOrders` exists precisely to
+        // PRESERVE that tile, so getting it wrong defeats its only purpose.
+        //
+        // Same precedence `commitOrderAssignments` falls back to when this map
+        // is absent, so the two agree; ranking (rather than passing the raw
+        // values) keeps the case this map was added for — children with no
+        // `order` anywhere all read 0 and rank by DOM position.
+        // Enumerate exactly as before — only the SORT KEY changes, from
+        // geometry to effective order.
+        const kids = findChildRects(this.parentId, 'default')
+          .map((c) => c.id)
+          .filter((id) => !id.startsWith('layout::') && id !== 'children-slot');
+        const defaultOrderOf = (id: string): number => {
+          const n = getNodeFromCache(id) as (CanvasNode & {
+            motionVariants?: Record<string, Record<string, string>> | null;
+          }) | undefined;
+          const raw = n?.conditionalStyles?.order?.default
+            ?? n?.motionVariants?.default?.order
+            ?? n?.styles?.order;
+          const v = parseInt(raw ?? '', 10);
+          return Number.isFinite(v) ? v : 0;
+        };
+        const ranked = kids
+          .map((id, domIdx) => ({ id, o: defaultOrderOf(id), domIdx }))
+          .sort((a, b) => a.o - b.o || a.domIdx - b.domIdx)
+          .map((x) => x.id);
+        if (ranked.length > 0) {
+          defaultOrders = new Map(ranked.map((id, i) => [id, i] as const));
         }
       }
       updates.push(...commitOrderAssignments(

@@ -1,3 +1,21 @@
+
+/** Does this variant entry own the value the live patch is about to write?
+ *
+ * Matching on the KEY ALONE misses the transform family, because the two speak
+ * different channels: the Transform popup writes the CSS string `transform`,
+ * while a variant stores its rotation as the motion prop `rotate` (and scale /
+ * skew / x / y likewise). So a tile with `variants['variant-1'].rotate` was not
+ * recognised as owning `transform`, and a drag of the DEFAULT tile's Rotate
+ * slider spun every tile with it, restoring only on release (user report
+ * 2026-09-20). Either spelling of the same thing counts as ownership. */
+export function variantOwnsKey(entry: Record<string, unknown> | undefined, key: string): boolean {
+  if (!entry) return false;
+  const owns = (k: string) => entry[k] != null && entry[k] !== '';
+  if (owns(key)) return true;
+  if (key === 'transform') return [...MOTION_TRANSFORM_PROPS].some(owns);
+  if (MOTION_TRANSFORM_PROPS.has(key)) return owns('transform');
+  return false;
+}
 // ControlProvider.tsx — Centralized control context for property tools.
 //
 // Provides: value reading, style writing (inline vs container query routing),
@@ -27,6 +45,7 @@ import { updateNodeStyles, getContentRoot, getViewportPrefix, forceCanvasRender,
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { detectValueSource, BORDER_LONGHANDS, type ValueSource } from '@/code/features/variable-ops';
 import { isComponentFileAtom } from '@/code/stores/store';
+import { MOTION_TRANSFORM_PROPS } from '@/shared/motion-transform';
 import { pageVariablesAtom } from '@/code/stores/page-variables-store';
 import { defaultForType, pageVariableTypeForProperty, isConditionalDisplayProperty, conditionalBranchesFor } from '@/code/features/page-variables';
 import { styleControlVariableSpec } from './control-variable-type';
@@ -256,6 +275,20 @@ export function ControlProvider({ children }: { children: ReactNode }) {
     // from the parser's per-variant style map. Without this, painting
     // a different fill on variant-2 leaves the Fill control showing
     // the base color and there's no visible override indicator.
+    // The `default` entry is ALWAYS active — framer-motion keeps
+    // `animate={['default', variant]}` on, and the Renderer merges it over the
+    // base on EVERY tile including the primary (Renderer.ts:478-483). The panel
+    // gated the whole merge on being on a VARIANT tile, so a value living only
+    // in that entry read as absent on the default tile: a frame rotated via
+    // `variants.default.rotate: 185.3` showed Rotate 0 in the Transform popup
+    // while the canvas painted it rotated (user report 2026-09-20). Merge it
+    // wherever we are, then layer the active variant on top as before.
+    if (isComponentFile && node?.motionVariants) {
+      const defaultEntry = (node.motionVariants as Record<string, Record<string, string>>)['default'];
+      if (defaultEntry && Object.keys(defaultEntry).length > 0) {
+        result = { ...result, ...defaultEntry };
+      }
+    }
     if (isComponentVariantViewport && activeComponentVariant && node?.motionVariants) {
       const variantStyles = (node.motionVariants as Record<string, Record<string, string>>)[activeComponentVariant];
       if (variantStyles && Object.keys(variantStyles).length > 0) {
@@ -313,7 +346,7 @@ export function ControlProvider({ children }: { children: ReactNode }) {
     }
 
     return result;
-  }, [baseStyles, isDefaultLocale, selectedId, localeOverrides, isReplica, vpWidth, overrides, isComponentVariantViewport, activeComponentVariant, node]);
+  }, [baseStyles, isDefaultLocale, selectedId, localeOverrides, isReplica, vpWidth, overrides, isComponentVariantViewport, activeComponentVariant, isComponentFile, node]);
 
   // Derive parent layout type for grid/flex child controls. EFFECTIVE for the
   // INTERACTING viewport: a replica @media can flip the parent's
@@ -474,8 +507,7 @@ export function ControlProvider({ children }: { children: ReactNode }) {
       for (const prefix of prefixes) {
         if (mv) {
           const variantName = prefix === '' ? 'default' : vpIdFromPrefix(prefix);
-          const own = variantName !== 'default' ? mv[variantName]?.[key] : undefined;
-          if (own != null && own !== '') continue;
+          if (variantName !== 'default' && variantOwnsKey(mv[variantName], key)) continue;
         }
         bridge.patchStyles(id, prefix, styles, important);
       }

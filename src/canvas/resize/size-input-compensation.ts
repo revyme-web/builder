@@ -56,6 +56,149 @@ export function compensatedSizeInput(box: LayoutBox, newWidth: number, newHeight
   return { left: trial.left + (fixed.x - moved.x), top: trial.top + (fixed.y - moved.y), width: w, height: h };
 }
 
+/** The edge a single-edge resize holds fixed (`getOppositeCorner`'s edge cases). */
+export type ResizeEdge = 'top' | 'bottom' | 'left' | 'right';
+
+/** Max gain on the anchored side: |1+d| = 0.5 (±120°) allows at most 3×. */
+const MIN_CONDITION = 0.5;
+
+/**
+ * The layout box after moving ONE edge to a target inset, with the opposite
+ * edge held VISUALLY fixed — a single-edge handle drag, driven by a typed
+ * value instead of a pointer.
+ *
+ * Both conditions are solved TOGETHER, and that is the whole point. Doing them
+ * in sequence — size the box from the old anchor, then shift it for the visual
+ * anchor — breaks the first condition with the second, so the committed inset
+ * never equals the typed one; the field re-reads a different number and the
+ * next keystroke compounds it. That ran a 195px box up past 500px in a few
+ * chevron clicks (user report 2026-09-20, "CRAZY numbers like 4000PX height").
+ *
+ * With pivot at the box centre and matrix [a b; c d], for a BOTTOM edit:
+ *   (i)  top' + h' = K,             K = parentHeight − target
+ *   (ii) top' + h'(1−d)/2 = top + h(1−d)/2      (visual top-edge midpoint held)
+ * ⇒ h' = [2(K − top) − (1−d)h] / (1+d),  top' = K − h',
+ *   left' = left + c(h' − h)/2      (holding the same point's x)
+ * Each case collapses to the plain formula when d = 1 (no rotation).
+ *
+ * Returns null when the solve is ILL-CONDITIONED, which is the case that bit:
+ * the anchored side moves by (d−1)/(1+d) per unit of the typed value, so as the
+ * rotation approaches 180° the gain runs away — at 190° (a rectangle that looks
+ * like 10°) d ≈ −0.985 and a 2px edit threw `top` by ~300px, then to the
+ * 0xFFFFFF clamp. It is not merely numerical: at 180° the VISUAL top edge IS
+ * the layout bottom edge, so "hold the visual top edge while moving the layout
+ * bottom" asks for two different values of one quantity.
+ *
+ * Past the threshold the caller falls back to the plain layout-space edit —
+ * which at 180° is exactly right anyway, since holding layout `top` there holds
+ * the visual BOTTOM edge, the correct opposite edge for a flipped box.
+ */
+/**
+ * The layout box after a single-edge resize to a known new size, with the
+ * opposite edge held VISUALLY fixed. This is the handle's own rule, and unlike
+ * `edgeValueResize` it is well conditioned at EVERY angle, because the size is
+ * an input rather than something solved for. Feed it a per-step delta and it
+ * behaves like a pointer drag.
+ */
+export function compensatedEdgeResize(
+  box: LayoutBox,
+  edge: ResizeEdge,
+  newWidth: number,
+  newHeight: number,
+  matrixStr: string,
+): LayoutBox {
+  const horiz = edge === 'left' || edge === 'right';
+  const signed = horiz ? newWidth : newHeight;
+  // ZERO CROSSING — the handle's rule (`processZeroCrossing`, and the mirror in
+  // `compensatedSizeInput`): a size driven past 0 does not stop at 0, it MIRRORS
+  // across the anchored edge and keeps growing the other way. Clamping instead
+  // made the box stall on 0 and then jump (user report 2026-09-20: "it does a
+  // jump and keeps doing jumps instead of just smoothly reverting").
+  const mirrored = signed < 0;
+  const size = Math.abs(signed);
+  const w = horiz ? size : box.width;
+  const h = horiz ? box.height : size;
+
+  // Normally the box grows FROM the anchored edge; mirrored, it grows through
+  // it and out the other side, so the anchored coordinate becomes the far edge.
+  let left = box.left;
+  let top = box.top;
+  if (edge === 'left') left = mirrored ? box.left + box.width : box.left + box.width - w;
+  else if (edge === 'right') left = mirrored ? box.left - w : box.left;
+  else if (edge === 'top') top = mirrored ? box.top + box.height : box.top + box.height - h;
+  else top = mirrored ? box.top - h : box.top;
+  const trial: LayoutBox = { left, top, width: w, height: h };
+
+  const m = parseMatrix2D(matrixStr);
+  if (!m || !needsSizeCompensation(matrixStr)) return trial;
+  // The anchored edge's midpoint. In a mirrored box that physical edge is the
+  // OPPOSITE named edge, so the same point is held either way.
+  const midOf = (b: LayoutBox, which: ResizeEdge) => {
+    switch (which) {
+      case 'top':    return { x: b.left + b.width / 2, y: b.top };
+      case 'bottom': return { x: b.left + b.width / 2, y: b.top + b.height };
+      case 'left':   return { x: b.left, y: b.top + b.height / 2 };
+      case 'right':  return { x: b.left + b.width, y: b.top + b.height / 2 };
+    }
+  };
+  const opposite = oppositeEdge(edge);
+  const a0 = midOf(box, opposite);
+  const a1 = midOf(trial, mirrored ? edge : opposite);
+  const fixed = visualPoint(a0.x, a0.y, box, m);
+  const moved = visualPoint(a1.x, a1.y, trial, m);
+  return { ...trial, left: trial.left + (fixed.x - moved.x), top: trial.top + (fixed.y - moved.y) };
+}
+
+const oppositeEdge = (e: ResizeEdge): ResizeEdge =>
+  e === 'left' ? 'right' : e === 'right' ? 'left' : e === 'top' ? 'bottom' : 'top';
+
+export function edgeValueResize(
+  box: LayoutBox,
+  edge: ResizeEdge,
+  targetInset: number,
+  parentWidth: number,
+  parentHeight: number,
+  matrixStr: string,
+): LayoutBox | null {
+  const m = parseMatrix2D(matrixStr) ?? { a: 1, b: 0, c: 0, d: 1 };
+  const { a, b, c, d } = m;
+  const horiz = edge === 'left' || edge === 'right';
+  const denom = horiz ? 1 + a : 1 + d;
+  if (Math.abs(denom) < MIN_CONDITION) return null;
+
+  let left = box.left, top = box.top, width = box.width, height = box.height;
+  switch (edge) {
+    case 'bottom': {
+      const K = parentHeight - targetInset;
+      height = (2 * (K - box.top) - (1 - d) * box.height) / denom;
+      top = K - height;
+      left = box.left + (c * (height - box.height)) / 2;
+      break;
+    }
+    case 'top': {
+      height = box.height + (2 * (box.top - targetInset)) / denom;
+      top = targetInset;
+      left = box.left + (c * (box.height - height)) / 2;
+      break;
+    }
+    case 'right': {
+      const K = parentWidth - targetInset;
+      width = (2 * (K - box.left) - (1 - a) * box.width) / denom;
+      left = K - width;
+      top = box.top + (b * (width - box.width)) / 2;
+      break;
+    }
+    case 'left': {
+      width = box.width + (2 * (box.left - targetInset)) / denom;
+      left = targetInset;
+      top = box.top + (b * (box.width - width)) / 2;
+      break;
+    }
+  }
+  if (!Number.isFinite(left) || !Number.isFinite(top) || !Number.isFinite(width) || !Number.isFinite(height)) return null;
+  return { left, top, width, height };
+}
+
 /** Existing translate offset in px for the NEW size (a `-50%` scales with the box). */
 export function translateOffsetPx(transform: string | undefined, axis: 'x' | 'y', size: number): number {
   if (!transform) return 0;
@@ -152,3 +295,4 @@ export function sizeInputWrite(a: SizeInputWriteArgs): Record<string, string> | 
   else if (isPct(s.bottom) && a.parentHeight > 0) out.bottom = pct(a.parentHeight - cssTop - newHeight, a.parentHeight);
   return out;
 }
+

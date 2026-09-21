@@ -157,31 +157,72 @@ function effectiveStylesFor(node: CanvasNode, vpId: string): Record<string, stri
  * Pure over its inputs so the rule is testable without a canvas bridge.
  */
 export function computeFlowSiblingOrder(
-  children: { id: string; rect: { left: number; top: number }; position: string | null | undefined; order?: number | null }[],
+  children: {
+    id: string;
+    rect: { left: number; top: number };
+    position: string | null | undefined;
+    order?: number | null;
+    /** Not rendered on this viewport/variant. Such a child has NO usable
+     *  geometry — see the placement note below. */
+    hidden?: boolean;
+  }[],
   flexDirection: 'row' | 'column',
 ): string[] {
-  return children
+  const kept = children
     // TEMPLATE CHROME excluded: on a templated page the flat merge makes
     // `layout::` nodes siblings of the sections — including them here made an
     // arrow reorder renumber the template footer/nav in SECTION space (the
     // band-corruption commitOrderAssignments now also guards against).
     .map((c, index) => ({ ...c, index }))
     .filter(c => !c.id.startsWith('layout::') && c.id !== 'children-slot')
-    .filter(c => c.position !== 'absolute' && c.position !== 'fixed')
-    .sort((a, b) => {
-      const d = flexDirection === 'row' ? a.rect.left - b.rect.left : a.rect.top - b.rect.top;
-      // A ZERO-SIZE sibling ties on the main axis with the sibling that follows
-      // it (a code component whose min-content width squeezed its flex siblings
-      // to 0px, live find 2026-09-06). A geometry tie must fall back to what
-      // CSS itself uses to place them — `order`, then source index — otherwise
-      // the tie keeps INPUT (source) order, the moved node reads as still first,
-      // and every arrow press is a no-op or rewrites the same assignments.
-      if (Math.abs(d) > 0.5) return d;
-      const ao = a.order ?? 0; const bo = b.order ?? 0;
-      if (ao !== bo) return ao - bo;
-      return a.index - b.index;
-    })
-    .map(c => c.id);
+    .filter(c => c.position !== 'absolute' && c.position !== 'fixed');
+
+  // HIDDEN siblings are placed by `order`, never by geometry.
+  //
+  // A hidden element's rect is (0,0,0,0) — the iframe's top-left — so it does
+  // not merely sort imprecisely, it sorts BEFORE every laid-out sibling and
+  // never reaches the tie-break below. The caller renumbers this sequence
+  // 0..n-1, so the hidden child was rewritten to `order: 0` on every nudge: its
+  // authored position was silently destroyed and it reappeared at the front of
+  // the parent when unhidden (user report 2026-09-19). The shift is uniform, so
+  // the VISIBLE result stayed correct — which is why this went unnoticed.
+  //
+  // `order` is the only record of where a hidden child belongs, so it is what
+  // places it: sort the visible ones by geometry as before, then splice each
+  // hidden one in at the point its `order` puts it among them.
+  const visible = kept.filter(c => !c.hidden);
+  const hidden = kept.filter(c => c.hidden);
+
+  visible.sort((a, b) => {
+    const d = flexDirection === 'row' ? a.rect.left - b.rect.left : a.rect.top - b.rect.top;
+    // A ZERO-SIZE sibling ties on the main axis with the sibling that follows
+    // it (a code component whose min-content width squeezed its flex siblings
+    // to 0px, live find 2026-09-06). A geometry tie must fall back to what
+    // CSS itself uses to place them — `order`, then source index — otherwise
+    // the tie keeps INPUT (source) order, the moved node reads as still first,
+    // and every arrow press is a no-op or rewrites the same assignments.
+    if (Math.abs(d) > 0.5) return d;
+    const ao = a.order ?? 0; const bo = b.order ?? 0;
+    if (ao !== bo) return ao - bo;
+    return a.index - b.index;
+  });
+
+  if (hidden.length === 0) return visible.map(c => c.id);
+
+  // Lowest order first, so equal-order hidden children keep their source order
+  // relative to each other rather than reversing.
+  hidden.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.index - b.index);
+  const out = [...visible];
+  for (const h of hidden) {
+    const ho = h.order ?? 0;
+    // First visible child whose order is GREATER — the hidden one belongs just
+    // before it. Equal orders keep the hidden child after, matching how CSS
+    // breaks an `order` tie by source position.
+    let at = out.findIndex(c => !c.hidden && (c.order ?? 0) > ho);
+    if (at === -1) at = out.length;
+    out.splice(at, 0, h);
+  }
+  return out.map(c => c.id);
 }
 
 export function computeOrderNudge(
@@ -354,7 +395,10 @@ export function queuePendingUpdates(updates: PendingUpdate[]): void {
         variantName: update.variantName, styles: update.styles,
       };
     } else if (update.type === 'setConditionalOrder' && update.orderMap != null) {
-      mutation = { type: 'setConditionalOrder', nodeId: update.nodeId, orderMap: update.orderMap };
+      mutation = {
+        type: 'setConditionalOrder', nodeId: update.nodeId,
+        orderMap: update.orderMap, pinVariants: update.pinVariants,
+      };
     }
     if (mutation) {
       queueMutation(mutation);
@@ -389,6 +433,10 @@ function nudgeOrder(
       rect: c.rect,
       position: findNodeComputedStyle(c.id, vpId, 'position'),
       order: parseInt(findNodeComputedStyle(c.id, vpId, 'order') || '0', 10) || 0,
+      // Both tests matter: `display:none` is the authored hide, and a 0x0 rect
+      // catches the same degenerate geometry from a mid-flush remeasure.
+      hidden: findNodeComputedStyle(c.id, vpId, 'display') === 'none'
+        || (c.rect.width === 0 && c.rect.height === 0),
     })),
     flexDir,
   );

@@ -397,3 +397,84 @@ describe('computeOverlayNudge', () => {
     expect(r.vpWidth).toBe(375);
   });
 });
+
+// A HIDDEN sibling has no usable geometry: its rect is (0,0,0,0), the iframe's
+// top-left, so it sorts before every laid-out sibling and never reaches the
+// tie-break. The caller renumbers this sequence 0..n-1, so it was rewritten to
+// `order: 0` on every nudge — its authored position was destroyed and it
+// reappeared at the front of the parent when unhidden (user report 2026-09-19).
+// The shift was uniform, so the VISIBLE result stayed correct, which is why it
+// went unnoticed. These pin both halves: visible order still right, hidden
+// sibling still where the user put it.
+describe('computeFlowSiblingOrder — hidden siblings', () => {
+  // Hidden nodes get the degenerate rect the real cache hands back.
+  const kid = (id: string, left: number, order: number, hidden = false) => ({
+    id, rect: { left: hidden ? 0 : left, top: 0 }, position: 'relative', order, hidden,
+  });
+
+  it('keeps a hidden sibling in its authored slot instead of sorting it first', () => {
+    // visible a(0) … hidden h(1) … visible b(2), c(3)
+    const out = computeFlowSiblingOrder([
+      kid('a', 10, 0), kid('h', 0, 1, true), kid('b', 200, 2), kid('c', 300, 3),
+    ], 'row');
+    expect(out).toEqual(['a', 'h', 'b', 'c']);
+  });
+
+  it('a hidden sibling ordered first still comes first', () => {
+    const out = computeFlowSiblingOrder([
+      kid('h', 0, 0, true), kid('a', 10, 1), kid('b', 200, 2),
+    ], 'row');
+    expect(out).toEqual(['h', 'a', 'b']);
+  });
+
+  it('a hidden sibling ordered last still comes last', () => {
+    const out = computeFlowSiblingOrder([
+      kid('a', 10, 0), kid('b', 200, 1), kid('h', 0, 9, true),
+    ], 'row');
+    expect(out).toEqual(['a', 'b', 'h']);
+  });
+
+  it('several hidden siblings keep their relative order', () => {
+    const out = computeFlowSiblingOrder([
+      kid('a', 10, 0), kid('h1', 0, 1, true), kid('h2', 0, 2, true), kid('b', 200, 3),
+    ], 'row');
+    expect(out).toEqual(['a', 'h1', 'h2', 'b']);
+  });
+
+  // The whole point: visible siblings must be unaffected by the hidden one.
+  it('the visible sequence is identical with and without the hidden sibling', () => {
+    const withHidden = computeFlowSiblingOrder([
+      kid('a', 10, 0), kid('h', 0, 1, true), kid('b', 200, 2), kid('c', 300, 3),
+    ], 'row').filter(id => id !== 'h');
+    const without = computeFlowSiblingOrder([
+      kid('a', 10, 0), kid('b', 200, 2), kid('c', 300, 3),
+    ], 'row');
+    expect(withHidden).toEqual(without);
+  });
+
+  it('works on the column axis too', () => {
+    const out = computeFlowSiblingOrder([
+      { id: 'a', rect: { left: 0, top: 10 }, position: 'relative', order: 0 },
+      { id: 'h', rect: { left: 0, top: 0 }, position: 'relative', order: 1, hidden: true },
+      { id: 'b', rect: { left: 0, top: 200 }, position: 'relative', order: 2 },
+    ], 'column');
+    expect(out).toEqual(['a', 'h', 'b']);
+  });
+
+  it('a hidden sibling is still excluded when it is absolute or template chrome', () => {
+    const out = computeFlowSiblingOrder([
+      kid('a', 10, 0),
+      { id: 'abs', rect: { left: 0, top: 0 }, position: 'absolute', order: 1, hidden: true },
+      { id: 'layout::Header', rect: { left: 0, top: 0 }, position: 'relative', order: 1, hidden: true },
+      kid('b', 200, 2),
+    ], 'row');
+    expect(out).toEqual(['a', 'b']);
+  });
+
+  it('nothing changes when no sibling is hidden', () => {
+    const out = computeFlowSiblingOrder([
+      kid('b', 200, 1), kid('a', 10, 0), kid('c', 300, 2),
+    ], 'row');
+    expect(out).toEqual(['a', 'b', 'c']);
+  });
+});

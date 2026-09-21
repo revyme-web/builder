@@ -77,6 +77,124 @@ describe('commitOrderAssignments', () => {
     { nodeId: 'b', order: 1 },
   ];
 
+
+  // A component master keeps a node's order in its `default` VARIANT object,
+  // which framer-motion applies OVER the base style prop. Writing only the base
+  // order produced a correct file and a canvas that never moved.
+  // On a component master, `order` is ALWAYS written as a variant ternary — a
+  // base write seeds `variants.default.order`, which framer-motion then applies
+  // to every variant lacking its own entry, so the primary's order silently
+  // becomes every variant's order. That seeding is what made the reported bug
+  // intermittent: the first few primary reorders were fine, one of them seeded
+  // the entry, and from then on Tablet followed Desktop (user, 2026-09-19).
+  describe('component master — order always routes through the variant ternary', () => {
+    it('uses setConditionalOrder even for a node with no variants at all', () => {
+      mockActiveFilePath = 'components/Header.tsx';
+      mockNodes = { a: { styles: { order: '4' } } };
+      const updates = commitOrderAssignments([{ nodeId: 'a', order: 1 }], el, 'desktop');
+      expect(updates).toContainEqual({ nodeId: 'a', type: 'setConditionalOrder', orderMap: { default: 1 } });
+    });
+
+    // The base write is what seeds the variants entry, so it must not happen.
+    it('NEVER emits a base style write for order on a master', () => {
+      mockActiveFilePath = 'components/Header.tsx';
+      mockNodes = { a: {}, b: { conditionalStyles: { order: { default: '3' } } } };
+      const updates = commitOrderAssignments(assignments, el, 'desktop');
+      expect(updates.some(u => u.type === 'style' && u.styles?.order !== undefined)).toBe(false);
+    });
+
+    // MATERIALISE. A variant's branches are PARTIAL — only the children the user
+    // moved on that tile have one, and the rest track the default. So renumbering
+    // the primary walks into the variant's number space and a fall-through child
+    // can COLLIDE with a sibling's explicit value; the tie breaks on DOM order and
+    // the variant collapses onto the primary. Writing a COMPLETE branch set for
+    // any independently-ordered variant makes its sequence self-contained.
+    it('pins every child of an independently-ordered variant, not just the moved one', () => {
+      mockActiveFilePath = 'components/Header.tsx';
+      mockNodes = {
+        a: { conditionalStyles: { order: { 'variant-1': '1', default: '2' } } },
+        b: { styles: { order: '3' } },   // no branch — currently tracks default
+      };
+      const updates = commitOrderAssignments(
+        [{ nodeId: 'a', order: 2 }, { nodeId: 'b', order: 1 }], el, 'desktop',
+      );
+      const byId = Object.fromEntries(
+        updates.filter(u => u.type === 'setConditionalOrder').map(u => [u.nodeId, u]),
+      ) as Record<string, { orderMap: Record<string, number>; pinVariants?: string[] }>;
+
+      // Both children get an explicit variant-1 branch, and the SEQUENCE they
+      // render on variant-1 today (a before b) is preserved. The values are
+      // re-ranked to a strict 0..n-1 rather than copied, so no tie survives.
+      expect(byId['a'].orderMap['variant-1']).toBe(0);
+      expect(byId['b'].orderMap['variant-1']).toBe(1);
+      // …and the default still moves.
+      expect(byId['a'].orderMap.default).toBe(2);
+      expect(byId['b'].orderMap.default).toBe(1);
+    });
+
+    // THE RESIDUE (user, 2026-09-19): the pink frame moved on Desktop and the
+    // text frame moved with it on Tablet, while the blue one stayed put.
+    //
+    // Copying a variant's current VALUES preserves any TIE already in them,
+    // and ties resolve on DOM order — which the primary's structural JSX
+    // reorder then changes. Re-ranking to a strict 0..n-1 removes the tie, so
+    // the variant's order is total and DOM-independent.
+    it('breaks a tie in the variant\u2019s current values instead of copying it', () => {
+      mockActiveFilePath = 'components/Header.tsx';
+      mockNodes = {
+        // Both render at 3 on variant-1 — a tie only DOM order resolves.
+        a: { parentId: 'p', conditionalStyles: { order: { 'variant-1': '3', default: '1' } } },
+        b: { parentId: 'p', conditionalStyles: { order: { default: '3' } } },
+        p: { children: ['a', 'b'] },
+      };
+      const updates = commitOrderAssignments(
+        [{ nodeId: 'a', order: 0 }, { nodeId: 'b', order: 1 }], el, 'desktop',
+      );
+      const v1 = Object.fromEntries(
+        updates.filter(u => u.type === 'setConditionalOrder')
+          .map(u => [u.nodeId, (u as { orderMap: Record<string, number> }).orderMap['variant-1']]),
+      );
+      // Distinct values — no tie left for a DOM reorder to flip.
+      expect(v1['a']).not.toBe(v1['b']);
+      expect(new Set(Object.values(v1)).size).toBe(2);
+      // And the DOM-order tie-break is preserved as the ranking: a before b.
+      expect(v1['a']).toBeLessThan(v1['b']);
+    });
+
+    it('marks the materialised variants as pinned so they survive pruning', () => {
+      mockActiveFilePath = 'components/Header.tsx';
+      mockNodes = { a: { conditionalStyles: { order: { 'variant-1': '1', default: '2' } } } };
+      const updates = commitOrderAssignments([{ nodeId: 'a', order: 1 }], el, 'desktop');
+      const cond = updates.find(u => u.type === 'setConditionalOrder') as { pinVariants?: string[] };
+      expect(cond.pinVariants).toEqual(['variant-1']);
+    });
+
+    it('a parent with NO independently-ordered variant names only the default', () => {
+      mockActiveFilePath = 'components/Header.tsx';
+      mockNodes = { a: { styles: { order: '4' } } };
+      const updates = commitOrderAssignments([{ nodeId: 'a', order: 1 }], el, 'desktop');
+      const cond = updates.find(u => u.type === 'setConditionalOrder') as { orderMap: Record<string, number>; pinVariants?: string[] };
+      expect(Object.keys(cond.orderMap)).toEqual(['default']);
+      expect(cond.pinVariants).toBeUndefined();
+    });
+
+    it('order 0 routes the same way — a falsy value is not a skip', () => {
+      mockActiveFilePath = 'components/Header.tsx';
+      mockNodes = { a: {} };
+      const updates = commitOrderAssignments([{ nodeId: 'a', order: 0 }], el, 'desktop');
+      expect(updates).toContainEqual({ nodeId: 'a', type: 'setConditionalOrder', orderMap: { default: 0 } });
+    });
+
+    // A PAGE has no variants, so the plain inline write stays correct there.
+    it('a PAGE still takes the plain base write', () => {
+      mockActiveFilePath = 'app/page.client.tsx';
+      mockNodes = { a: { conditionalStyles: { order: { default: '3' } } } };
+      const updates = commitOrderAssignments([{ nodeId: 'a', order: 1 }], el, 'desktop');
+      expect(updates).toContainEqual({ nodeId: 'a', type: 'style', styles: { order: '1' } });
+      expect(updates.some(u => u.type === 'setConditionalOrder')).toBe(false);
+    });
+  });
+
   beforeEach(() => {
     patchNodeStyles.mockClear();
     mockActiveFilePath = 'pages/home.tsx';

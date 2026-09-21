@@ -31,9 +31,13 @@ interface Props {
    *  overflow into the value control. Used for arbitrary-length labels like
    *  template-variable names (`ejorigjerghositedvar`). */
   truncateLabel?: boolean;
+  /** Drop the "Create Variable" entry from the label menu. For rows whose
+   *  property can't be driven by a variable (e.g. the position TYPE), where the
+   *  item is dead weight and implies a capability that doesn't exist. */
+  hideCreateVariable?: boolean;
 }
 
-export default function ToolRow({ label, children, labelStyle, onResetOverride, truncateLabel, extraMenuItems, overridden }: Props) {
+export default function ToolRow({ label, children, labelStyle, onResetOverride, truncateLabel, extraMenuItems, overridden, hideCreateVariable }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
   const labelRef = useRef<HTMLButtonElement>(null);
@@ -95,6 +99,7 @@ export default function ToolRow({ label, children, labelStyle, onResetOverride, 
         // shared HoistMenuItem context). `property=""` because Code component controls
         // map to no CSS property — the menu shows only the injected item.
         <ControlLabel label={label} property="" cell hideLocalize plain={false}
+          hideCreateVariable={hideCreateVariable}
           extraMenuItems={extraMenuItems} overridden={overridden} onResetOverride={useControlLabel ? onResetOverride : undefined} />
       ) : (
         // `pl-[18px] -ml-[18px]` extends the chevron hit-area into the panel's

@@ -32,6 +32,9 @@ vi.mock('@/canvas/node-ops', () => ({
     ? { width: '160px', height: '32px' }
     : { width: '400px', height: '300px' },
   forceRenderAfterExternalEdit: (...a: unknown[]) => mockForceRender(...a),
+  // FIT-text pair redirect — null here (no FIT pairs in these fixtures), but it
+  // must EXIST or the drop resolver throws on the missing export.
+  redirectToFitTextWrapper: () => null,
 }));
 vi.mock('@/canvas/drag/reparent-utils', () => ({
   computeReorderAssignments: () => [],

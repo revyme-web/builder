@@ -45,7 +45,7 @@ import { parentHighlightOps } from '@/canvas/selection/parent-highlight-store';
 import { dropLineOps } from '@/canvas/selection/drop-line-store';
 import { detectParentLayoutById, getFlexDirectionById, resolveParentDisplay } from '../types';
 import { trace } from '@/shared/debug-trace';
-import { motionPropsToCSSTransform, MOTION_TRANSFORM_PROPS } from '@/shared/motion-transform';
+import { motionPropsToCSSTransform, MOTION_TRANSFORM_PROPS, foldEffectiveTransform } from '@/shared/motion-transform';
 import { calculateLayoutInsertIndexById } from '../reparent-utils';
 import { computeEntryParentLocalPosition, computeExitCanvasPosition } from '../transform-reparent';
 import { queueMutation, flushNow, flushNowDeferredDuringDrag, getCurrentCode } from '@/code/mutation/mutation-queue';
@@ -625,23 +625,22 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
       // drag (otherwise it appears axis-aligned mid-drag and snaps back rotated
       // on mouseup). Passing the merged map to motionPropsToCSSTransform is
       // safe — it only reads the transform-family keys.
-      const variantStyles = nodeData?.motionVariants?.[variantKey] ?? {};
       // Component INSTANCES (e.g. vector sets) keep per-variant motion props as
       // INLINE `rotate: variant === 'v' ? … : …` conditionals → node.conditionalStyles,
       // NOT a motionVariants object. Resolve the transform-family ones for the
       // active variant too, else the captured `orig` misses the rotation and the
       // per-frame `translate(dx,dy)` overwrites it — the element appears
       // axis-aligned mid-drag and snaps back rotated on mouseup.
-      const condTransform: Record<string, string> = {};
-      for (const [prop, branches] of Object.entries(nodeData?.conditionalStyles ?? {})) {
-        if (!MOTION_TRANSFORM_PROPS.has(prop)) continue;
-        const b = branches as Record<string, string>;
-        const val = b[variantKey] ?? b['default'];
-        if (val != null) condTransform[prop] = val;
-      }
-      const motionCss = motionPropsToCSSTransform({ ...effectiveNs, ...variantStyles, ...condTransform });
-      const cssT = (effectiveNs.transform || '').trim();
-      const tv = [cssT === 'none' ? '' : cssT, motionCss].filter(Boolean).join(' ').trim();
+      // `effectiveNs` already carries this viewport's @media overrides, so no
+      // separate override map is needed here. Shared with the replica fan-out
+      // (foldEffectiveTransform) so the dragged tile and its replicas can never
+      // disagree about what the element is painting.
+      const tv = foldEffectiveTransform({
+        styles: effectiveNs,
+        motionVariants: nodeData?.motionVariants as Record<string, Record<string, unknown>> | undefined,
+        conditionalStyles: nodeData?.conditionalStyles,
+        variantKey,
+      });
       this.originalTransforms.set(node.id, tv);
 
       // SCALE FIX: parentDimRect is in SCREEN px (from findNodeRect),
@@ -1290,8 +1289,22 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
         const vpCfg = allVpsForFan.find(v => v.id === vpId);
         const maxWidth = vpCfg?.width ?? 0;
         const replicaProps = containerOverridesForFan.get(node.id)?.get(maxWidth);
-        const overrideT = replicaProps?.get('transform');
-        if (overrideT && overrideT !== '' && overrideT !== 'auto' && overrideT !== 'none') return overrideT;
+        // MOTION transform props, folded exactly as the onStart capture folds
+        // them for the dragged viewport — same function, so the two can no
+        // longer drift. Reading only `styles.transform` here missed a rotation
+        // held in the `rotate` CHANNEL, which is how the panel stores it
+        // (`variants.default.rotate: 141.9`, `styles.transform` empty): the
+        // replica painted a bare `translate(dx, dy)`, lost its rotation for the
+        // whole drag, and snapped back on mouse-up (user report 2026-09-20).
+        const fanNode = context.nodes.get(node.id);
+        const folded = foldEffectiveTransform({
+          styles: fanNode?.styles,
+          motionVariants: fanNode?.motionVariants as Record<string, Record<string, unknown>> | undefined,
+          conditionalStyles: fanNode?.conditionalStyles,
+          overrides: replicaProps ?? null,
+          variantKey: isPrimaryViewport(vpId) ? 'default' : vpId,
+        });
+        if (folded) return folded;
         return nodeBaseTransform === 'none' ? '' : nodeBaseTransform;
       };
 

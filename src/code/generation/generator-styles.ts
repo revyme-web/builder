@@ -11,7 +11,7 @@ import { toKebab, SHORTHAND_LONGHANDS } from '@/shared/css-utils';
 import { escapeRegExp } from '@/shared/regex-utils';
 import { scopeVariantConstsReadingProps } from './variant-const-scope';
 import { CSS_LAYOUT_DEFAULTS } from '@/shared/constants';
-import { cssTransformToMotionProps, MOTION_TRANSFORM_PROPS } from '@/shared/motion-transform';
+import { cssTransformToMotionProps, MOTION_TRANSFORM_PROPS, MOTION_VISUAL_TRANSFORM_PROPS } from '@/shared/motion-transform';
 import { removeAxisTranslate } from '@/shared/position-utils';
 import { parseJSX } from '@/code/parsing/ast-utils';
 import * as t from '@babel/types';
@@ -2417,12 +2417,23 @@ function updateVariantStyleInCodeImpl(
   variantName: string,
   styles: Record<string, string>,
 ): string {
-  // Reset-override translation: the panel's Rotate control registers under
-  // `transform`, but the unified rotation channel stores `rotate` in the
-  // entry. A `transform: ''` reset must clear BOTH keys or the entry's
-  // rotate survives the reset (Reset Override appeared to do nothing).
-  if (styles.transform === '' && styles.rotate === undefined) {
-    styles = { ...styles, rotate: '' };
+  // Reset-override translation: the Transform controls all register under
+  // `transform`, but a variant entry stores them as the motion props `rotate`,
+  // `skewX`, `scaleY`… So a `transform: ''` reset has to clear the WHOLE
+  // family, or whatever it misses survives the reset.
+  //
+  // This started as a one-line patch for `rotate` alone, written when Reset
+  // Override "appeared to do nothing" — so a node with a skew reset its
+  // rotation to match the primary and stayed skewed (user report 2026-09-20).
+  // Every prop the panel can write has to be listed — that is
+  // MOTION_VISUAL_TRANSFORM_PROPS, which deliberately excludes the translate
+  // channel (`x`/`y`), where a pin's centering lives.
+  if (styles.transform === '') {
+    const clears: Record<string, string> = {};
+    for (const prop of MOTION_VISUAL_TRANSFORM_PROPS) {
+      if (styles[prop] === undefined) clears[prop] = '';
+    }
+    styles = { ...styles, ...clears };
   }
   // INHERITANCE MODEL (the responsive-system parity, 2026-06-12): the source
   // stays SPARSE — a variant entry carries ONLY independently-touched values,
@@ -3454,8 +3465,14 @@ export function setConditionalOrderInCode(
   code: string,
   nodeId: string,
   orderMap: Record<string, number>, // variantName → order value
+  /** Variants whose branch must be WRITTEN OUT even if it currently equals the
+   *  default. The caller pins a variant that has been ordered independently, so
+   *  it stops tracking the default and a later primary reorder cannot collide
+   *  with it. Only the caller knows that intent — from the map alone a pinned
+   *  branch and an incidental one are identical. */
+  pinVariants?: string[],
 ): string {
-  trace.fn('generator.setConditionalOrderInCode', { nodeId, orderMap });
+  trace.fn('generator.setConditionalOrderInCode', { nodeId, orderMap, pinVariants });
 
   // Which identifier drives the variant: `variant` (useState, only with
   // connections) or `initialVariant` (the always-present master param). A master
@@ -3508,6 +3525,13 @@ export function setConditionalOrderInCode(
     const tailNum = parseFloat(tail);
     if (!isNaN(tailNum)) mergedOrderMap.default = tailNum;
   }
+  // Branches that must SURVIVE the equal-to-default pruning below:
+  //   - those already authored in the expression, and
+  //   - those the caller explicitly PINNED.
+  // Everything else — a branch this call introduces incidentally — is still
+  // dropped when it equals the default, which is what stops dead `? 1 : 1`
+  // branches accumulating on repeated no-op reorders.
+  const authoredBranches = new Set([...Object.keys(mergedOrderMap), ...(pinVariants ?? [])]);
   // New values from this call WIN over existing same-variant values.
   for (const [k, v] of Object.entries(orderMap)) {
     mergedOrderMap[k] = v;
@@ -3517,11 +3541,21 @@ export function setConditionalOrderInCode(
   const defaultOrder = mergedOrderMap['default'] ?? 0;
   // Drop branches whose value already EQUALS the default — `variant === 'v1' ? 1
   // : 1` is a no-op the reader has to decode, and it accumulates: every reorder
-  // that doesn't actually move a node used to append another dead branch. A
-  // dropped branch is loss-free, because re-reading the expression later
-  // re-derives that variant's value from the default it fell through to.
+  // that doesn't actually move a node used to append another dead branch.
+  //
+  // ONLY for branches this call is INTRODUCING. Pruning an ALREADY-AUTHORED
+  // branch is not loss-free, despite what this comment used to claim: it is
+  // true only at that instant. Deleting `variant-1 ? 3` because the default is
+  // momentarily also 3 converts "Tablet is pinned at 3" into "Tablet inherits
+  // Desktop" — so the NEXT reorder of the primary silently drags Tablet with
+  // it, even though the user had arranged it independently.
+  //
+  // That is the reported bug (2026-09-19): the first primary reorder looked
+  // correct (the values coincided, so the collapsed form rendered the same) and
+  // the second one moved Tablet. An explicit branch is a user decision and
+  // survives coinciding with the default.
   const nonDefaultEntries = Object.entries(mergedOrderMap)
-    .filter(([k, v]) => k !== 'default' && v !== defaultOrder);
+    .filter(([k, v]) => k !== 'default' && (v !== defaultOrder || authoredBranches.has(k)));
 
   let orderExpr: string;
   if (nonDefaultEntries.length === 0) {

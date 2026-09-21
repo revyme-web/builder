@@ -97,9 +97,115 @@ export function commitOrderAssignments(
 
   if (isPrimary) {
     branch = 'primary';
+    // ON A COMPONENT MASTER, `order` IS *ALWAYS* WRITTEN AS A VARIANT TERNARY —
+    // never as a base style. This looks heavier than needed for a node with no
+    // variants; it is not, and the plain path is actively unsafe.
+    //
+    // A base style write on a master SEEDS the `default` variant entry (that is
+    // deliberate elsewhere — the default variant needs explicit values to
+    // animate from). For most properties that is harmless. For `order` it is
+    // poison: framer-motion applies `animate={['default', initialVariant]}`, so
+    // a `variants.default.order` applies to EVERY variant that has no order
+    // entry of its own. The moment one is seeded, the primary's order silently
+    // becomes every variant's order.
+    //
+    // That is what made the reported bug intermittent (2026-09-19). The first
+    // few primary reorders behaved — the node still had a plain `order`. One of
+    // them seeded `variants.default.order`, and from then on every primary
+    // reorder dragged Tablet along. "It synced on the 6th drag for no reason"
+    // was the seeding finally happening.
+    //
+    // `setConditionalOrder` is the safe form for all three cases:
+    //   - it MERGES, naming only the `default` branch, so a variant the user
+    //     arranged independently keeps its own branch;
+    //   - with no other branches it collapses to a quoted literal (`order: '3'`),
+    //     so a simple node stays simple and the oracle's ORDER_MUST_BE_STRING
+    //     rule is satisfied;
+    //   - it STRIPS `order` from every entry of the variants object, so it also
+    //     HEALS files already corrupted by a previously seeded entry.
+    const isCompMaster = getActiveFilePath().startsWith('components/');
+
+    // PIN every variant that has been ordered independently, before moving the
+    // default out from under it.
+    //
+    // A variant's branches are PARTIAL: only the children the user actually
+    // moved on that tile get one, and every other child silently tracks the
+    // `default` branch. So the variant's sequence is not self-contained — it is
+    // "my explicit values, interleaved with whatever the primary currently
+    // says". Renumbering the primary 0..n-1 therefore walks straight into that
+    // number space, and a child that falls through can COLLIDE with a sibling's
+    // explicit value. The tie then breaks on DOM order and the variant collapses
+    // onto the primary's sequence.
+    //
+    // That is the residue the earlier fixes kept missing: the branches really
+    // were preserved (Tablet still said `variant-1 ? 1`), but a sibling's
+    // fall-through default became 1 as well, so Tablet rendered exactly like
+    // Desktop anyway (user report 2026-09-19, "synced on the 6th drag").
+    //
+    // Fix: materialise. Any variant with at least one explicit branch among
+    // these siblings gets a COMPLETE set — each child's CURRENT effective order
+    // on that variant written out — so its sequence is fully determined and the
+    // default can move underneath without touching it.
+    const activeVariants = new Set<string>();
+    if (isCompMaster) {
+      for (const { nodeId } of orderAssignments) {
+        const cond = getNodeFromCache(nodeId)?.conditionalStyles?.order;
+        for (const v of Object.keys(cond ?? {})) if (v !== 'default') activeVariants.add(v);
+      }
+    }
+    /** What this node renders as on `variant` right now: its own branch, else
+     *  the default branch it falls through to, else its plain order. */
+    const effectiveOrderOn = (nodeId: string, variant: string): number => {
+      const node = getNodeFromCache(nodeId);
+      const cond = node?.conditionalStyles?.order;
+      const raw = cond?.[variant] ?? cond?.default ?? node?.styles?.order;
+      const n = parseInt(raw ?? '', 10);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    // RANK, don't copy. Writing each variant's current VALUES back out is not
+    // enough: those values can already contain TIES, resolved only by DOM
+    // order. The primary commit also performs a structural JSX reorder, which
+    // changes DOM order — so a tie that resolved one way before resolves the
+    // other way after, and a child moves on a tile nobody touched (user report
+    // 2026-09-19: the pink frame moved on Desktop and the text frame moved with
+    // it on Tablet, while the blue one — which had no tie — stayed put).
+    //
+    // Re-ranking the variant's CURRENT sequence to a strict 0..n-1 removes
+    // every tie, so the variant's order becomes total and DOM-independent. The
+    // sequence is unchanged; only its representation becomes unambiguous.
+    const siblingIds = orderAssignments.map(a => a.nodeId);
+    // Current JSX order of the siblings — the tie-break CSS itself uses, and
+    // the thing the structural reorder is about to change.
+    const orderParentId = siblingIds.map(id => getNodeFromCache(id)?.parentId).find(Boolean) ?? null;
+    const domIndex = new Map(
+      (orderParentId ? getNodeFromCache(orderParentId)?.children ?? [] : []).map((id, i) => [id, i] as const),
+    );
+    const rankedPerVariant = new Map<string, Map<string, number>>();
+    for (const v of activeVariants) {
+      const ranked = [...siblingIds]
+        .sort((a, b) => (effectiveOrderOn(a, v) - effectiveOrderOn(b, v))
+          || ((domIndex.get(a) ?? 0) - (domIndex.get(b) ?? 0)))
+        .map((id, i) => [id, i] as const);
+      rankedPerVariant.set(v, new Map(ranked));
+    }
+
     for (const { nodeId, order } of orderAssignments) {
       patchNodeStyles(contentEl, nodeId, vpPrefix, { order: String(order) });
-      updates.push({ nodeId, type: 'style', styles: { order: String(order) } });
+      if (isCompMaster) {
+        const orderMap: Record<string, number> = { default: order };
+        for (const v of activeVariants) {
+          orderMap[v] = rankedPerVariant.get(v)?.get(nodeId) ?? effectiveOrderOn(nodeId, v);
+        }
+        updates.push({
+          nodeId, type: 'setConditionalOrder', orderMap,
+          // Pinned: these branches must survive even where they currently equal
+          // the default, or the variant goes back to tracking it.
+          ...(activeVariants.size > 0 ? { pinVariants: [...activeVariants] } : {}),
+        });
+      } else {
+        updates.push({ nodeId, type: 'style', styles: { order: String(order) } });
+      }
     }
     for (const { nodeId, zIndex } of layering) {
       patchNodeStyles(contentEl, nodeId, vpPrefix, { zIndex: String(zIndex) });
