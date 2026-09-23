@@ -487,7 +487,13 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
       // dropped:[298]). The tile-drag path always had this order.
       applyViewportWidthChange(activeFilePath, vpId, prevWidth, rounded);
     }
-    setViewportsConfig(prev => prev.map(v => v.id === vpId ? { ...v, width: rounded } : v));
+    // Sizing a tile by hand DEFINES it: drop any `designWidth` the import
+    // left behind. That field only records the width the source designed a
+    // band at (a phone band reaching 809px drawn on a 390px canvas) — once
+    // the user picks a width, the tile they asked for is the tile they get,
+    // and the band and the render width are one number again. Keeping it
+    // made the field change while the tile stayed the size it was.
+    setViewportsConfig(prev => prev.map(v => v.id === vpId ? { ...v, width: rounded, designWidth: undefined } : v));
     forceCanvasRender();
     trace.action('size:viewport-breakpoint-change', { vpId, prevWidth, newWidth: rounded });
   }, [vpId, activeFilePath, setViewportsConfig, setViewportWidths]);

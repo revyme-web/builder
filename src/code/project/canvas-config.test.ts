@@ -152,3 +152,22 @@ describe('designWidth — the tile renders narrower than its band', () => {
     expect(same).not.toContain('designWidth');
   });
 });
+
+describe('designWidth is an import hint, not a second dimension', () => {
+  // It records the width the SOURCE designed a band at — a phone band
+  // reaching 809px drawn on a 390px canvas. The moment a user sizes the tile
+  // themselves, the tile they asked for is the tile they get: the hint goes
+  // and the band and the render width are one number again. Keeping it made
+  // the width field change while the tile stayed exactly the size it was.
+  test('a user-set width leaves no hint behind', () => {
+    const vp: ViewportConfig = {
+      id: 'mobile', label: 'Phone', width: 809, designWidth: 390,
+      isPrimary: false, order: 2, x: 0, y: 0,
+    };
+    const resized = { ...vp, width: 839, designWidth: undefined };
+    const code = serializeCanvasConfig({ viewports: [resized], positions: {} });
+    expect(code).toContain('"width": 839');
+    expect(code).not.toContain('designWidth');
+    expect(parseCanvasConfig(code)?.viewports[0].designWidth).toBeUndefined();
+  });
+});

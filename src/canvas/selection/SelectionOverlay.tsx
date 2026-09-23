@@ -550,8 +550,11 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
         const isPrimaryResize = !!primaryForCommit && primaryForCommit.id === resizedVpId;
         setViewportsConfig(prev => prev.map(v => {
           if (v.id === resizedVpId) {
-            if (newHeight > 0) return { ...v, width: newWidth, height: newHeight };
-            return { ...v, width: newWidth };
+            // Dragging the tile's edge DEFINES it, so the import's
+            // `designWidth` hint goes: the tile renders at what was just
+            // dragged, not at the width the source designed that band at.
+            if (newHeight > 0) return { ...v, width: newWidth, height: newHeight, designWidth: undefined };
+            return { ...v, width: newWidth, designWidth: undefined };
           }
           if (isPrimaryResize && newHeight > 0) {
             return { ...v, height: newHeight };
