@@ -253,9 +253,11 @@ export class DragCoordinator {
   }
 
   startPending(nodeId: string, event: MouseEvent, viewportPrefix: string = '', options?: { gripAxis?: 'x' | 'y' }): void {
-    // View-only: viewers can SELECT a node (the caller still runs the
-    // selection set) but never drag it. Bailing here keeps selection
-    // working while no drag pending/active state is ever created.
+    // View-only (viewer role, offline, or an agent run holds this branch —
+    // viewer-mode-store): the user can SELECT a node (the caller still runs
+    // the selection set) but never drag it. Bailing here keeps selection
+    // working while no drag pending/active state is ever created — so no
+    // optimistic DOM move can interleave with a run's mutations.
     if (isViewerMode()) {
       trace.action('drag:pending-blocked-viewer', { nodeId });
       return;

@@ -7,6 +7,12 @@ import { atom } from 'jotai';
 import { leftPanelAtom } from './left-panel-store';
 
 export const cmsEditorOpenAtom = atom(false);
+
+/** The CMS collection OVERLAY (the item list over the canvas — CmsOverlay.tsx)
+ *  and which collection it shows. Here rather than in the component so the
+ *  branch switch (code/branching/location.ts) can carry them across. */
+export const cmsOverlayOpenAtom = atom(false);
+export const activeOverlayCollectionAtom = atom<string | null>(null);
 export const cmsEditorCollectionAtom = atom<string | null>(null);
 // The item open in the editor pane. Lifted to an atom so a canvas
 // double-click can deep-link straight to one item (with a field highlighted).

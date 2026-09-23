@@ -2,7 +2,7 @@
 //
 // Every AI endpoint answers 402 with the same sentence (the shared
 // `refuseIfOutOfCredits` helper in the AI service), so every chat surface can
-// hit this — Vibe, icon-set chat, and the component/plugin chats via ChatShell.
+// hit this — the Vibe agent chat, wherever it is hosted.
 // One component, four call sites.
 //
 // It is deliberately NOT the red error bubble those panels use for failures.

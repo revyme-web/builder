@@ -5,7 +5,7 @@
 // but not create what it didn't: a burger gated by `initialVariant ===
 // 'variant-2'` is false on the server, so it only appeared at hydration (the
 // residual flash after the 0.0.26 fix). Rendering one copy per distinct variant
-// and letting CSS pick removes that — Framer's approach, except the copies live
+// and letting CSS pick removes that — the reference builder's approach, except the copies live
 // only in the render, never in the source.
 import { describe, it, expect } from 'vitest';
 import React from 'react';
@@ -34,7 +34,7 @@ describe('planVariantCopies', () => {
   });
 
   it('shares ONE copy between bands that render the same variant', () => {
-    // Tablet and phone both show the mobile design — Framer ships two copies
+    // Tablet and phone both show the mobile design — the reference builder ships two copies
     // here, not three, and so do we.
     const c = planVariantCopies({ 450: 'variant-2', 810: 'variant-2' }, 'default', 'nav-1');
     expect(c.map((x) => x.variant)).toEqual(['default', 'variant-2']);

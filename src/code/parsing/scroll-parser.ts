@@ -3,6 +3,7 @@
 // Returns structured data that the AnimationTool can display and edit.
 
 import { trace } from '@/shared/debug-trace';
+import { scrollTargetRef } from '@/shared/scroll-target';
 import { nodeIdToVarName } from '@/shared/id-utils';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -126,8 +127,8 @@ export function parseScrollHooks(code: string): ScrollAnimData {
 
     if (argsStr) {
       // Extract target ref
-      const targetMatch = argsStr.match(/target:\s*(\w+)/);
-      if (targetMatch) refVar = targetMatch[1];
+      // Plain or variant-gated (`cond ? ref : undefined`) — see scroll-target.
+      refVar = scrollTargetRef(argsStr);
 
       // Extract offset
       const offsetMatch = argsStr.match(/offset:\s*(\[[\s\S]*?\])/);

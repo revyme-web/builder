@@ -21,6 +21,7 @@ import { validateBundle } from '@/code/components/component-spec/validate';
 import { compileBundle } from '@/code/components/component-spec/compile';
 import { resolveCheck } from '@/code/components/component-spec/resolve-check';
 import type { ComponentBundle, Violation } from '@/code/components/component-spec/types';
+import { getProjectId } from '@/backend/project-id';
 
 const AI_SERVICE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8082';
 const MAX_ATTEMPTS = 3;
@@ -66,7 +67,11 @@ export async function runDesignSpecEdit(req: DesignSpecEditRequest): Promise<Des
     const res = await fetch(`${AI_SERVICE_URL}/api/design-spec/turn`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      // The session cookie + the project: on Revyme cloud the service bills
+      // the PROJECT's workspace and refuses a caller who cannot edit it.
+      credentials: 'include',
       body: JSON.stringify({
+        websiteId: getProjectId(),
         prompt,
         activeFile: activeFilePath,
         selectedNodeIds,

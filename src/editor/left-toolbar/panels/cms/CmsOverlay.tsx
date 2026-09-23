@@ -2,7 +2,7 @@
 // Same portal/backdrop/header/footer style as TranslationsOverlay.
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { atom, useAtomValue, useSetAtom } from 'jotai';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { createPortal } from 'react-dom';
 import { collectionSchemasAtom, collectionDataAtom } from '@/code/stores/cms-store';
 import {
@@ -14,14 +14,12 @@ import { projectVersionAtom } from '@/code/project/project-fs';
 import type { CollectionSchema, CollectionItem } from '@/shared/types';
 import ItemEditor from './ItemEditor';
 import { trace } from '@/shared/debug-trace';
+import { cmsOverlayOpenAtom, activeOverlayCollectionAtom } from '@/code/stores/cms-editor-store';
 
 // ─── Exported Atoms ─────────────────────────────────────────────────────────
-
-/** Controls whether the CMS overlay is open. */
-export const cmsOverlayOpenAtom = atom(false);
-
-/** Which collection slug is being managed in the overlay. */
-export const activeOverlayCollectionAtom = atom<string | null>(null);
+// Defined in code/stores/cms-editor-store.ts (the branch switch reads them);
+// re-exported so every existing importer keeps its path.
+export { cmsOverlayOpenAtom, activeOverlayCollectionAtom };
 
 // ─── Item Row ───────────────────────────────────────────────────────────────
 

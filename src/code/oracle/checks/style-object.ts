@@ -80,7 +80,7 @@ function checkStyleObject(
   obj: t.ObjectExpression,
   dataId: string | undefined,
   v: OracleViolation[],
-  ctx: { fixedAllowed: boolean; builderOwned?: boolean } = { fixedAllowed: true },
+  ctx: { fixedAllowed: boolean; builderOwned?: boolean; templateRoot?: boolean } = { fixedAllowed: true },
 ): void {
   checkShorthandLonghandMix(obj, dataId, v);
   // BG_COLOR_WITH_IMAGE — the builder's Fill control is single-color OR
@@ -193,7 +193,11 @@ function checkStyleObject(
         continue;
       }
     }
-    if (MINMAX_SIZE_KEYS.has(key)) {
+    // The template LayoutClient's ROOT is the outer shell that owns viewport
+    // sizing — `minHeight: '100vh'` is its normal form (the same carve-out
+    // PAGE_ROOT_VIEWPORT makes), and the builder's own template scaffold
+    // writes it. Everywhere else the min/max fields are px or % only.
+    if (MINMAX_SIZE_KEYS.has(key) && !(ctx.templateRoot && key === 'minHeight')) {
       const bad = badMinMaxSizeUnit(prop.value);
       if (bad) {
         v.push({

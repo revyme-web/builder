@@ -1,3 +1,4 @@
+import { renderWidth } from '@/shared/types';
 // component-navigation.ts — Centralized "enter component master" flow.
 //
 // Three call sites used to do this independently:
@@ -169,7 +170,8 @@ export function computeFileEntryBounds(
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const vp of config.viewports) {
       const pos = config.positions[vp.id] ?? { x: 0, y: 0 };
-      const w = vp.width || 0;
+      // The tile's DRAWN width — zoom-to-fit frames what is on screen.
+      const w = renderWidth(vp) || 0;
       // Page viewports may render with `height: auto` (no fixed
       // height in the @canvas config). When that happens fall back
       // to the viewport's width as a square — the post-render zoom

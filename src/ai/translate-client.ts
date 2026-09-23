@@ -4,6 +4,7 @@
 // 402 surfaces as a normal error string, caller refreshes credits after.
 
 import { trace } from '@/shared/debug-trace';
+import { getProjectId } from '@/backend/project-id';
 
 const AI_SERVICE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8082';
 
@@ -38,7 +39,10 @@ export async function runAiTranslate(opts: {
     const res = await fetch(`${AI_SERVICE_URL}/api/translate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(opts),
+      // The session cookie + the project: on Revyme cloud the service bills
+      // the PROJECT's workspace and refuses a caller who cannot edit it.
+      credentials: 'include',
+      body: JSON.stringify({ ...opts, websiteId: getProjectId() }),
     });
     const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
     if (!res.ok || !data.success) {

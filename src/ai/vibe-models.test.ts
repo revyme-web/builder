@@ -12,7 +12,7 @@ const LIVE: VibeModel[] = [
 
 describe('vibeModelLabel', () => {
   it('resolves a known id to its label', () => {
-    expect(vibeModelLabel('anthropic/claude-fable-5', FALLBACK_MODELS)).toBe('Claude Fable 5');
+    expect(vibeModelLabel('anthropic/claude-fable-5.1', FALLBACK_MODELS)).toBe('Claude Fable 5.1');
   });
 
   it('falls back to the slug tail for an id the catalog no longer lists', () => {

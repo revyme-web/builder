@@ -25,7 +25,7 @@ import { z } from 'zod';
 import * as t from '@babel/types';
 import generate from '@babel/generator';
 import type { AgentTool, AgentToolResult } from '@/ai/agent';
-import { queueToolMutation, flushTool, resolveToolFile, readToolFile } from '@/ai/agent/workspace';
+import { queueToolMutation, flushTool, resolveToolFile, readToolFile, getToolNodes } from '@/ai/agent/workspace';
 import {
   getPageVariables,
   defaultForType,
@@ -34,6 +34,7 @@ import {
 } from '@/code/features/page-variables';
 import { parseJSX, traverse } from '@/code/parsing/ast-utils';
 import { trace } from '@/shared/debug-trace';
+import { isTemplateFilePath } from '@/code/project/file-path-kind';
 
 function ok(data: unknown): AgentToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(data) }] };
@@ -196,6 +197,47 @@ export function ensurePageVariableHookInCode(code: string, varName: string): str
 
 // ─── set_page_variable ──────────────────────────────────────────────────────
 
+// ─── bind_variable ───────────────────────────────────────────────────────────
+
+const STYLE_PROP_RE = /^[a-z][A-Za-z]*$/;
+
+export const bindVariableTool: AgentTool = {
+  name: 'bind_variable',
+  description:
+    'Bind a PAGE VARIABLE to what a node shows — the text of a text element ("show the counter value in this text") or one CSS property of a node (a colour, an opacity, a size) — so an interaction that sets the variable changes it live. ' +
+    'The variable must exist (set_page_variable). bind "text" for the text content, or a camelCase CSS property. Text elements bound this way lose their literal (it becomes the variable\'s default).',
+  inputSchema: {
+    node_id: z.string(),
+    variable: z.string().describe('page variable name'),
+    bind: z.string().describe('"text" or a camelCase CSS property, e.g. "backgroundColor", "opacity"'),
+  },
+  category: 'semantic',
+  async execute(args, ctx) {
+    ctx.ensureCheckpoint();
+    const nodeId = String(args.node_id);
+    const name = String(args.variable);
+    const bind = String(args.bind);
+    const activePath = resolveToolFile(ctx);
+    const code = activePath ? readToolFile(ctx, activePath) ?? '' : '';
+    const variable = code ? getPageVariables(code).find((v) => v.name === name) : undefined;
+    if (!variable) return fail(`No page variable "${name}" — set_page_variable first. Declared: ${getPageVariables(code).map((v) => v.name).join(', ') || 'none'}.`);
+    const node = getToolNodes(ctx).get(nodeId);
+    if (!node) return fail(`No node "${nodeId}" in the active file.`);
+    if (bind === 'text') {
+      if (/^[A-Z]/.test(node.type)) return fail(`"${nodeId}" is a component instance — bind one of its text props instead (set_component_prop with the variable is not supported; use a text element).`);
+      if (node.textContent === undefined || node.textContent === null) return fail(`"${nodeId}" is not a text element.`);
+      queueToolMutation(ctx, { type: 'createTextPageVariable', nodeId, propName: name, defaultValue: variable.default });
+    } else {
+      if (!STYLE_PROP_RE.test(bind)) return fail(`bind must be "text" or a camelCase CSS property, not "${bind}".`);
+      if (variable.type === 'boolean') return fail(`"${name}" is a boolean — a style needs a value variable (color / number / text). Use a variant or set_page_interaction for on/off looks.`);
+      queueToolMutation(ctx, { type: 'bindStylePageVariable', nodeId, styleProperty: bind, varName: name });
+    }
+    flushTool(ctx);
+    trace.action('agent-tool:bind_variable', { nodeId, name, bind });
+    return ok({ node_id: nodeId, variable: name, bound: bind, type: variable.type, hint: 'set_page_interaction (or a connection) changes the variable at runtime' });
+  },
+};
+
 export const setPageVariableTool: AgentTool = {
   name: 'set_page_variable',
   description:
@@ -251,6 +293,17 @@ export const setPageVariableTool: AgentTool = {
       return ok({ action: 'updated', variable: name, type, default: variable.default });
     }
 
+    // A TEMPLATE reads its variables as function params (the Template tool
+    // lists them and pages override them per route) — never useState. The
+    // panel's ControlProvider does the same (ensureTemplateVarParam).
+    if (isTemplateFilePath(activePath)) {
+      const literalKind = type === 'number' ? 'number' : type === 'boolean' ? 'boolean' : 'string';
+      queueToolMutation(ctx, { type: 'addPageVariable', variable });
+      queueToolMutation(ctx, { type: 'ensureTemplateVarParam', name, defaultValue: variable.default, varType: type === 'text' ? 'plainText' : type, literalKind });
+      flushTool(ctx);
+      trace.action('agent-tool:set_page_variable', { action: 'created-template-param', name, type });
+      return ok({ action: 'created', variable: name, type, default: variable.default, scope: 'template', hint: 'a template variable is a prop of the layout — each page can override it in the Template tool; bind_variable binds it to a text or style.' });
+    }
     queueToolMutation(ctx, { type: 'addPageVariable', variable });
     flushTool(ctx);
     trace.action('agent-tool:set_page_variable', { action: 'created', name, type });

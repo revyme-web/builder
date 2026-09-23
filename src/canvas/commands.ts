@@ -793,6 +793,11 @@ function wrapInternal(
         if (v != null && v !== '') flowPlacement[k] = v;
       }
     }
+    // A flow child must never shrink (FLEX_CHILD_SHRINKS). With several
+    // children nothing above sets a flex on the wrapper, so it sat on the CSS
+    // default and collapsed in a constrained column — the editor's own drop
+    // path writes `0 0 auto` on every flow child, and the wrapper is one.
+    if (!flowPlacement.flex && !flowPlacement.flexShrink) flowPlacement.flex = '0 0 auto';
   }
   let baseFrameStyles: Record<string, string>;
   if (allSameParentFlow) {
@@ -1425,7 +1430,7 @@ function unfoldToCanvas(
  * Other viewports (primary + other replicas) are untouched. The primary
  * viewport is rejected upstream in `deleteNode`.
  */
-function removeReplicaViewport(filePath: string, vpId: string): void {
+export function removeReplicaViewport(filePath: string, vpId: string): void {
   modifyProjectFile(filePath, (code) => {
     const cfg = parseCanvasConfig(code);
     if (!cfg) return code;

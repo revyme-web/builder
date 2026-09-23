@@ -262,6 +262,13 @@ export function bindFieldInCode(
     const cleared = unbindStyleFieldInCode(code, nodeId, 'backgroundColor');
     return bindBackgroundImageFieldInCode(cleared, nodeId, fieldId, itemVar);
   }
+  // Binding straight to `backgroundImage` is the same request said plainly.
+  // As a generic style binding it produced `backgroundImage: item.cover` — a
+  // bare URL where CSS needs `url(...)`, which paints nothing and which the
+  // oracle reports as an unreadable member-expression style.
+  if (property === 'backgroundImage') {
+    return bindBackgroundImageFieldInCode(code, nodeId, fieldId, itemVar);
+  }
 
   return bindStyleFieldInCode(code, nodeId, property, fieldId, itemVar);
 }

@@ -8,10 +8,8 @@ import { commentModeActiveAtom } from './code/stores/comment-store';
 import DebugToolbar from './editor/ui/DebugToolbar';
 import ChromeIslands from './editor/ChromeIslands';
 import BottomToolbar from './editor/BottomToolbar';
-import IconSetChat from './editor/IconSetChat';
 import PageChat from './editor/PageChat';
 import { componentEditorFileAtom } from '@/code/stores/component-editor-store';
-import { activeFilePathAtom, isIconSetFilePath } from './code/project/active-file-store';
 import { isComponentFileAtom } from './code/stores/store';
 import KeyframeSheet from './editor/tools/AnimationTool/css/KeyframeSheet';
 import PreviewOverlay from './editor/header/PreviewOverlay';
@@ -45,7 +43,9 @@ import { CLOUD_ENABLED } from './shared/cloud-flag';
 import { previewModeAtom } from './code/stores/editor-store';
 import { CollaborationProvider } from './canvas/collab/CollaborationProvider';
 import CollaborationLayer from './canvas/collab/CollaborationLayer';
-import { useIsViewer, useViewerReason, setOfflineMode } from './code/stores/viewer-mode-store';
+import { useIsViewer, useIsViewerRole, useViewerReason, setOfflineMode } from './code/stores/viewer-mode-store';
+import { useActiveBranchId } from './code/stores/agent-run-lock-store';
+import { MAIN_BRANCH_ID } from './code/project/project-fs';
 import { suspendBuilderTheme, resumeBuilderTheme } from '@/editor/builder-theme';
 // Sketch draw animations intentionally do NOT auto-play on the canvas —
 // it's an editing surface, and auto-playback on every preview exit /
@@ -101,6 +101,7 @@ export default function App() {
   // Viewers can't change anything — the AI page/design chat bubbles
   // would just produce mutations the queue no-ops, so hide them.
   const isViewer = useIsViewer();
+  const isViewerRole = useIsViewerRole();
 
   // Ctrl/Cmd+P → toggle preview. Ignored when typing in inputs /
   // textareas / contenteditable so the shortcut doesn't fight with
@@ -121,8 +122,6 @@ export default function App() {
   }, [setPreviewMode]);
   // Icon-set masters route the AI chat differently — icon sets
   // keep their own streaming chat.
-  const activeFilePath = useAtomValue(activeFilePathAtom);
-  const isIconSet = isIconSetFilePath(activeFilePath);
   // Component master files re-skin the editor accent from blue (--accent)
   // to purple (--accent-secondary). The override goes on `<html>` (NOT a
   // child div) so it reaches portaled UI too: dropdown menus, the
@@ -187,6 +186,7 @@ export default function App() {
       {/* View-only banner — shown when the current user is a viewer by
           ROLE. Owners and editors never see it. */}
       <ViewOnlyBanner />
+      <AgentEditingBanner />
       {/* Network watcher — flips the editor into the offline read-only
           state when the connection drops, and the matching toast. */}
       <OfflineWatcher />
@@ -231,12 +231,13 @@ export default function App() {
             RightSidebar (fieldset-disable on the Properties panel; the
             comments list stays interactive). */}
         {!previewMode && <RightSidebar />}
-        {/* AI chat — the bottom-sheet AIChatSheet. The page-agent loop drives
-            BOTH pages and design-component masters (it sends the variant-layer
-            tools when the active file is a component); icon-set masters keep
-            their own streaming chat. */}
-        {!previewMode && !componentEditorOpen && !pluginEditorOpen && !isViewer && isIconSet && <IconSetChat />}
-        {!previewMode && !componentEditorOpen && !pluginEditorOpen && !isViewer && !isIconSet && <PageChat />}
+        {/* AI chat — the ONE agent (Vibe), docked or popped out, for pages,
+            design components and icon sets alike: the surface tells it what
+            a bare request is about (an icon set: icons in the set). */}
+        {/* The chat keys on the ROLE, not on viewer mode: while an agent run
+            locks the branch the editor is read-only (viewer reason `agent`),
+            and the chat is exactly where the run is watched and stopped. */}
+        {!previewMode && !componentEditorOpen && !pluginEditorOpen && !isViewerRole && <PageChat />}
         {!previewMode && !componentEditorOpen && !pluginEditorOpen && !cmsOverlayShowing && !translationsOverlayOpen && <BottomToolbar />}
         {/* Sketch brush controls live in the right PropertiesPanel
             (SketchTool) so they sit in the same place as every other
@@ -414,6 +415,50 @@ function ViewOnlyBanner() {
       }}
     >
       View only — you don't have edit access to this website.
+    </div>
+  );
+}
+
+/** The third read-only reason: an agent run holds the branch the user is
+ *  on. Same pill, same spot as the viewer banner (the reasons are mutually
+ *  exclusive); it names the branch and says where the run is stopped, since
+ *  the chat is the one surface that stays live. Gone the moment the run
+ *  finishes — the lock transition re-emits the viewer store. */
+function AgentEditingBanner() {
+  const reason = useViewerReason();
+  const branch = useActiveBranchId();
+  if (reason !== 'agent') return null;
+  return (
+    <div
+      data-testid="agent-editing-banner"
+      style={{
+        position: 'fixed',
+        bottom: 68,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 9998,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '4px 12px',
+        // Solid, no blur: a frosted pill over the canvas read as part of the
+        // page behind it; this is editor chrome and must look like it.
+        background: 'var(--bg-tertiary)',
+        border: '1px solid var(--border-light)',
+        borderRadius: 999,
+        // The property panel's control-label colour (ControlLabel default):
+        // readable, not the full-white that shouted over the canvas.
+        color: 'var(--text-secondary)',
+        fontSize: 11,
+        fontWeight: 500,
+        letterSpacing: 0.2,
+        whiteSpace: 'nowrap',
+        pointerEvents: 'none',
+        userSelect: 'none',
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--accent)', boxShadow: '0 0 6px var(--accent)' }} />
+      Agent is editing {branch === MAIN_BRANCH_ID ? 'main' : `branch ${branch}`} — read-only until it finishes. Stop it from the chat.
     </div>
   );
 }

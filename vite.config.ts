@@ -418,10 +418,10 @@ export default defineConfig(({ mode }) => {
     // every `react` request resolve to Revyme's copy.
     dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'framer-motion'],
   },
-  // preview.html uses import maps (esm.sh CDN) for gsap/framer-motion —
+  // preview.html uses import maps (esm.sh CDN) for framer-motion —
   // tell Vite's dep scanner to skip them so it doesn't fail on missing node_modules.
   optimizeDeps: {
-    exclude: ['gsap', 'gsap/ScrollTrigger', 'framer-motion', '@react-spring/web'],
+    exclude: ['framer-motion', '@react-spring/web'],
   },
   define: {
     'process.env': {},

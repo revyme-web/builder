@@ -2,7 +2,7 @@
 //
 // Meta tools — they coordinate the turn without touching ProjectFS. The
 // `submit_plan` tool makes the model publish its intended work BEFORE the
-// first mutation (plan-first, then act, mirroring Framer's plan mode). The
+// first mutation (plan-first, then act, mirroring the reference builder's plan mode). The
 // runtime treats it as a normal tool_use; the editor store (agent-store.ts)
 // intercepts the tool_call event on the UI side and surfaces the plan to the
 // user. Execution does nothing beyond acking — the plan itself is the side

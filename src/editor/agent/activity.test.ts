@@ -173,3 +173,83 @@ describe('normalizeToolName', () => {
     expect(steps[0].kind).toBe('read');
   });
 });
+
+// The one agent works in the CMS too. `cms_` in front of the verb defeats the
+// prefix rule, so unlisted these all read "Edited 1 layer".
+describe('CMS and manual calls', () => {
+  test('a collection build reads as what was built, with the bulk tool counted per item', () => {
+    const steps = foldActivity([
+      t('cms_create_collection'),
+      t('cms_add_field'), t('cms_add_field'), t('cms_add_field'),
+      { ...t('cms_add_items'), count: 8 },
+    ]);
+    const label = steps.map((s) => s.label).join(' | ');
+    expect(label).toContain('8 items');
+    expect(label).toContain('3 fields');
+    expect(label).toContain('1 collection');
+    expect(label).not.toMatch(/layer/);
+  });
+
+  test('loading a manual is a read, never a change to the document', () => {
+    const [step] = foldActivity([t('load_manual')]);
+    expect(step.kind).toBe('read');
+  });
+
+  test('works through the MCP-qualified name the CLI engine reports', () => {
+    const [step] = foldActivity([t('mcp__revyme__cms_add_field')]);
+    expect(step.label).toMatch(/field/);
+  });
+});
+
+describe('the capability-audit tool families read as what they changed', () => {
+  test('every new tool has an explicit phrasing — none falls back to "edited a layer"', () => {
+    const tools = [
+      'show_variant', 'add_connection', 'remove_connection', 'rename_variant', 'remove_variant',
+      'create_token', 'remove_token', 'set_dark_token', 'set_typography_preset', 'apply_typography_preset', 'set_font',
+      'set_list_config', 'set_pagination', 'link_rows_to_pages', 'create_collection_pages', 'unbind_cms_field', 'bind_cms_prop',
+      'cms_reorder_items', 'cms_reorder_fields', 'cms_duplicate_collection',
+      'delete_page', 'rename_page', 'duplicate_page', 'set_page_metadata', 'set_site_metadata',
+      'set_motion', 'remove_motion', 'set_text_effect',
+      'set_locales', 'translate_texts', 'add_language_switcher', 'add_built_in_component',
+      'set_variant_visibility', 'detach_instance', 'add_component_prop', 'set_text_on_breakpoint', 'set_pseudo_style', 'translate_attribute',
+      'add_list_search', 'add_form_field', 'add_submit_button', 'set_background_video', 'set_form_destination',
+      'set_smooth_scroll', 'set_page_transition', 'set_cursor', 'set_glide', 'create_template', 'assign_template',
+      'add_viewport', 'set_viewport_width', 'remove_viewport', 'reset_overrides', 'change_list_source',
+      'add_shape', 'add_icon', 'create_icon_set', 'insert_section', 'upload_image', 'write_override', 'set_code_overrides', 'bind_variable',
+      'connect_slot', 'write_plugin', 'set_text_fit', 'create_branch', 'switch_branch', 'apply_branch', 'delete_branch',
+    ];
+    for (const name of tools) {
+      const [step] = foldActivity([t(name)]);
+      expect(step.kind, name).toBe('write');
+      expect(step.label, name).not.toMatch(/layer/);
+    }
+  });
+
+  test('the publish check is a review, like the design audit', () => {
+    expect(foldActivity([t('check_project')])[0].kind).toBe('review');
+  });
+
+  test('reads stay reads: motion, texts, built-ins', () => {
+    for (const name of ['get_motion', 'list_texts', 'list_built_in_components', 'list_viewports', 'search_icons', 'find_assets', 'list_sections', 'list_overrides', 'list_templates', 'component_example', 'list_branches', 'get_slots', 'list_plugins', 'get_dialect']) {
+      expect(foldActivity([t(name)])[0].kind, name).toBe('read');
+    }
+  });
+
+  test('a localisation pass reads as languages + translations, a variant pass as variants + transitions', () => {
+    const i18n = foldActivity([t('set_locales'), t('translate_texts'), t('translate_texts'), t('add_language_switcher')]);
+    const l = i18n.map((s) => s.label).join(' | ');
+    expect(l).toMatch(/language/);
+    expect(l).toMatch(/2 translations/);
+    expect(l).toMatch(/language switcher/);
+    const variants = foldActivity([t('create_variant'), t('add_connection'), t('add_connection'), t('show_variant')]);
+    const v = variants.map((s) => s.label).join(' | ');
+    expect(v).toMatch(/variant/);
+    expect(v).toMatch(/2 transitions/);
+  });
+
+  test('sizing / grid / transform act on layers and keep the layer noun', () => {
+    for (const name of ['set_size_units', 'set_grid', 'set_transform', 'wrap_in_layout', 'reorder_on_breakpoint']) {
+      expect(foldActivity([t(name)])[0].label, name).toMatch(/layer/);
+    }
+  });
+});

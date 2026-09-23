@@ -74,3 +74,19 @@ describe('decomposeSvgDropToShapes', () => {
     expect(dec!.box).toEqual({ w: 36, h: 24 });
   });
 });
+
+describe('root-svg paint inheritance (icon packs)', () => {
+  it('a lucide-style stroke icon keeps its stroke on every decomposed path', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>';
+    const dec = decomposeSvgDropToShapes(svg, 'icon-1', 'Menu', 24, 24);
+    expect(dec).not.toBeNull();
+    const paths = dec!.children.flatMap((c) => (c.children ?? []).length ? c.children! : [c]).filter((c) => c.tag === 'path');
+    expect(paths).toHaveLength(3);
+    for (const p of paths) {
+      expect(p.attrs?.stroke).toBe('currentColor');
+      expect(p.attrs?.fill).toBe('none');
+      expect(p.attrs?.['stroke-linecap']).toBe('round');
+      expect(parseFloat(p.attrs?.['stroke-width'] ?? '0')).toBeGreaterThan(0);
+    }
+  });
+});

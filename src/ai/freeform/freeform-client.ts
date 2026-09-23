@@ -16,6 +16,7 @@ import { type FileKind, type OracleViolation } from '@/code/oracle/check-file';
 // The gate moved to the oracle (code/oracle/gate.ts). Re-exported here so the
 // existing import sites keep working; new code should import from the oracle.
 import { gateTurnFiles, commitTurnFiles, formatBounce, type TurnFile } from '@/code/oracle/gate';
+import { getProjectId } from '@/backend/project-id';
 export { gateTurnFiles, commitTurnFiles, formatBounce, type TurnFile };
 
 const AI_SERVICE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8082';
@@ -115,8 +116,11 @@ async function runTurnAsJob(payload: object, signal?: AbortSignal): Promise<JobO
     const res = await fetch(`${AI_SERVICE_URL}/api/freeform/job`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      // The session cookie + the project: on Revyme cloud the service bills
+      // the PROJECT's workspace and refuses a caller who cannot edit it.
+      credentials: 'include',
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, websiteId: getProjectId() }),
     });
     if (!res.ok) return { ok: false, error: await errorFrom(res) };
     const body = await res.json();

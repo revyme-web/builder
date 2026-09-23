@@ -82,6 +82,12 @@ function checkPageLinks(code: string, ast: t.File, v: OracleViolation[]): void {
       if (!attrs.some((a) => a.name.name === 'href')) return; // not a link
       // CMS field-bound anchors are tool-owned <a> — leave them.
       if (attrs.some((a) => a.name.name === 'data-cms-bind-target' || a.name.name === 'data-cms-field')) return;
+      // An EXTERNAL destination (another site, mail, tel) is a plain <a> by
+      // design — a full navigation is the right thing there and <Link> adds
+      // nothing. The Link tool itself writes these as <a rel="noopener
+      // noreferrer">; the rule was rejecting the editor's own output.
+      const href = stringAttr(attrs, 'href');
+      if (href && /^(https?:\/\/|mailto:|tel:)/.test(href)) return;
       offenders.push({ tag, line: opening.loc?.start.line, id: stringAttr(attrs, 'data-id') });
     },
   });

@@ -3,6 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildCreatedMaster, type CreateComponentSpec } from './create-component-gen';
 import { checkFile } from '@/code/oracle/check-file';
+import { parsePropMeta } from '@/code/components/prop-meta';
 
 const LAYOUT_SPEC: CreateComponentSpec = {
   name: 'PricingCard',
@@ -55,6 +56,16 @@ describe('buildCreatedMaster — layout mode', () => {
     expect(r.props.map((p) => p.name)).toEqual(['title', 'price']);
     expect(r.dataIds).toContain('pricing-card-root');
     expect(r.dataIds).toContain('card');
+  });
+
+  it('types every declared prop in @propMeta (Variables panel type, Localization plainText listing)', () => {
+    const r = buildCreatedMaster(LAYOUT_SPEC);
+    expect('error' in r).toBe(false);
+    if ('error' in r) return;
+    const meta = parsePropMeta(r.masterCode);
+    expect(meta.title?.type).toBe('plainText');
+    expect(meta.price?.type).toBe(LAYOUT_SPEC.props.find((p) => p.name === 'price')!.type === 'number' ? 'number' : 'plainText');
+    expect(checkFile(r.masterCode, { kind: 'component', path: 'components/PricingCard.tsx' })).toEqual([]);
   });
 
   it('binds {prop} in text and whole style values', () => {

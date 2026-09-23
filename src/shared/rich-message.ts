@@ -137,7 +137,7 @@ export function richMessageRunStyles(html: string): string[] {
   return out;
 }
 
-/** Framer parity: the DEFAULT locale owns the styling (font size / colour /
+/** reference parity: the DEFAULT locale owns the styling (font size / colour /
  *  family of each styled run); a translation only rearranges text and the
  *  structural marks (bold / italic / underline / strike / link). Re-bake the
  *  translation's styled spans from the default, by ordinal: the i-th styled
@@ -163,7 +163,7 @@ export function syncRunStyles(defaultHtml: string, translationHtml: string): str
 // typography (`22pt`, Arial, Noto). Written verbatim inside the node's `<p>`
 // that is invalid nesting — the browser auto-closes the outer paragraph and the
 // node's own font is overridden (live find 2026-09-07, a Google Doc paste).
-// Framer flattens: blocks become inline runs separated by line breaks, and only
+// The reference builder flattens: blocks become inline runs separated by line breaks, and only
 // the structural marks (bold / italic / underline / strike / link / colour)
 // survive; size and family come from the node.
 

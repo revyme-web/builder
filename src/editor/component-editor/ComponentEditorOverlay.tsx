@@ -6,11 +6,10 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { componentEditorFileAtom, componentEditorPropsAtom, componentEditorStreamingAtom } from '@/code/stores/component-editor-store';
+import { componentEditorFileAtom, componentEditorPropsAtom } from '@/code/stores/component-editor-store';
+import { registerBeforeAgentTurn } from '@/ai/agent/turn-hooks';
 import { projectFS, projectVersionAtom } from '@/code/project/project-fs';
 import { parseComponentControlsMeta } from '@/code/components/controls-parser';
-import { checkFile } from '@/code/oracle/check-file';
-import { isCodeComponentSource } from '@/code/oracle/checks/shared';
 import ComponentCodePane from './ComponentCodePane';
 import ComponentPreviewPane from './ComponentPreviewPane';
 import ComponentPropsPanel from './ComponentPropsPanel';
@@ -28,6 +27,8 @@ export default function ComponentEditorOverlay() {
   const hasUnsavedChanges = code !== savedCode;
   const codeRef = useRef(code);
   codeRef.current = code;
+  const savedCodeRef = useRef(savedCode);
+  savedCodeRef.current = savedCode;
 
   // Parse @controls from saved code
   const metadata = useMemo(() => {
@@ -99,48 +100,28 @@ export default function ComponentEditorOverlay() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [filePath]);
 
-  // Auto-save when AI streaming finishes so preview recompiles.
+  // THE AGENT READS FILES; this overlay edits a BUFFER. Before a turn is sent
+  // from the chat below, write the buffer out — exactly what Save does — so
+  // "make the glow bigger" lands on a file that contains the glow the user
+  // just typed. The user's own typing is never oracle-gated (sovereignty over
+  // one's own keyboard, as with Save and close); the AGENT's writes are, at the
+  // file level, by the same gate every other agent write goes through.
   //
-  // ORACLE-GATED (2026-08-11): this used to write the streamed buffer to disk
-  // VERBATIM — the single largest ungated door in the app (any model output,
-  // any file the overlay was pointed at, zero checks — not even syntax). The
-  // AI path now runs the same checkFile the MCP gate uses; a violating stream
-  // stays IN THE BUFFER (visible, editable) and is not committed. The user's
-  // OWN typing is never gated: manual Save and close-with-changes below stay
-  // as they were — sovereignty over one's own keyboard.
-  const streaming = useAtomValue(componentEditorStreamingAtom);
-  const prevStreamingRef = useRef(false);
+  // This replaces the old "auto-save when AI streaming finishes" effect. That
+  // chat streamed a whole file into this buffer and the oracle check happened
+  // HERE, after the fact — a rejection reached only the console, the model was
+  // never told, and the unsaved AI code was still written on close. None of it
+  // exists any more: nothing but the user types into this buffer now.
   useEffect(() => {
-    // Detect transition from streaming=true → false
-    if (prevStreamingRef.current && !streaming && filePath) {
-      const streamed = codeRef.current;
-      const kind = filePath.startsWith('components/')
-        ? (isCodeComponentSource(streamed) ? 'code-component' : 'component')
-        : /LayoutClient\.tsx$/.test(filePath) ? 'template' : 'page';
-      let violations: Array<{ code: string; message: string }> = [];
-      try {
-        violations = checkFile(streamed, { kind, path: filePath });
-      } catch (err) {
-        violations = [{ code: 'ORACLE_THREW', message: String(err) }];
-      }
-      if (violations.length > 0) {
-        trace.error('component-editor:auto-save-blocked-by-oracle', {
-          filePath, codes: violations.map((x) => x.code).slice(0, 10),
-        });
-        console.warn(
-          `[Revyme] The AI's code for ${filePath} was NOT saved — it fails ${violations.length} oracle check(s) ` +
-          `(${[...new Set(violations.map((x) => x.code))].slice(0, 5).join(', ')}). ` +
-          `The code stays in the editor; fix it or ask the AI again. First issue: ${violations[0].message.slice(0, 300)}`,
-        );
-      } else {
-        projectFS.writeFile(filePath, streamed);
-        bumpVersion(v => v + 1);
-        setSavedCode(streamed);
-        trace.action('component-editor:auto-save-after-stream', { filePath });
-      }
-    }
-    prevStreamingRef.current = streaming;
-  }, [streaming, filePath, bumpVersion]);
+    if (!filePath) return;
+    return registerBeforeAgentTurn(() => {
+      if (codeRef.current === savedCodeRef.current) return;
+      projectFS.writeFile(filePath, codeRef.current);
+      bumpVersion(v => v + 1);
+      setSavedCode(codeRef.current);
+      trace.action('component-editor:save-before-agent-turn', { filePath, size: codeRef.current.length });
+    });
+  }, [filePath, bumpVersion]);
 
   const handleClose = useCallback(() => {
     // Write ONLY a buffer that differs from what's on disk RIGHT NOW — never
@@ -306,7 +287,7 @@ function EditorBody({ code, savedCode, fileName, onCodeChange, onSave, controls,
 
       {/* Center: Preview (top) + AI Chat (bottom) */}
       <div className="min-w-0 h-full flex flex-col" style={{ width: `calc((100% - ${rightSidebarWidth}px) * ${1 - splitRatio} - 6px)` }}>
-        <ComponentPreviewPane code={savedCode} fileName={fileName} liveCode={code} onCodeChange={onCodeChange} />
+        <ComponentPreviewPane code={savedCode} fileName={fileName} />
       </div>
 
       {/* Right: Controls sidebar */}

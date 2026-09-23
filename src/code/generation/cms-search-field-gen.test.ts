@@ -32,7 +32,10 @@ describe('buildSearchInputElement', () => {
     expect(code).toContain('value={searchTitle}');
     expect(code).toContain('onChange={e => setSearchTitle(e.target.value)}');
     expect(code).toContain('data-search-field="searchTitle"');
-    expect(code).toContain('"#ebebeb"');   // greyer than near-white
+    // The grey is the bottom FILL LAYER under the glyph — the Fill control is
+    // single-colour OR layers, never both (oracle BG_COLOR_WITH_IMAGE).
+    expect(code).toContain('linear-gradient(#ebebeb, #ebebeb)');
+    expect(code).not.toContain('backgroundColor');
     expect(code).toContain('width: "100%"'); // fills the frame
     expect(code).not.toContain('</input>'); // self-closing void input
   });

@@ -109,7 +109,7 @@ interface MenuItem {
   pagePath?: string;
 }
 
-function buildMenuCategories(
+export function buildMenuCategories(
   registered: Array<{ title: string; items: SettingsSectionDef[] }>,
   abTestPages: string[],
 ): Array<{ title: string; items: MenuItem[] }> {
@@ -149,7 +149,9 @@ function buildMenuCategories(
       if (b === 'page') return 1;
       return a.localeCompare(b);
     });
-    result.push({
+    // Right after Insights (its parent topic), not at the end — the AI
+    // category comes after Insights and would otherwise split the two.
+    const abTests = {
       title: 'A/B Tests',
       items: sorted.map<MenuItem>(p => ({
         id: `ab-tests:${p}`,
@@ -157,7 +159,10 @@ function buildMenuCategories(
         icon: p === 'page' ? PageHomeIcon : PageDocumentIcon,
         pagePath: p,
       })),
-    });
+    };
+    const insights = result.findIndex(c => c.title === 'Insights');
+    if (insights >= 0) result.splice(insights + 1, 0, abTests);
+    else result.push(abTests);
   }
 
   return result;

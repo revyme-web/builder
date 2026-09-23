@@ -88,6 +88,7 @@ export function buildExtractedMaster(
   sourceCode: string,
   nodeId: string,
   name: string,
+  opts: { rootSize?: Record<string, string> } = {},
 ): ExtractMasterResult {
   trace.fn('generator.buildExtractedMaster', { nodeId, name });
   if (!COMPONENT_NAME_RE.test(name)) {
@@ -173,15 +174,20 @@ export function buildExtractedMaster(
 
   // ROOT style surgery on the sliced source: drop `position` + insets (banned
   // on a master root), ensure the trailing `...style` spread.
-  slice = convertRootStyleForMaster(slice);
+  slice = convertRootStyleForMaster(slice, opts.rootSize);
 
   const body = reindent(slice, 4);
   const params = ['style', ...props.map((p) => `${p.name} = ${JSON.stringify(p.defaultValue)}`)].join(',\n  ');
   const types = ['style?: React.CSSProperties', ...props.map((p) => `${p.name}?: string`)].join(';\n  ');
+  // Nested project-component instances in the slice keep working only with
+  // their imports: copy the SOURCE file's import line for every PascalCase
+  // tag the slice uses (framer-motion / runtime tags are auto-imported at
+  // commit; project components are not).
+  const nestedImports = nestedComponentImports(sourceCode, slice);
   const masterCode = `"use client";
 
 import { withResponsiveProps } from "@revyme/runtime";
-
+${nestedImports.map((l) => `${l}\n`).join('')}
 /** @name "${name}" */
 export ${serializeVariantConfig([{ name: 'default', label: 'Default', x: 0, y: 0, isPrimary: true }])}
 
@@ -294,7 +300,19 @@ function dropBannedStyleProps(styleBody: string): { body: string; dropped: strin
  * root props, ensure the trailing `...style` spread. Operates on the element
  * source slice (root opening tag first).
  */
-export function convertRootStyleForMaster(elementSource: string): string {
+/** The source file's import lines for the component tags a slice renders. */
+function nestedComponentImports(sourceCode: string, slice: string): string[] {
+  const tags = new Set<string>();
+  for (const m of slice.matchAll(/<([A-Z][A-Za-z0-9]*)\b/g)) tags.add(m[1]);
+  const out: string[] = [];
+  for (const tag of tags) {
+    const line = sourceCode.match(new RegExp(`^import\\s+(?:\\{\\s*${tag}\\s*\\}|${tag})\\s+from\\s+['"][^'"]+['"];?`, 'm'))?.[0];
+    if (line && !/from ['"](framer-motion|react|next\/link)['"]/.test(line)) out.push(line);
+  }
+  return out;
+}
+
+export function convertRootStyleForMaster(elementSource: string, rootSize: Record<string, string> = {}): string {
   // Find the root opening tag's style object: first `style={{` in the slice
   // belongs to the root element itself.
   const styleIdx = elementSource.indexOf('style={{');
@@ -325,7 +343,13 @@ export function convertRootStyleForMaster(elementSource: string): string {
     }
   }
   if (depth !== 0) return elementSource;
-  const inner = elementSource.slice(objStart, i);
+  let inner = elementSource.slice(objStart, i);
+  // Parent-relative root sizes → the px the caller measured (or 'auto'): an
+  // artboard has no parent to be a percentage of (oracle COMPONENT_ROOT_PERCENT_SIZE).
+  for (const [k, v] of Object.entries(rootSize)) {
+    const re = new RegExp(`(^|[,{\\s])${k}\\s*:\\s*(['"\`])[^'"\`]*\\2`);
+    inner = re.test(inner) ? inner.replace(re, `$1${k}: '${v}'`) : `${k}: '${v}', ${inner}`;
+  }
   const { body } = dropBannedStyleProps(inner);
   if (/\.\.\.style\b/.test(body)) return elementSource;
   if (body.trim() === '') {

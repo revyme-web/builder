@@ -22,7 +22,7 @@ export const ANIMATED_COUNTER_COMPONENT = `'use client';
 } */
 
 import { useState, useEffect, useRef } from 'react';
-import { withResponsiveProps } from '@revyme/runtime';
+import { withResponsiveProps, useStaticCanvas } from '@revyme/runtime';
 
 function AnimatedCounter({
   endValue = 1250, duration = 2000, delayInView = 0, suffix = '+', prefix = '',
@@ -36,6 +36,7 @@ function AnimatedCounter({
   const [count, setCount] = useState(0);
   const [started, setStarted] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
+  const isStatic = useStaticCanvas();
 
   // Arm on first viewport entry (once), then wait delayInView ms before starting.
   useEffect(() => {
@@ -56,6 +57,7 @@ function AnimatedCounter({
 
   useEffect(() => {
     if (!started) return;
+    if (isStatic) { setCount(endValue); return; }
     let start: number | null = null;
     let frame: number;
     const step = (ts: number) => {
@@ -67,7 +69,7 @@ function AnimatedCounter({
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [started, endValue, duration]);
+  }, [started, endValue, duration, isStatic]);
 
   return (
     <span {...props} ref={ref} style={{ color, fontSize: fontSize + 'px', fontWeight, fontFamily, ...(props.style || {}) }}>

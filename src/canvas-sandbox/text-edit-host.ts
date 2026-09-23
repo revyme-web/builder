@@ -484,7 +484,7 @@ export function startTextEdit(
       // PASTE: a text node is one paragraph. Block HTML from Google Docs / Word
       // (<h1>, <p>, lists, 22pt Noto…) is flattened to inline runs + <br> with
       // only structural marks kept, BEFORE ProseMirror parses it — so the
-      // editor shows what will be committed (Framer behaviour).
+      // editor shows what will be committed (the reference builder behaviour).
       transformPastedHTML: (html: string) => {
         const flat = flattenPastedRichHtml(html);
         if (flat !== html) trace.action('text-edit-host:paste-flattened', { from: html.length, to: flat.length });

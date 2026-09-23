@@ -10,16 +10,18 @@ import { aiChatDetachedAtom } from '@/code/stores/editor-store';
 import { componentEditorFileAtom } from '@/code/stores/component-editor-store';
 import { pluginEditorFileAtom } from '@/editor/plugin-editor/plugin-editor-store';
 import { cmsEditorOpenAtom } from '@/code/stores/cms-editor-store';
+import { agentStatusAtom } from '@/code/stores/agent-chat-store';
 import {
   InsertPlusIcon,
   GlobeInternationalIcon,
   ChatImageIcon,
   CmsIcon,
   LibraryStackIcon,
+  BranchIcon,
 } from '@/shared/icons';
 import CollaboratorsModal from '@/editor/collab/CollaboratorsModal';
 import CollaboratorsSection from '@/editor/collab/CollaboratorsSection';
-import { useIsViewer } from '@/code/stores/viewer-mode-store';
+import { useIsViewer, useIsViewerRole } from '@/code/stores/viewer-mode-store';
 import { useIsClosedSource } from '@/code/stores/closed-source-store';
 
 // ─── Code Icon ──────────────────────────────────────────────────────────────
@@ -129,6 +131,12 @@ export default function LeftMenu() {
   // Code, Templates are all disabled (visible-but-dimmed, consistent
   // with the rest of view-only chrome).
   const isViewer = useIsViewer();
+  // VIBE and Code key on the ROLE alone: while an agent run locks the branch
+  // the editor is read-only (viewer reason `agent`), but the chat is where
+  // that run is watched and stopped, and reading the code stays useful (the
+  // editor's Write toggle is gated on the run separately).
+  const isViewerRole = useIsViewerRole();
+  const agentRunning = useAtomValue(agentStatusAtom) === 'running';
   const isClosedSource = useIsClosedSource();
   // The VIBE icon opens the docked AI chat. It hides entirely while the chat
   // is detached into the floating popup — there's nothing for it to toggle,
@@ -230,21 +238,28 @@ export default function LeftMenu() {
               transition={{ type: 'spring', bounce: 0.2, duration: 0.28 }}
               className="flex flex-col items-center gap-2 overflow-hidden"
             >
-              <button
-                disabled={isViewer}
-                onClick={isViewer ? undefined : (e) => { togglePanel('vibe'); handleClick('vibe'); e.currentTarget.blur(); }}
-                onMouseEnter={isViewer ? undefined : (e) => handleEnter('vibe', 'Vibe AI', e.currentTarget)}
-                onMouseLeave={isViewer ? undefined : handleLeave}
-                className={`w-8 h-8 cut-corners flex items-center justify-center transition-colors text-[10px] font-bold tracking-wide ${
-                  isViewer
-                    ? 'bg-[var(--accent)] text-[var(--accent-fg)] opacity-40 cursor-not-allowed'
-                    : activePanel === 'vibe'
-                      ? 'bg-[var(--accent-hover)] text-[var(--accent-fg)]'
-                      : 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-fg)]'
-                }`}
-              >
-                VIBE
-              </button>
+              {/* WHILE THE AGENT WORKS the icon says so from any panel: one
+                  light travelling the cut outline, a grid flashing inside, the
+                  letters glitching (`.vibe-working` in globals.css). The ring
+                  lives on a wrapper because the button's own clip-path would
+                  cut it. */}
+              <div className={`vibe-ring relative w-8 h-8 cut-corners ${agentRunning ? 'vibe-working' : ''}`} data-testid="vibe-button" data-working={agentRunning || undefined}>
+                <button
+                  disabled={isViewerRole}
+                  onClick={isViewerRole ? undefined : (e) => { togglePanel('vibe'); handleClick('vibe'); e.currentTarget.blur(); }}
+                  onMouseEnter={isViewerRole ? undefined : (e) => handleEnter('vibe', 'Vibe AI', e.currentTarget)}
+                  onMouseLeave={isViewerRole ? undefined : handleLeave}
+                  className={`vibe-face absolute inset-0 cut-corners flex items-center justify-center transition-colors text-[10px] font-bold tracking-wide ${
+                    isViewerRole
+                      ? 'bg-[var(--accent)] text-[var(--accent-fg)] opacity-40 cursor-not-allowed'
+                      : activePanel === 'vibe'
+                        ? 'bg-[var(--accent-hover)] text-[var(--accent-fg)]'
+                        : 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-fg)]'
+                  }`}
+                >
+                  <span className="vibe-text relative">VIBE</span>
+                </button>
+              </div>
 
               {/* Separator */}
               <div className="w-5 h-px bg-[var(--border-light)]" />
@@ -319,11 +334,11 @@ export default function LeftMenu() {
         </MenuButton>
 
         {/* Branches — parallel workspaces; main stays the publish truth. */}
-        <MenuButton panelId="branches" isActive={activePanel === 'branches'} onToggle={togglePanel} title="Branches" tooltip={tooltipHandlers} disabled={isViewer} dataTutorial="branches-button">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" />
-            <circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />
-          </svg>
+        {/* Branches keys on the ROLE: while an agent run holds the branch the
+            panel is where you see which one is in use (switching is refused
+            with the reason until the run finishes). */}
+        <MenuButton panelId="branches" isActive={activePanel === 'branches'} onToggle={togglePanel} title="Branches" tooltip={tooltipHandlers} disabled={isViewerRole} dataTutorial="branches-button">
+          <BranchIcon size={18} />
         </MenuButton>
 
         {/* Code — opens floating popup instead of left panel. HIDDEN
@@ -331,12 +346,12 @@ export default function LeftMenu() {
             chose not to expose the source, so the affordance doesn't render
             (matching the marketplace "Closed source" option). */}
         {!isClosedSource && <button
-          disabled={isViewer}
-          onClick={isViewer ? undefined : (e) => { setCodeOpen(v => !v); handleClick('code'); e.currentTarget.blur(); }}
-          onMouseEnter={isViewer ? undefined : (e) => handleEnter('code', 'Code', e.currentTarget)}
-          onMouseLeave={isViewer ? undefined : handleLeave}
+          disabled={isViewerRole}
+          onClick={isViewerRole ? undefined : (e) => { setCodeOpen(v => !v); handleClick('code'); e.currentTarget.blur(); }}
+          onMouseEnter={isViewerRole ? undefined : (e) => handleEnter('code', 'Code', e.currentTarget)}
+          onMouseLeave={isViewerRole ? undefined : handleLeave}
           className={`w-8 h-8 cut-corners flex items-center justify-center transition-colors ${
-            isViewer
+            isViewerRole
               ? 'text-[var(--text-secondary)] opacity-40 cursor-not-allowed'
               : codeOpen
                 ? 'bg-[var(--btn-secondary-bg)] text-[var(--text-primary)]'

@@ -1,4 +1,4 @@
-// Rich per-variant text (Framer parity, 2026-09-05).
+// Rich per-variant text (reference parity, 2026-09-05).
 //
 // The old contract stripped TipTap marks to plain text before the ternary
 // write — the user bolded a word on a variant tile, the canvas showed it,

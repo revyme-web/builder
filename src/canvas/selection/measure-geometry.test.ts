@@ -110,8 +110,8 @@ describe('computeGapMeasure — straight runs', () => {
 });
 
 describe('computeGapMeasure — diagonals draw BOTH axes', () => {
-  // The Framer picture the user matched against (screenshot 2026-08-09): a
-  // heading in the desktop tile, an image in the mobile tile. Framer shows the
+  // The the reference builder picture the user matched against (screenshot 2026-08-09): a
+  // heading in the desktop tile, an image in the mobile tile. The reference builder shows the
   // horizontal distance AND the vertical one, each with its own elbow. Real
   // coordinates from that screenshot so the expected numbers are checkable.
   const A = r(232, 220, 594, 332);       // selection: desktop heading

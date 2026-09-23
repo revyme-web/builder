@@ -494,6 +494,15 @@ export interface CanvasNode {
   // Code components (live rendered on canvas)
   isCodeComponent?: boolean;              // true if this is a Code component instance (live rendered)
   componentProps?: Record<string, string>;  // props passed to component instance (expression values)
+  /** Literal ARRAY / OBJECT props (`items={[{question,answer},…]}`), each as
+   *  its JSON text. A code component fed a list — an FAQ accordion, a pricing
+   *  card's benefits — got nothing on canvas before this: the attr walker
+   *  understands scalars, identifiers and ternaries, so an ArrayExpression
+   *  matched no branch and was dropped, and the component rendered its empty
+   *  state while the deployed page (real React) rendered the list. Only
+   *  PURE literals are carried; anything with an identifier or a call in it
+   *  is left alone, because the canvas cannot evaluate it. */
+  componentJsonProps?: Record<string, string>;
   // Background video (real <video data-bg-video> first-child element). Parser
   // peels it off the children list and surfaces its config here so the Fill
   // tool and canvas treat it as a managed property, not a regular child node.
@@ -1274,6 +1283,37 @@ function createBaseNode(p: {
   };
 }
 
+/** A JSX expression that is a SELF-CONTAINED literal (arrays, objects, strings,
+ *  numbers, booleans, null and negative numbers, nested freely) -> its JSON
+ *  text. Returns undefined for anything the canvas cannot evaluate on its own:
+ *  an identifier, a call, a template string with a hole. */
+function jsonLiteralText(expr: any): string | undefined {
+  const build = (n: any): unknown => {
+    switch (n?.type) {
+      case 'StringLiteral': case 'NumericLiteral': case 'BooleanLiteral': return n.value;
+      case 'NullLiteral': return null;
+      case 'TemplateLiteral':
+        if (n.expressions.length > 0) throw new Error('hole');
+        return n.quasis.map((q: any) => q.value.cooked).join('');
+      case 'UnaryExpression':
+        if (n.operator !== '-' || n.argument?.type !== 'NumericLiteral') throw new Error('unary');
+        return -n.argument.value;
+      case 'ArrayExpression':
+        return n.elements.map((el: any) => { if (!el) throw new Error('hole'); return build(el); });
+      case 'ObjectExpression':
+        return Object.fromEntries(n.properties.map((prop: any) => {
+          if (prop.type !== 'ObjectProperty' || prop.computed) throw new Error('spread');
+          const key = prop.key.type === 'Identifier' ? prop.key.name
+            : (prop.key.type === 'StringLiteral' || prop.key.type === 'NumericLiteral') ? String(prop.key.value)
+              : (() => { throw new Error('key'); })();
+          return [key, build(prop.value)];
+        }));
+      default: throw new Error(n?.type ?? 'unknown');
+    }
+  };
+  try { return JSON.stringify(build(expr)); } catch { return undefined; }
+}
+
 /**
  * Attach the attr-extraction extras (component props, responsive / conditional
  * prop maps) onto the node — shared by BOTH walkers so the two paths surface
@@ -1281,6 +1321,7 @@ function createBaseNode(p: {
  */
 function assignAttrExtras(node: CanvasNode, x: {
   componentProps: Record<string, string>;
+  componentJsonProps?: Record<string, string>;
   responsiveAttrsAccum: Record<string, { viewport: Record<number, string>; variant: Record<string, string> }>;
   attrConditional: Record<string, Record<string, string>>;
   attrConditionalVarRefs: Record<string, Record<string, string>>;
@@ -1292,6 +1333,7 @@ function assignAttrExtras(node: CanvasNode, x: {
 }): void {
   const id = node.id;
   if (Object.keys(x.componentProps).length > 0) node.componentProps = x.componentProps;
+  if (x.componentJsonProps && Object.keys(x.componentJsonProps).length > 0) node.componentJsonProps = x.componentJsonProps;
   if (Object.keys(x.responsiveAttrsAccum).length > 0) {
     node.responsiveAttrs = x.responsiveAttrsAccum;
     trace.action('parser:responsive-attrs', { nodeId: id, attrs: Object.keys(x.responsiveAttrsAccum) });
@@ -1484,6 +1526,7 @@ function extractElementAttrs(opening: any, tagName: string, ctx: ParseCtx): {
  */
 function extractInstanceExpressionProps(opening: any, tagName: string, attrs: Record<string, string>, ctx: ParseCtx): {
   componentProps: Record<string, string>;
+  componentJsonProps: Record<string, string>;
   attrConditional: Record<string, Record<string, string>>;
   attrConditionalVarRefs: Record<string, Record<string, string>>;
   attrPropRefs: Record<string, string>;
@@ -1496,6 +1539,7 @@ function extractInstanceExpressionProps(opening: any, tagName: string, attrs: Re
   // Extract component expression props (numeric, boolean values from JSXExpressionContainer)
   // getAttr() only captures string literals — this captures {500}, {true}, etc.
   const componentProps: Record<string, string> = {};
+  const componentJsonProps: Record<string, string> = {};
   // Per-parent-variant prop overrides via ternary:
   //   initialVariant={initialVariant === 'variant-1' ? 'variant-2' : 'default'}
   // Captured here so expandComponent can pick the right child variant
@@ -1533,6 +1577,12 @@ function extractInstanceExpressionProps(opening: any, tagName: string, attrs: Re
           componentProps[attrName] = String(expr.value);
         } else if (expr.type === 'StringLiteral') {
           componentProps[attrName] = expr.value;
+        } else if (expr.type === 'ArrayExpression' || expr.type === 'ObjectExpression') {
+          // A list or a config object stated inline. Kept as JSON text and
+          // re-parsed at render; not editable in the panels (there is no
+          // array control), but the component receives what the page states.
+          const json = jsonLiteralText(expr);
+          if (json !== undefined) componentJsonProps[attrName] = json;
         } else if (expr.type === 'Identifier') {
           // Forwarded-prop ref: `<Child cprop={parentVar} />`. Record
           // the ref name; the second pass below will resolve it to
@@ -1582,7 +1632,7 @@ function extractInstanceExpressionProps(opening: any, tagName: string, attrs: Re
   }
 
   return {
-    componentProps, attrConditional, attrConditionalVarRefs, attrPropRefs,
+    componentProps, componentJsonProps, attrConditional, attrConditionalVarRefs, attrPropRefs,
     responsiveAttrPropVars, responsiveAttrPropVals, responsiveAttrPropBandsAcc,
   };
 }
@@ -1977,7 +2027,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
         // the same ones, so the two walk paths cannot drift apart).
         const { attrs, responsiveAttrsAccum, responsivePropFieldBindings, attrTranslationKeys } = extractElementAttrs(opening, tagName, ctx);
         const {
-          componentProps, attrConditional, attrConditionalVarRefs, attrPropRefs,
+          componentProps, componentJsonProps, attrConditional, attrConditionalVarRefs, attrPropRefs,
           responsiveAttrPropVars, responsiveAttrPropVals, responsiveAttrPropBandsAcc,
         } = extractInstanceExpressionProps(opening, tagName, attrs, ctx);
 
@@ -2351,7 +2401,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
         if (variantBindings) node.variantBindings = variantBindings;
         if (attrBindings.length > 0) node.attrBindings = attrBindings;
         assignAttrExtras(node, {
-          componentProps, responsiveAttrsAccum, attrConditional, attrConditionalVarRefs,
+          componentProps, componentJsonProps, responsiveAttrsAccum, attrConditional, attrConditionalVarRefs,
           attrPropRefs, responsiveAttrPropVars, responsiveAttrPropVals,
           responsiveAttrPropBandsAcc, responsivePropFieldBindings,
         });
@@ -2838,7 +2888,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
       // implementation is the root fix for that bug class.
       const { attrs, responsiveAttrsAccum, responsivePropFieldBindings, attrTranslationKeys } = extractElementAttrs(opening, tagName, ctx);
       const {
-        componentProps, attrConditional, attrConditionalVarRefs, attrPropRefs,
+        componentProps, componentJsonProps, attrConditional, attrConditionalVarRefs, attrPropRefs,
         responsiveAttrPropVars, responsiveAttrPropVals, responsiveAttrPropBandsAcc,
       } = extractInstanceExpressionProps(opening, tagName, attrs, ctx);
 
@@ -2929,7 +2979,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
       });
 
       assignAttrExtras(node, {
-        componentProps, responsiveAttrsAccum, attrConditional, attrConditionalVarRefs,
+        componentProps, componentJsonProps, responsiveAttrsAccum, attrConditional, attrConditionalVarRefs,
         attrPropRefs, responsiveAttrPropVars, responsiveAttrPropVals,
         responsiveAttrPropBandsAcc, responsivePropFieldBindings,
       });

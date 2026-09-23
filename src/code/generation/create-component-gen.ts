@@ -28,10 +28,14 @@
 
 import { parseJSX, findFirstElementByDataId } from '@/code/parsing/ast-utils';
 import { serializeVariantConfig } from '@/code/variants/variant-config';
+import { setPropTypeInCode } from '@/code/components/prop-meta';
 import { convertRootStyleForMaster } from './extract-component-gen';
 import { trace } from '@/shared/debug-trace';
 
 export type CreatePropType = 'string' | 'number' | 'boolean' | 'color' | 'image';
+
+/** The builder's variable type id per declared prop type (component-ops CMS_FIELD_TO_PROP_TYPE). */
+const PROP_META_TYPE: Record<CreatePropType, string> = { string: 'plainText', number: 'number', boolean: 'toggle', color: 'color', image: 'image' };
 
 export interface CreatePropSpec {
   name: string;
@@ -502,6 +506,10 @@ export function buildCreatedMaster(
     : buildLayout(spec, prepared, slug);
   if ('error' in built) return built;
   const body = built.body;
-  const masterCode = emitMaster(spec.name, prepared.created, spec.variants ?? [], body, built.needsMotion);
+  let masterCode = emitMaster(spec.name, prepared.created, spec.variants ?? [], body, built.needsMotion);
+  // The Variables panel types a prop by its @propMeta entry, and the
+  // Localization panel lists an instance's text props ONLY when the entry says
+  // plainText — a declared prop without one is untyped and untranslatable.
+  for (const p of prepared.created) masterCode = setPropTypeInCode(masterCode, p.name, PROP_META_TYPE[p.type]);
   return { masterCode, props: prepared.created, dataIds: built.dataIds, needsMotion: built.needsMotion };
 }

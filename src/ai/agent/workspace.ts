@@ -67,7 +67,9 @@ export function getToolNodes(ctx?: ToolContext): Map<string, CanvasNode> {
       return new Map();
     }
   }
-  return getNodesSnapshot();
+  // Never undefined: a snapshot that is not there yet (boot, a test without
+  // one) is an EMPTY map, not a crash in the first tool that reads it.
+  return getNodesSnapshot() ?? new Map();
 }
 
 /** Queue one mutation on the run's branch (author agent, file resolved). */

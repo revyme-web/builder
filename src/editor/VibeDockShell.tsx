@@ -4,7 +4,7 @@
 // toolbar slot (where InsertPanel / PagesPanel would sit), opened by the
 // VIBE icon in LeftMenu. A "Detach" button in the header pops the same chat
 // into the floating `AIChatSheet`. The detached counterpart is AIChatSheet;
-// PageChat / IconSetChat pick which shell to render.
+// PageChat picks which shell to render.
 
 import { type ReactNode } from 'react';
 import { trace } from '@/shared/debug-trace';

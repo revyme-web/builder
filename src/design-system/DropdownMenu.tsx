@@ -89,6 +89,12 @@ interface DropdownMenuProps {
   position?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right' | 'right-start';
   /** Minimum width */
   minWidth?: number;
+  /** Make the menu exactly as wide as its anchor, and ELLIPSIZE labels that do
+   *  not fit. Menus size to their longest label by default, which is right for
+   *  a list of commands and wrong for a list of user-written titles in a
+   *  narrow panel: one long chat name made the menu spill out of the panel it
+   *  belongs to. Opt-in — every other menu keeps sizing to content. */
+  matchAnchorWidth?: boolean;
   /** Hover style: 'accent' (blue highlight, like context menu) or 'subtle' (gray) */
   hoverStyle?: 'accent' | 'subtle';
   /** Render a "Type to search…" row at the top of the ROOT menu. Typing
@@ -163,6 +169,8 @@ interface MenuPanelProps {
   items: DropdownMenuEntry[];
   hoverStyle: 'accent' | 'subtle';
   minWidth?: number;
+  /** Fixed width (root menu, `matchAnchorWidth`). Labels ellipsize inside it. */
+  width?: number;
   onClose: () => void;
   /** Inline style for absolute/fixed placement. */
   style: React.CSSProperties;
@@ -180,7 +188,7 @@ interface MenuPanelProps {
  *  flyout with that item's normal submenu. */
 const SEARCH_SUB_ID = '__search__';
 
-function MenuPanel({ items, hoverStyle, minWidth, onClose, style, rootRef, searchable }: MenuPanelProps) {
+function MenuPanel({ items, hoverStyle, minWidth, width, onClose, style, rootRef, searchable }: MenuPanelProps) {
   // Track which item's submenu is currently shown (one at a time). Set
   // on hover-enter, cleared when hovering a sibling item that has no
   // submenu. Submenu portal manages its own outside-click via this same
@@ -215,7 +223,9 @@ function MenuPanel({ items, hoverStyle, minWidth, onClose, style, rootRef, searc
       className="fixed bg-[var(--dropdown-bg,var(--bg-surface))] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)]"
       style={{
         ...style,
-        minWidth,
+        // A fixed width wins outright: `minWidth` would let the panel grow past
+        // the anchor again, which is the overflow this exists to stop.
+        ...(width ? { width, minWidth: 0 } : { minWidth }),
         whiteSpace: 'nowrap',
         zIndex: 99998,
         display: 'flex',
@@ -346,7 +356,7 @@ function MenuPanel({ items, hoverStyle, minWidth, onClose, style, rootRef, searc
               `}
             >
               {entry.icon && <span className="shrink-0 w-4 flex items-center justify-center opacity-80 group-hover:opacity-100">{entry.icon}</span>}
-              <span className="flex-1 text-left font-medium">{entry.label}</span>
+              <span className={`flex-1 text-left font-medium ${width ? 'min-w-0 truncate' : ''}`} title={width ? entry.label : undefined}>{entry.label}</span>
               {/* `min-w-4` rather than `w-4`: a single glyph still lands on the same
                   column as every other menu's checkmark, but a richer trailing
                   slot (the theme rows pair an accent swatch with the check) can
@@ -444,7 +454,7 @@ function CascadingSubmenu({ parentEl, items, hoverStyle, onClose, onMouseLeavePa
 
 export default function DropdownMenu({
   isOpen, onClose, items, anchorRef, anchorPoint,
-  position = 'bottom-right', minWidth,
+  position = 'bottom-right', minWidth, matchAnchorWidth,
   hoverStyle = 'accent', searchable,
 }: DropdownMenuProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -582,6 +592,7 @@ export default function DropdownMenu({
         items={items}
         hoverStyle={hoverStyle}
         minWidth={minWidth}
+        width={matchAnchorWidth && isOpen ? anchorRef?.current?.getBoundingClientRect().width || undefined : undefined}
         onClose={onClose}
         style={style}
         rootRef={measureRef}

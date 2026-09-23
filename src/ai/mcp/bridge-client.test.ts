@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { getDefaultStore } from 'jotai';
-import { bridgeHandlers } from './bridge-client';
+import { bridgeHandlers, runBridgeRequest } from './bridge-client';
+import { lockBranch, unlockBranch } from '@/code/stores/agent-run-lock-store';
+import { agentRunEnd } from '@/ai/agent/bridge-tools';
 import { backend } from '@/backend';
 import { projectFS, resetProjectFS } from '@/code/project/project-fs';
 import { activeFilePathAtom } from '@/code/project/active-file-store';
@@ -88,6 +90,27 @@ describe('bridgeHandlers', () => {
     expect(out.committed).toBe(true);
     expect(out.written).toEqual(['components/TestCard.tsx']);
     expect(projectFS.readFile('components/TestCard.tsx')).toContain('withResponsiveProps(TestCard)');
+  });
+
+  it('a run holding the branch does not bounce its OWN bridge writes (the Claude CLI engine submits through here)', async () => {
+    lockBranch('main');
+    try {
+      // A bare handler call is outside any agent window — the human-side
+      // lock (viewer reason `agent`) refuses it…
+      await expect(bridgeHandlers.submitFiles({
+        files: [{ path: 'components/TestCard.tsx', kind: 'component', code: CLEAN_COMPONENT }],
+      })).rejects.toThrow('view-only');
+      // …the bridge's own entry point runs it as agent work, and it lands.
+      const out = await runBridgeRequest('submitFiles', {
+        files: [{ path: 'components/TestCard.tsx', kind: 'component', code: CLEAN_COMPONENT }],
+      }) as any;
+      expect(out.committed).toBe(true);
+      expect(projectFS.readFile('components/TestCard.tsx')).toContain('withResponsiveProps(TestCard)');
+    } finally {
+      unlockBranch('main');
+      // The bridge write opened a run for the agent (attributeBridgeCall) — close it.
+      agentRunEnd({});
+    }
   });
 
   it('submitFiles bounces violations and writes NOTHING', async () => {

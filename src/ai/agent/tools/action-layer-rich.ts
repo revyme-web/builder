@@ -26,11 +26,13 @@ import { getDefaultStore } from 'jotai';
 import type { AgentTool, AgentToolResult } from '@/ai/agent';
 import type { ToolContext } from '../types';
 import { parseJSXToNodes } from '@/code/parsing/parser';
-import { getEnclosingMapIteratorForNode } from '@/code/generation/map-gen';
+import { getEnclosingMapIteratorForNode, getEnclosingMapSourceForNode } from '@/code/generation/map-gen';
 import { enclosingFormIdInCode, formStateVar, type FormStateMapping } from '@/code/generation/form-state-gen';
 import type { SerScope } from '@/code/generation/generator-motion';
 import { resolveScope, type ResolvedScope } from '@/code/animations/animation-scope';
-import { getSortedBreakpointWidths } from '@/code/stores/viewport-store';
+import { getSortedBreakpointWidths, interactingViewportIdAtom } from '@/code/stores/viewport-store';
+import { detectHugAxes } from '@/code/components/master-root-sizing';
+import { findNodeRect } from '@/canvas/node-ops';
 import { DEFAULT_VIEWPORT_WIDTH } from '@/shared/constants';
 import { createPageFile, buildNewPageFiles, slugToFilePath } from '@/code/project/active-file-store';
 import { stateVarName } from '@/code/generation/overlay-gen';
@@ -39,6 +41,9 @@ import { buildComponentRegistry } from '@/code/components/component-registry';
 import { suggestComponentNames } from './read';
 import { addVariant, addInteractionState, addVariantToCode } from '@/code/variants/variant-ops';
 import { modifyProjectFile } from '@/code/project/modify-file';
+import type { Mutation } from '@/code/mutation/mutation-queue';
+import { updateMotionPropInCode, setMotionPropScopedValue } from '@/code/generation/generator-motion-props';
+import { setLoopInCode } from '@/code/generation/generator-motion-loop';
 import { isComponentFilePath } from '@/code/project/file-path-kind';
 import { extractImports, resolveImportPath } from '@/code/components/import-resolver';
 import { hasComponentControls } from '@/code/components/controls-parser';
@@ -58,6 +63,19 @@ import {
   branchFsView,
   isBranchedRun,
 } from '@/ai/agent/workspace';
+import { inheritedFlowStyles } from './flow-placement';
+import { getCollectionSchema, listCollections } from '@/code/project/cms-ops';
+
+/** The collection slug the `.map()` around `nodeId` iterates — the bare
+ *  identifier at the head of the source expression (`blog`, `blog.slice(0, 3)`,
+ *  `__applyListConfig(blog, cfg)`), when it names a real collection. */
+function collectionSlugForMap(code: string, nodeId: string, itemVar: string): string | null {
+  const src = getEnclosingMapSourceForNode(code, nodeId);
+  if (!src || src.iterVar !== itemVar) return null;
+  const known = new Set(listCollections());
+  for (const ident of src.sourceExpr.match(/[A-Za-z_$][\w$]*/g) ?? []) if (known.has(ident)) return ident;
+  return null;
+}
 import { commitBranchFiles } from '@/code/branching/apply';
 import { generateNodeId } from '@/shared/id-utils';
 import { buildExtractedMaster } from '@/code/generation/extract-component-gen';
@@ -76,6 +94,18 @@ function ok(data: unknown): AgentToolResult {
 
 function fail(message: string): AgentToolResult {
   return { content: [{ type: 'text', text: JSON.stringify({ error: message }) }], isError: true };
+}
+
+/** Apply one motion mutation to `code` — the queue's own dispatch for these
+ *  two kinds, for writes that land in a file other than the active one. */
+function applyMotionMutation(code: string, m: Mutation): string {
+  if (m.type === 'updateMotionProp') {
+    return m.scope !== undefined
+      ? setMotionPropScopedValue(code, m.nodeId, m.propName, m.props, m.scope)
+      : updateMotionPropInCode(code, m.nodeId, m.propName, m.props);
+  }
+  if (m.type === 'updateLoop') return setLoopInCode(code, m.nodeId, m.spec);
+  return code;
 }
 
 // ─── set_variant: master targeting ─────────────────────────────────────────
@@ -228,32 +258,73 @@ export const setMotionPresetTool: AgentTool = {
     // updateLoop's spec takes the serializable scope form — the panel passes
     // getActiveAnimationScope with the same cast (AnimationTool/index.tsx:703).
     const loopScope = valueScope ? [valueScope as SerScope] : undefined;
-    ctx.ensureCheckpoint();
-    if (effect === 'hover') {
-      const scale = String(args.scale ?? 1.05);
-      queueToolMutation(ctx, { type: 'updateMotionProp', nodeId, propName: 'whileHover', props: { scale }, scope: valueScope });
-    } else if (effect === 'tap') {
-      const scale = String(args.scale ?? 0.95);
-      queueToolMutation(ctx, { type: 'updateMotionProp', nodeId, propName: 'whileTap', props: { scale }, scope: valueScope });
-    } else if (effect === 'appear') {
-      queueToolMutation(ctx, { type: 'updateMotionProp', nodeId, propName: 'initial', props: { opacity: '0', y: '30' }, scope: valueScope });
-      queueToolMutation(ctx, {
-        type: 'updateMotionProp', nodeId, propName: 'whileInView',
-        props: appearReveal(['opacity', 'y'], nodeStyles(currentCode(ctx), nodeId)),
-      });
-      queueToolMutation(ctx, { type: 'updateMotionProp', nodeId, propName: 'viewport', props: { once: 'true' } });
-    } else {
-      const t = args.transition as { duration?: number; ease?: string } | undefined;
-      queueToolMutation(ctx, {
+    const t = args.transition as { duration?: number; ease?: string } | undefined;
+
+    /** The preset as mutations against `code` for `target` — the same seeds
+     *  whether they land on the active file or inside a master. */
+    const presetMutations = (code: string, target: string): Mutation[] => {
+      if (effect === 'hover') {
+        return [{ type: 'updateMotionProp', nodeId: target, propName: 'whileHover', props: { scale: String(args.scale ?? 1.05) }, scope: valueScope }];
+      }
+      if (effect === 'tap') {
+        return [{ type: 'updateMotionProp', nodeId: target, propName: 'whileTap', props: { scale: String(args.scale ?? 0.95) }, scope: valueScope }];
+      }
+      if (effect === 'appear') {
+        return [
+          { type: 'updateMotionProp', nodeId: target, propName: 'initial', props: { opacity: '0', y: '30' }, scope: valueScope },
+          { type: 'updateMotionProp', nodeId: target, propName: 'whileInView', props: appearReveal(['opacity', 'y'], nodeStyles(code, target)) },
+          { type: 'updateMotionProp', nodeId: target, propName: 'viewport', props: { once: 'true' } },
+        ];
+      }
+      return [{
         type: 'updateLoop',
-        nodeId,
+        nodeId: target,
         spec: {
           props: { rotate: '360' },
           transition: { duration: t?.duration != null ? String(t.duration) : '2', repeat: 'Infinity', ease: t?.ease ?? 'linear' },
           ...(loopScope ? { scope: loopScope } : {}),
         },
+      }];
+    };
+
+    // A COMPONENT INSTANCE cannot carry motion props: `motion.<Component>` does
+    // not exist and framer-motion ignores whileHover & co. on a plain React
+    // component, so the generator skipped them — and this tool replied ok while
+    // nothing on the page changed (audit V5; capability suite 2026-09-22). The
+    // Animation panel animates an instance by animating its MASTER's root, which
+    // every instance renders. Same routing as set_variant.
+    const activePath = resolveToolFile(ctx);
+    const code = currentCode(ctx);
+    const node = getToolNodes(ctx).get(nodeId);
+    const isInstance = !!node && /^[A-Z]/.test(node.type) && !node.type.startsWith('motion.') && node.type !== 'MotionLink';
+    if (isInstance) {
+      const masterPath = masterPathForTag(code, activePath, node.type, ctx);
+      if (!masterPath) {
+        return fail(`"${nodeId}" is an instance of ${node.type}, and motion cannot be set on an instance — it goes on the component's master, which could not be found (no import of ${node.type} in ${activePath}).`);
+      }
+      const masterCode = readToolFile(ctx, masterPath);
+      if (!masterCode) return fail(`Master ${masterPath} is empty or missing.`);
+      if (hasComponentControls(masterCode)) {
+        return fail(`${node.type} is a CODE component — its motion lives in its own code (edit ${masterPath} with apply_file_edit); presets apply to design components and plain elements.`);
+      }
+      const masterNode = masterTargetNodeId(masterCode, nodeId);
+      if (!masterNode) return fail(`Master ${masterPath} has no root node to animate.`);
+      if (isBranchedRun(ctx)) {
+        return fail(`Motion on an instance lands in its master (${masterPath}); on a branch, open the master with set_page and add the preset there.`);
+      }
+      ctx.ensureCheckpoint();
+      const wrote = modifyProjectFile(masterPath, (master) => {
+        let next = master;
+        for (const m of presetMutations(next, masterNode)) next = applyMotionMutation(next, m);
+        return next;
       });
+      if (wrote === null) return fail(`Could not write the master file ${masterPath}.`);
+      trace.action('agent-tool:set_motion_preset:routed-to-master', { nodeId, masterPath, masterNode, effect });
+      return ok({ node_id: nodeId, effect, viewport: args.viewport ?? null, landed_on: { master_path: masterPath, node_id: masterNode }, note: `${node.type} is a component instance — the ${effect} effect was added to its master's root, so every ${node.type} on the site has it.` });
     }
+
+    ctx.ensureCheckpoint();
+    for (const m of presetMutations(code, nodeId)) queueToolMutation(ctx, m);
     flushTool(ctx);
     return ok({ node_id: nodeId, effect, viewport: args.viewport ?? null });
   },
@@ -337,10 +408,12 @@ export const createOverlayTool: AgentTool = {
 export const setVariantTool: AgentTool = {
   name: 'set_variant',
   description:
-    "PREREQUISITE: the target must ALREADY be a component INSTANCE — if it is a plain page element, convert it FIRST (extract it with extract_component, or into a component file with apply_file_edit, then instantiate it with add_component_instance) and only then call set_variant on the instance. If the variant itself does not exist yet, declare it FIRST with create_variant. Never retry set_variant on a plain element. Set the styles or text of a COMPONENT INSTANCE's variant — the same write as the Styles tool on a non-default variant. variant is the variant NAME (e.g. 'hover', 'dark' — read the master with get_component or read_file). styles are camelCase CSS, '' removes a property. text replaces the variant's text content. At least one of styles or text is required. The write lands in the instance's component MASTER (variants only exist there) — pass the page instance's data-id.",
+    "PREREQUISITE: the target must ALREADY be a component INSTANCE — if it is a plain page element, convert it FIRST (extract it with extract_component, or into a component file with apply_file_edit, then instantiate it with add_component_instance) and only then call set_variant on the instance. If the variant itself does not exist yet, declare it FIRST with create_variant. Never retry set_variant on a plain element. Set the styles or text of a COMPONENT INSTANCE's variant — the same write as the Styles tool on a non-default variant. variant is the variant NAME (e.g. 'hover', 'dark' — read the master with get_component or read_file). styles are camelCase CSS, '' removes a property. text replaces the variant's text content. At least one of styles or text is required. The write lands in the instance's component MASTER (variants only exist there) — pass the page instance's data-id. " +
+    "To style an element INSIDE the component for that variant (a card's title, its notes — \"in the card's dark variant, the title is light\"), also pass `element`: that element's data-id in the master (get_component / read_file lists them); without it the write lands on the component's root.",
   inputSchema: {
     node_id: z.string().describe('data-id of the component instance node'),
     variant: z.string().describe("the variant NAME on the instance's master, e.g. 'hover'"),
+    element: z.string().optional().describe("data-id of an element INSIDE the component master to style for this variant (default: the component's root)"),
     styles: recordSchema.optional().describe('camelCase CSS properties to write on that variant; pass "" to REMOVE a property'),
     text: z.string().optional().describe('new text content for that variant'),
   },
@@ -386,7 +459,19 @@ export const setVariantTool: AgentTool = {
       if (hasComponentControls(masterCode)) {
         return fail(`"${node.type}" is a CODE component (@controls) — its variants are defined in code, not editable here.`);
       }
-      const masterNode = masterTargetNodeId(masterCode, nodeId);
+      // An element INSIDE the master (the panel's "select the card's title,
+      // style it on the Dark variant") — the tool could only ever reach the
+      // master's ROOT from a page, so a variant that recolours a card's text
+      // was not expressible at all (found 2026-09-22 building a dark section).
+      const element = typeof args.element === 'string' && args.element.trim() ? args.element.trim() : null;
+      if (element) {
+        const inner = parseJSXToNodes(masterCode).get(element);
+        if (!inner) {
+          const ids = [...parseJSXToNodes(masterCode).values()].filter((n) => !n.isCanvasNode).map((n) => n.id);
+          return fail(`"${element}" is not an element of ${masterPath}. Its elements: ${ids.join(', ')}.`);
+        }
+      }
+      const masterNode = element ?? masterTargetNodeId(masterCode, nodeId);
       if (!masterNode) {
         return fail(`Master ${masterPath} has no editable root node to host the variant write.`);
       }
@@ -579,7 +664,7 @@ export const createVariantTool: AgentTool = {
         source_variant: source,
         motion_wiring: motionWiring,
         ...(!motionWiring
-          ? { note: 'No motion wiring on this master yet: the variant is declared and set_variant writes land, but the state renders only once motion exists — run set_motion_preset on the master nodes for a live state.' }
+          ? { note: 'The variant is declared. Style it with set_variant (node_id = an instance, element = the element inside the master) — each write also wires that element to follow the variant, so the state renders as soon as it has a style; then show it on instances with show_variant.' }
           : {}),
       });
     }
@@ -610,7 +695,7 @@ export const createVariantTool: AgentTool = {
       source_variant: source,
       motion_wiring: motionWiring,
       ...(!motionWiring
-        ? { note: 'No motion wiring on this master yet: the variant is declared and set_variant writes land, but the state renders only once motion exists — run set_motion_preset on the master nodes for a live state.' }
+        ? { note: 'The variant is declared. Style it with set_variant (node_id = an instance, element = the element inside the master) — each write also wires that element to follow the variant, so the state renders as soon as it has a style; then show it on instances with show_variant.' }
         : {}),
     });
   },
@@ -663,7 +748,23 @@ export const extractComponentTool: AgentTool = {
       return fail(`${masterPath} already exists — pick another name, or edit the existing component instead of extracting over it.`);
     }
 
-    const built = buildExtractedMaster(code, nodeId, name);
+    // A master is an ARTBOARD with no parent box: a root sized by its parent
+    // (width '100%', a Fill flex axis) must become a px value — what Make
+    // Component bakes from the canvas measurement (master-root-sizing.ts). A
+    // hugging axis stays as it is. Measured when the canvas is live, else the
+    // primary viewport's width for a full-width section (auto for height).
+    const parentNode = nodes.get(node.parentId);
+    const nodeStyles = node.styles ?? {};
+    const hug = detectHugAxes(nodeStyles, parentNode?.styles ?? null);
+    const rect = findNodeRect(nodeId, getDefaultStore().get(interactingViewportIdAtom));
+    const rootSize: Record<string, string> = {};
+    const parentSized = (axis: 'width' | 'height') => {
+      const v = (nodeStyles[axis] ?? '').trim();
+      return /%|vw|vh$/.test(v) || (!hug[axis] && (v === '' || v === 'auto'));
+    };
+    if (parentSized('width')) rootSize.width = rect ? `${Math.round(rect.width)}px` : `${Math.max(...getSortedBreakpointWidths(), DEFAULT_VIEWPORT_WIDTH)}px`;
+    if (parentSized('height')) rootSize.height = rect ? `${Math.round(rect.height)}px` : 'auto';
+    const built = buildExtractedMaster(code, nodeId, name, { rootSize });
     if ('error' in built) return fail(built.error);
 
     // The master is model-derived code (not a human-parity static), so it
@@ -696,7 +797,10 @@ export const extractComponentTool: AgentTool = {
     queueToolMutation(ctx, {
       type: 'addNode',
       parentId: node.parentId,
-      node: { id: instanceId, type: name, styles: { position: 'relative' }, attrs: {}, name },
+      // The instance takes the ORIGINAL's slot: its position, `order`, flex and
+      // insets. A bare `position: relative` dropped it out of the parent's order
+      // sequence, so extracting a card both broke the oracle and moved the card.
+      node: { id: instanceId, type: name, styles: { ...inheritedFlowStyles(fresh.get(nodeId) ?? node), ...Object.fromEntries(Object.keys(rootSize).map((k) => [k, nodeStyles[k]]).filter(([, v]) => v)) }, attrs: {}, name },
       ...(index >= 0 ? { index } : {}),
     });
     queueToolMutation(ctx, { type: 'removeNode', nodeId });
@@ -880,16 +984,30 @@ export const bindCmsFieldTool: AgentTool = {
     if (!itemVar) {
       return fail('bind_cms_field targets a node inside a bound collection list — this node is not inside any `.map(`. Bind the collection first (bind_cms_list on the template row).');
     }
+    // The field's declared type decides HOW it binds — an image field on a
+    // fill becomes `backgroundImage: url(...)`, not a colour slot the browser
+    // ignores. The editor's binder button passes it; this tool never did, so
+    // every agent image binding emitted dead CSS (audit V2). Resolved from the
+    // collection the enclosing `.map()` reads; a field that is not in it is
+    // refused here, with the list, rather than bound to nothing.
+    const collectionSlug = collectionSlugForMap(currentCode(ctx), nodeId, itemVar);
+    const schema = collectionSlug ? getCollectionSchema(collectionSlug) : null;
+    const fieldId = args.field_id as string;
+    const field = schema?.fields.find((f) => f.id === fieldId);
+    if (schema && !field) {
+      return fail(`No field "${fieldId}" in collection "${collectionSlug}". Its fields: ${schema.fields.map((f) => `${f.id} (${f.type})`).join(', ')}.`);
+    }
     ctx.ensureCheckpoint();
     queueToolMutation(ctx, {
       type: 'bindField',
       nodeId,
       property: args.property as string,
-      fieldId: args.field_id as string,
+      fieldId,
       itemVar,
+      ...(field ? { fieldType: field.type } : {}),
     });
     flushTool(ctx);
-    return ok({ node_id: nodeId, field_id: args.field_id, property: args.property, item_var: itemVar });
+    return ok({ node_id: nodeId, field_id: fieldId, property: args.property, item_var: itemVar, ...(field ? { field_type: field.type } : {}) });
   },
 };
 

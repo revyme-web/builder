@@ -171,7 +171,7 @@ export function planSpanFlatten(args: {
   return { strip: true, hoistValue: spanState.value };
 }
 
-/** Which VARIANT entries a span-hoist must ALSO be written to. Framer applies
+/** Which VARIANT entries a span-hoist must ALSO be written to. The reference builder applies
  *  variant entries INLINE over the base style, so hoisting the span's value
  *  onto the base alone is not enough when variant entries carry the same
  *  property: those entries were visually DEAD while the span shadowed them,

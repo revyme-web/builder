@@ -9,6 +9,7 @@
 // chat history must not ship in the user's site, the same as comments.
 
 import { trace } from '@/shared/debug-trace';
+import type { ChangePart } from './change-parts';
 
 /** Path of the chat-history JSON inside ProjectFS. Single global file. */
 export const CHAT_HISTORY_FILE_PATH = '_meta/chat-history.json';
@@ -27,6 +28,16 @@ export const CHAT_HISTORY_CAP = 20;
  * Older captures keep their activity line and lose only the picture.
  */
 export const CHAT_HISTORY_IMAGE_BUDGET = 6;
+
+/**
+ * How many PASTED-image thumbnails the whole history keeps, newest first.
+ *
+ * Only the thumbnail of a pasted image is ever stored (~20-40 KB; the copy the
+ * model saw stays in memory), so this can be looser than the screenshot budget
+ * — but it is still a file written on every save. Older turns keep their text
+ * and lose the picture.
+ */
+export const CHAT_HISTORY_USER_IMAGE_BUDGET = 12;
 
 /** One stored chat message — the minimal shape every chat surface shares.
  *  Display-only extras (token usage, tool-call logs) are NOT persisted; an
@@ -52,11 +63,15 @@ export interface StoredToolCall {
  *  transcript exactly rather than collapsing it to its final paragraph. */
 export type StoredBlock =
   | { kind: 'text'; text: string }
+  | { kind: 'reasoning'; text: string }
   | { kind: 'tools'; tools: StoredToolCall[] };
 
 export interface StoredChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** Thumbnails of images the user pasted with this message (data URLs).
+   *  User messages only; budgeted by CHAT_HISTORY_USER_IMAGE_BUDGET. */
+  images?: string[];
   /** Interleaved text and activity. Absent on user messages and on histories
    *  written before this existed — those still render from `content`. */
   blocks?: StoredBlock[];
@@ -64,7 +79,7 @@ export interface StoredChatMessage {
   reasoning?: string;
   /** What this turn changed, so its Changes card survives a reload. Paths and
    *  id lists only — small, and the counts are derived from them. */
-  changes?: { path: string; addedIds?: string[]; removedIds?: string[]; changedIds?: string[] }[];
+  changes?: { path: string; addedIds?: string[]; removedIds?: string[]; changedIds?: string[]; parts?: ChangePart[] }[];
   /** True for an error reply, so it re-renders in the error style. */
   error?: boolean;
   /** Author of a `user` message — stamped from the signed-in user on send,
@@ -73,6 +88,12 @@ export interface StoredChatMessage {
   authorId?: string;
   authorName?: string;
   authorAvatar?: string;
+  /** The MCP client a request came through ("Claude Code"), for work asked
+   *  for outside the builder and mirrored into this chat. */
+  via?: string;
+  skills?: string[];
+  /** The error an assistant run ended on (see AgentTurn.error). */
+  errorMessage?: string;
 }
 
 /** filePath → that surface's message history. */
@@ -88,13 +109,13 @@ export type ChatHistoryMap = Record<string, StoredChatMessage[]>;
  */
 function sanitize(m: StoredChatMessage): StoredChatMessage {
   if (!Array.isArray(m.blocks)) {
-    return m.blocks === undefined ? m : { ...m, blocks: undefined };
+    return { ...m, blocks: undefined, images: sanitizeImages(m.images) };
   }
   const blocks: StoredBlock[] = [];
   for (const b of m.blocks) {
     if (!b || typeof b !== 'object') continue;
-    if (b.kind === 'text') {
-      if (typeof b.text === 'string') blocks.push({ kind: 'text', text: b.text });
+    if (b.kind === 'text' || b.kind === 'reasoning') {
+      if (typeof b.text === 'string') blocks.push({ kind: b.kind, text: b.text });
     } else if (b.kind === 'tools' && Array.isArray(b.tools)) {
       const tools = b.tools.filter(
         (t): t is StoredToolCall => !!t && typeof t === 'object' && typeof t.name === 'string',
@@ -109,7 +130,15 @@ function sanitize(m: StoredChatMessage): StoredChatMessage {
     ...m,
     blocks: blocks.length > 0 ? blocks : undefined,
     changes: changes && changes.length > 0 ? changes : undefined,
+    images: sanitizeImages(m.images),
   };
+}
+
+/** Only image data URLs reach an `<img src>` — this file is hand-editable. */
+function sanitizeImages(images: unknown): string[] | undefined {
+  if (!Array.isArray(images)) return undefined;
+  const ok = images.filter((u): u is string => typeof u === 'string' && u.startsWith('data:image/'));
+  return ok.length > 0 ? ok : undefined;
 }
 
 /** Parse the chat-history file. Returns {} on missing/malformed — defensive,

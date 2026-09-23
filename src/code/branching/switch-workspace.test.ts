@@ -95,7 +95,7 @@ describe('switchBranchFile — guards', () => {
   it('visit model: entering a locked branch requires its scoped holder (read-only)', () => {
     lockBranch('agent-a');
     // No scoped holder (legacy-style bare lock): entry refused, stays put.
-    expect(switchBranchFile('agent-a')).toContain('stop the run');
+    expect(switchBranchFile('agent-a')).toContain('stop it from the chat');
     expect(projectFS.getActiveBranchId()).toBe('main');
     // The run's own scoped holder may enter (visit, read-only).
     setLockHolderScoped(true);
@@ -119,7 +119,7 @@ describe('switchBranchFile — guards', () => {
   it('legacy holder (unscoped): leaving the locked active branch stays refused', () => {
     lockBranch('main');
     // Direct lockBranch (no holder flag) = legacy queue-base dependence.
-    expect(switchBranchFile('agent-a')).toContain('Stop the agent run');
+    expect(switchBranchFile('agent-a')).toContain('The agent is editing this branch');
     expect(projectFS.getActiveBranchId()).toBe('main');
   });
 });
@@ -151,16 +151,25 @@ describe('switchBranchFile — mandatory round-trip (P8-B criterion)', () => {
     expect(projectFS.readFile(FILE)).not.toContain('red');
   });
 
-  it('remembers one file per branch across switches', () => {
+  it('lands on the SAME page when the other branch has it; the remembered file is only the fallback', () => {
+    // (Owner, 2026-09-22: a switch used to land on the branch's own last
+    // file — "its own history of where I am" — even though the page you were
+    // on exists there too. See location.ts.)
     expect(switchBranchFile('agent-a')).toBeNull();
     // Human navigates to about on A (atom-level, like FileExplorer would).
     getDefaultStore().set(activeFilePathAtom, ABOUT);
+    // B has about too → still on about.
     expect(switchBranchFile('agent-b')).toBeNull();
-    expect(getDefaultStore().get(activeFilePathAtom)).toBe(FILE);
-    // Back to A: the remembered file, not the default.
-    expect(switchBranchFile('agent-a')).toBeNull();
     expect(getDefaultStore().get(activeFilePathAtom)).toBe(ABOUT);
-    // And back to B: still the default (B never navigated).
+    // Delete about on B, go home there, then back to A: about exists on A →
+    // the same page rule has nothing to keep (we are on home) → home.
+    projectFS.deleteFile(ABOUT);
+    getDefaultStore().set(activeFilePathAtom, FILE);
+    expect(switchBranchFile('agent-a')).toBeNull();
+    expect(getDefaultStore().get(activeFilePathAtom)).toBe(FILE);
+    // On A go to about; B no longer has it → the file remembered for B
+    // (home), not about.
+    getDefaultStore().set(activeFilePathAtom, ABOUT);
     expect(switchBranchFile('agent-b')).toBeNull();
     expect(getDefaultStore().get(activeFilePathAtom)).toBe(FILE);
   });

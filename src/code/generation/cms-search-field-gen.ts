@@ -46,6 +46,10 @@ const SEARCH_FRAME_STYLE: Record<string, string> = {
   alignItems: 'flex-start',
   gap: '8px',
   marginBottom: '16px',
+  // A flow child of the list's parent: no-shrink + an `order` slot (set at
+  // insert time from the siblings) — the reorder engine and the oracle both
+  // require every in-flow child to carry them.
+  flex: '0 0 auto',
 };
 
 /** The field-name label above the input (e.g. "Title", "Author", "Bullet Point 2"). */
@@ -56,6 +60,8 @@ const SEARCH_LABEL_STYLE: Record<string, string> = {
   fontSize: '14px',
   fontWeight: '500',
   color: '#333333',
+  flex: '0 0 auto',
+  order: '0',
 };
 
 /** The input itself: fills the frame (100%), light-grey pill, leading search glyph. */
@@ -66,13 +72,16 @@ const SEARCH_INPUT_STYLE: Record<string, string> = {
   padding: '0 16px 0 42px',
   borderRadius: '8px',
   border: '0',
-  backgroundColor: '#ebebeb',   // a touch more grey than near-white #f5f5f5
-  backgroundImage: SEARCH_ICON,
+  // The Fill control is single-colour OR layers, never both: the grey is the
+  // bottom layer under the search glyph (oracle BG_COLOR_WITH_IMAGE).
+  backgroundImage: `${SEARCH_ICON}, linear-gradient(#ebebeb, #ebebeb)`,
   backgroundRepeat: 'no-repeat',
   backgroundPosition: '14px center',
   fontSize: '15px',
   color: '#222222',
   outline: 'none',
+  flex: '0 0 auto',
+  order: '1',
 };
 
 function styleObjectExpression(style: Record<string, string>): t.ObjectExpression {
@@ -176,6 +185,29 @@ export function buildSearchFieldFrame(
   );
 }
 
+/** The integer `order` in an element's inline style object, or null. */
+function readOrder(el: t.JSXElement): number | null {
+  const style = el.openingElement.attributes.find((a): a is t.JSXAttribute => t.isJSXAttribute(a) && a.name.name === 'style');
+  if (!style || !t.isJSXExpressionContainer(style.value) || !t.isObjectExpression(style.value.expression)) return null;
+  for (const pr of style.value.expression.properties) {
+    if (!t.isObjectProperty(pr) || !t.isIdentifier(pr.key) || pr.key.name !== 'order') continue;
+    const v = t.isStringLiteral(pr.value) ? Number(pr.value.value) : t.isNumericLiteral(pr.value) ? pr.value.value : NaN;
+    return Number.isFinite(v) ? v : null;
+  }
+  return null;
+}
+
+/** Set (or add) the `order` in an element's inline style object. */
+function writeOrder(el: t.JSXElement, order: number): void {
+  const style = el.openingElement.attributes.find((a): a is t.JSXAttribute => t.isJSXAttribute(a) && a.name.name === 'style');
+  if (!style || !t.isJSXExpressionContainer(style.value) || !t.isObjectExpression(style.value.expression)) return;
+  const obj = style.value.expression;
+  for (const pr of obj.properties) {
+    if (t.isObjectProperty(pr) && t.isIdentifier(pr.key) && pr.key.name === 'order') { pr.value = t.stringLiteral(String(order)); return; }
+  }
+  obj.properties.push(t.objectProperty(t.identifier('order'), t.stringLiteral(String(order))));
+}
+
 /** Derive the label + input ids from the frame id (one search field = one subtree). */
 export const searchLabelId = (frameId: string): string => `${frameId}-label`;
 export const searchInputId = (frameId: string): string => `${frameId}-input`;
@@ -219,7 +251,22 @@ export function addSearchFieldInCode(
   let inserted = false;
   findFirstElementByDataId(ast, listNodeId, (path) => {
     try {
-      path.insertBefore(buildSearchFieldFrame(varName, frameId, searchLabelId(frameId), searchInputId(frameId), fieldLabel, placeholder, isComponentFile));
+      const frame = buildSearchFieldFrame(varName, frameId, searchLabelId(frameId), searchInputId(frameId), fieldLabel, placeholder, isComponentFile);
+      // The frame takes the list's `order` slot; the list and everything
+      // after it move one slot down, so the visible order matches the JSX.
+      const listOrder = readOrder(path.node as t.JSXElement);
+      if (listOrder !== null) {
+        const parent = path.parentPath?.node;
+        if (parent && t.isJSXElement(parent)) {
+          for (const child of parent.children) {
+            if (!t.isJSXElement(child)) continue;
+            const o = readOrder(child);
+            if (o !== null && o >= listOrder) writeOrder(child, o + 1);
+          }
+        }
+        writeOrder(frame, listOrder);
+      }
+      path.insertBefore(frame);
       inserted = true;
     } catch (err) {
       trace.error('cms-search-field:insert-failed', { listNodeId, error: err instanceof Error ? err.message : String(err) });

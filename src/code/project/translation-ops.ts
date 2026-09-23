@@ -416,7 +416,7 @@ export function commitRichTranslation(opts: {
     if (transformed) {
       writeMsg(defaultLocale, key, html);
       // The default owns the run STYLES — re-bake every other locale's
-      // translation so a font-size / colour change follows (Framer parity).
+      // translation so a font-size / colour change follows (reference parity).
       for (const loc of readI18nLocales()) {
         if (loc === defaultLocale) continue;
         const cur = getMessageValue(readMsgs(loc), namespace, key);

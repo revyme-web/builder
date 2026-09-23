@@ -3,6 +3,7 @@
 // and copies @container rules from the source viewport to the new one.
 
 import type { ViewportConfig } from '@/shared/types';
+import { renderWidth } from '@/shared/types';
 import { VIEWPORT_GAP } from '@/shared/constants';
 import { syncViewportWidths, getSortedBreakpointWidths } from '@/code/stores/viewport-store';
 import { modifyProjectFile } from '@/code/project/modify-file';
@@ -38,7 +39,7 @@ export function addViewport(opts: AddViewportOpts): void {
   // Position: to the right of the rightmost existing viewport
   const rightmost = activeViewports.reduce((max, v) => {
     const pos = vpPositions[v.id] || { x: v.x };
-    const vw = vpWidths[v.id] ?? v.width;
+    const vw = vpWidths[v.id] ?? renderWidth(v);
     return Math.max(max, (pos.x || v.x) + vw);
   }, 0);
   const newX = rightmost + VIEWPORT_GAP;

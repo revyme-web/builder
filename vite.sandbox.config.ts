@@ -123,7 +123,7 @@ export default defineConfig({
     dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'framer-motion'],
   },
   optimizeDeps: {
-    exclude: ['gsap', 'gsap/ScrollTrigger', 'framer-motion', '@react-spring/web'],
+    exclude: ['framer-motion', '@react-spring/web'],
   },
   define: {
     'process.env': {},

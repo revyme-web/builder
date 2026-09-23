@@ -120,6 +120,12 @@ function hasAttr(attrs: t.JSXAttribute[], name: string): boolean {
 function needsDataId(tag: string, path: NodePath<t.JSXElement>): boolean {
   const base = tag.startsWith('motion.') ? tag.slice('motion.'.length) : tag;
   if (TRANSPARENT_TAGS.has(tag) || TRANSPARENT_TAGS.has(base)) return false;
+  // The `MotionLink` wrapper the builder declares (`const MotionLink =
+  // motion.create(React.forwardRef(… href ? <Link …/> : <div …/> …))`) has a
+  // <Link> and a <div> inside a variable declarator, not in the tree. They are
+  // the wrapper's plumbing — the same exemption link-rules.ts applies — and
+  // flagging them rejected every master the Link tool itself links.
+  if (path.findParent((p) => p.isVariableDeclarator() && t.isIdentifier(p.node.id) && p.node.id.name === 'MotionLink')) return false;
   // SVG shape children inherit identity from their <svg data-id> wrapper.
   // `foreignObject` is the FIT-text SVG wrapper (svg[data-id="X-svg"] >
   // foreignObject > p[data-id="X"]) — a structural container, never a node;

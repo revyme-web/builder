@@ -34,11 +34,10 @@ import { bumpProjectVersion } from '@/code/project/modify-file';
 import { triggerAutosave } from '@/backend/autosave';
 import {
   activeFilePathAtom,
-  componentBreadcrumbAtom,
   syncUrlToPage,
 } from '@/code/project/active-file-store';
-import { overlayEditingIdAtom } from '@/code/stores/overlay-store';
 import { selectedIdsAtom } from '@/code/stores/store';
+import { captureEditorLocation, resolveLocationOnBranch, applyEditorLocation, branchReader } from './location';
 import { trace } from '@/shared/debug-trace';
 
 /** Remembered file per branch (V1 lastActiveFileByBranch, maps not FS). */
@@ -70,17 +69,19 @@ export function switchBranchFile(branchId: string): string | null {
   // that is NOT the current scoped run is never entered — landing there
   // would hand the human a base some other holder's writes depend on.
   if (!isAgentWriteOpen() && isBranchLocked(branchId) && !isLockHolderScoped()) {
-    return `Branch "${branchId}" has an agent run in flight — stop the run before switching.`;
+    return `The agent is editing branch "${branchId}" — switch to it when the run finishes, or stop it from the chat.`;
   }
   // Source guard: leaving is refused ONLY while an UNSCOPED (legacy,
   // queue-base-dependent) holder locks the active branch: moving the base
   // under it would misfile its writes. A scoped (branched) holder addresses
   // explicit scopes and never reads the human base.
   if (!isAgentWriteOpen() && isActiveBranchLocked() && !isLockHolderScoped()) {
-    return 'Stop the agent run before switching branches — a switch mid-run would move the queue base out from under it.';
+    return 'The agent is editing this branch — switch branches when it finishes, or stop it from the chat to take over now.';
   }
   const fromFile = store.get(activeFilePathAtom);
   rememberedFileByBranch.set(from, fromFile);
+  // Where the user IS, captured before anything moves (location.ts).
+  const location = captureEditorLocation();
   trace.action('branching-switch:start', { from, to: branchId, fromFile });
 
   // 1. Settle human-context work onto the pre-switch state (scoped: other
@@ -95,17 +96,22 @@ export function switchBranchFile(branchId: string): string | null {
   const switchErr = projectFS.switchBranch(branchId);
   if (switchErr) return switchErr;
 
-  // 3. Land on the remembered file (or the branch default).
+  // 3. Land on the SAME location when the branch has it — page, master +
+  //    breadcrumb, overlay, CMS collection / item, code component editor —
+  //    and only otherwise on the file remembered for this branch (or its
+  //    default). Each piece resolves on its own: a page that exists keeps
+  //    you on it even if the overlay you had open was deleted there.
   const remembered = rememberedFileByBranch.get(branchId);
-  const nextFile =
+  const fallbackFile =
     remembered && projectFS.branchFileExists(branchId, remembered)
       ? remembered
       : defaultFileForBranch(branchId, fromFile);
+  const landing = resolveLocationOnBranch(location, branchReader(branchId), fallbackFile);
+  const nextFile = landing.file;
   switchQueueFile(nextFile, { branchId });
   store.set(activeFilePathAtom, nextFile);
   store.set(selectedIdsAtom, []);
-  store.set(componentBreadcrumbAtom, []);
-  store.set(overlayEditingIdAtom, null);
+  applyEditorLocation(landing);
 
   // 4. Reset history stacks (see clearHistoryStacks: undo never spans branches).
   clearHistoryStacks();

@@ -24,6 +24,16 @@ describe('page links must be the next/link <Link>', () => {
       .toContain('PAGE_LINK_NOT_NEXTLINK');
   });
 
+  // The Link tool writes these as <a rel="noopener noreferrer"> on purpose — a
+  // full navigation to another site is right, and <Link> adds nothing there.
+  it('an EXTERNAL <a href> (https / mailto / tel) is fine — the editor writes it that way', () => {
+    for (const href of ['https://github.com/x', 'mailto:hi@example.com', 'tel:+123']) {
+      const out = codes(PAGE(`  <a data-id="lnk" data-name="a" href="${href}" rel="noopener noreferrer" style={{ position: 'relative' }}>Out</a>`));
+      expect(out, href).not.toContain('PAGE_LINK_NOT_NEXTLINK');
+      expect(out, href).not.toContain('NEXTLINK_IMPORT_MISSING');
+    }
+  });
+
   it('a <Link href> WITH the import passes clean', () => {
     const out = codes(PAGE(`  <Link data-id="lnk" data-name="a" href="/pricing" style={{ position: 'relative' }}>Pricing</Link>`, "import Link from 'next/link';\n"));
     expect(out).not.toContain('PAGE_LINK_NOT_NEXTLINK');

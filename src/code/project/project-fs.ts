@@ -246,9 +246,29 @@ function parseBranchRecords(rawBranches: unknown): Map<string, BranchData> {
     const order = typeof rec.order === 'number' && Number.isFinite(rec.order) ? rec.order : 0;
     const createdAt = typeof rec.createdAt === 'number' && Number.isFinite(rec.createdAt) ? rec.createdAt : Date.now();
     const lastEditedAt = typeof rec.lastEditedAt === 'number' && Number.isFinite(rec.lastEditedAt) ? rec.lastEditedAt : null;
-    branches.set(id, { files: bFiles, baseSnapshot: base, status, createdAt, parentId, order, lastEditedAt });
+    branches.set(id, { files: withoutShared(bFiles), baseSnapshot: withoutShared(base), status, createdAt, parentId, order, lastEditedAt });
   }
   return branches;
+}
+
+/**
+ * EDITOR STATE IS NOT THE WEBSITE. `_meta/` holds the agent chats, comments,
+ * per-page cameras, library folders, cms-managed-by — things about how YOU
+ * work on the project, not what the project is. A branch is a copy of the
+ * SITE, so these live on main only and every accessor reads and writes them
+ * there whatever branch is active. Otherwise (found 2026-09-22) a chat run
+ * on a branch vanished from the list the moment you switched back to main,
+ * moving the camera marked the branch "edited", and apply 3-way-merged two
+ * chat JSONs. Branch maps never hold these paths; the writers below strip.
+ */
+export function isSharedAcrossBranches(path: string): boolean {
+  return path.startsWith('_meta/');
+}
+
+function withoutShared(files: Map<string, string>): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const [k, v] of files) if (!isSharedAcrossBranches(k)) out.set(k, v);
+  return out;
 }
 
 export class InMemoryProjectFS implements ProjectFS {
@@ -285,8 +305,14 @@ export class InMemoryProjectFS implements ProjectFS {
     return this.branches.get(this.activeBranchId)?.files ?? this.files;
   }
 
+  /** The map a PATH lives in: main for editor state (`isSharedAcrossBranches`),
+   *  the active branch for everything that is the website. */
+  private mapFor(path: string): Map<string, string> {
+    return isSharedAcrossBranches(path) ? this.files : this.activeFiles();
+  }
+
   readFile(path: string): string | null {
-    return this.activeFiles().get(path) ?? null;
+    return this.mapFor(path).get(path) ?? null;
   }
 
   writeFile(path: string, content: string): void {
@@ -301,7 +327,7 @@ export class InMemoryProjectFS implements ProjectFS {
     // projects are unaffected (their files arrive via loadSnapshot / on a
     // path that does not exist yet).
     if (isSeedPageBody(content)) {
-      const existing = this.activeFiles().get(path);
+      const existing = this.mapFor(path).get(path);
       if (typeof existing === 'string' && existing !== content && !isSeedPageBody(existing)) {
         trace.error('project-fs:refused-seed-overwrite', `${path}: refused to replace ${existing.length} bytes of real content with a seed page body`);
         return;
@@ -319,14 +345,15 @@ export class InMemoryProjectFS implements ProjectFS {
     // empty file is fine (CodeEditor's "New File"), so this only fires when
     // real content would be destroyed.
     if (content.trim() === '') {
-      const existing = this.activeFiles().get(path);
+      const existing = this.mapFor(path).get(path);
       if (typeof existing === 'string' && existing.trim() !== '') {
         trace.error('project-fs:refused-truncation', `${path}: refused to replace ${existing.length} bytes with an empty file`);
         return;
       }
     }
-    this.activeFiles().set(path, content);
-    this.touchActiveBranch();
+    this.mapFor(path).set(path, content);
+    // Editor state never dirties a branch: moving the camera is not an edit.
+    if (!isSharedAcrossBranches(path)) this.touchActiveBranch();
     trace.action('project-fs:write', { path, size: content.length, origin });
     this.emit({ kind: 'write', path, content, origin });
     this.notify();
@@ -335,21 +362,21 @@ export class InMemoryProjectFS implements ProjectFS {
   deleteFile(path: string): void {
     const origin = this.nextOrigin;
     this.nextOrigin = 'local';
-    this.activeFiles().delete(path);
-    this.touchActiveBranch();
+    this.mapFor(path).delete(path);
+    if (!isSharedAcrossBranches(path)) this.touchActiveBranch();
     trace.action('project-fs:delete', { path, origin });
     this.emit({ kind: 'delete', path, origin });
     this.notify();
   }
 
   moveFile(oldPath: string, newPath: string): void {
-    const content = this.activeFiles().get(oldPath);
+    const content = this.mapFor(oldPath).get(oldPath);
     if (content === undefined) return;
     const origin = this.nextOrigin;
     this.nextOrigin = 'local';
-    this.activeFiles().set(newPath, content);
-    this.activeFiles().delete(oldPath);
-    this.touchActiveBranch();
+    this.mapFor(newPath).set(newPath, content);
+    this.mapFor(oldPath).delete(oldPath);
+    if (!isSharedAcrossBranches(oldPath) || !isSharedAcrossBranches(newPath)) this.touchActiveBranch();
     this.emit({ kind: 'move', oldPath, newPath, origin });
     this.notify();
     trace.action('project-fs:move', { from: oldPath, to: newPath, origin });
@@ -386,25 +413,42 @@ export class InMemoryProjectFS implements ProjectFS {
     }
   }
 
+  // listFiles / exists ROUTE THROUGH THE ACTIVE BRANCH like every other
+  // accessor. They read `this.files` (main) until 2026-09-22, so a page or
+  // component CREATED on a branch was readable but listed nowhere — not in
+  // the Pages panel, the explorer, the library, list_files — and `exists`
+  // said no, so "create" paths would happily create it a second time; a
+  // file DELETED on a branch kept listing. Main is only ever the answer
+  // when main is active.
   listFiles(dir?: string): string[] {
     const prefix = dir ? (dir.endsWith('/') ? dir : dir + '/') : '';
     const result: string[] = [];
-    for (const path of this.files.keys()) {
+    for (const path of this.activeFiles().keys()) {
       if (!prefix || path.startsWith(prefix)) {
         result.push(path);
+      }
+    }
+    // On a branch, the shared editor state is main's — list it too.
+    if (this.activeBranchId !== MAIN_BRANCH_ID) {
+      for (const path of this.files.keys()) {
+        if (isSharedAcrossBranches(path) && (!prefix || path.startsWith(prefix))) result.push(path);
       }
     }
     return result.sort();
   }
 
   exists(path: string): boolean {
-    return this.files.has(path);
+    return this.mapFor(path).has(path);
   }
 
   /** Get all files as a snapshot (for serialization/export) */
-  /** Get all ACTIVE-branch files as a snapshot (for serialization/export). */
+  /** Get all ACTIVE-branch files as a snapshot (for serialization/export):
+   *  the branch's website plus main's shared editor state. */
   getSnapshot(): Map<string, string> {
-    return new Map(this.activeFiles());
+    if (this.activeBranchId === MAIN_BRANCH_ID) return new Map(this.files);
+    const out = new Map(this.activeFiles());
+    for (const [k, v] of this.files) if (isSharedAcrossBranches(k)) out.set(k, v);
+    return out;
   }
 
   /** Replace all files (for import/reset) */
@@ -416,7 +460,7 @@ export class InMemoryProjectFS implements ProjectFS {
       this.files = new Map(files);
     } else {
       const b = this.branches.get(this.activeBranchId);
-      if (b) b.files = new Map(files); else this.files = new Map(files);
+      if (b) b.files = withoutShared(files); else this.files = new Map(files);
     }
     // One-time NATIVE migration: upgrade the old seed reset (box-sizing only +
     // html/body margins) to the universal margin/padding reset the editor
@@ -617,7 +661,7 @@ export class InMemoryProjectFS implements ProjectFS {
 
   listBranches(): BranchInfo[] {
     const out: BranchInfo[] = [
-      { id: MAIN_BRANCH_ID, status: 'clean', fileCount: this.files.size, active: this.activeBranchId === MAIN_BRANCH_ID, protected: true, createdAt: 0, parentId: null, order: 0, lastEditedAt: null },
+      { id: MAIN_BRANCH_ID, status: 'clean', fileCount: withoutShared(this.files).size, active: this.activeBranchId === MAIN_BRANCH_ID, protected: true, createdAt: 0, parentId: null, order: 0, lastEditedAt: null },
     ];
     for (const [id, b] of [...this.branches.entries()].sort(([a], [c]) => (a < c ? -1 : 1))) {
       out.push({ id, status: b.status, fileCount: b.files.size, active: id === this.activeBranchId, protected: false, createdAt: b.createdAt, parentId: b.parentId, order: b.order, lastEditedAt: b.lastEditedAt });
@@ -625,9 +669,12 @@ export class InMemoryProjectFS implements ProjectFS {
     return out;
   }
 
-  /** Direct read of a branch's files (review/merge/preview/tools). Null when unknown. */
-  readBranchFiles(branchId: string): Map<string, string> | null {
-    if (branchId === MAIN_BRANCH_ID) return new Map(this.files);
+  /** Direct read of a branch's files (review/merge/preview/tools) — the
+   *  WEBSITE: shared editor state is left out of main's too, so review,
+   *  drift and merge compare like with like. `{ shared: true }` includes it
+   *  (a whole-map snapshot of main, e.g. an apply rollback). Null when unknown. */
+  readBranchFiles(branchId: string, opts: { shared?: boolean } = {}): Map<string, string> | null {
+    if (branchId === MAIN_BRANCH_ID) return opts.shared ? new Map(this.files) : withoutShared(this.files);
     const b = this.branches.get(branchId);
     return b ? new Map(b.files) : null;
   }
@@ -666,7 +713,7 @@ export class InMemoryProjectFS implements ProjectFS {
   loadBranchSnapshot(branchId: string, files: Map<string, string>): string | null {
     const b = this.branches.get(branchId);
     if (!b) return `Unknown branch "${branchId}".`;
-    b.files = new Map(files);
+    b.files = withoutShared(files);
     const globals = b.files.get('app/globals.css');
     if (globals && globals.includes(LEGACY_SEED_RESET)) {
       b.files.set('app/globals.css', globals.replace(LEGACY_SEED_RESET, UNIVERSAL_SEED_RESET));
@@ -684,19 +731,19 @@ export class InMemoryProjectFS implements ProjectFS {
 
   /** Direct read of one branch file. Null when branch/file unknown. */
   readBranchFile(branchId: string, path: string): string | null {
-    if (branchId === MAIN_BRANCH_ID) return this.files.get(path) ?? null;
+    if (branchId === MAIN_BRANCH_ID || isSharedAcrossBranches(path)) return this.files.get(path) ?? null;
     return this.branches.get(branchId)?.files.get(path) ?? null;
   }
 
   /** Branch file existence probe (import resolvers, scoped drains). */
   branchFileExists(branchId: string, path: string): boolean {
-    if (branchId === MAIN_BRANCH_ID) return this.files.has(path);
+    if (branchId === MAIN_BRANCH_ID || isSharedAcrossBranches(path)) return this.files.has(path);
     return this.branches.get(branchId)?.files.has(path) ?? false;
   }
 
   /** Direct delete in a branch map (merge/file ops). Unknown branch → no-op + trace. */
   deleteBranchFile(branchId: string, path: string): void {
-    if (branchId === MAIN_BRANCH_ID) {
+    if (branchId === MAIN_BRANCH_ID || isSharedAcrossBranches(path)) {
       this.deleteFile(path);
       return;
     }
@@ -723,7 +770,7 @@ export class InMemoryProjectFS implements ProjectFS {
    * the drain refuses such entries before reaching here).
    */
   writeBranchFile(branchId: string, path: string, content: string): void {
-    if (branchId === MAIN_BRANCH_ID) {
+    if (branchId === MAIN_BRANCH_ID || isSharedAcrossBranches(path)) {
       this.writeFile(path, content);
       return;
     }
@@ -750,7 +797,7 @@ export class InMemoryProjectFS implements ProjectFS {
     }
     if (clean === MAIN_BRANCH_ID) return `Branch "${MAIN_BRANCH_ID}" is protected — main is the publish truth, never a work branch.`;
     if (this.branches.has(clean)) return `Branch "${clean}" already exists — pick another id or delete it first.`;
-    const seed = new Map(opts.from ?? this.activeFiles());
+    const seed = withoutShared(opts.from ?? this.activeFiles());
     let order = 0;
     for (const b of this.branches.values()) order = Math.max(order, b.order + 1);
     const now = Date.now();
@@ -909,7 +956,7 @@ export class InMemoryProjectFS implements ProjectFS {
     if (id === MAIN_BRANCH_ID) return 'Cannot rebase main — main is its own base.';
     const b = this.branches.get(id);
     if (!b) return `Unknown branch "${id}".`;
-    b.baseSnapshot = new Map(newBase);
+    b.baseSnapshot = withoutShared(newBase);
     b.status = mapsEqual(b.files, b.baseSnapshot) ? 'clean' : 'dirty';
     trace.action('project-fs:branch-rebased', { id, status: b.status });
     this.notify();
@@ -2503,6 +2550,20 @@ export function syncBuiltInCodeComponents(fs: InMemoryProjectFS): void {
  * built-in. Call from Insert-panel drop handlers BEFORE queueing the
  * `addNode` mutation so the import resolves on the next render cycle.
  */
+/** The built-in code components an Insert drop can install, with the label
+ *  and one-line description from each file's annotations — so the agent can
+ *  browse them the way the Insert panel does (audit §10 G2: 95 built-ins were
+ *  invisible to it). */
+export function listBuiltInCodeComponents(): { tag: string; path: string; label: string; comment: string; installed: boolean }[] {
+  return BUILT_IN_COMPONENTS.map(([path, template]) => ({
+    tag: path.replace(/^components\//, '').replace(/\.tsx$/, ''),
+    path,
+    label: /\/\*\*\s*@label\s*"([^"]*)"/.exec(template)?.[1] ?? path.replace(/^components\//, '').replace(/\.tsx$/, ''),
+    comment: /\/\*\*\s*@comment\s*"([^"]*)"/.exec(template)?.[1] ?? '',
+    installed: projectFS.exists(path),
+  }));
+}
+
 export function installBuiltInCodeComponent(fs: InMemoryProjectFS, tag: string): boolean | null {
   if (!tag || !/^[A-Z]/.test(tag)) return null; // not a component tag
   const path = `components/${tag}.tsx`;

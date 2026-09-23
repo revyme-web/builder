@@ -278,6 +278,19 @@ export default function ProjectLoader() {
       if (fileCount > 0) {
         projectFS.loadSnapshot(new Map(Object.entries(data!.files)));
         trace.action('project-loader:snapshot-loaded', { fileCount });
+        // Restore branches when the envelope carries them (v2) and land on
+        // the branch the editor was last sitting on. A files-only envelope
+        // behaves exactly as before. Never a throw: a corrupt branch record
+        // must not brick the project — main is already loaded above.
+        try {
+          const raw = data as { branches?: unknown; activeBranchId?: unknown } | null | undefined;
+          if (raw && typeof raw === 'object' && raw.branches) {
+            projectFS.hydrateBranches(raw.branches, raw.activeBranchId);
+            trace.action('project-loader:branches-loaded', { branches: projectFS.listBranches().length - 1, active: projectFS.getActiveBranchId() });
+          }
+        } catch (err) {
+          trace.error('project-loader:branches-hydrate-failed', { error: String(err) });
+        }
       } else {
         projectFS.loadSnapshot(createEmptyProject());
         trace.action('project-loader:seeded-empty', { fileCount: projectFS.listFiles().length });

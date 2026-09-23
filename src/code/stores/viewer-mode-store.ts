@@ -27,22 +27,67 @@
 import { useSyncExternalStore } from 'react';
 import { trace } from '@/shared/debug-trace';
 
-/** Why the editor is read-only right now. `null` = fully editable. */
-export type ViewerReason = 'viewer' | 'offline' | null;
+/** Why the editor is read-only right now. `null` = fully editable.
+ *  · `viewer`  — the session's role; permanent.
+ *  · `offline` — no network; until it returns.
+ *  · `agent`   — an AI run is editing the branch the user is on; until the
+ *                run finishes (or is stopped from the chat). A run on
+ *                another branch leaves this one editable. */
+export type ViewerReason = 'viewer' | 'offline' | 'agent' | null;
 
 let _isViewerRole = false;
 let _isOffline = false;
+/**
+ * THE AGENT SOURCE. The lock itself lives in agent-run-lock-store (it needs
+ * ProjectFS for the active branch; this store must stay a leaf), which
+ * registers two readers at load:
+ *  · `busy`   — the branch is locked AND this is not the run's own write
+ *               window. What every IMPERATIVE gate reads (queue, drag,
+ *               node-ops…), so the agent's writes pass and the human's don't.
+ *  · `locked` — the branch is locked, window or not. What the UI reads:
+ *               a render can land inside a tool's await, and a snapshot
+ *               that flipped with the window would leave panels editable
+ *               until the next lock transition re-rendered them.
+ * Both default to "no" so the store behaves exactly as before registration
+ * (tests of unrelated modules, the canvas sandbox bundle).
+ */
+let _agentBusy: () => boolean = () => false;
+let _agentLocked: () => boolean = () => false;
 const listeners = new Set<() => void>();
 
 function emit(): void {
   for (const fn of listeners) fn();
 }
 
+/** Called once by agent-run-lock-store. `onChange` re-emits this store's
+ *  listeners on every lock transition so `useIsViewer` follows the run. */
+export function registerAgentEditingSource(
+  src: { busy: () => boolean; locked: () => boolean },
+  onChange: (fn: () => void) => () => void,
+): void {
+  _agentBusy = src.busy;
+  _agentLocked = src.locked;
+  onChange(emit);
+  trace.action('viewer-mode:agent-source-registered', {});
+}
+
 /** Read viewer mode from imperative code (mutation-queue, node-ops,
  *  drag/resize handlers). True when the user is a viewer by role OR
  *  currently offline — every reader sees the same value. */
 export function isViewerMode(): boolean {
-  return _isViewerRole || _isOffline;
+  return _isViewerRole || _isOffline || _agentBusy();
+}
+
+/** The UI's view of the same question (see `_agentLocked` above). */
+function isViewerModeForUi(): boolean {
+  return _isViewerRole || _isOffline || _agentLocked();
+}
+
+/** The session's ROLE alone — for the few surfaces that must stay usable
+ *  while an agent run locks the branch: the chat's mount and the VIBE
+ *  button (or the user could never stop the run), onboarding. */
+export function isViewerRole(): boolean {
+  return _isViewerRole;
 }
 
 /** Why the editor is locked — drives banner vs toast. Role wins: a
@@ -51,6 +96,7 @@ export function isViewerMode(): boolean {
 function getViewerReason(): ViewerReason {
   if (_isViewerRole) return 'viewer';
   if (_isOffline) return 'offline';
+  if (_agentLocked()) return 'agent';
   return null;
 }
 
@@ -91,7 +137,12 @@ function subscribe(fn: () => void): () => void {
 /** React hook — reactive read of viewer mode (viewer role OR offline).
  *  Re-renders when either flag flips. Use everywhere in UI code. */
 export function useIsViewer(): boolean {
-  return useSyncExternalStore(subscribe, isViewerMode, isViewerMode);
+  return useSyncExternalStore(subscribe, isViewerModeForUi, isViewerModeForUi);
+}
+
+/** React hook — the role flag alone (see `isViewerRole`). */
+export function useIsViewerRole(): boolean {
+  return useSyncExternalStore(subscribe, isViewerRole, isViewerRole);
 }
 
 /** React hook — the reason the editor is read-only, or null. Use for

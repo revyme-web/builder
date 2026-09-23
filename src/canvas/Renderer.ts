@@ -11,6 +11,7 @@ import { resolveActiveVariant, bandForTile, responsiveVariantForWidth } from './
 import { pinnedResolveWidth, viewportBandPinOps } from './resize/viewport-band-pin-store';
 import { extractStyleCSS } from '../code/parsing/parser';
 import type { ViewportConfig, CollectionItem, NodeOverride, FilterGroup, FilterConfig, SortConfig, OverlayConfig } from '@/shared/types';
+import { renderWidth } from '@/shared/types';
 import { resolveOverlayConfig } from '@/code/parsing/overlay-parser';
 import { trace, pauseDOMObserver, resumeDOMObserver } from '@/shared/debug-trace';
 import { jsxStyleToHTML, coerceCssNumberToPx, mergeStyleLayers } from '@/shared/css-utils';
@@ -1321,7 +1322,12 @@ export function renderNodes(
       // zoom (= blurry zoom). Instead, TransformManager dynamically sets
       // will-change while a scale change is in flight and clears it on
       // debounce so Chrome re-rasterizes at the new scale.
-      if (vp.width > 0 && !isComponentMaster) rootEl.style.width = `${vp.width}px`;
+      // The tile renders at its DESIGN width when it has one — the band it
+      // represents can be wider than the canvas it was drawn on (a phone band
+      // reaching 809px designed at 390). Container queries still resolve:
+      // a band's lower bound is the next smaller viewport + 0.02, and a design
+      // width sits inside its own band by construction.
+      if (vp.width > 0 && !isComponentMaster) rootEl.style.width = `${renderWidth(vp)}px`;
       // Optional viewport height — three cases, all sourced from the
       // @canvas block via SizeTool:
       //   • numeric (e.g. 900) → write `height: '900px'`
@@ -1369,7 +1375,8 @@ export function renderNodes(
         if (masterHugWidth) rootEl.style.width = 'max-content';
       }
       // Store viewport width as data attribute for VW/VH resolution in patchElement
-      rootEl.setAttribute('data-viewport-width', String(vp.width));
+      // vw/vh resolve against what the tile is actually drawn at.
+      rootEl.setAttribute('data-viewport-width', String(renderWidth(vp)));
     }
   }
 
@@ -1410,7 +1417,7 @@ export function renderNodes(
         portal.style.position = 'absolute';
         portal.style.left = `${vp.x}px`;
         portal.style.top = `${vp.y}px`;
-        portal.style.width = `${vp.width}px`;
+        portal.style.width = `${renderWidth(vp)}px`;
         portal.style.height = '0';
         portal.style.zIndex = '20';
         portal.style.pointerEvents = 'none';
@@ -1426,7 +1433,7 @@ export function renderNodes(
         // Update portal position to match viewport
         portal.style.left = `${vp.x}px`;
         portal.style.top = `${vp.y}px`;
-        portal.style.width = `${vp.width}px`;
+        portal.style.width = `${renderWidth(vp)}px`;
         portal.style.containerType = 'inline-size'; // (idempotent — heals portals from older sessions)
       }
 

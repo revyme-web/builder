@@ -15,7 +15,13 @@ vi.mock('./project-fs', () => ({
     deleteFile: vi.fn(),
     listFiles: vi.fn(() => []),
     exists: vi.fn(() => false),
+    // The canvas-busy backstop reads the active branch through the lock store.
+    getActiveBranchId: vi.fn(() => 'main'),
+    subscribe: vi.fn(() => () => {}),
   },
+  // Editor state (`_meta/`) is exempt from the busy backstop.
+  isSharedAcrossBranches: (path: string) => path.startsWith('_meta/'),
+  MAIN_BRANCH_ID: 'main',
 }));
 
 vi.mock('../mutation/mutation-queue', () => ({

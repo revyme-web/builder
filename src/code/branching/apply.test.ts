@@ -191,3 +191,23 @@ describe('applyBranch — run lock (P8-SCOPED-LOCK)', () => {
     expect(projectFS.readFile('app/page.client.tsx')).toContain(`color: 'red'`);
   });
 });
+
+describe('applyBranch — a REAL project (cms json, server wrappers, css) applies', () => {
+  it('gates only the changed page and carries the plain files through', async () => {
+    const { FIXTURE_FILES, HOME } = await import('@/ai/agent/capability/fixture');
+    const mod = await import('@/code/project/project-fs');
+    mod.resetProjectFS(new Map(Object.entries(FIXTURE_FILES)));
+    // `projectFS` is reassigned by the reset — read it through the module.
+    const fs = mod.projectFS;
+    expect(fs.createBranch('work', { from: fs.getSnapshot() })).toBeNull();
+    fs.writeBranchFile('work', HOME, FIXTURE_FILES[HOME].replace('Plan, build and release', 'A bolder hero'));
+    fs.writeBranchFile('work', 'cms/blog.json', FIXTURE_FILES['cms/blog.json'].replace('Hello world', 'Hello there'));
+    const res = applyBranch('work');
+    // Before: every unchanged server wrapper / json was judged as a page →
+    // PROTECTED_PATH → nothing could ever apply.
+    expect(res.status).toBe('applied');
+    expect(res.files.sort()).toEqual([HOME, 'cms/blog.json'].sort());
+    expect(fs.readBranchFile('main', HOME)).toContain('A bolder hero');
+    expect(fs.readBranchFile('main', 'cms/blog.json')).toContain('Hello there');
+  });
+});

@@ -17,11 +17,19 @@ import { selectedIdsAtom } from '@/code/stores/store';
 import type { CanvasNode } from '@/code/parsing/parser';
 import { trace } from '@/shared/debug-trace';
 import { buildComponentRegistry, STRUCTURAL_PROPS, type ComponentInfo } from '@/code/components/component-registry';
+import { wouldCreateComponentCycle } from '@/code/components/component-cycle';
 import { projectFS, projectVersionAtom } from '@/code/project/project-fs';
 import type { AgentTool, AgentToolResult, ToolContext } from '@/ai/agent';
-import { queueToolMutation, flushTool, getToolNodes, isBranchedRun, branchFsView } from '@/ai/agent/workspace';
+import { queueToolMutation, flushTool, getToolNodes, isBranchedRun, branchFsView, resolveToolFile, getToolCode } from '@/ai/agent/workspace';
+import { isComponentFilePath } from '@/code/project/file-path-kind';
 import { coerceRecord } from './coerce';
 import { formatNodeNotFound } from '../error-format';
+import { seedFlowChild, planReorder, isLayoutParent, isOutOfFlow, visualFlowChildren, type OrderWrite } from './flow-placement';
+
+/** Queue the sibling `order` writes a placement needs (see flow-placement.ts). */
+export function queueOrderWrites(ctx: ToolContext, writes: readonly OrderWrite[]): void {
+  for (const w of writes) queueToolMutation(ctx, { type: 'updateStyles', nodeId: w.id, styles: { order: w.order } });
+}
 
 const store = getDefaultStore();
 
@@ -121,7 +129,7 @@ function fail(message: string): AgentToolResult {
  * le nom est dérivé du paramètre `name` s'il est voulu.
  *
  * `id` (HTML) est traité À PART : le modèle le confond avec l'identité du
- * nœud (le schéma « nommer l'élément » de Framer) — il devient donc le
+ * nœud (le schéma « nommer l'élément » de the reference builder) — il devient donc le
  * data-id du nœud créé (extractNodeIdHint), jamais un attribut HTML.
  */
 const RESERVED_CREATE_ATTRS = ['data-id', 'data-name'] as const;
@@ -149,7 +157,7 @@ function stripReservedAttrs(attrs: Record<string, string>): { attrs: Record<stri
   return { attrs: next, ignored, ...(idHint !== undefined ? { idHint } : {}) };
 }
 
-/** Format d'un data-id fourni par le modèle (comme Framer où le modèle nomme
+/** Format d'un data-id fourni par le modèle (comme le builder de référence où le modèle nomme
  *  les layers). Unique par nœud — la validation ci-dessous le garantit. */
 const MODEL_ID_RE = /^[a-z0-9][a-z0-9-]{0,59}$/i;
 
@@ -197,18 +205,28 @@ export const addNodeTool: AgentTool = {
     ctx.ensureCheckpoint();
     const { attrs, ignored, idHint } = stripReservedAttrs((args.attrs as Record<string, string>) ?? {});
     // L'id du nœud : le paramètre `id` prime, puis l'attribut HTML `id`
-    // (le modèle nomme ses éléments — schéma Framer), sinon génération.
+    // (le modèle nomme ses éléments — schéma the reference builder), sinon génération.
     const resolved = resolveCreateId(args.id ?? idHint, getToolNodes(ctx));
     if ('error' in resolved) return fail(resolved.error);
     const id = resolved.id;
+    // A child of a layout needs a position, a no-shrink flex and its place in
+    // the `order` sequence — see flow-placement.ts. Filled in, never overridden.
+    const nodesNow = getToolNodes(ctx);
+    const placed = seedFlowChild(
+      (args.styles as Record<string, string>) ?? {},
+      nodesNow.get(args.parent_id as string),
+      nodesNow,
+      typeof args.index === 'number' ? args.index : undefined,
+    );
     const node = {
       id,
       type: (args.tag as string) ?? 'div',
-      styles: (args.styles as Record<string, string>) ?? {},
+      styles: placed.styles,
       attrs,
       ...(args.name ? { name: args.name as string } : {}),
       ...(args.text != null ? { textContent: args.text as string } : {}),
     };
+    queueOrderWrites(ctx, placed.siblings);
     queueToolMutation(ctx, {
       type: 'addNode',
       parentId: args.parent_id as string,
@@ -286,6 +304,21 @@ export const moveNodeTool: AgentTool = {
     if (typeof args.index === 'number') m.index = args.index;
     if (args.before_id) m.insertBeforeId = args.before_id as string;
     queueToolMutation(ctx, m);
+    // Arriving in a layout, the node takes a slot in the NEW parent's `order`
+    // sequence — the value it carried was its place among its OLD siblings, and
+    // kept as-is it collides with one of the new ones.
+    const nodesNow = getToolNodes(ctx);
+    const moved = nodesNow.get(args.node_id as string);
+    const target = args.parent_id ? nodesNow.get(args.parent_id as string) : undefined;
+    if (moved && target && isLayoutParent(target) && !isOutOfFlow(moved.styles)) {
+      const siblings = visualFlowChildren(target, nodesNow).filter((id) => id !== moved.id);
+      const beforeAt = args.before_id ? siblings.indexOf(args.before_id as string) : -1;
+      const at = beforeAt >= 0 ? beforeAt : (typeof args.index === 'number' ? args.index : undefined);
+      const { order: _old, ...own } = (moved.styles ?? {}) as Record<string, string>;
+      const placed = seedFlowChild(own, { ...target, children: siblings }, nodesNow, at);
+      queueOrderWrites(ctx, placed.siblings);
+      queueToolMutation(ctx, { type: 'updateStyles', nodeId: moved.id, styles: { order: placed.styles.order, flex: placed.styles.flex, position: placed.styles.position } });
+    }
     flushTool(ctx);
     return ok({});
   },
@@ -303,6 +336,11 @@ export const reorderNodeTool: AgentTool = {
   category: 'semantic',
   async execute(args, ctx) {
     ctx.ensureCheckpoint();
+    // In a layout the VISIBLE order is CSS `order`; the JSX position is only
+    // the tie-break. Writing the JSX alone replied ok and moved nothing.
+    const nodesNow = getToolNodes(ctx);
+    const writes = planReorder(nodesNow.get(args.parent_id as string), nodesNow, args.node_id as string, args.index as number);
+    queueOrderWrites(ctx, writes);
     queueToolMutation(ctx, {
       type: 'reorder',
       nodeId: args.node_id as string,
@@ -310,7 +348,7 @@ export const reorderNodeTool: AgentTool = {
       index: args.index as number,
     });
     flushTool(ctx);
-    return ok({});
+    return ok({ reordered: writes.length });
   },
 };
 
@@ -332,6 +370,19 @@ export const duplicateNodeTool: AgentTool = {
     const clone = cloneSubtree(src, sources);
     const parentId = (args.parent_id as string | undefined) ?? src.parentId ?? '';
     trace.action('agent:duplicate-node', { srcId: src.id, dstId: clone.id, nodeCount: countNodes(clone) });
+    // A copy carries its source's `order` — two children on one slot. It lands
+    // right AFTER its source (what a user expects of "duplicate"), or where
+    // `index` says, and the siblings behind it move down.
+    const target = sources.get(parentId);
+    let at = typeof args.index === 'number' ? args.index : undefined;
+    if (at === undefined && target && parentId === src.parentId && isLayoutParent(target)) {
+      const seen = visualFlowChildren(target, sources).indexOf(src.id);
+      if (seen >= 0) at = seen + 1;
+    }
+    const { order: _srcOrder, ...cloneStyles } = (clone.styles ?? {}) as Record<string, string>;
+    const placed = seedFlowChild(cloneStyles, target, sources, at);
+    clone.styles = placed.styles;
+    queueOrderWrites(ctx, placed.siblings);
     queueToolMutation(ctx, {
       type: 'addNode',
       parentId,
@@ -438,22 +489,33 @@ export const addComponentInstanceTool: AgentTool = {
     if (!info) return fail(`No component named "${name}" in the project. Call list_components to see what exists. NEXT ACTION: call list_components (names + paths) or get_component (full prop signature) first, then re-issue with a real component name.`);
     const parentId = (args.parent_id as string | undefined) ?? resolveDefaultParentId(ctx);
     if (!parentId) return fail('No parent to insert into: pass parent_id (the data-id of the target element).');
+    // A master must never render itself, directly or through its import
+    // chain — the parser recurses and the page goes blank. Same guard as the
+    // library drag and the paste engine (components/component-cycle.ts).
+    const targetFile = resolveToolFile(ctx);
+    if (isComponentFilePath(targetFile) && wouldCreateComponentCycle(info.filePath, targetFile, (p) => getToolCode(ctx, p) || null)) {
+      return fail(`Cannot place ${name} inside ${targetFile}: the component would render itself (${info.filePath} is, or imports, this master). Place it on a page or in another component instead.`);
+    }
     const rawProps = (args.props as Record<string, unknown> | undefined) ?? {};
     const { attrs, dropped } = filterDeclaredProps(info, rawProps);
     const missing = missingRequiredProps(info, rawProps);
     const id = generateNodeId('frame');
+    // Every newly-inserted node must carry explicit positioning — the oracle
+    // bounces position-less nodes (NODE_MISSING_POSITION) and the editor's
+    // own drop path writes `position: 'relative'` (canvas/commands.ts). A
+    // component instance especially needs it: the master's absolute root
+    // leaks through the `...style` spread otherwise. In a layout it also needs
+    // its `order` slot and a no-shrink flex (flow-placement.ts).
+    const nodesNow = getToolNodes(ctx);
+    const placed = seedFlowChild({ position: 'relative' }, nodesNow.get(parentId), nodesNow, typeof args.index === 'number' ? args.index : undefined);
     const node = {
       id,
       type: name,
-      // Every newly-inserted node must carry explicit positioning — the oracle
-      // bounces position-less nodes (NODE_MISSING_POSITION) and the editor's
-      // own drop path writes `position: 'relative'` (canvas/commands.ts). A
-      // component instance especially needs it: the master's absolute root
-      // leaks through the `...style` spread otherwise.
-      styles: { position: 'relative' },
+      styles: placed.styles,
       attrs,
       name,
     };
+    queueOrderWrites(ctx, placed.siblings);
     trace.action('agent:add-component-instance', {
       component: name, nodeId: id, parentId,
       propsApplied: Object.keys(attrs).length, dropped: dropped.length, missingRequired: missing.length,

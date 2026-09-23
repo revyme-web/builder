@@ -42,7 +42,7 @@ export const MORPHING_TEXT_COMPONENT = `'use client';
 } */
 
 import { useEffect, useRef, useMemo } from 'react';
-import { withResponsiveProps } from '@revyme/runtime';
+import { withResponsiveProps, useStaticCanvas } from '@revyme/runtime';
 
 function MorphingText({
   words = 'Hello,World,Morphing', speed = 2,
@@ -61,8 +61,15 @@ function MorphingText({
   const span1Ref = useRef<HTMLSpanElement | null>(null);
   const span2Ref = useRef<HTMLSpanElement | null>(null);
   const filterId = useMemo(() => 'morph-' + Math.random().toString(36).slice(2, 8), []);
+  const isStatic = useStaticCanvas();
 
   useEffect(() => {
+    if (isStatic) {
+      const s1 = span1Ref.current; const s2 = span2Ref.current;
+      if (s1) { s1.textContent = wordList[0]; s1.style.filter = 'none'; s1.style.opacity = '1'; }
+      if (s2) { s2.textContent = ''; s2.style.opacity = '0'; }
+      return;
+    }
     let textIndex = 0;
     let morph = 0;
     let cooldown = 0;
@@ -101,7 +108,7 @@ function MorphingText({
     };
     rafId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafId);
-  }, [speed, wordList]);
+  }, [speed, wordList, isStatic]);
 
   const baseStyle = { fontSize: fontSize + 'px', fontFamily, fontWeight, color, lineHeight: 1.1 };
 

@@ -673,7 +673,7 @@ describe('create_variant — declaration parity with the editor Add Variant', ()
     // Plain master: no motion wiring yet — honestly reported, not hidden.
     const body = JSON.parse((r.content[0] as { text: string }).text);
     expect(body.motion_wiring).toBe(false);
-    expect(body.note).toMatch(/set_motion_preset/);
+    expect(body.note).toMatch(/set_variant[^]*element[^]*show_variant/);
     // And now the switcher accepts it on the same master.
     await setVariantTool.execute(
       { node_id: 'card', variant: 'featured', styles: { backgroundColor: '#eef0ff' } },

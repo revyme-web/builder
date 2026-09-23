@@ -16,6 +16,7 @@
 // and flushes to codeAtom when idle.
 
 import { liftCodeOverrides, restoreCodeOverrides, pruneUnusedOverrideImports, setCodeOverridesInCode, type CodeOverrideRef } from '../generation/code-override-gen';
+import { SCROLL_TARGET_EXPR } from '@/shared/scroll-target';
 import { getAllCachedNodes, getNodeFromCache, canvasInteractingAtom, setPreferCacheSnapshot } from '@/code/stores/store';
 import { registerExternalWriteRefresh } from './external-write-registry';
 import { sanitizeDataName } from '@/shared/id-utils';
@@ -122,6 +123,7 @@ import {
   dedupeFormStateDeclarations,
   dormantizeFormBindingsInCanvas,
   formStateVar,
+  ensureFormStateHook,
   formStateSetter,
   type FormStateMapping,
 } from '../generation/form-state-gen';
@@ -786,6 +788,10 @@ const IMPORT_AFFECTING_TYPES = new Set([
   // Page variable bind/unbind insert/remove useState — syncImports needs to
   // pick up the React hook addition/removal.
   'bindStylePageVariable', 'unbindStylePageVariable', 'removePageVariable',
+  // A text page variable / a declared page variable sync a `useState` hook
+  // too — the SYNC flush wrote the hook without its import (the async path
+  // healed it a tick later; the agent's post-write oracle saw WOULD_CRASH).
+  'createTextPageVariable', 'removeTextPageVariable', 'addPageVariable', 'updatePageVariable', 'addCollectionSearchField', 'setSearchInputVariable', 'ensureTemplateVarParam',
   // Per-viewport style-variable binding emits a `useMediaQuery` gate (which uses
   // useState/useEffect) into the page body — syncImports must add those React hooks.
   'bindResponsiveStyleVariable', 'unbindResponsiveStyleVariable',
@@ -1000,6 +1006,13 @@ export function queueMutation(mutation: Mutation, scope?: QueueScope): void {
 export function queueMutations(mutations: Mutation[], scope?: QueueScope): void {
   if (isViewerMode()) {
     trace.fn('queueMutations:blocked-viewer', { count: mutations.length });
+    return;
+  }
+  // The same entry-branch gate as queueMutation — a multi-drag on a branch
+  // an agent run holds must not slip past it (it did until 2026-09-22).
+  const targetBranch = scope?.branchId ?? projectFS.getActiveBranchId();
+  if (!isAgentWriteOpen() && isBranchLocked(targetBranch)) {
+    trace.action('mutation-queue:refused-branch-locked', { count: mutations.length, branch: targetBranch });
     return;
   }
   queue.push(...mutations);
@@ -1557,9 +1570,28 @@ export function validateGeneratedCode(code: string): string | null {
         return `Duplicate data-id \`${d.id}\` — the same node appears twice (first at line ${first ?? '?'}, again at line ${d.line ?? '?'}). Every edit resolves a node by its data-id, so two copies make the document ambiguous: the layers panel shows the node twice and later edits hit an arbitrary one. The move/reorder that produced this removed the original from one place and inserted a copy in another without deleting it.`;
       }
     }
+    // A TYPE is not a runtime reference. Babel's scope counts the annotation
+    // in `function C(props: MyComponentProps)` as an unbound identifier even
+    // though the file declares `interface MyComponentProps` — types are
+    // erased before anything runs, so an imported TypeScript code component
+    // was reported as "would crash" when it compiles and renders fine.
+    // Only a name used in a VALUE position can crash.
+    const valueRefs = new Set<string>();
+    traverse(ast, {
+      TSTypeAnnotation(p: any) { p.skip(); },
+      TSTypeReference(p: any) { p.skip(); },
+      TSTypeAliasDeclaration(p: any) { p.skip(); },
+      TSInterfaceDeclaration(p: any) { p.skip(); },
+      TSTypeParameterDeclaration(p: any) { p.skip(); },
+      TSTypeParameterInstantiation(p: any) { p.skip(); },
+      TSAsExpression(p: any) { p.get('typeAnnotation').skip?.(); },
+      Identifier(p: any) { valueRefs.add(p.node.name); },
+      JSXIdentifier(p: any) { valueRefs.add(p.node.name); },
+    });
     traverse(ast, {
       Program(p) {
-        dangling = Object.keys((p.scope as any).globals || {}).filter((n) => !KNOWN_GLOBALS.has(n));
+        dangling = Object.keys((p.scope as any).globals || {})
+          .filter((n) => !KNOWN_GLOBALS.has(n) && valueRefs.has(n));
       },
     });
     if (dangling.length) {
@@ -1596,7 +1628,9 @@ export function validateGeneratedCode(code: string): string | null {
   // blocked + reverted, like a syntax error. Cheap regex pass, gated on the
   // hook's presence.
   if (code.includes('useScroll(')) {
-    const targetRe = /useScroll\(\s*\{[^)]*?\b(?:target|container)\s*:\s*([A-Za-z_$][\w$]*)/g;
+    // The target may be variant-gated (`cond ? ref : undefined`) — group 1 is
+    // the REF either way, never the condition's first identifier.
+    const targetRe = new RegExp(String.raw`useScroll\(\s*\{[^)]*?\b(?:target|container)\s*:\s*` + SCROLL_TARGET_EXPR, 'g');
     let m: RegExpExecArray | null;
     const missing: string[] = [];
     while ((m = targetRe.exec(code)) !== null) {
@@ -2521,6 +2555,9 @@ function applyMutationCore(code: string, mutation: Mutation): string {
             const stateVar = formStateVar(fid);
             next = wireFormSubmitInCode(next, fid, formStateSetter(stateVar));
             next = convertSubmitButtonInCode(next, fid, stateVar);
+            // The handler references the setter whether or not a button was
+            // there to convert — declare the hook regardless.
+            next = ensureFormStateHook(next, fid);
           }
           if (formIds.length) {
             try {

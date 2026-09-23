@@ -111,11 +111,11 @@ export function removeAxisTranslate(transform: string | undefined, axis: 'x' | '
   return [other, visuals].filter(Boolean).join(' ');
 }
 
-// ─── SVG shape canonical position model (Framer parity, 2026-09-05) ────────
+// ─── SVG shape canonical position model (reference parity, 2026-09-05) ────────
 //
 // A vector shape has ONE position model: px `left`/`top` (layout-box top-left,
 // rotation about its own centre), no pins, no `%` positioning, no centering
-// translate in EITHER channel. Framer's shape panel is Position X/Y + Size for
+// translate in EITHER channel. the reference builder's shape panel is Position X/Y + Size for
 // this reason — the pin/inset model isn't configurable on shapes because it
 // can't be made stable: a `-50%` centering translate is a percentage of the
 // shape's OWN size, so every resize moved the shape by half the delta while

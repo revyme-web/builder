@@ -20,7 +20,7 @@ import { trace } from '@/shared/debug-trace';
 import { isSvgTag, isTextTag } from '@/shared/constants';
 import { parseJSXToNodes } from '@/code/parsing/parser';
 import { parseComponentCursorCalls } from '@/code/parsing/cursor-parser';
-import { parseCodeComponentDefaultSize } from '@/code/components/controls-parser';
+import { parseCodeComponentDefaultSize, parseComponentControlsMeta, hasComponentControls, CONTROL_TYPES } from '@/code/components/controls-parser';
 import { validateGeneratedCode } from '@/code/mutation/mutation-queue';
 import { traverse, TRANSPARENT_TAGS, jsxTagName, jsxAttrs, stringAttr, hasAttr, needsDataId, isAllowedTextExpression, isCodeComponentSource } from './checks/shared';
 import type { FileKind, OracleViolation } from './checks/shared';
@@ -56,6 +56,11 @@ export { ensureNodeDimensions } from './checks/node-dimensions';
 // (live false positive 2026-06-10: user-inserted SeYuSe icon set bounced).
 const IMPORT_ALLOWLIST = [
   /^react$/, /^react-dom$/, /^framer-motion$/,
+  // The automatic JSX runtime: a module the reference builder publishes is compiled with it,
+  // so it imports `jsx`/`jsxs` from here instead of using JSX syntax.
+  /^react\/jsx-runtime$/, /^react\/jsx-dev-runtime$/,
+  // Motion One, wired into the code-component MODULE_MAP.
+  /^@motionone\//, /^motion$/,
   /^next\//, /^@revyme\/runtime$/, /^@\/components\//,
   /^@\/icons\//,
   // Code overrides — `import { withX } from '@/overrides/<File>'` feeds `<Override with={withX}>`.
@@ -86,7 +91,7 @@ const IMPORT_ALLOWLIST = [
 /** Comment blocks that are FEATURE ANNOTATIONS, not prose — always allowed.
  *  @propMeta + @pageVariables are the page-variables feature's blocks (live
  *  prime-rule find 2026-06-10: a builder-written page bounced NO_COMMENTS). */
-const ANNOTATION_RE = /@name|@controls|@label|@comment|@canvas|@propMeta|@pageVariables|@cmsPage|@useResponsiveText/;
+const ANNOTATION_RE = /@name|@controls|@label|@comment|@canvas|@propMeta|@pageVariables|@cmsPage|@useResponsiveText|@responsiveList-(begin|end)/;
 
 /** Internal paint/typography props that never belong on a component INSTANCE
  *  tag — the wrapper carries placement only; these either double-apply or
@@ -118,6 +123,10 @@ function isEditorMediaStyleBlock(el: t.JSXElement): boolean {
   const child = real[0];
   if (!t.isJSXExpressionContainer(child) || !t.isTemplateLiteral(child.expression)) return false;
   const css = child.expression.quasis.map((q) => q.value.raw).join('');
+  // An EMPTY block is the editor's own leftover: removing the last breakpoint
+  // (or the last override) empties the block but keeps the tag. Nothing in it
+  // can be misread, so it passes.
+  if (css.trim() === '') return true;
   const skipBlock = (open: number): number => {
     let depth = 1;
     let j = open + 1;
@@ -238,6 +247,11 @@ export function checkFile(
     if (hookFn && hookFn.index !== undefined) exemptRanges.push([hookFn.index, hookFn.index + hookFn[0].length]);
     const mqHook = code.match(/function useMediaQuery\([\s\S]*?\n\}/);
     if (mqHook && mqHook.index !== undefined) exemptRanges.push([mqHook.index, mqHook.index + mqHook[0].length]);
+    // …and the per-breakpoint collection-list resolver fence (cms-responsive-gen).
+    const listFence = code.match(/\/\/ @responsiveList-begin[\s\S]*?\/\/ @responsiveList-end/);
+    if (listFence && listFence.index !== undefined) exemptRanges.push([listFence.index, listFence.index + listFence[0].length]);
+    const listHook = code.match(/function useResponsiveListConfig\([\s\S]*?\n\}/);
+    if (listHook && listHook.index !== undefined) exemptRanges.push([listHook.index, listHook.index + listHook[0].length]);
     for (const c of ast.comments ?? []) {
       if (ANNOTATION_RE.test(c.value)) continue;
       const cs = c.start ?? -1;
@@ -392,6 +406,46 @@ export function checkFile(
         message: `Missing /** @controls {…} */ annotation. Code components declare their editable props as a @controls JSON block (types: slider, color, text, number, toggle, select) plus /** @label "…" */.`,
       });
     }
+    // CODE_COMPONENT_CONTROLS_INVALID — a @controls block the panel cannot
+    // read. The parser swallows a JSON error and returns null, so the
+    // component installed with ZERO controls and nobody knew why (audit G3).
+    // Same for a control without a type / with an unknown type: the panel has
+    // no editor for it and silently skips the row.
+    if (hasComponentControls(code)) {
+      const meta = parseComponentControlsMeta(code);
+      const controlsLine = code.slice(0, code.search(/@controls/)).split('\n').length;
+      if (!meta) {
+        v.push({
+          code: 'CODE_COMPONENT_CONTROLS_INVALID', tier: 2, line: controlsLine,
+          message: `The /** @controls {…} */ block is not valid JSON (line ${controlsLine}) — the panel shows NO controls for this component. Use double-quoted keys and strings, no trailing commas, no comments, and close it with "} */". Each control: "name": { "type": "slider|number|color|text|toggle|select|upload|imageList|objectList|font|slot|group|transition", "label": "…", "default": … }.`,
+        });
+      } else {
+        const bad: string[] = [];
+        const walk = (controls: Record<string, { type?: string; label?: string; default?: unknown; controls?: Record<string, unknown>; item?: { controls?: Record<string, unknown> } }>, prefix: string) => {
+          for (const [name, def] of Object.entries(controls)) {
+            if (!def || typeof def !== 'object') { bad.push(`${prefix}${name}: not an object`); continue; }
+            if (!def.type) bad.push(`${prefix}${name}: no "type"`);
+            else if (!(CONTROL_TYPES as readonly string[]).includes(def.type)) bad.push(`${prefix}${name}: unknown type "${def.type}"`);
+            else if (def.type !== 'slot' && def.type !== 'group' && def.default === undefined) bad.push(`${prefix}${name}: no "default"`);
+            if (def.type === 'group' && def.controls) walk(def.controls as Record<string, { type?: string }>, `${prefix}${name}.`);
+            // An objectList's item shape is the fields of each object in the
+            // array; without it the popup has nothing to edit.
+            if (def.type === 'objectList') {
+              if (!def.item?.controls || !Object.keys(def.item.controls).length) bad.push(`${prefix}${name}: objectList needs "item": { "controls": {…} }`);
+              else walk(def.item.controls as Record<string, { type?: string }>, `${prefix}${name}[].`);
+              if (def.default !== undefined && !Array.isArray(def.default)) bad.push(`${prefix}${name}: objectList "default" must be an array`);
+            }
+          }
+        };
+        walk(meta.controls as Record<string, { type?: string }>, '');
+        if (bad.length) {
+          v.push({
+            code: 'CODE_COMPONENT_CONTROLS_INVALID', tier: 2, line: controlsLine,
+            message: `@controls (line ${controlsLine}) has entries the panel cannot render: ${bad.join('; ')}. Every control needs a "type" from slider|number|color|text|toggle|select|upload|imageList|objectList|font|slot|group|transition, a "label" and (except slot / group) a "default" that matches the prop's default in the signature.`,
+          });
+        }
+      }
+    }
     // CODE_COMPONENT_STATIC_FALLBACK — the editor canvas renders code components statically; an
     // unguarded rAF loop runs in every canvas replica (or paints nothing).
     if (/requestAnimationFrame\s*\(/.test(code) && !/useStaticCanvas/.test(code)) {
@@ -485,12 +539,18 @@ export function checkFile(
       if (!t.isArrowFunctionExpression(fn) && !t.isFunctionExpression(fn)) return;
 
       const EXEMPT = new Set(['setVariant', 'setTimeout', 'setInterval']);
+      // The builder's OWN form wiring drives the form's lifecycle variable
+      // (`setFormState<Id>('loading' | 'success' | 'error')`) from onSubmit —
+      // that state is not hidden content, it is what the Form State tool shows
+      // and maps to the submit button's variants. Flagging it made every form
+      // the builder itself creates fail this rule (capability suite, 2026-09-22).
+      const isFormLifecycle = (n: string) => /^setFormState[A-Z0-9]/.test(n);
       const setters = new Set<string>();
       let contentLiteralCall: string | null = null;
       path.traverse({
         CallExpression(cp: NodePath<t.CallExpression>) {
           const c = cp.node.callee;
-          if (!t.isIdentifier(c) || !/^set[A-Z]/.test(c.name) || EXEMPT.has(c.name)) return;
+          if (!t.isIdentifier(c) || !/^set[A-Z]/.test(c.name) || EXEMPT.has(c.name) || isFormLifecycle(c.name)) return;
           setters.add(c.name);
           for (const arg of cp.node.arguments) {
             const isContentString = t.isStringLiteral(arg) && arg.value !== '';
@@ -535,6 +595,9 @@ export function checkFile(
       // shape is fully editor-visible (parseContainerRules round-trips it), so
       // it must pass. Anything else (element selectors, classes, keyframes)
       // stays forbidden on components.
+      // (A code component may carry its own <style> — keyframes for a cursor
+      // blink — the editor never opens it; see NO_COMMENTS above.)
+      if (tag === 'style' && isCodeComponent) return;
       if (tag === 'style' && kind !== 'page' && !isEditorMediaStyleBlock(path.node)) {
         v.push({
           code: 'RAW_STYLE_TAG', tier: 2, line,
@@ -646,8 +709,11 @@ export function checkFile(
       }
       // Inputs inside a form must carry a `name` — FormData keys by name, so an
       // unnamed field is never submitted (the form collects nothing).
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' ||
-          tag === 'motion.input' || tag === 'motion.textarea' || tag === 'motion.select') {
+      // Code components are exempt: the Form tool never opens their internals,
+      // and a <select> there is a control of the component (LocaleSwitcher),
+      // not a field the builder submits.
+      if (!isCodeComponent && (tag === 'input' || tag === 'textarea' || tag === 'select' ||
+          tag === 'motion.input' || tag === 'motion.textarea' || tag === 'motion.select')) {
         const inputType = (stringAttr(attrs, 'type') || '').toLowerCase();
         const isButtonish = inputType === 'submit' || inputType === 'button' || inputType === 'reset' || inputType === 'image';
         const insideForm = !!path.findParent((p) => {
@@ -854,6 +920,7 @@ export function checkFile(
             // Position tool never edits its pins — `inset: '0'` is the correct
             // spelling for "fill my parent" there (Renderer.syncBgVideoChild).
             builderOwned: hasAttr(attrs, 'data-bg-video'),
+            templateRoot: isTemplate && dataId === 'root',
           });
         }
 
@@ -959,7 +1026,10 @@ export function checkFile(
       //   Hover/Tap = whileHover/whileTap
       // Bare animate={{...}} (an object, no repeat, no whileInView) renders as a
       // one-shot entrance but the tool reads it as a broken Loop — bounce it.
-      const animateAttr = attrs.find((a) => a.name.name === 'animate');
+      // A code component's internals are never read by the AnimationTool (it
+      // is a black box), so its motion props are free-form — a Carousel's
+      // animate={{ x }} is not a broken Loop.
+      const animateAttr = isCodeComponent ? undefined : attrs.find((a) => a.name.name === 'animate');
       if (animateAttr && t.isJSXExpressionContainer(animateAttr.value) && t.isObjectExpression(animateAttr.value.expression)) {
         // LOOP_KEYFRAME_ARRAY — the Loop editor speaks SINGLE numeric targets;
         // keyframe arrays render (motion feature) but the parser drops array
@@ -997,7 +1067,7 @@ export function checkFile(
 
       // Appear must be one-shot: whileInView without viewport={{ once: true }}
       // replays on every scroll-past and the tool can't round-trip it.
-      const wivAttr = attrs.find((a) => a.name.name === 'whileInView');
+      const wivAttr = isCodeComponent ? undefined : attrs.find((a) => a.name.name === 'whileInView');
       if (wivAttr && t.isJSXExpressionContainer(wivAttr.value) && t.isObjectExpression(wivAttr.value.expression)) {
         const viewportAttr = attrs.find((a) => a.name.name === 'viewport');
         const hasOnce = !!(viewportAttr && t.isJSXExpressionContainer(viewportAttr.value)
@@ -1041,8 +1111,10 @@ export function checkFile(
         }
       }
 
-      // TEXT_EXPRESSION — children expressions outside the accepted binding forms
-      for (const child of path.node.children) {
+      // TEXT_EXPRESSION — children expressions outside the accepted binding forms.
+      // A code component's text is its own (a counter renders {value}); the
+      // text tool never opens it, so the rule is a false positive there.
+      for (const child of isCodeComponent ? [] : path.node.children) {
         if (!t.isJSXExpressionContainer(child)) continue;
         const expr = child.expression;
         if (t.isJSXEmptyExpression(expr)) continue;
@@ -1400,7 +1472,10 @@ export function checkFile(
       // the catch-all for shapes no named rule predicted.
       checkResolutionFidelity(code, ast, nodes, v, kind);
 
-      if (nodes.size === 0) {
+      // A CODE component is code, not canvas markup — a module compiled from a
+      // site's own source is a tree of `_jsx(...)` calls with no data-ids, and
+      // the builder renders it by COMPILING it rather than by parsing nodes.
+      if (nodes.size === 0 && kind !== 'code-component') {
         v.push({
           code: 'RESOLVE_EMPTY', tier: 3,
           message: `The builder's parser found no editable elements in this file. The component must return a JSX tree of elements carrying data-id attributes.`,

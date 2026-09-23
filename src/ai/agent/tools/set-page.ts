@@ -74,6 +74,8 @@ export function resolvePageTarget(page: string, pages?: string[]): string | null
     let p = trimmed;
     // Server wrapper → client half (the canvas-editable body).
     if (p.endsWith('/page.tsx')) p = p.slice(0, -'/page.tsx'.length) + '/page.client.tsx';
+    // A template's layout (app/(name)/LayoutClient.tsx) is editable like a page.
+    else if (/\/LayoutClient\.tsx$/.test(p)) return projectFS.exists(p) ? p : null;
     else if (p.endsWith('.tsx') && !p.endsWith('/page.client.tsx')) return null; // not a page file
     else if (!p.endsWith('.tsx')) p = p.replace(/\/?$/, '/page.client.tsx');
     return list.includes(p) ? p : null;
@@ -125,7 +127,7 @@ export const setPageTool: AgentTool = {
   description:
     "Make a page the ACTIVE file so the semantic tools (add_node, set_styles, set_text, …) write into it. Use it after create_page to continue building the new page, or to switch to any existing page before editing it. page is a ProjectFS path ('app/about/page.client.tsx' or 'app/about/page.tsx') or a route slug ('about', '/about', 'home', '/'). Fails clearly if the page does not exist. Already-active is a no-op. On a branch-bound run this only rebinds the run's own workspace (virtualized) — it never navigates the human editor.",
   inputSchema: {
-    page: z.string().describe("page to activate: path ('app/about/page.client.tsx') or route slug ('about', 'home')"),
+    page: z.string().describe("page to activate: path ('app/about/page.client.tsx'), route slug ('about', 'home'), or a template layout ('app/(site)/LayoutClient.tsx')"),
   },
   category: 'semantic',
   async execute(args, ctx) {

@@ -21,6 +21,7 @@
 
 import { useSyncExternalStore } from 'react';
 import { projectFS } from '@/code/project/project-fs';
+import { registerAgentEditingSource } from './viewer-mode-store';
 import { trace } from '@/shared/debug-trace';
 
 /** Locked branches with in-flight agent runs (refcounted — overlapping runs
@@ -117,7 +118,26 @@ export function throwIfLockedForHumanWrite(caller: string): void {
  *  predicate every human gate keys on. */
 // P8-SCOPED-LOCK (ex-TEMP-P1, levé Porte 8 (vii))
 export function isActiveBranchLocked(): boolean {
+  // No lock → no FS read. This sits under `isViewerMode()`, which hot paths
+  // (updateNodeStyles, every queued mutation) call; with no run in flight
+  // it must cost nothing — and must not touch a ProjectFS that a unit test
+  // mocked down to `readFile`.
+  if (lockedBranches.size === 0) return false;
   return lockedBranches.has(projectFS.getActiveBranchId());
+}
+
+/**
+ * THE CANVAS IS BUSY: an agent run holds the branch the human is looking
+ * at, and this is not the run's own write window. Every human editing
+ * surface keys on this — panels go read-only (fieldset), drags / resizes /
+ * creator tools / rename don't start, undo/redo, modifyProjectFile and page
+ * switches are refused — so nothing the human does can interleave with the
+ * run's queued mutations and checkpoints. A run on ANOTHER branch leaves
+ * this branch fully editable. See `edit-lock.ts` for the combined
+ * viewer-or-busy predicate the surfaces import.
+ */
+export function isCanvasBusy(): boolean {
+  return isActiveBranchLocked() && !isAgentWriteOpen();
 }
 
 /**
@@ -204,3 +224,10 @@ export function useActiveBranchId(): string {
     () => projectFS.getActiveBranchId(),
   );
 }
+
+// The run lock IS a viewer-mode reason (`'agent'`): every surface that goes
+// read-only for a viewer or offline goes read-only while a run holds the
+// branch the user is on — one mechanism, not a second one. Registered here
+// because this store knows the active branch and the write window; the
+// viewer store stays a leaf. Lock transitions re-emit its listeners.
+registerAgentEditingSource({ busy: isCanvasBusy, locked: isActiveBranchLocked }, subscribe);

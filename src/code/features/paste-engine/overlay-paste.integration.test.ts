@@ -329,7 +329,7 @@ describe('overlay copy/paste — CROSS-FILE', () => {
   });
 });
 
-// ─── Framer parity (2026-09-07): paste an OVERLAY onto another node ─────────
+// ─── reference parity (2026-09-07): paste an OVERLAY onto another node ─────────
 // Copy the overlay ALONE, paste with a different node selected → that node gets
 // its own copy of the overlay (content, side/align/offset and trigger kind kept).
 describe('overlay paste onto a selected node', () => {

@@ -15,15 +15,17 @@
 import { projectFS, MAIN_BRANCH_ID } from '@/code/project/project-fs';
 import { gateTurnFiles, commitTurnFiles, type TurnFile } from '@/code/oracle/gate';
 import { isBlockingModifyViolation } from '@/code/project/modify-file';
-import { isLayoutFile } from '@/code/project/active-file-store';
+import { isLayoutFile, activeFilePathAtom } from '@/code/project/active-file-store';
+import { getDefaultStore } from 'jotai';
+import { oracleFileKind } from '@/code/oracle/file-kind';
 import { syncImports } from '@/code/mutation/mutation-queue';
 import { checkFile, ensureNodeDimensions, type FileKind } from '@/code/oracle/check-file';
 import { recordOracleBounce } from '@/code/oracle/telemetry';
 import { ensureLayoutRootOnComponentRoot } from '@/code/components/component-ops';
 import { applyRuntimeGuarantees } from '@/code/generation/runtime-guarantees';
 import { mergeMaps, resolveFileConflicts, type FileConflict, type ConflictChoice } from './merge';
-import { syncQueueCode, flushNow } from '@/code/mutation/mutation-queue';
-import { isBranchLocked } from '@/code/stores/agent-run-lock-store';
+import { syncQueueCode, flushNow, switchQueueFile } from '@/code/mutation/mutation-queue';
+import { isBranchLocked, isAgentWriteOpen } from '@/code/stores/agent-run-lock-store';
 import { bumpProjectVersion } from '@/code/project/modify-file';
 import { clearBridgeReadCaches } from '@/canvas/canvas-bridge';
 import { trace } from '@/shared/debug-trace';
@@ -69,9 +71,30 @@ function recordChangelog(entry: ChangelogEntry): ChangelogEntry {
 }
 
 /** File kind for the gate (TurnFile carries page|component; the gate derives template/code-component internally). */
-function kindFor(path: string, code: string): TurnFile['kind'] {
-  if (path.startsWith('components/')) return 'component';
-  return 'page';
+/** The gate's kind for a file it judges, or null for one it does not
+ *  (CMS json, globals.css, server page wrappers, messages, _meta…). Judged as
+ *  "page", every one of those bounced PROTECTED_PATH and NO apply of a real
+ *  project could ever land (agent suite 2026-09-22). */
+function kindFor(path: string, code: string): TurnFile['kind'] | null {
+  const kind = oracleFileKind(path, code);
+  if (kind === 'component' || kind === 'code-component') return 'component';
+  if (kind === 'page' || kind === 'template') return 'page';
+  return null;
+}
+
+/**
+ * After the pointer moved to main: keep the file the user was on when main
+ * has it (a page created on the branch lands on home), and re-base the queue
+ * on THAT file. The old code re-based on the home page whatever was open — a
+ * later edit on any other page would have composed on the wrong source.
+ */
+function landOnMain(): void {
+  const store = getDefaultStore();
+  const current = store.get(activeFilePathAtom);
+  const landing = current && projectFS.readFile(current) != null ? current : 'app/page.client.tsx';
+  store.set(activeFilePathAtom, landing);
+  switchQueueFile(landing, { branchId: MAIN_BRANCH_ID });
+  syncQueueCode(projectFS.readFile(landing) ?? '');
 }
 
 function mapsEqual(a: Map<string, string>, b: Map<string, string>): boolean {
@@ -115,8 +138,10 @@ export function applyBranch(
   const ours = projectFS.readBranchFiles(MAIN_BRANCH_ID) ?? new Map<string, string>();
 
   // P8-SCOPED-LOCK: never merge a branch with an agent run in flight on it —
-  // the run's pending writes would land mid-merge with no owning turn.
-  if (isBranchLocked(branchId)) {
+  // the run's pending writes would land mid-merge with no owning turn. The
+  // run ITSELF may apply (apply_branch, inside its write window, after it
+  // flushed): its writes are the ones being merged, and it is the holder.
+  if (isBranchLocked(branchId) && !isAgentWriteOpen()) {
     const reason = `Branch "${branchId}" has an agent run in flight — stop it before applying.`;
     trace.error('branching-apply:refused-locked', { branch: branchId });
     return {
@@ -227,13 +252,17 @@ export function applyBranch(
     };
   }
 
-  // Validation pipeline: the whole-file gate over the merged set (pure).
-  // Same blocking semantics as any whole-file submit — violations refuse.
-  const turnFiles: TurnFile[] = [...merged.entries()].map(([path, code]) => ({
-    path,
-    code,
-    kind: kindFor(path, code),
-  }));
+  // Validation pipeline: the whole-file gate over what CHANGED against main,
+  // for the files the gate judges (pure). Same blocking semantics as any
+  // whole-file submit — violations refuse. Plain files (CMS json, css,
+  // dictionaries) are carried as they are; unchanged files are not touched.
+  const turnFiles: TurnFile[] = [];
+  const plain: Array<[string, string]> = [];
+  for (const [path, code] of merged) {
+    if (ours.get(path) === code) continue;
+    const kind = kindFor(path, code);
+    if (kind) turnFiles.push({ path, code, kind }); else plain.push([path, code]);
+  }
   const gated = gateTurnFiles(turnFiles, null);
   if (gated.violations.length > 0) {
     const codes = [...new Set(gated.violations.map((v) => v.code))].join(', ');
@@ -249,7 +278,9 @@ export function applyBranch(
   // Commit onto main. Switch the human pointer to main first so every
   // main-bound primitive (gate, commit, queue base, caches) stays coherent —
   // an apply lands the user on main by definition (traced, single gesture).
-  const preApplyMain = new Map(ours);
+  // The rollback snapshot is the WHOLE of main — `ours` is the website view
+  // (no shared editor state), and loadSnapshot replaces the map outright.
+  const preApplyMain = projectFS.readBranchFiles(MAIN_BRANCH_ID, { shared: true }) ?? new Map(ours);
   const switchErr = projectFS.switchBranch(MAIN_BRANCH_ID);
   if (switchErr) {
     return {
@@ -261,6 +292,7 @@ export function applyBranch(
     };
   }
   const written = commitTurnFiles(gated.files);
+  for (const [path, code] of plain) { projectFS.writeFile(path, code); written.push(path); }
   const expected = new Set(gated.files.map((f) => f.path));
   const missing = [...expected].filter((p) => !written.includes(p));
   // Deletions (in main, absent from merged): files the merge dropped.
@@ -274,7 +306,7 @@ export function applyBranch(
   if (missing.length > 0) {
     // Partial write: restore pre-apply main (active IS main here) + refuse.
     projectFS.loadSnapshot(preApplyMain);
-    syncQueueCode(projectFS.readFile('app/page.client.tsx') ?? '');
+    landOnMain();
     clearBridgeReadCaches();
     bumpProjectVersion();
     return {
@@ -287,8 +319,7 @@ export function applyBranch(
   }
 
   // Post-commit coherence (human is on main with new content).
-  const mainActiveFile = 'app/page.client.tsx';
-  syncQueueCode(projectFS.readFile(mainActiveFile) ?? '');
+  landOnMain();
   clearBridgeReadCaches();
   bumpProjectVersion();
 
@@ -328,11 +359,11 @@ export function applyBranch(
 
 /** Validate merged content without writing (review UI pre-check + tests). */
 export function validateMergedFiles(files: Map<string, string>): Array<{ code: string; message: string }> {
-  const turnFiles: TurnFile[] = [...files.entries()].map(([path, code]) => ({
-    path,
-    code,
-    kind: kindFor(path, code),
-  }));
+  const turnFiles: TurnFile[] = [];
+  for (const [path, code] of files) {
+    const kind = kindFor(path, code);
+    if (kind) turnFiles.push({ path, code, kind });
+  }
   const gated = gateTurnFiles(turnFiles, null);
   return gated.violations.map((v) => ({ code: v.code, message: v.message }));
 }

@@ -305,3 +305,21 @@ describe('wrapInFitSVGInCode — hug width bakes to px', () => {
     expect(w).not.toContain('fit-content');
   });
 });
+
+describe('wrapInFitSVGInCode — a text whose FIRST style pair is removed', () => {
+  it('leaves no leading comma when height (the first kept pair) is stripped', async () => {
+    const { parseJSX } = await import('@/code/parsing/ast-utils');
+    const code = `export default function Page() {
+  return (
+    <div data-id="root" style={{ position: 'relative', width: '100%' }}>
+      <h1 data-id="t" data-name="Title" style={{ position: 'relative', width: 'auto', height: 'auto', fontSize: '64px', color: '#111', flex: '0 0 auto', order: '0' }}>Hello</h1>
+    </div>
+  );
+}
+`;
+    const out = wrapInFitSVGInCode(code, 't', { width: 900, height: 80, fontSize: 64, marginTop: 2 }, { width: '100%' });
+    expect(out).not.toMatch(/style=\{\{\s*,/);
+    expect(parseJSX(out)).not.toBeNull();
+    expect(out).toMatch(/data-id="t"[^>]*style=\{\{fontSize: '64px'/);
+  });
+});

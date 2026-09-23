@@ -169,11 +169,25 @@ export interface ViewportConfig {
    *  back onto the root div's JSX style. `undefined` is still accepted
    *  on the read path for backward compat with older projects. */
   height?: number | 'auto';
+  /** The width the TILE RENDERS AT, when that differs from the band it
+   *  represents. A viewport's `width` is the top of its responsive band —
+   *  every `@media (max-width: …)` the project writes comes from it — but a
+   *  band is not always designed at its top edge: the reference phone band is
+   *  everything up to 809.98px and is drawn on a 390px canvas.
+   *
+   *  RENDER ONLY. The band ladder (`getSortedBreakpointWidths`,
+   *  `getViewportWidths`) must never see this, or the published CSS stops
+   *  matching the tiles it was authored on. Absent = render at `width`. */
+  designWidth?: number;
   isPrimary: boolean;
   order: number;
   x: number;
   y: number;
 }
+
+/** What a viewport's tile is drawn at — its design width when it has one. */
+export const renderWidth = (vp: { width: number; designWidth?: number }): number =>
+  vp.designWidth && vp.designWidth > 0 ? vp.designWidth : vp.width;
 
 // ─── Overlay ───────────────────────────────────────────────────────────────
 

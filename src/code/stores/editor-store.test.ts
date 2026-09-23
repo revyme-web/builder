@@ -24,7 +24,7 @@ describe('AI chat docking', () => {
     expect(store.get(leftPanelAtom)).toBe(DEFAULT_LEFT_PANEL);
   });
 
-  it('dock closes the popup and keeps the panel the user is on', () => {
+  it('closing the popup puts the chat back in the left panel — the VIBE panel opens', () => {
     const store = createStore();
     store.set(detachAiChatAtom);
     // While detached the user navigates to the Layers panel.
@@ -32,7 +32,7 @@ describe('AI chat docking', () => {
     store.set(dockAiChatAtom);
     expect(store.get(aiChatDetachedAtom)).toBe(false);
     expect(store.get(aiChatSheetOpenAtom)).toBe(false);
-    // The left panel is untouched — NOT forced to 'vibe'.
-    expect(store.get(leftPanelAtom)).toBe('layers');
+    // Still in the chat: docked, and open.
+    expect(store.get(leftPanelAtom)).toBe('vibe');
   });
 });

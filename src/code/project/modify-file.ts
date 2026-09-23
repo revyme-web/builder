@@ -5,7 +5,8 @@
 //   But this file CAN import both since nothing imports this file at module load time.
 
 import { getDefaultStore } from 'jotai';
-import { projectFS } from './project-fs';
+import { projectFS, isSharedAcrossBranches } from './project-fs';
+import { isCanvasBusy } from '@/code/stores/agent-run-lock-store';
 import { activeFilePathAtom } from './active-file-store';
 import { syncQueueCode, flushNow, syncImports, getCurrentCode, refreshDeferredFlushWithExternalWrite } from '../mutation/mutation-queue';
 import { parseJSX } from '../parsing/ast-utils';
@@ -61,6 +62,17 @@ export function modifyProjectFile(
     skipParseGate?: boolean;
   },
 ): string | null {
+  // CANVAS-BUSY BACKSTOP: no direct write lands on a branch an agent run
+  // holds outside the run's own write window — the same gate queueMutation
+  // has, so every write path (panels, heal-on-switch, file ops, code editor
+  // sync, the MCP bridge) funnels through one refusal. Editor state
+  // (`_meta/`: comments, cameras, chats) is not the website and stays
+  // writable. Returns null per the existing failure contract. FIRST, so
+  // even the pre-write flush below cannot disturb the run.
+  if (isCanvasBusy() && !isSharedAcrossBranches(filePath)) {
+    trace.action('modify-file:refused-canvas-busy', { filePath });
+    return null;
+  }
   // The mutation queue's `currentCode` represents the ACTIVE PAGE's
   // source — it's the in-memory base that pending JSX mutations
   // apply against, and `flushNow()` writes the result to the queue's

@@ -52,6 +52,14 @@ export function extractCodeComponentProps(node: CanvasNode): Record<string, any>
       props[key] = coerceValue(value);
     }
   }
+  // Literal list / object props (`items={[{question, answer}, …]}`), carried
+  // by the parser as JSON text. NOT coerced — these are already structured,
+  // and coerceScalar would turn the whole array into a string.
+  if (node.componentJsonProps) {
+    for (const [key, value] of Object.entries(node.componentJsonProps)) {
+      try { props[key] = JSON.parse(value); } catch { /* leave the prop unset */ }
+    }
+  }
   // Bake INLINE per-viewport variable VALUES into `data-responsive` so the code component resolves the
   // per-tile value on canvas. A per-viewport variable bound on a replica is written as an inline ternary
   // `prop={__mq ? var : base}` (the same mechanism design-component props use); the parser resolves its value

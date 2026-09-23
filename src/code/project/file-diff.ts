@@ -10,6 +10,7 @@
 // reformat-only rewrite is not reported as a change. A side that fails to
 // parse yields empty id sets — ids we could not verify are never guessed.
 
+import { partsForFile, type ChangePart } from './change-parts';
 import { parseJSXToNodes, type CanvasNode } from '@/code/parsing/parser';
 
 export interface TurnFileChange {
@@ -17,6 +18,10 @@ export interface TurnFileChange {
   addedIds: string[];
   removedIds: string[];
   changedIds: string[];
+  /** What changed in a file that is NOT made of layers — styles in
+   *  globals.css, a collection's items and fields, translated strings. Absent
+   *  for pages and components, whose unit is the id sets above. */
+  parts?: ChangePart[];
 }
 
 /** Per-file id diffs between two ProjectFS snapshots. Deterministic order. */
@@ -28,7 +33,9 @@ export function diffTurnChanges(
   const changes: TurnFileChange[] = [];
   for (const path of [...paths].sort()) {
     if (before.get(path) === after.get(path)) continue;
-    changes.push(diffFile(path, before.get(path), after.get(path)));
+    const change = diffFile(path, before.get(path), after.get(path));
+    const parts = partsForFile(path, before.get(path), after.get(path));
+    changes.push(parts ? { ...change, parts } : change);
   }
   return changes;
 }

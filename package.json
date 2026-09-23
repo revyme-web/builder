@@ -43,6 +43,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@monaco-editor/react": "^4.7.0",
+    "@motionone/dom": "^10.18.0",
     "@radix-ui/react-slider": "^1.3.6",
     "@revyme/plugin-sdk": "^0.7.0",
     "@revyme/runtime": "^0.0.28",

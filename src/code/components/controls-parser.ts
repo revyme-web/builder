@@ -17,7 +17,18 @@ type ComponentControlType =
   //   control is a normal flat prop; the group is purely UI organisation).
   // `transition` — a button opening the Motion transition editor; its value
   //   is a JSON-string prop (framer-motion transition object).
+  // `objectList` — a repeating list of OBJECTS: the panel row opens a popup
+  //   with one sub-row per item (label / reorder / remove) + an Add row, and a
+  //   sub-popup editing that item's fields from `item.controls`. Value is a
+  //   real ARRAY prop (`items={[{ question, answer }, …]}`), the shape a
+  //   component consumes with `.map()`. the reference ControlType.Array of
+  //   ControlType.Object imports straight onto this.
+  | 'objectList'
   | 'group' | 'transition';
+
+/** Every control type the panel has an editor for — the oracle's
+ *  CODE_COMPONENT_CONTROLS_INVALID checks a block against this list. */
+export const CONTROL_TYPES = ['slider', 'color', 'text', 'select', 'toggle', 'number', 'upload', 'slot', 'imageList', 'objectList', 'font', 'group', 'transition'] as const satisfies readonly ComponentControlType[];
 
 /** Max children a `slot` control accepts: a fixed count or unbounded. */
 export type SlotMax = number | 'infinite';
@@ -27,8 +38,9 @@ export interface ComponentControlDef {
   label: string;
   /** Default prop value. Absent for `slot` controls (their value is the
    *  connected canvas node(s), expressed as real JSX children). For a
-   *  `transition` control the default is the transition OBJECT. */
-  default?: string | number | boolean | Record<string, unknown>;
+   *  `transition` control the default is the transition OBJECT, and for an
+   *  `objectList` the default ARRAY of items. */
+  default?: string | number | boolean | Record<string, unknown> | unknown[];
   // number (the reference ControlType.Number). A number with both `min` and `max` DISPLAYS as a slider+input;
   // without a range, or with `displayStepper: true`, it shows a plain number input. (`slider` is a legacy
   // alias that always renders the slider.)
@@ -52,6 +64,13 @@ export interface ComponentControlDef {
   // group — the nested controls rendered inside this group's popup. Each is
   // a normal flat prop on the component (the group only nests them in the UI).
   controls?: Record<string, ComponentControlDef>;
+  // objectList — the shape of ONE item. Unlike `group`, these are not flat
+  // props on the component: they are the fields of each object in the array,
+  // and only scalar controls make sense inside one.
+  item?: { controls: Record<string, ComponentControlDef> };
+  /** objectList — which item field labels a row in the list. Defaults to the
+   *  first text field, so a list of questions reads as its questions. */
+  itemLabel?: string;
   // description shown below the control
   description?: string;
 }

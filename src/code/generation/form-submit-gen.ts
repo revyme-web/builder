@@ -81,7 +81,7 @@ const rootVariants = {
   'error': { backgroundColor: '#ef4444', opacity: 1, pointerEvents: 'none' },
 };
 
-// Framer Motion cannot interpolate \`display\`, so it applies a SHOW value at the
+// the reference builder's Motion cannot interpolate \`display\`, so it applies a SHOW value at the
 // START of the transition but a HIDE value only at the END. Under the default
 // spring that left the old label visible for ~300ms after the state changed —
 // long enough that a fast API response painted "Subscribe" and "Thank you" on

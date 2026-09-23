@@ -33,6 +33,7 @@ import { FontFamilyControl } from './TextStyleTool/atoms/FontFamilyControl';
 import SlotControl from './SlotControl';
 import GroupControl from './GroupControl';
 import ImageListControl from './ImageListControl';
+import ObjectListControl from './ObjectListControl';
 import TransitionControl from './TransitionControl';
 import { modifyProjectFile } from '@/code/project/modify-file';
 import { renderCodeComponentDirect } from '@/canvas/CodeComponentHost';
@@ -1055,6 +1056,13 @@ export default function ComponentPropsTool() {
       if (obj.type === 'instant') obj = { duration: '0' };
       writeValue = formatTransitionObj(obj);
     }
+    // An objectList's value is a real ARRAY, for the same reason a
+    // transition's is a real object: the component does `items.map(…)`, and
+    // a JSON STRING prop would render nothing (and blow up on .map).
+    if (controlDef?.type === 'objectList') {
+      writeUseExpr = true;
+      try { writeValue = JSON.stringify(JSON.parse(value || '[]')); } catch { writeValue = '[]'; }
+    }
 
     // Instant live preview — the canvas reflects the value at once.
     previewProp(propName, value);
@@ -1923,6 +1931,28 @@ export default function ComponentPropsTool() {
             />)}
           </ToolRow>
         );
+      case 'objectList': {
+        // The list's value is a real ARRAY prop. Read it from the parsed
+        // node, which already normalised the JSX literal to JSON — the raw
+        // attribute text is JS (`[{question:"…"}]`), not JSON, so parsing the
+        // attribute string here would fail on the unquoted keys.
+        const fromNode = node?.componentJsonProps?.[propName];
+        const raw = fromNode ?? (typeof controlDef.default === 'string' ? controlDef.default : JSON.stringify(controlDef.default ?? []));
+        let list: Record<string, unknown>[] = [];
+        try {
+          const parsed: unknown = JSON.parse(raw);
+          if (Array.isArray(parsed)) list = parsed as Record<string, unknown>[];
+        } catch { list = Array.isArray(controlDef.default) ? controlDef.default as Record<string, unknown>[] : []; }
+        return (
+          <ObjectListControl
+            key={propName}
+            label={controlDef.label}
+            controlDef={controlDef}
+            value={list}
+            onChange={(next) => handlePropChange(propName, JSON.stringify(next), JSON.stringify(controlDef.default ?? []))}
+          />
+        );
+      }
       case 'imageList':
         // Ordered image list — popup with per-image sub-rows + append upload.
         return (
@@ -2614,7 +2644,7 @@ export default function ComponentPropsTool() {
               // Yes/No segmented control — NOT the display/flex-wrap value <select>; an Option gets a
               // dropdown of its @propMeta choices; a Number gets a numeric input. Color/image/border/
               // shadow keep the richer atom path below (their full pickers beat a bare primitive editor).
-              // A SECTION variable (the Scroll Variant's "Section", Framer's Scroll
+              // A SECTION variable (the Scroll Variant's "Section", the reference builder's Scroll
               // Section Ref): its value is an anchor id on the page, so the instance
               // picks from that page's anchors instead of typing the id by hand.
               // Inside a master the page is the breadcrumb's origin.

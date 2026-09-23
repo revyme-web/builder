@@ -1,10 +1,12 @@
 // ComponentCodePane.tsx — Left side of Component Editor: Monaco editor.
-// Saves on Cmd+S. During AI streaming: read-only + auto-scrolls to bottom + loader overlay.
+// Saves on Cmd+S. Read-only while the agent is running a turn: it writes this FILE, and
+// the overlay adopts the file only when the buffer has no edits of its own — typing during
+// a run would make the buffer win and silently discard what the agent just wrote.
 
 import { useCallback, useRef, useEffect } from 'react';
 import { useAtomValue } from 'jotai';
 import Editor, { type OnMount } from '@monaco-editor/react';
-import { componentEditorStreamingAtom, componentEditorThinkingAtom } from '@/code/stores/component-editor-store';
+import { agentStatusAtom } from '@/code/stores/agent-chat-store';
 import { useIsDark } from '@/shared/useIsDark';
 import { trace } from '@/shared/debug-trace';
 
@@ -16,8 +18,7 @@ interface ComponentCodePaneProps {
 
 export default function ComponentCodePane({ code, onChange, onSave }: ComponentCodePaneProps) {
   const editorRef = useRef<any>(null);
-  const streaming = useAtomValue(componentEditorStreamingAtom);
-  const thinking = useAtomValue(componentEditorThinkingAtom);
+  const agentRunning = useAtomValue(agentStatusAtom) === 'running';
   const isDark = useIsDark();
 
   const handleMount: OnMount = useCallback((editor) => {
@@ -39,27 +40,15 @@ export default function ComponentCodePane({ code, onChange, onSave }: ComponentC
     }
   }, [onSave]);
 
-  // Toggle read-only when streaming state changes
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
-    editor.updateOptions({ readOnly: streaming });
-  }, [streaming]);
-
-  // Auto-scroll to bottom during streaming when code changes
-  useEffect(() => {
-    if (!streaming) return;
-    const editor = editorRef.current;
-    if (!editor) return;
-    const model = editor.getModel();
-    if (!model) return;
-    const lineCount = model.getLineCount();
-    editor.revealLine(lineCount, 1);
-  }, [streaming, code]);
+    editor.updateOptions({ readOnly: agentRunning });
+  }, [agentRunning]);
 
   return (
     <div className="relative flex flex-col h-full">
-      <div style={streaming ? { opacity: thinking ? 0.3 : 0.85, pointerEvents: 'none' } : undefined} className="flex-1 min-h-0">
+      <div style={agentRunning ? { opacity: 0.85 } : undefined} className="flex-1 min-h-0">
         <Editor
           height="100%"
           defaultLanguage="javascript"
@@ -83,35 +72,6 @@ export default function ComponentCodePane({ code, onChange, onSave }: ComponentC
         />
       </div>
 
-      {/* Loader overlay — only during thinking phase (before first chunk) */}
-      {thinking && <StreamingOverlay />}
-    </div>
-  );
-}
-
-function StreamingOverlay() {
-  return (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 10 }}>
-      <style>{`
-        @keyframes __ce_pulse {
-          0% { transform: scale(0); opacity: 1; }
-          100% { transform: scale(1); opacity: 0; }
-        }
-      `}</style>
-      <div style={{ width: 48, height: 48, position: 'relative' }}>
-        <div style={{
-          position: 'absolute', inset: 0,
-          borderRadius: '50%',
-          background: '#7C3AED',
-          animation: '__ce_pulse 2s linear infinite',
-        }} />
-        <div style={{
-          position: 'absolute', inset: 0,
-          borderRadius: '50%',
-          background: '#7C3AED',
-          animation: '__ce_pulse 2s linear infinite 1s',
-        }} />
-      </div>
     </div>
   );
 }

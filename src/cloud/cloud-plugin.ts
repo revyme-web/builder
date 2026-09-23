@@ -9,6 +9,7 @@ import {
   SettingsBackupsIcon,
   SettingsStagingIcon,
   SettingsConnectAiIcon,
+  SettingsSkillsIcon,
   SettingsAbTestsIcon,
   PagesLayersIcon,
 } from '@/shared/icons';
@@ -20,6 +21,7 @@ import EnvironmentsSection from './settings/EnvironmentsSection';
 import AbTestsSection from './settings/AbTestsSection';
 import PagesSeoSection from './settings/PagesSeoSection';
 import ConnectAiSection from './settings/ConnectAiSection';
+import SkillsSection from './settings/SkillsSection';
 
 export function initCloudPlugin(): void {
   // Pages — per-page SEO. Sits right after Website in General because
@@ -67,14 +69,6 @@ export function initCloudPlugin(): void {
     order: 4,
   });
   registerSettingsSection({
-    id: 'connect-ai',
-    label: 'Connect AI / MCP',
-    icon: SettingsConnectAiIcon,
-    category: 'General',
-    component: ConnectAiSection,
-    order: 5,
-  });
-  registerSettingsSection({
     id: 'ab-tests',
     label: 'A/B Tests',
     icon: SettingsAbTestsIcon,
@@ -89,5 +83,26 @@ export function initCloudPlugin(): void {
     category: 'Insights',
     component: AnalyticsSection,
     order: 0,
+  });
+  // AI — how AI works on this project: bring your own agent (MCP) and the
+  // project's skills. Its own category, after Insights (categories list in
+  // the order they are first registered).
+  registerSettingsSection({
+    id: 'connect-ai',
+    label: 'Connect AI / MCP',
+    icon: SettingsConnectAiIcon,
+    category: 'AI',
+    component: ConnectAiSection,
+    order: 0,
+  });
+  // Skills — the project's own instructions for the agent, used in the chat
+  // with /name (code/project/skills-config.ts).
+  registerSettingsSection({
+    id: 'skills',
+    label: 'Skills',
+    icon: SettingsSkillsIcon,
+    category: 'AI',
+    component: SkillsSection,
+    order: 1,
   });
 }

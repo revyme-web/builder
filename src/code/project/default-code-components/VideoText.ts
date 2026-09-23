@@ -28,7 +28,7 @@ export const VIDEO_TEXT_COMPONENT = `'use client';
 /** @defaultHeight 400 */
 /** @controls {
   "text": { "type": "text", "label": "Text", "default": "VIDEO" },
-  "videoUrl": { "type": "video", "label": "Video URL", "default": "" },
+  "videoUrl": { "type": "upload", "label": "Video", "default": "", "accept": "video/*" },
   "autoPlay": { "type": "toggle", "label": "Auto Play", "default": true },
   "loop": { "type": "toggle", "label": "Loop", "default": true },
   "muted": { "type": "toggle", "label": "Muted", "default": true },

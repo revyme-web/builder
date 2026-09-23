@@ -5,6 +5,7 @@
 
 import { trace } from '@/shared/debug-trace';
 import { projectFS } from '../project/project-fs';
+import { isCanvasBusy } from '@/code/stores/agent-run-lock-store';
 import { settlePendingFanOutForHistory, hasQueuedMutations, flushNow, getQueueActiveFilePath,
   syncQueueCode, dropQueuedBranch } from './mutation-queue';
 import { seedNodesForCode } from '@/code/stores/store';
@@ -544,7 +545,7 @@ function restoreToFileAndSelection(targetFile: string, targetSel: string[]): voi
     // restore's visual is painted AND the allRects measure has landed, so
     // the reselect's React pass (~105ms — overlay + tool column) can't
     // push the visual late and the overlay positions from fresh rects.
-    // Typically ~60-70ms after the keypress (the Framer-parity "selection
+    // Typically ~60-70ms after the keypress (the the reference builder-parity "selection
     // follows undo instantly" feel, 2026-08-06). This timer is the
     // FALLBACK for renders that never complete (sandbox mid-rebuild,
     // dropped render): 300ms measured as safely after the deferred
@@ -561,6 +562,14 @@ function restoreToFileAndSelection(targetFile: string, targetSel: string[]): voi
 
 /** Undo — restore previous project state */
 export function undo(): boolean {
+  // Never while an agent run holds this branch: an undo would rewind files
+  // out from under the run's queued mutations and checkpoint diffs. A run on
+  // another branch owns disjoint maps, so undo stays available there. The
+  // agent has no undo tool, so every caller here is human.
+  if (isCanvasBusy()) {
+    trace.action('history:undo-refused-canvas-busy', {});
+    return false;
+  }
   // A drag-drop may have DEFERRED its setCode fan-out (+ pushHistory) — a
   // DROP-kind fan-out is forced NOW so this undo captures the drop, not the
   // state before it; a RESTORE-kind one is cancelled as superseded.
@@ -598,6 +607,10 @@ export function undo(): boolean {
 
 /** Redo — restore next project state */
 export function redo(): boolean {
+  if (isCanvasBusy()) {
+    trace.action('history:redo-refused-canvas-busy', {});
+    return false;
+  }
   settlePendingFanOutForHistory(); // land a drop fan-out / cancel a restore one (see undo)
   commitPendingHistory(); // land any pending debounced change (may clear redoStack)
   if (redoStack.length === 0) {

@@ -342,7 +342,7 @@ export const CONDITIONAL_LAYOUT_PROPS: ReadonlySet<string> = new Set([
  * The variants channel's historical wobble had two causes, both fixed
  * elsewhere: values above height/2 crossing the CSS clamp mid-tween
  * (RadiusControl's capsule clamp commits the rendered value) and bouncy
- * springs breathing through the scale correction (real Framer sidesteps by
+ * springs breathing through the scale correction (real the reference builder sidesteps by
  * keeping radius CONSTANT and letting the clamp reshape it). Radius stays
  * in the variants channel so it interpolates.
  */

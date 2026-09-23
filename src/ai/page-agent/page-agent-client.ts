@@ -24,6 +24,7 @@ import { trace } from '@/shared/debug-trace';
 import { getCreditsState } from '@/code/stores/credits-store';
 import { PAGE_AGENT_TOOLS, DESIGN_COMPONENT_TOOLS } from './tool-schemas';
 import { executeTool } from './tool-executors';
+import { getProjectId } from '@/backend/project-id';
 
 const AI_SERVICE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8082';
 
@@ -131,7 +132,11 @@ export function runPageAgent(req: PageAgentRequest, callbacks: PageAgentCallback
         const res = await fetch(`${AI_SERVICE_URL}/api/page-agent/turn`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          // The session cookie + the project: on Revyme cloud the service bills
+          // the PROJECT's workspace and refuses a caller who cannot edit it.
+          credentials: 'include',
           body: JSON.stringify({
+            websiteId: getProjectId(),
             requestId,
             prompt: req.prompt,
             contents,

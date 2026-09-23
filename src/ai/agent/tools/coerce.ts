@@ -1,7 +1,7 @@
 // src/ai/agent/tools/coerce.ts
 //
 // Coercition des entrées MODÈLE — le pattern « réparer comme un navigateur »
-// documenté par Framer (« If you can repair those mistakes the way a browser
+// documenté par the reference builder (« If you can repair those mistakes the way a browser
 // repairs broken HTML, the speed gain is worth it »). Les modèles, surtout les
 // petits (glm-4.7-flash observé en E2E réel 2026-08-15), sérialisent les
 // objets imbriqués en JSON STRINGS (`styles: "{\"padding\": \"64px\"}"`),

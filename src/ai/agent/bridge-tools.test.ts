@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { agentToolManifest, agentToolCall, agentRunStart, agentRunEnd, agentRunAbort } from './bridge-tools';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { agentToolManifest, agentToolCall, agentRunStart, agentRunEnd, agentRunAbort, LAZY_RUN_IDLE_MS } from './bridge-tools';
 import { projectFS, resetProjectFS, MAIN_BRANCH_ID } from '@/code/project/project-fs';
 import { isBranchLocked } from '@/code/stores/agent-run-lock-store';
 import { getDefaultStore } from 'jotai';
@@ -91,5 +91,63 @@ describe('agent bridge tools', () => {
 
   it('run_end with no run is a no-op, not a throw', () => {
     expect(agentRunEnd({})).toEqual({ runId: null, changes: [] });
+  });
+});
+
+describe('agent bridge — post-write oracle report (every write path is judged)', () => {
+  it('a semantic write that introduces a dialect violation carries `oracle` rows; a crash-class one is an error', async () => {
+    const { seedWorld } = await import('./capability/harness');
+    const { flushNow } = await import('@/code/mutation/mutation-queue');
+    seedWorld({});
+    agentRunStart({ runId: 'oracle-report' });
+    try {
+      // Tier-3 but flow-level: a form BEFORE its destination is a step, not a broken file.
+      const form = await agentToolCall({ name: 'add_node', input: { parent_id: 'hero', tag: 'form', id: 'f1', styles: { display: 'flex', flexDirection: 'column' } }, runId: 'oracle-report' });
+      const formReply = JSON.parse((form.content[0] as { text: string }).text);
+      expect(form.isError).toBe(false);
+      expect(formReply.oracle?.some((r: { code: string }) => r.code === 'FORM_NO_DESTINATION')).toBe(true);
+      expect(formReply.oracle[0].fix).toMatch(/data-form/);
+      // A clean write carries no oracle key at all.
+      const clean = await agentToolCall({ name: 'set_text', input: { node_id: 'hero-title', text: 'Hello' }, runId: 'oracle-report' });
+      expect(JSON.parse((clean.content[0] as { text: string }).text).oracle).toBeUndefined();
+      flushNow();
+    } finally {
+      agentRunEnd({ runId: 'oracle-report' });
+    }
+  });
+
+  // An EXTERNAL MCP client (Claude Code / Claude Desktop through the Revyme
+  // connector) calls tools with no run_start and never sends run_end. The run
+  // the tab opens for it must end on its own, or the editor stays read-only.
+  it('a run opened by a bare tool call (external MCP client) releases the lock after its idle lease', async () => {
+    vi.useFakeTimers();
+    try {
+      await agentToolCall({ name: 'get_node_tree', input: {} });
+      expect(isBranchLocked(MAIN_BRANCH_ID)).toBe(true);
+      // Another call inside the lease keeps it open…
+      vi.advanceTimersByTime(LAZY_RUN_IDLE_MS - 1000);
+      await agentToolCall({ name: 'get_node_tree', input: {} });
+      vi.advanceTimersByTime(LAZY_RUN_IDLE_MS - 1000);
+      expect(isBranchLocked(MAIN_BRANCH_ID)).toBe(true);
+      // …and the lease counts from the LAST call.
+      vi.advanceTimersByTime(2000);
+      expect(isBranchLocked(MAIN_BRANCH_ID)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a run the service opened (run_start) has no lease — only run_end closes it', async () => {
+    vi.useFakeTimers();
+    try {
+      agentRunStart({ runId: 'service-run' });
+      await agentToolCall({ name: 'get_node_tree', input: {}, runId: 'service-run' });
+      vi.advanceTimersByTime(LAZY_RUN_IDLE_MS * 5);
+      expect(isBranchLocked(MAIN_BRANCH_ID)).toBe(true);
+      agentRunEnd({ runId: 'service-run' });
+      expect(isBranchLocked(MAIN_BRANCH_ID)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

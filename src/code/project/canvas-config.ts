@@ -40,6 +40,13 @@ export function serializeCanvasConfig(config: CanvasConfig): string {
         id: v.id, label: v.label, width: v.width,
         isPrimary: v.isPrimary || false, order: v.order ?? 0,
       };
+      // The width the tile RENDERS at, when it differs from the band's top.
+      // Same rule as `height`: written only when set, because this is an
+      // allow-list — a field missing here is silently dropped on the next
+      // write, and the tile would snap back to its band width.
+      if (typeof v.designWidth === 'number' && v.designWidth > 0 && v.designWidth !== v.width) {
+        out.designWidth = v.designWidth;
+      }
       if (v.height === 'auto') {
         out.height = 'auto';
       } else if (typeof v.height === 'number' && v.height > 0) {

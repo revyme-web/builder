@@ -40,7 +40,9 @@ import SearchableDropdown from '../../ui/SearchableDropdown';
  *  `(Body)` had no trailing `/` to match and leaked through as the label.) */
 const getPageRouteLabel = getFriendlyFileName;
 
-export default function PageSelector() {
+/** `disabled` — the agent chat's bar turns it off while a run is live (a
+ *  switch would move the queue base out from under the run's writes). */
+export default function PageSelector({ disabled = false, panelClassName }: { disabled?: boolean; panelClassName?: string } = {}) {
   const [activeFile, setActiveFile] = useAtom(activeFilePathAtom);
   const setSelectedIds = useSetAtom(selectedIdsAtom);
   const setUpdatingFromCanvas = useSetAtom(updatingFromCanvasAtom);
@@ -120,10 +122,13 @@ export default function PageSelector() {
       // the dark panel background). Input matches the SearchBar tier
       // (see SearchBar.tsx) — theme-mirrored black/white tint so the
       // input isn't invisible on a light panel.
-      triggerClassName="w-full flex items-center gap-2 px-2 py-1.5 text-xs bg-black/[0.06] hover:bg-black/[0.09] dark:bg-white/[0.1] dark:hover:bg-white/[0.14] cut-corners text-[var(--text-primary)] outline-none transition-colors"
+      triggerClassName="w-full flex items-center gap-2 px-2 py-1.5 text-xs bg-black/[0.06] hover:bg-black/[0.09] dark:bg-white/[0.1] dark:hover:bg-white/[0.14] cut-corners text-[var(--text-primary)] outline-none transition-colors disabled:opacity-40 disabled:cursor-default"
       inputClassName="w-full px-2 py-1.5 text-xs bg-black/[0.06] hover:bg-black/[0.09] focus:bg-black/[0.12] dark:bg-white/[0.1] dark:hover:bg-white/[0.14] dark:focus:bg-white/[0.18] cut-corners text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] outline-none transition-colors"
       listClassName="max-h-60 overflow-y-auto scrollbar-hide py-1"
       onSelect={(p) => handleSwitch(p.filePath)}
+      disabled={disabled}
+      title={disabled ? 'Available when the agent has finished' : undefined}
+      panelClassName={panelClassName}
     />
   );
 }

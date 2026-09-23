@@ -20,18 +20,30 @@ const AI_SERVICE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:
 
 /** Static mirror of the server catalog (ai-generator model-catalog.ts). */
 export const FALLBACK_MODELS: VibeModel[] = [
-  { id: 'anthropic/claude-fable-5',      label: 'Claude Fable 5',   vendor: 'anthropic', tier: 'best' },
+  { id: 'anthropic/claude-fable-5.1',    label: 'Claude Fable 5.1', vendor: 'anthropic', tier: 'best' },
+  { id: 'anthropic/claude-opus-5.5',     label: 'Claude Opus 5.5',  vendor: 'anthropic', tier: 'best' },
   { id: 'anthropic/claude-sonnet-5',     label: 'Claude Sonnet 5',  vendor: 'anthropic', tier: 'standard' },
-  { id: 'anthropic/claude-opus-4.8',     label: 'Claude Opus 4.8',  vendor: 'anthropic', tier: 'best' },
   { id: 'anthropic/claude-haiku-4.5',    label: 'Claude Haiku 4.5', vendor: 'anthropic', tier: 'fast' },
-  { id: 'openai/gpt-5.5',                label: 'GPT-5.5',          vendor: 'openai',    tier: 'best' },
-  { id: 'openai/gpt-5.3-codex',          label: 'GPT-5.3 Codex',    vendor: 'openai',    tier: 'standard' },
-  { id: 'openai/gpt-5.4-mini',           label: 'GPT-5.4 Mini',     vendor: 'openai',    tier: 'fast' },
-  { id: 'google/gemini-3.5-flash',       label: 'Gemini 3.5 Flash', vendor: 'google',    tier: 'standard' },
+  { id: 'openai/gpt-6-astra',            label: 'GPT-6 Astra',      vendor: 'openai',    tier: 'best' },
+  { id: 'openai/gpt-6-sol',              label: 'GPT-6 Sol',        vendor: 'openai',    tier: 'standard' },
+  { id: 'openai/gpt-6-luna',             label: 'GPT-6 Luna',       vendor: 'openai',    tier: 'fast' },
   { id: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro',   vendor: 'google',    tier: 'best' },
+  { id: 'google/gemini-3.8-flash',       label: 'Gemini 3.8 Flash', vendor: 'google',    tier: 'standard' },
+  { id: 'google/gemini-3.5-flash-lite',  label: 'Gemini 3.5 Flash Lite', vendor: 'google', tier: 'fast' },
 ];
 
-export const FALLBACK_DEFAULT = 'google/gemini-3.5-flash';
+export const FALLBACK_DEFAULT = 'google/gemini-3.8-flash';
+
+/** Static mirror of the server's RETIRED_MODELS: a model that left the
+ *  catalog → the one that replaced it (the server runs a saved old id on it). */
+export const FALLBACK_RETIRED: Record<string, string> = {
+  'anthropic/claude-fable-5': 'anthropic/claude-fable-5.1',
+  'anthropic/claude-opus-4.8': 'anthropic/claude-opus-5.5',
+  'openai/gpt-5.5': 'openai/gpt-6-sol',
+  'openai/gpt-5.3-codex': 'openai/gpt-6-sol',
+  'openai/gpt-5.4-mini': 'openai/gpt-6-luna',
+  'google/gemini-3.5-flash': 'google/gemini-3.8-flash',
+};
 
 export const VENDOR_LABELS: Record<VibeModel['vendor'], string> = {
   anthropic: 'Claude',
@@ -42,6 +54,8 @@ export const VENDOR_LABELS: Record<VibeModel['vendor'], string> = {
 export interface VibeModelCatalog {
   models: VibeModel[];
   defaultModel: string;
+  /** Retired id → its successor (what the server runs a saved old id on). */
+  retired?: Record<string, string>;
 }
 
 let catalogPromise: Promise<VibeModelCatalog> | null = null;
@@ -55,16 +69,16 @@ export function fetchVibeModels(): Promise<VibeModelCatalog> {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
-      .then((d: { models?: VibeModel[]; defaultModel?: string }) => {
+      .then((d: { models?: VibeModel[]; defaultModel?: string; retired?: Record<string, string> }) => {
         const models = Array.isArray(d.models) && d.models.length ? d.models : FALLBACK_MODELS;
-        const catalog = { models, defaultModel: d.defaultModel || FALLBACK_DEFAULT };
+        const catalog = { models, defaultModel: d.defaultModel || FALLBACK_DEFAULT, retired: d.retired ?? FALLBACK_RETIRED };
         trace.action('vibe-models:fetched', { count: models.length, defaultModel: catalog.defaultModel });
         return catalog;
       })
       .catch((err) => {
         trace.error('vibe-models:fetch-failed', { err: String(err?.message ?? err) });
         catalogPromise = null; // retry next time — do not cache the failure
-        return { models: FALLBACK_MODELS, defaultModel: FALLBACK_DEFAULT };
+        return { models: FALLBACK_MODELS, defaultModel: FALLBACK_DEFAULT, retired: FALLBACK_RETIRED };
       });
   }
   return catalogPromise;

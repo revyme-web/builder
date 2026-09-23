@@ -5,18 +5,16 @@ import React, { useState, useCallback, useEffect, useRef, type PointerEvent as R
 import { useAtomValue } from 'jotai';
 import { componentEditorPropsAtom } from '@/code/stores/component-editor-store';
 import { compileCodeComponent } from '@/canvas/code-component-runtime';
-import ComponentChat from './ComponentChat';
+import AgentChat from '@/editor/agent/AgentChat';
 import CreditsIndicator from '../CreditsIndicator';
 import { trace } from '@/shared/debug-trace';
 
 interface ComponentPreviewPaneProps {
   code: string;
   fileName: string;
-  liveCode: string;
-  onCodeChange: (code: string) => void;
 }
 
-export default function ComponentPreviewPane({ code, fileName, liveCode, onCodeChange }: ComponentPreviewPaneProps) {
+export default function ComponentPreviewPane({ code, fileName }: ComponentPreviewPaneProps) {
   const props = useAtomValue(componentEditorPropsAtom);
   const [error, setError] = useState<string | null>(null);
   const [CompiledComponent, setCompiledComponent] = useState<React.ComponentType<any> | null>(null);
@@ -186,7 +184,10 @@ export default function ComponentPreviewPane({ code, fileName, liveCode, onCodeC
         {/* Chat content — hidden when collapsed */}
         {!chatCollapsed && (
           <div className="flex-1 min-h-0">
-            <ComponentChat code={liveCode} onCodeChange={onCodeChange} />
+            {/* The SAME agent as everywhere else. It knows it is in here — the
+                turn's context names this file (src/ai/agent/surface.ts) — so a
+                request is about this component by default. */}
+            <AgentChat />
           </div>
         )}
 

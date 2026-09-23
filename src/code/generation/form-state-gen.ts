@@ -148,6 +148,24 @@ export function setFormStateMappingInCode(
   return next;
 }
 
+/**
+ * Make sure the form's lifecycle `useState` exists whenever a handler will
+ * reference its setter.
+ *
+ * The onSubmit handler (`wireFormSubmitInCode`) calls `setFormState<Id>`, but
+ * the `useState` that declares it was written ONLY by the submit-button
+ * conversion — so a form that arrived without a button (the agent builds one
+ * node at a time: the form, then its fields, then the button) shipped a handler
+ * referencing an undeclared identifier: WOULD_CRASH at the gate, or a crash on
+ * the published page (capability suite, 2026-09-22). Idempotent.
+ */
+export function ensureFormStateHook(code: string, formId: string): string {
+  const stateVar = formStateVar(formId);
+  if (hasFormStateDeclaration(code, stateVar)) return code;
+  const decl = `const [${stateVar}, ${formStateSetter(stateVar)}] = useState('idle');`;
+  return insertConstIntoEnclosingFn(code, formId, decl);
+}
+
 /** Tag name of a JSX opening element (`form` / `motion.form`). */
 function tagNameOf(name: t.JSXOpeningElement['name']): string {
   if (t.isJSXIdentifier(name)) return name.name;

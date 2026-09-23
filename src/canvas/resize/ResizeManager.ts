@@ -1354,7 +1354,7 @@ export function startResize(
     }
   }
 
-  // SHAPE CANONICAL POSITION MODEL (Framer parity, 2026-09-05). A top-level
+  // SHAPE CANONICAL POSITION MODEL (reference parity, 2026-09-05). A top-level
   // vector shape resizes stably ONLY in px left/top with no centering translate
   // in either channel; a `-50%` shorthand (a % of the shape's OWN size) moved
   // the shape by half the size delta every tick while the pin math thought the

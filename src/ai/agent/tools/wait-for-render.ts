@@ -22,6 +22,7 @@ import {
   formatEpochEnvelope,
 } from './observation-epoch';
 import { getNodesSnapshot } from '@/code/stores/store';
+import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { getViewportWidths } from '@/code/stores/viewport-store';
 import { projectFS } from '@/code/project/project-fs';
 import { trace } from '@/shared/debug-trace';
@@ -54,12 +55,21 @@ export interface WaitForRenderOptions {
    * (never a bounded wait for nothing). Absent = human active context.
    */
   branchId?: string;
+  /**
+   * Ready only when the measurement is also CURRENT (epoch not stale). By
+   * default "ready" means the rects exist — which is instant when OLD rects
+   * are still cached, so a caller waiting out its own write got the stale
+   * measurement back after 0 ms (the audit that came back "stale" right
+   * after the agent's edit, and ended the turn on the done-guard,
+   * 2026-09-23). Pair with a re-measure request (settleObservation).
+   */
+  fresh?: boolean;
 }
 
 export function waitForRender(
   opts: WaitForRenderOptions,
 ): Promise<WaitForRenderResult> {
-  const { nodeIds, vpId, timeoutMs = 1200, intervalMs = 100, branchId } = opts;
+  const { nodeIds, vpId, timeoutMs = 1200, intervalMs = 100, branchId, fresh = false } = opts;
 
   return new Promise<WaitForRenderResult>((resolve) => {
     const store = getDefaultStore();
@@ -131,7 +141,7 @@ export function waitForRender(
           })
           : withRect > 0;
 
-      if (allFilled) {
+      if (allFilled && (!fresh || !epoch.stale)) {
         resolved = true;
         trace.fn('wait-for-render', {
           vpId,
@@ -175,4 +185,42 @@ export function waitForRender(
 
     poll();
   });
+}
+
+/**
+ * Get a CURRENT measurement of a viewport before judging it (audit_design,
+ * the batch audit). The epoch is stamped with the project version at the
+ * last full measurement, and that counter also moves on bumps that change
+ * nothing the canvas shows (every tool result refreshes the panels) — so a
+ * finished render can still read as "stale" with no new render coming. When
+ * the snapshot is stale: ask the canvas to RE-MEASURE now (restamped with
+ * the current version) and wait for a fresh epoch; when nothing is measured
+ * yet: wait for the render as before.
+ */
+export async function settleObservation(opts: {
+  vpId: string;
+  nodeIds?: string[];
+  branchId?: string;
+  timeoutMs?: number;
+  /** The caller already waited for the render — only the stale case (re-measure) is left. */
+  onlyIfStale?: boolean;
+}): Promise<void> {
+  const { epoch } = collectEpochSnapshot(getNodesSnapshot(), opts.vpId);
+  // Only a REAL canvas can re-measure: it has a fill epoch to restamp and the
+  // re-measure call. Headless (no bridge, no epoch) nothing would ever turn
+  // the measurement fresh — waiting for it would only burn the timeout.
+  type Remeasurable = { forceRemeasureAllRects?: () => void; getCacheEpoch?: () => unknown };
+  let bridge: Remeasurable | null = null;
+  try { bridge = getCanvasBridge() as unknown as Remeasurable; } catch { bridge = null; }
+  const remeasure = bridge && typeof bridge.forceRemeasureAllRects === 'function' && bridge.getCacheEpoch?.()
+    ? bridge.forceRemeasureAllRects.bind(bridge)
+    : null;
+  if (epoch.stale && remeasure) {
+    remeasure();
+    trace.fn('wait-for-render:remeasure-stale', { vpId: opts.vpId, atFill: epoch.projectVersionAtFill, now: epoch.projectVersionNow });
+    await waitForRender({ vpId: opts.vpId, nodeIds: opts.nodeIds, branchId: opts.branchId, timeoutMs: opts.timeoutMs ?? 2500, intervalMs: 100, fresh: true });
+    return;
+  }
+  if (opts.onlyIfStale) return;
+  await waitForRender({ vpId: opts.vpId, nodeIds: opts.nodeIds, branchId: opts.branchId, timeoutMs: opts.timeoutMs ?? 1200, intervalMs: 100 });
 }

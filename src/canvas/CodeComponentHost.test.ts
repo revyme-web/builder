@@ -125,6 +125,24 @@ describe('extractCodeComponentProps', () => {
     expect(props['data-responsive']).toBe('{"768":{"speed":2}}');
   });
 
+  // A code component fed a LIST (an FAQ accordion's questions, a pricing
+  // card's benefits) rendered its empty state on canvas while the deployed
+  // page rendered the list: the array prop never reached it.
+  it('parses literal list / object props instead of stringifying them', () => {
+    const node = makeNode({
+      componentJsonProps: {
+        items: '[{"question":"Q1","answer":"A1"},{"question":"Q2","answer":"A2"}]',
+        bodyFont: '{"fontWeight":600}',
+      },
+    });
+    const props = extractCodeComponentProps(node);
+    expect(props.items).toEqual([
+      { question: 'Q1', answer: 'A1' },
+      { question: 'Q2', answer: 'A2' },
+    ]);
+    expect(props.bodyFont).toEqual({ fontWeight: 600 });
+  });
+
   it('merges componentProps on top of attrs', () => {
     const node = makeNode({
       attrs: { speed: '1' },

@@ -1,7 +1,7 @@
 // RichLocaleField.tsx — the translation panel's editor for a RICH text node.
 //
 // A node with inline marks is translated as ONE message of sanitized inline
-// HTML (shared/rich-message.ts). Framer parity: instead of a text area the
+// HTML (shared/rich-message.ts). reference parity: instead of a text area the
 // translator gets the same kind of editor the canvas uses — bold / italic /
 // underline / strike / link / font size — so a translation can move or drop
 // a mark ("<strong>bonjour</strong> mon ami"). Commits on blur with the

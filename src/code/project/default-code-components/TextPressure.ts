@@ -31,7 +31,7 @@ export const TEXT_PRESSURE_COMPONENT = `'use client';
   "widen": { "type": "number", "label": "Widen", "min": 0, "max": 1, "step": 0.05, "default": 0.35 },
   "fade": { "type": "number", "label": "Distance Fade", "min": 0, "max": 0.8, "step": 0.05, "default": 0.35 },
   "smoothing": { "type": "number", "label": "Smoothing", "min": 0.05, "max": 1, "step": 0.05, "default": 0.2 },
-  "useVariableAxes": { "type": "boolean", "label": "Variable Font Axes", "default": false }
+  "useVariableAxes": { "type": "toggle", "label": "Variable Font Axes", "default": false }
 } */
 
 import { useEffect, useRef } from 'react';

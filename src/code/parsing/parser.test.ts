@@ -1432,6 +1432,49 @@ function Frame({ initialVariant = 'default' }) {
     });
   });
 });
+describe('literal list / object props on a code-component instance', () => {
+  // An imported code component states its content inline:
+  //   <FaqAccordion items={[{ question, answer }, …]} rowPadding={24} />
+  // The attr walker understood scalars, identifiers and ternaries only, so
+  // the array matched no branch and was dropped — the accordion rendered its
+  // empty state on canvas while the deployed page rendered the questions.
+  test('carries a pure literal array/object through as JSON', () => {
+    const code = `
+export default function Page() {
+  return (
+    <div data-id="root">
+      <FaqAccordion data-id="faq" rowPadding={24}
+        items={[{ question: 'Q1', answer: 'A1' }, { question: 'Q2', answer: 'A2' }]}
+        bodyFont={{ fontWeight: 600, scale: -1 }} />
+    </div>
+  );
+}`;
+    const faq = parseJSXToNodes(code).get('faq')!;
+    expect(faq.componentProps).toEqual({ rowPadding: '24' });
+    expect(JSON.parse(faq.componentJsonProps!.items)).toEqual([
+      { question: 'Q1', answer: 'A1' },
+      { question: 'Q2', answer: 'A2' },
+    ]);
+    expect(JSON.parse(faq.componentJsonProps!.bodyFont)).toEqual({ fontWeight: 600, scale: -1 });
+  });
+
+  // The canvas cannot evaluate a reference, so a list built from one is left
+  // alone rather than guessed at — the component gets its own default.
+  test('leaves an array holding anything non-literal alone', () => {
+    const code = `
+export default function Page() {
+  const rows = 3;
+  return (
+    <div data-id="root">
+      <Grid data-id="grid" items={[{ n: rows }]} sizes={[1, computeSize()]} />
+    </div>
+  );
+}`;
+    const grid = parseJSXToNodes(code).get('grid')!;
+    expect(grid.componentJsonProps).toBeUndefined();
+  });
+});
+
 describe('Walker parity — canvasNodes fragment uses the SAME extraction as the main walker', () => {
   // Phase 6.4 root fix: visitCanvasJSXElement calls the shared per-element
   // extraction functions (extractElementAttrs / extractInstanceExpressionProps /

@@ -356,7 +356,7 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
   // shown (i.e. the dimension is overridden on this replica/variant).
   const isVectorSet = !!node && isVectorSetComponentFile(node.componentFile);
   // The selected variant's NATURAL size, for the locked-aspect Fit below. A
-  // vector's aspect is fixed — Framer greys out the lock icon for exactly this
+  // vector's aspect is fixed — the reference greys out the lock icon for exactly this
   // reason — so Fit on one dimension means "the size that keeps this variant's
   // aspect", derived from the OTHER dimension. The generic instance-hug path
   // produces the variant's INTRINSIC size instead, which is why a 26px-wide
@@ -1533,7 +1533,7 @@ if (heightIsAuto) {
 
             {/* A VECTOR SET's ratio is not a user choice — the artwork has one
                 aspect and both dimensions derive from it, so the toggle is shown
-                locked and disabled (reference parity: Framer greys this icon out
+                locked and disabled (reference parity: the reference greys this icon out
                 for a vector). Everything else keeps the normal toggle. */}
             <button
               type="button"

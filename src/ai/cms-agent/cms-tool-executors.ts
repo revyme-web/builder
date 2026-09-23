@@ -1,6 +1,8 @@
 // cms-tool-executors.ts — Browser-side executors for the CMS agent tools.
 //
-// Each name matches a schema in cms-tool-schemas.ts. Every executor is a
+// The agent reaches these through src/ai/agent/tools/cms.ts, which owns the
+// schemas and the `cms_` names (the old standalone CMS agent and its Gemini
+// schemas are gone — there is one agent now). Every executor is a
 // thin call into cms-ops.ts — the SAME validated path the human CMS editor
 // drives — then bumps `projectVersionAtom` so the derived collection atoms
 // (and the open editor overlay) re-read from ProjectFS.
@@ -144,7 +146,7 @@ const EXECUTORS: Record<string, (args: any) => Record<string, any>> = {
   create_collection: (args) => {
     // Hard refusal when the chat is scoped to an active collection. The
     // tool is already stripped from the schema in that case (see
-    // cms-agent-client.ts), so this is belt-and-suspenders: if the model
+    // old standalone CMS agent), so this is belt-and-suspenders: if the model
     // still emits the call, the error is fed back so it self-corrects
     // into add_field/add_item on the active collection.
     const active = store.get(cmsEditorCollectionAtom);

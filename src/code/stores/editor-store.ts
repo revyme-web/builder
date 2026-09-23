@@ -78,7 +78,7 @@ export const textEditSnapshotAtom = atom<TextEditSnapshot | null>(null);
 //                (`leftPanelAtom === 'vibe'`).
 //   - DETACHED — the floating draggable `AIChatSheet` popup.
 // `aiChatDetachedAtom` says which. The chat component (`PageChat` /
-// `IconSetChat`) stays mounted across the swap, so detaching mid-generation
+// the agent chat) stays mounted across the swap, so detaching mid-generation
 // loses nothing — only the surrounding chrome changes.
 
 /** Open/closed state of the DETACHED floating chat popup. */
@@ -113,12 +113,14 @@ export const detachAiChatAtom = atom(null, (_get, set) => {
   set(leftPanelAtom, DEFAULT_LEFT_PANEL);
 });
 
-/** Close the detached popup. Returns to docked mode — the VIBE left-menu icon
- *  comes back — but does NOT open the docked panel: the left panel stays on
- *  whatever the user had (Pages, Layers, …). They reopen the chat via VIBE. */
+/** Close the detached popup = put the chat BACK in the left panel: docked
+ *  mode, and the VIBE panel open, so the conversation stays in view. It used
+ *  to leave the left panel on whatever it was (Pages, Layers…) and the chat
+ *  vanished until VIBE was clicked again (owner, 2026-09-23). */
 export const dockAiChatAtom = atom(null, (_get, set) => {
   set(aiChatDetachedAtom, false);
   set(aiChatSheetOpenAtom, false);
+  set(leftPanelAtom, 'vibe');
 });
 
 // (The oracleMode A/B toggle lived here until 2026-07: the vibe chat now

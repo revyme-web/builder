@@ -34,6 +34,7 @@
 // Both the prompt's "Current page tree" section and the get_node_tree tool
 // project through the SAME `projectNodeTree` — one dialect everywhere.
 
+import { describeVariantAxis } from './components-more';
 import { z } from 'zod';
 import { getDefaultStore } from 'jotai';
 import type { AgentTool, AgentToolResult, ToolContext } from '@/ai/agent';
@@ -67,7 +68,7 @@ import {
   runDesignAudit,
   type AuditNode,
 } from './design-audit';
-import { waitForRender } from './wait-for-render';
+import { waitForRender, settleObservation } from './wait-for-render';
 import {
   collectEpochSnapshot,
   formatEpochEnvelope,
@@ -777,7 +778,10 @@ export const auditDesignTool: AgentTool = {
       // can be served after ~1s should not immediately say "come back later".
       // P6: wait on ANY non-ready (empty, partial or stale), not just empty.
       // Off-canvas-branch: no wait — no render will ever fill these rects.
-      await waitForRender({ vpId: vp.id, timeoutMs: 1000, intervalMs: 100 });
+      // A STALE snapshot is re-measured first (settleObservation): waiting
+      // alone returned the same stale rects instantly and the turn ended on
+      // the done-guard over a measurement of the agent's own edit.
+      await settleObservation({ vpId: vp.id });
       snap = snapshotForViewport(ctx, vp);
       out = auditOnce(snap);
     }
@@ -982,7 +986,10 @@ export const getComponentTool: AgentTool = {
     const code = readToolFile(ctx, info.filePath);
     const options = code ? readComponentPropOptions(code) : {};
     trace.action('agent-tool:get_component', { name: info.name, propCount: info.props.length, optionProps: Object.keys(options).length });
-    return { content: [{ type: 'text', text: formatComponentDetail(info, options) }] };
+    // Variants and connections too — the agent could style a variant it had no
+    // way to discover (audit G5), and connections were invisible entirely.
+    const axis = code ? describeVariantAxis(code) : '';
+    return { content: [{ type: 'text', text: axis ? `${formatComponentDetail(info, options)}\n${axis}` : formatComponentDetail(info, options) }] };
   },
 };
 

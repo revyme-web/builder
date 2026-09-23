@@ -24,7 +24,11 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback, type PointerEvent as ReactPointerEvent } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
-import PluginChat from './PluginChat';
+import { useAtomValue } from 'jotai';
+import AgentChat from '@/editor/agent/AgentChat';
+import { registerBeforeAgentTurn } from '@/ai/agent/turn-hooks';
+import { projectVersionAtom } from '@/code/project/project-fs';
+import { agentStatusAtom } from '@/code/stores/agent-chat-store';
 import {
   readPluginSource,
   writePluginSource,
@@ -54,11 +58,47 @@ export default function PluginEditor({ filePath, onClose }: PluginEditorProps) {
   const [source, setSource] = useState<string>(() => readPluginSource(filePath));
   const [savedSource, setSavedSource] = useState<string>(() => readPluginSource(filePath));
   const hasUnsavedChanges = source !== savedSource;
+  // Mirrors for the before-turn hook, which runs outside React's render.
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
+  const savedRef = useRef(savedSource);
+  savedRef.current = savedSource;
+  // The agent is writing — the buffer is read-only until it finishes, so the
+  // user's typing and the agent's write never race (as in the code-component
+  // editor).
+  const agentRunning = useAtomValue(agentStatusAtom) === 'running';
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
 
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  // THE AGENT READS FILES; this editor holds a BUFFER. Before a turn from the
+  // chat below, write the buffer out — exactly what Save does — so "add a
+  // button" lands on the code the user is looking at.
+  useEffect(() => registerBeforeAgentTurn(() => {
+    if (sourceRef.current === savedRef.current) return;
+    writePluginSource(filePath, sourceRef.current);
+    setSavedSource(sourceRef.current);
+    trace.action('plugin-editor:save-before-agent-turn', { filePath });
+  }), [filePath]);
+
+  // EXTERNAL-CHANGE SYNC — the agent (write_plugin) or anything else wrote
+  // the file under us: no local edits → show the new code; local edits →
+  // keep them, and rebase the baseline so Save still writes the user's work.
+  const projectVersion = useAtomValue(projectVersionAtom);
+  useEffect(() => {
+    const disk = readPluginSource(filePath);
+    if (disk === savedRef.current) return;
+    if (sourceRef.current === savedRef.current) {
+      setSource(disk);
+      setSavedSource(disk);
+      trace.action('plugin-editor:external-sync', { filePath, size: disk.length });
+    } else {
+      setSavedSource(disk);
+      trace.action('plugin-editor:external-conflict', { filePath, keptLocalEdits: true });
+    }
+  }, [projectVersion, filePath]);
   // Escape closes the editor — same affordance ComponentEditorOverlay uses.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -189,10 +229,11 @@ export default function PluginEditor({ filePath, onClose }: PluginEditorProps) {
         </div>
       </div>
 
-      {/* Body — Monaco | (preview top + AI chat bottom), sits below
-          header in the canvas area. The AI chat streams generated
-          source straight into Monaco via `onSourceChange`. */}
+      {/* Body — Monaco | (preview top + the Vibe chat bottom), below the
+          header in the canvas area. The agent writes the FILE; the sync
+          above brings its write into Monaco. */}
       <PluginEditorBody
+        readOnly={agentRunning}
         source={source}
         onSourceChange={setSource}
         onEditorMount={handleEditorMount}
@@ -206,6 +247,8 @@ export default function PluginEditor({ filePath, onClose }: PluginEditorProps) {
 }
 
 interface PluginEditorBodyProps {
+  /** The agent is writing this file — Monaco waits. */
+  readOnly: boolean;
   source: string;
   onSourceChange: (v: string) => void;
   onEditorMount: OnMount;
@@ -216,7 +259,7 @@ interface PluginEditorBodyProps {
 }
 
 function PluginEditorBody({
-  source, onSourceChange, onEditorMount, blobUrl, error, pluginName, iframeRef,
+  readOnly, source, onSourceChange, onEditorMount, blobUrl, error, pluginName, iframeRef,
 }: PluginEditorBodyProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isDark = useIsDark();
@@ -294,6 +337,7 @@ function PluginEditorBody({
             wordWrap: 'on',
             tabSize: 2,
             scrollBeyondLastLine: false,
+            readOnly,
           }}
         />
       </div>
@@ -344,18 +388,15 @@ function PluginEditorBody({
             </div>
           )}
         </div>
-        {/* AI chat pane — bottom of preview column. Fixed 240px height
-            so the preview iframe always has comfortable room. */}
+        {/* The Vibe chat — the ONE agent, as in every panel (surface
+            `plugin`: it knows this file, and the plugin manual rides the
+            turn). Half the preview column: a transcript needs room. */}
         <div
           className="relative border-t border-[var(--border-light)] bg-[var(--bg-surface)] shrink-0 flex flex-col"
-          style={{ height: 240 }}
+          style={{ height: '50%', minHeight: 320 }}
+          data-testid="plugin-editor-chat"
         >
-          <div className="px-3 py-1.5 border-b border-[var(--border-light)] text-[10px] uppercase tracking-wider text-[var(--text-disabled)] shrink-0">
-            AI Chat
-          </div>
-          <div className="flex-1 min-h-0">
-            <PluginChat code={source} onCodeChange={onSourceChange} />
-          </div>
+          <AgentChat />
         </div>
       </div>
     </div>

@@ -34,7 +34,7 @@ export const SPINNING_TEXT_COMPONENT = `'use client';
 } */
 
 import { useEffect, useRef } from 'react';
-import { withResponsiveProps } from '@revyme/runtime';
+import { withResponsiveProps, useStaticCanvas } from '@revyme/runtime';
 
 function SpinningText({
   text = 'SPINNING • TEXT • DEMO', duration = 10, radius = 5,
@@ -56,10 +56,12 @@ function SpinningText({
   const chars = (text.length > 0 ? text : ' ').split('');
   chars.push(' ');
   const total = chars.length;
+  const isStatic = useStaticCanvas();
 
   useEffect(() => {
     const rotator = rotatorRef.current;
     if (!rotator) return;
+    if (isStatic) { rotator.style.transform = 'rotate(0deg)'; return; }
 
     const baseSpeed = 360 / duration;
     const hoverSpeedDps = 360 / (duration / hoverVelocity);
@@ -95,7 +97,7 @@ function SpinningText({
         parent.removeEventListener('mouseleave', onLeave);
       }
     };
-  }, [duration, reverse, hoverSpeed, hoverVelocity]);
+  }, [duration, reverse, hoverSpeed, hoverVelocity, isStatic]);
 
   return (
     <span {...props} style={{ position: 'relative', display: 'inline-block', ...(props.style || {}) }}>

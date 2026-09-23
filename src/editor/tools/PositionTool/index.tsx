@@ -84,7 +84,7 @@ export default function PositionTool({ nodeId: nodeIdProp, styles: stylesProp, v
   );
 
   // Any <svg> node (single shape OR group) uses the canonical shape model —
-  // px X/Y + Size, no pins (Framer parity; see position-utils). Pins can't be
+  // px X/Y + Size, no pins (reference parity; see position-utils). Pins can't be
   // made stable on a vector whose centering is a % of its own size.
   // A FIT wrapper is an <svg> carrying TEXT — it keeps the full pin model.
   const isSvgNode = liveNode?.type === 'svg' && !isFitInnerRedirect && !nodeId.endsWith('-svg');

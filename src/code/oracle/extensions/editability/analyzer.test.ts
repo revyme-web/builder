@@ -254,3 +254,28 @@ export default withResponsiveProps(Card);
     expect(r.findings.some((f) => f.capability === 'custom-logic')).toBe(false);
   });
 });
+
+describe('the builder\'s MotionLink wrapper is plumbing, not a node', () => {
+  it('a master with a Link (via MotionLink) keeps a NATIVE structure verdict', () => {
+    const code = `'use client';
+import React from 'react';
+import Link from 'next/link';
+import { motion } from 'framer-motion';
+import { withResponsiveProps } from '@revyme/runtime';
+const MotionLink = motion.create(React.forwardRef(function MotionLinkBase({ href, ...props }: any, ref: any) { return href ? <Link ref={ref} href={href} {...props} /> : <div ref={ref} {...props} />; }));
+/** @name "Button" */
+export const variantConfig = [{ name: 'default', label: 'Default', x: 0, y: 0, isPrimary: true }];
+function Button({ style, initialVariant = 'default' }: { style?: React.CSSProperties; initialVariant?: string }) {
+  return (
+    <MotionLink href="/about" data-id="btn-root" data-name="Button" style={{ position: 'relative', width: 'auto', height: 'auto', ...style }}>
+      <p data-id="btn-label" data-name="Label" style={{ position: 'relative', margin: '0px' }}>Go</p>
+    </MotionLink>
+  );
+}
+export default withResponsiveProps(Button);
+`;
+    const r = analyzeEditability(code, { kind: 'component', path: 'components/Button.tsx' }) as { findings: { capability: string; class: string }[] };
+    const structure = r.findings.find((f) => f.capability === 'structure');
+    expect(structure?.class).toBe('NATIVE');
+  });
+});

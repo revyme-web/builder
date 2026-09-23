@@ -296,7 +296,7 @@ describe('removeAxisTranslate / centeringChannel', () => {
   });
 });
 
-describe('shape canonical position model (Framer parity)', () => {
+describe('shape canonical position model (reference parity)', () => {
   const rect = { left: 12.3456, top: 40, width: 34, height: 18, parentWidth: 200, parentHeight: 100, centerXPercent: 0, centerYPercent: 0 };
   test('normalization: null when already canonical (px left/top, nothing else)', async () => {
     const { shapePositionNormalizationStyles } = await import('./position-utils');

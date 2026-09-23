@@ -19,6 +19,10 @@ import { getNodesSnapshot, selectedIdsAtom } from '@/code/stores/store';
 import { interactingViewportWidthAtom } from '@/code/stores/viewport-store';
 import { DEFAULT_VIEWPORT_WIDTH } from '@/shared/constants';
 import { trace } from '@/shared/debug-trace';
+import { describeSurface, type AgentSurface } from './surface';
+import { readAgentSurface, readCodeComponentFacts, readCmsFacts, readPluginFacts, readIconSetFacts } from './surface-state';
+import { listProjectSkills } from '@/code/stores/project-skills-store';
+import type { ProjectSkill } from '@/code/project/skills-config';
 
 /** The tree is the biggest part of the block — cap it and say so, rather than
  *  spending the whole context window on a page the model can query per node. */
@@ -47,13 +51,62 @@ const DIALECT_CARD =
 /** Build the per-turn context block. Never throws: a missing piece is simply
  *  omitted — an agent with partial context still works, one that crashed the
  *  turn assembling context does not. */
-export function buildAgentContextBlock(): string {
+/** What the skills may take of one turn's context, together. A skill is
+ *  capped at SKILL_CONTENT_MAX on its own; this bounds several at once. */
+export const SKILLS_CONTEXT_CAP = 20_000;
+
+/**
+ * The skills section: always-apply ones, then the invoked ones, in full,
+ * until the budget runs out — a skill that does not fit is NAMED, so the
+ * model can `read_skill` it rather than never knowing it was asked for.
+ */
+export function formatProjectSkills(skills: readonly ProjectSkill[], invoked: readonly string[]): string {
+  const picked = [
+    ...skills.filter((s) => s.alwaysApply),
+    ...invoked.map((n) => skills.find((s) => s.name === n && !s.alwaysApply)).filter((s): s is ProjectSkill => !!s),
+  ];
+  if (picked.length === 0) return '';
+  const parts = ["## Project skills — the user's own rules for this project; follow them"];
+  const left: string[] = [];
+  let used = 0;
+  for (const s of picked) {
+    const why = s.alwaysApply ? 'always apply' : 'invoked for this request';
+    const block = `## Project skill: /${s.name} (${why})${s.description ? ` — ${s.description}` : ''}\n${s.content}`;
+    if (used + block.length > SKILLS_CONTEXT_CAP) { left.push(`/${s.name}`); continue; }
+    parts.push(block);
+    used += block.length;
+  }
+  if (left.length) parts.push(`(Also in effect but over this turn's budget — read them with read_skill: ${left.join(', ')})`);
+  return parts.join('\n\n');
+}
+
+export function buildAgentContextBlock(surface: AgentSurface = readAgentSurface(), invokedSkills: readonly string[] = []): string {
   const store = getDefaultStore();
   const sections: string[] = [];
+  // The page underneath an overlay is not what the user is looking at. Its
+  // tree, its selection and the page dialect are ~6 KB that would pull the
+  // model toward the canvas on every turn — the opposite of focus — so they
+  // are sent on the canvas surface only. The agent can still ask for them
+  // (get_node_tree, get_selection) the moment a request leaves the overlay.
+  // An icon set is edited ON the canvas: its tree and selection are the icons.
+  const onCanvas = surface.kind === 'canvas' || surface.kind === 'icon-set';
+
+  try {
+    sections.push(describeSurface(surface, {
+      codeComponent: surface.kind === 'code-component' ? readCodeComponentFacts(surface.filePath) : null,
+      cms: surface.kind === 'cms' ? readCmsFacts(surface) : null,
+      plugin: surface.kind === 'plugin' ? readPluginFacts(surface.filePath) : null,
+      iconSet: surface.kind === 'icon-set' ? readIconSetFacts(surface.filePath) : null,
+    }));
+  } catch (err) {
+    trace.error('agent-context:surface-failed', err);
+  }
 
   try {
     const lines = ['## Current editor context'];
-    lines.push(`Editing: ${store.get(activeFilePathAtom) ?? 'unknown'}`);
+    lines.push(onCanvas
+      ? `Editing: ${store.get(activeFilePathAtom) ?? 'unknown'}`
+      : `Page underneath (NOT what the user is looking at): ${store.get(activeFilePathAtom) ?? 'unknown'}`);
 
     const vpWidth = store.get(interactingViewportWidthAtom) || DEFAULT_VIEWPORT_WIDTH;
     lines.push(`Active viewport width: ${vpWidth}px`);
@@ -61,15 +114,35 @@ export function buildAgentContextBlock(): string {
       lines.push("(editing a non-desktop breakpoint — pass this px value as 'viewport' to set_styles for responsive overrides)");
     }
 
-    const selected = store.get(selectedIdsAtom);
-    lines.push(selected.length > 0 ? `Selected elements: ${selected.join(', ')}` : 'No element selected.');
+    if (onCanvas) {
+      const selected = store.get(selectedIdsAtom);
+      lines.push(selected.length > 0 ? `Selected elements: ${selected.join(', ')}` : 'No element selected.');
+    }
+    // WHICH BRANCH — the one fact the branch rules in the prompt turn on:
+    // on main a big piece of work is offered a branch; on a branch the work
+    // simply continues there.
+    const branch = projectFS.getActiveBranchId();
+    const others = projectFS.listBranches().filter((b) => b.id !== branch && b.id !== 'main').map((b) => b.id);
+    lines.push(branch === 'main'
+      ? `Branch: main (the version that publishes)${others.length ? ` — other branches: ${others.join(', ')}` : ''}`
+      : `Branch: ${branch} (a copy of the project; main is untouched until the user applies it)${others.length ? ` — other branches: ${others.join(', ')}` : ''}`);
     sections.push(lines.join('\n'));
   } catch (err) {
     trace.error('agent-context:header-failed', err);
   }
 
+  // The user's own rules for this project: every "always apply" skill, and
+  // the ones this message invoked with /name (skills-config.ts). Near the top
+  // — they outrank the page detail below.
   try {
-    const tree = projectNodeTree(getNodesSnapshot());
+    const skills = formatProjectSkills(listProjectSkills(), invokedSkills);
+    if (skills) sections.push(skills);
+  } catch (err) {
+    trace.error('agent-context:skills-failed', err);
+  }
+
+  try {
+    const tree = onCanvas ? projectNodeTree(getNodesSnapshot()) : '';
     if (tree.length > 0) {
       const content = tree.length > PAGE_TREE_CAP ? tree.slice(0, PAGE_TREE_CAP) + TRUNCATED_TREE_SUFFIX : tree;
       sections.push(
@@ -81,7 +154,7 @@ export function buildAgentContextBlock(): string {
     trace.error('agent-context:tree-failed', err);
   }
 
-  sections.push(DIALECT_CARD);
+  if (onCanvas) sections.push(DIALECT_CARD);
 
   try {
     const tokens = getPresetTokens();
@@ -103,6 +176,6 @@ export function buildAgentContextBlock(): string {
   }
 
   const block = sections.join('\n\n');
-  trace.fn('agent-context:built', { chars: block.length, sections: sections.length });
+  trace.fn('agent-context:built', { surface: surface.kind, chars: block.length, sections: sections.length });
   return block;
 }

@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'vitest';
+import type { ViewportConfig } from '@/shared/types';
 import { parseCanvasConfig, serializeCanvasConfig, updateCanvasConfigInCode, stripCanvasConfig } from './canvas-config';
 
 const CODE_WITH_CONFIG = `'use client';
@@ -124,5 +125,30 @@ describe('stripCanvasConfig', () => {
 
   test('returns code unchanged when no @canvas block', () => {
     expect(stripCanvasConfig(CODE_WITHOUT_CONFIG)).toBe(CODE_WITHOUT_CONFIG);
+  });
+});
+
+describe('designWidth — the tile renders narrower than its band', () => {
+  // A viewport's `width` is the TOP of its responsive band; the band is not
+  // always designed at that edge. the reference phone band is everything up to
+  // 809.98px and is drawn on a 390px canvas, so the tile has to render at
+  // 390 while every @media it writes stays keyed to 809.
+  const vp = (extra: Partial<ViewportConfig>): ViewportConfig => ({
+    id: 'mobile', label: 'Phone', width: 809, isPrimary: false, order: 2, x: 0, y: 0, ...extra,
+  });
+
+  test('round-trips through the @canvas block', () => {
+    const code = serializeCanvasConfig({ viewports: [vp({ designWidth: 390 })], positions: { mobile: { x: 0, y: 0 } } });
+    expect(code).toContain('"designWidth": 390');
+    expect(parseCanvasConfig(code)?.viewports[0].designWidth).toBe(390);
+  });
+
+  // The serializer is an allow-list, so a field it forgets is dropped on the
+  // next write and the tile snaps back to its band width.
+  test('is left out when it says nothing', () => {
+    const code = serializeCanvasConfig({ viewports: [vp({})], positions: {} });
+    expect(code).not.toContain('designWidth');
+    const same = serializeCanvasConfig({ viewports: [vp({ designWidth: 809 })], positions: {} });
+    expect(same).not.toContain('designWidth');
   });
 });

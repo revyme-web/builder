@@ -222,7 +222,7 @@ export function registerShortcuts(refs: ShortcutRefs): () => void {
   // mutations land afterward, desyncing the visible DOM from the source.
   //
   // SHAPE-EDIT session: while shapeEditingIdAtom is set, Cmd+Z/Shift+Z route
-  // to the sandbox's IN-SESSION stack (per-gesture vertex undo, Framer-style)
+  // to the sandbox's IN-SESSION stack (per-gesture vertex undo, reference-style)
   // instead of the global history. The session's edits are live-DOM only —
   // the source still holds the PRE-session state, so a global undo here
   // would rip the page out from under the live editor. Never fall through,

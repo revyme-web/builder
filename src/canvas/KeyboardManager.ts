@@ -215,6 +215,9 @@ class KeyboardManager {
       // through, but the handler only runs for zoom / navigation
       // shortcuts. Everything else (tools, undo/redo, delete, paste,
       // selection, …) is a no-op for viewers.
+      // (Also while an agent run holds this branch — viewer-mode-store's
+      // `agent` reason: zoom / navigation still work, every editing
+      // shortcut is a no-op until the run finishes.)
       if (isViewerMode() && !spec.viewerAllowed && !VIEWER_ALLOWED_CATEGORIES.has(spec.category ?? '')) {
         trace.action('keyboard:shortcut-blocked-viewer', { key: keyLower, label: spec.label });
         return;

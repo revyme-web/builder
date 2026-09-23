@@ -208,6 +208,12 @@ export interface EffectVerdict {
   concept: string;
   /** Which file was scanned ('' = engine-level call with no scope). */
   scope: string;
+  /** The request named nothing checkable ("adjust the accent colours") — the
+   *  verdict is "could not tell", not "the effect is missing". `satisfied`
+   *  stays false so the model is told to name the entity / pass
+   *  expected_roles, but the done-guard must never refuse a finish on it
+   *  (it ended a finished accent-colour run in red, 2026-09-23). */
+  inconclusive?: boolean;
 }
 
 function escapeRegExp(s: string): string {
@@ -1341,6 +1347,7 @@ export function verifyEffectConceptAST(
       checks: [],
       missing: ['No verifiable entity — the request names no "X section" (or pass expected_roles, e.g. ["testimonials", "quote", "author"]).'],
       feedback: 'Cannot verify the request — name the entity in the request or pass expected_roles.',
+      inconclusive: true,
       concept: '',
       scope,
       states: [],
@@ -1523,6 +1530,7 @@ export function verifyEffect(
         'No verifiable entity — the request names no "X section" (or pass expected_roles, e.g. ["testimonials", "quote", "author"]).',
       ],
       feedback: 'Cannot verify the request — name the entity in the request or pass expected_roles.',
+      inconclusive: true,
       concept: '',
       scope,
       states: [],

@@ -78,6 +78,10 @@ select option:disabled {
 
     --text-primary: #1e293b;
     --text-secondary: #5b5b5b;
+    /* The agent's prose: a step MORE contrast than the control labels
+       (--text-secondary), well short of --text-primary — a long reply in
+       full-strength text shouted over the rest of the panel. */
+    --text-prose: #464646;
     --text-disabled: #94a3b8;
     --text-tertiary: #999999;
     --text-muted: #b0b0b0;
@@ -297,6 +301,7 @@ select option:disabled {
 
     --text-primary: #f8fafc;
     --text-secondary: #bababa;
+    --text-prose: #cbcbcb;
     --text-disabled: #848484;
     --text-tertiary: #666666;
     --text-muted: #848484;
@@ -664,4 +669,159 @@ html.theme-transition *::after {
     background-image: none;
     color: var(--text-secondary);
   }
+}
+
+/* Agent transcript — soft edges where it meets the header and the composer.
+ *
+ * The transcript used to be cut by two hard lines: a message slid under the
+ * credits bar, or behind the composer, mid-glyph. Both edges now dissolve — the
+ * text fades AND defocuses over the last few pixels, so the scroll reads as
+ * continuing beyond the panel rather than being clipped by it.
+ *
+ * Two layers, because each does what the other cannot:
+ *
+ *   .agent-scroll-fade   a MASK on the scroller. It fades the content itself to
+ *                        transparent, so it needs no knowledge of what is
+ *                        behind it — this chat is hosted by several shells (the
+ *                        dock, the detached sheet, the CMS / component panels)
+ *                        that do not share a background colour. A colour
+ *                        gradient laid over the top would have to match each.
+ *   .agent-edge-blur     a masked `backdrop-filter` strip over the same band.
+ *                        A mask can only fade; the defocus is what makes it
+ *                        read as depth rather than as low-opacity text.
+ *
+ * The scroller's own vertical padding is the SAME size as the band, so at rest
+ * — scrolled to the top, or stuck to the newest message — nothing sits inside
+ * it. The edges only ever touch text that is on its way out, and the effect
+ * needs no scroll listener to know when to appear. */
+.agent-scroll-fade {
+  --agent-edge: 22px;
+  padding-top: var(--agent-edge);
+  padding-bottom: var(--agent-edge);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--agent-edge), #000 calc(100% - var(--agent-edge)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--agent-edge), #000 calc(100% - var(--agent-edge)), transparent 100%);
+}
+.agent-edge-blur {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22px;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+.agent-edge-blur-top {
+  top: 0;
+  -webkit-mask-image: linear-gradient(to bottom, #000, transparent);
+  mask-image: linear-gradient(to bottom, #000, transparent);
+}
+.agent-edge-blur-bottom {
+  bottom: 0;
+  -webkit-mask-image: linear-gradient(to top, #000, transparent);
+  mask-image: linear-gradient(to top, #000, transparent);
+}
+
+/* Agent transcript — a CARD (what a turn changed, a screenshot the agent took).
+ *
+ * Filled, not outlined. These used to be drawn with `--border-default`, the
+ * brightest line in the panel, around the least important things in it — so
+ * the eye went to the box before the agent's words. A quiet lighter fill sets a
+ * card apart the same way the user's own message is set apart, and the border
+ * drops to the faintest token: there to finish the cut corners, not to be seen.
+ *
+ * One class so the cards cannot drift apart again. Tokens, so it holds on every
+ * builder theme: `--bg-hover` is a translucent step above whatever surface the
+ * chat is hosted on (dock, CMS panel, component editor). */
+/* VIBE icon — the agent is WORKING. Visible from any panel: one thin light
+ * travelling the button's cut outline, a fine grid flashing inside the face,
+ * the letters glitching now and then. The sweep is a conic gradient painted
+ * on a clipped wrapper with the button inset 1px over it, so the visible ring
+ * IS the cut path — the light follows every corner. (A scanline was tried and
+ * read as "a horizontal line going up and down" — gone, 2026-09-22.) Off the
+ * frame the run ends; reduced motion keeps only a slow ring pulse. */
+@property --vibe-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.vibe-ring { --vibe-neon: #9df3ff; --vibe-neon-2: #ff5ad9; }
+.vibe-working {
+  background: conic-gradient(from var(--vibe-angle), transparent 0 62%, color-mix(in srgb, var(--vibe-neon) 35%, transparent) 78%, var(--vibe-neon) 88%, transparent 100%);
+  animation: vibe-ring-spin 2.2s linear infinite;
+}
+.vibe-working .vibe-face { inset: 1px; }
+.vibe-working .vibe-face::before {
+  /* The grid, flashing and drifting in steps. */
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.28) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.28) 1px, transparent 1px);
+  background-size: 6px 6px;
+  animation: vibe-grid 0.9s steps(6) infinite;
+  pointer-events: none;
+}
+.vibe-working .vibe-text { animation: vibe-glitch 2.4s steps(1) infinite; }
+@keyframes vibe-ring-spin { to { --vibe-angle: 360deg; } }
+@keyframes vibe-grid {
+  0%   { background-position: 0 0;     opacity: 0.35; }
+  30%  { background-position: 0 2px;   opacity: 0.9; }
+  50%  { background-position: 2px 2px; opacity: 0.2; }
+  80%  { background-position: 2px 0;   opacity: 0.7; }
+  100% { background-position: 0 0;     opacity: 0.35; }
+}
+@keyframes vibe-glitch {
+  0%, 86%, 100% { transform: none; text-shadow: none; clip-path: none; }
+  88%  { transform: translate(-1px, 0); text-shadow: 1px 0 var(--vibe-neon-2), -1px 0 var(--vibe-neon); }
+  90%  { transform: translate(1px, -1px); text-shadow: -1px 0 var(--vibe-neon-2), 1px 0 var(--vibe-neon); clip-path: inset(30% 0 20% 0); }
+  92%  { transform: translate(0, 1px); text-shadow: 1px 0 var(--vibe-neon); clip-path: inset(0 0 60% 0); }
+  94%  { transform: none; text-shadow: none; clip-path: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vibe-working { animation: vibe-ring-pulse 2s ease-in-out infinite; }
+  .vibe-working .vibe-face::before, .vibe-working .vibe-text { animation: none; }
+  @keyframes vibe-ring-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+}
+
+/* Agent transcript — a run's steps in ONE card that scrolls within itself.
+ * Seven rows show (STEPS_CARD_MAX_ROWS in ActivityCard.tsx); the rest is a
+ * scroll away inside the card, so a long run never pushes the prompt and the
+ * reply out of the panel. A fade marks an edge that has rows beyond it
+ * (data-more-above / data-more-below, measured on scroll), so a short card is
+ * a plain card and the last row is never dimmed. */
+.agent-steps {
+  /* 7 rows × (18px line + 8px gap) + the card's padding. */
+  max-height: 196px;
+  overflow-y: auto;
+  /* No `overscroll-behavior: contain` here: it applies to every scroll
+   * container, scrollable or not, so a short card swallowed the wheel and the
+   * transcript would not move while the pointer sat over it (owner,
+   * 2026-09-22). The default chains: the card scrolls while it can, then the
+   * transcript takes over. */
+  scrollbar-width: none;
+}
+.agent-steps::-webkit-scrollbar { display: none; }
+/* The thinking card (ReasoningCard.tsx): prose, not rows — about seven lines
+ * of 12px text show, the rest scrolls inside, with the same edge fades. Its
+ * bold lead-ins stay muted: the thinking is an aside, not the answer. */
+.agent-steps.agent-thought { max-height: 140px; }
+.agent-thought strong { color: var(--text-secondary); }
+.agent-steps { --agent-steps-edge: 14px; }
+.agent-steps[data-more-above]:not([data-more-below]) {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--agent-steps-edge));
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--agent-steps-edge));
+}
+.agent-steps[data-more-below]:not([data-more-above]) {
+  -webkit-mask-image: linear-gradient(to top, transparent 0, #000 var(--agent-steps-edge));
+  mask-image: linear-gradient(to top, transparent 0, #000 var(--agent-steps-edge));
+}
+.agent-steps[data-more-above][data-more-below] {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--agent-steps-edge), #000 calc(100% - var(--agent-steps-edge)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--agent-steps-edge), #000 calc(100% - var(--agent-steps-edge)), transparent 100%);
+}
+
+.agent-card {
+  /* Colours only. The SHAPE is the app's own `cut-corners cut-border border`,
+   * composed in the markup — this must not grow a second clip-path. Unlayered
+   * on purpose, like .cut-border: it has to beat Tailwind's default border
+   * colour, which lives in a layer. */
+  background-color: var(--bg-hover);
+  border-color: var(--border-light);
+  --cut-border-color: var(--border-light);
 }

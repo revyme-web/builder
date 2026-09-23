@@ -79,10 +79,17 @@ function checkScrollDialect(ast: t.File, v: OracleViolation[]): void {
             for (const p of arg.properties) {
               if (!t.isObjectProperty(p) || !t.isIdentifier(p.key)) continue;
               if (p.key.name === 'target') {
+                // Plain ref, or variant-gated `cond ? heroRef : undefined` — the
+                // element is not rendered in some variants and an unhydrated
+                // target ref throws (see shared/scroll-target).
+                const gated = t.isConditionalExpression(p.value)
+                  && t.isIdentifier(p.value.consequent)
+                  && t.isIdentifier(p.value.alternate, { name: 'undefined' });
                 if (t.isIdentifier(p.value)) targetRefs.push({ name: p.value.name, line });
+                else if (gated) targetRefs.push({ name: (p.value as t.ConditionalExpression & { consequent: t.Identifier }).consequent.name, line });
                 else v.push({
                   code: 'SCROLL_USESCROLL_SHAPE', tier: 2, line,
-                  message: `useScroll target (line ${line}) must be a ref variable (target: heroRef).`,
+                  message: `useScroll target (line ${line}) must be a ref variable (target: heroRef), or one gated on the variants that render it (target: variant !== 'mobile' ? heroRef : undefined).`,
                 });
               } else if (p.key.name === 'offset' && !t.isArrayExpression(p.value)) {
                 v.push({

@@ -190,15 +190,17 @@ export const setPositionTool: AgentTool = {
 
 // ─── set_typography ───────────────────────────────────────────────────────
 
-// lineHeight accepts px (M12 spec) AND the editor's unitless ratio dialect
-// (TextStyleTool writes '1.5'; the oracle requires unitless or 'normal').
-// Both write paths are coherent for this property.
-const LINE_HEIGHT_RE = /^(normal|\d+(\.\d+)?|(-?\d+(\.\d+)?)px)$/;
+// lineHeight is the editor's UNITLESS ratio dialect ('1.5') or 'normal' —
+// exactly what the oracle's LINE_HEIGHT_FORMAT accepts. This used to allow px
+// too, so the tool's own description taught the one value the oracle exists to
+// reject, and a model that followed the description got a bounce (audit V3;
+// proven by the capability suite, 2026-09-21).
+const LINE_HEIGHT_RE = /^(normal|\d+(\.\d+)?)$/;
 
 export const setTypographyTool: AgentTool = {
   name: 'set_typography',
   description:
-    "Set typography (fontSize, fontWeight, lineHeight, letterSpacing, fontFamily, textAlign, color) on a node. fontSize/letterSpacing are px strings ('32px'); lineHeight is a px string OR a unitless ratio ('1.5', 'normal'); fontWeight is a number ('700'), 'normal' or 'bold'; fontFamily is a font name or a token reference ('var(--typo-* )'); color is hex '#rrggbb'. Pass '' to REMOVE a property.",
+    "Set typography (fontSize, fontWeight, lineHeight, letterSpacing, fontFamily, textAlign, color) on a node. fontSize/letterSpacing are px strings ('32px'); lineHeight is a UNITLESS ratio ('1.5') or 'normal' — never px, the oracle rejects it; fontWeight is a number ('700'), 'normal' or 'bold'; fontFamily is a font name or a token reference ('var(--typo-* )'); color is hex '#rrggbb'. Pass '' to REMOVE a property.",
   inputSchema: {
     node_id: z.string().describe(NODE_ID_DESCRIBE),
     fontSize: pxField('fontSize').optional().describe("font size as a px string, e.g. '32px'; '' removes it"),
@@ -208,9 +210,9 @@ export const setTypographyTool: AgentTool = {
       .describe("font weight: a number ('700'), 'normal' or 'bold'"),
     lineHeight: z
       .string()
-      .regex(LINE_HEIGHT_RE, "lineHeight must be a px string ('24px'), a unitless ratio ('1.5') or 'normal'")
+      .regex(LINE_HEIGHT_RE, "lineHeight must be a unitless ratio ('1.5') or 'normal' — never px (a px leading freezes when the font size changes)")
       .optional()
-      .describe("line height: px string or unitless ratio, e.g. '1.5'; '' removes it"),
+      .describe("line height as a unitless ratio, e.g. '1.5', or 'normal'; '' removes it"),
     letterSpacing: pxField('letterSpacing').optional().describe("letter spacing as a px string, e.g. '0.5px'; '' removes it"),
     fontFamily: z.string().optional().describe("font family name or token ref 'var(--typo-* )'; '' removes it"),
     textAlign: z.enum(TEXT_ALIGN_VALUES).optional().describe("text align: 'left' | 'center' | 'right' | 'justify'"),

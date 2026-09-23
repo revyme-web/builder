@@ -7,7 +7,6 @@ import { backend } from './index';
 import { getProjectId } from './project-id';
 import { saveStatusAtom } from './save-store';
 import type { ProjectData } from './types';
-import { PROJECT_FORMAT } from './types';
 import { projectFS } from '../code/project/project-fs';
 import { trace } from '@/shared/debug-trace';
 
@@ -27,6 +26,20 @@ function getStore() {
   return getDefaultStore();
 }
 
+/**
+ * The ProjectData envelope for the current project state. MAIN's files are
+ * `files` — the publish / export / backup truth — and non-main branches ride
+ * beside them (`toEnvelope`: v1 while there is no branch, so a project
+ * without branches saves byte-identically to before branching; v2 once one
+ * exists). This is NOT `getSnapshot()`: that is the ACTIVE branch's map, and
+ * saving it as `files` while sitting on a branch wrote the branch OVER main
+ * in the DB and dropped every branch on reload (found 2026-09-22 — the port
+ * had the envelope but nothing called it).
+ */
+export function buildProjectData(): ProjectData {
+  return projectFS.toEnvelope();
+}
+
 async function performSave(): Promise<void> {
   const store = getStore();
   const id = getProjectId();
@@ -37,15 +50,11 @@ async function performSave(): Promise<void> {
     trace.action('autosave:skipped-unresolved-project-id', { id });
     return;
   }
-  const snapshot = projectFS.getSnapshot();
-  const data: ProjectData = {
-    format: PROJECT_FORMAT,
-    files: Object.fromEntries(snapshot),
-  };
+  const data = buildProjectData();
 
   store.set(saveStatusAtom, 'saving');
   isSaving = true;
-  trace.action('autosave:start', { id, fileCount: snapshot.size });
+  trace.action('autosave:start', { id, fileCount: Object.keys(data.files).length, branches: data.branches ? Object.keys(data.branches).length : 0 });
 
   try {
     await backend.saveProject(id, data);
@@ -243,11 +252,7 @@ function onBeforeUnloadSave(e: BeforeUnloadEvent): void {
       trace.action('autosave:beacon-skipped', { reason: 'unresolved project id' });
       return;
     }
-    const snapshot = projectFS.getSnapshot();
-    const data: ProjectData = {
-      format: PROJECT_FORMAT,
-      files: Object.fromEntries(snapshot),
-    };
+    const data = buildProjectData();
 
     if (!CLOUD_ENABLED) {
       // Local mode: LocalBackend's saveProject is a synchronous

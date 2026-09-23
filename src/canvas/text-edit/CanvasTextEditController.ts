@@ -437,7 +437,7 @@ export class CanvasTextEditController {
           const msgValue = isRichNode ? sanitizeRichMessage(inner) : inner;
           if (isRichNode) {
             // Writes the default message AND re-bakes every translation's run
-            // styles from it (the default owns styling — Framer parity).
+            // styles from it (the default owns styling — reference parity).
             commitRichTranslation({ filePath, nodeId, locale: defaultLocale, defaultLocale, html: msgValue });
           } else {
             const msgPath = `messages/${defaultLocale}.json`;
@@ -592,7 +592,7 @@ export class CanvasTextEditController {
         // other variants yet.
         queueMutation({ type: 'updateChildrenHTML', nodeId, html: inner });
       } else if (isDesignComponent && (onNonPrimaryVariant || hasConditionalText)) {
-        // Per-variant text supports RICH runs (Framer parity, 2026-09-05):
+        // Per-variant text supports RICH runs (reference parity, 2026-09-05):
         // when the payload carries marks, ship TipTap's HTML through —
         // updateVariantTextInCode converts it to a JSXFragment branch of real
         // inline runs (string styles → object styles via htmlToJSX). The old

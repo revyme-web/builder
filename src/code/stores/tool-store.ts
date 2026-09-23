@@ -29,7 +29,7 @@ export function isCreatorToolMode(mode: string): boolean { return CREATOR_TOOL_M
 
 /** TRANSLATION MODE lock: while a non-default locale is active the page is
  *  being translated, not designed — creator tools are greyed in the toolbar
- *  and their shortcuts are inert (Framer parity, 2026-09-07). Canvas mirrors
+ *  and their shortcuts are inert (reference parity, 2026-09-07). Canvas mirrors
  *  `isDefaultLocaleAtom` into this so the store has no locale import. */
 export const creatorToolsLockedAtom = atom(false);
 

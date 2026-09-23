@@ -254,8 +254,10 @@ describe('action layer — mutation payloads', () => {
     }, expect.anything());
   });
 
-  it('set_typography accepts px lineHeight (M12 spec) and unitless ratio (UI dialect)', async () => {
-    expect(parseInput(setTypographyTool, { node_id: 't', lineHeight: '24px' }).success).toBe(true);
+  it('set_typography lineHeight is the oracle\'s dialect: unitless ratio or normal — px is REFUSED', async () => {
+    // It used to accept px "per the M12 spec"; the oracle's LINE_HEIGHT_FORMAT
+    // rejects px, so the tool was teaching the one value that guarantees a bounce.
+    expect(parseInput(setTypographyTool, { node_id: 't', lineHeight: '24px' }).success).toBe(false);
     expect(parseInput(setTypographyTool, { node_id: 't', lineHeight: '1.5' }).success).toBe(true);
     expect(parseInput(setTypographyTool, { node_id: 't', lineHeight: 'normal' }).success).toBe(true);
   });

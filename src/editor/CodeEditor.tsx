@@ -16,7 +16,10 @@ import {
   activeFilePathAtom,
   switchActiveFile,
 } from "../code/project/active-file-store";
-import { projectFS, projectVersionAtom } from "../code/project/project-fs";
+import { projectFS, projectVersionAtom, MAIN_BRANCH_ID } from "../code/project/project-fs";
+import { activeBranchIdAtom } from "../code/stores/branch-store";
+import { BranchIcon } from "../shared/icons";
+import { useActiveBranchLocked } from "../code/stores/agent-run-lock-store";
 import { modifyProjectFile } from "../code/project/modify-file";
 import { queueMutation } from "../code/mutation/mutation-queue";
 import { flushNow, syncQueueCode } from "../code/mutation/mutation-queue";
@@ -200,6 +203,14 @@ export default function CodeEditor() {
   const setUpdatingFromCanvas = useSetAtom(updatingFromCanvasAtom);
   const projectVersion = useAtomValue(projectVersionAtom);
   const bumpVersion = useSetAtom(projectVersionAtom);
+  // WHICH BRANCH THIS CODE IS. Every read here (listFiles, readFile, the
+  // queue's codeAtom) already routes through ProjectFS's active branch, so
+  // the explorer and the buffer follow a switch on their own — but the reader
+  // could not tell: the same path shows different source on different
+  // branches, and nothing in this window said which (owner, 2026-09-22).
+  // The header names the branch next to the path; main stays unlabelled
+  // except for its tooltip, so the badge means "you are NOT on main".
+  const activeBranchId = useAtomValue(activeBranchIdAtom);
   const skipNextChangeRef = useRef(false);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const decorationsRef =
@@ -216,7 +227,10 @@ export default function CodeEditor() {
   // Code override files (`overrides/*.tsx`) are user-authored code, not
   // generated source — always editable.
   const [viewRequest, setViewRequest] = useAtom(codeEditorViewRequestAtom);
-  const canWriteGenerated = isAdmin && writeEnabled;
+  // Never while an agent run holds this branch — a hand edit would land on
+  // the source the run is composing against.
+  const runLocked = useActiveBranchLocked();
+  const canWriteGenerated = isAdmin && writeEnabled && !runLocked;
 
   // Build file tree from projectFS
   const allFiles = projectFS.listFiles();
@@ -236,7 +250,7 @@ export default function CodeEditor() {
     setViewPath(viewRequest);
     setViewRequest(null);
   }, [viewRequest, setViewRequest]);
-  const canWrite = canWriteGenerated || viewPath.startsWith('overrides/');
+  const canWrite = (canWriteGenerated || viewPath.startsWith('overrides/')) && !runLocked;
   // Apply read-only imperatively on toggle — the options prop covers mount, this
   // guarantees a live Write flip takes effect on the mounted editor instance.
   useEffect(() => {
@@ -469,6 +483,32 @@ export default function CodeEditor() {
             <polyline points="14 2 14 8 20 8" />
           </svg>
           <span>{viewPath}</span>
+          <span
+            data-testid="code-editor-branch"
+            data-branch={activeBranchId}
+            title={
+              activeBranchId === MAIN_BRANCH_ID
+                ? "On main — the version that publishes"
+                : `On branch ${activeBranchId} — this is the branch's copy of the file; main is untouched until you apply it`
+            }
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              marginLeft: 6,
+              padding: "1px 6px",
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: 0.2,
+              color: activeBranchId === MAIN_BRANCH_ID ? "var(--text-tertiary)" : "var(--accent)",
+              border: `1px solid ${activeBranchId === MAIN_BRANCH_ID ? "var(--border-light)" : "var(--accent)"}`,
+              borderRadius: 4,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <BranchIcon size={9} />
+            {activeBranchId === MAIN_BRANCH_ID ? "main" : activeBranchId}
+          </span>
           {isAdmin && (
             <button
               onClick={() => setWriteEnabled((v) => !v)}

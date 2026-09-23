@@ -104,6 +104,7 @@ const EFFECTS: Record<string, Effect> = {
   set_variant: { kind: 'write', verb: 'edited', noun: 'variant' },
   set_token: { kind: 'write', verb: 'edited', noun: 'design token' },
   set_page_variable: { kind: 'write', verb: 'added', noun: 'variable' },
+  bind_variable: { kind: 'write', verb: 'edited', noun: 'variable binding' },
   set_page_interaction: { kind: 'write', verb: 'added', noun: 'interaction' },
   set_motion_preset: { kind: 'write', verb: 'added', noun: 'animation' },
   create_overlay: { kind: 'write', verb: 'added', noun: 'overlay' },
@@ -111,6 +112,144 @@ const EFFECTS: Record<string, Effect> = {
   bind_cms_field: { kind: 'write', verb: 'edited', noun: 'field binding' },
   set_form: { kind: 'write', verb: 'edited', noun: 'form' },
   set_page: { kind: 'read', noun: 'page' },
+
+  // The CMS. Without these the `cms_` prefix defeats the verb-by-prefix rule
+  // below and every call reads "Edited 1 layer" — about a collection.
+  cms_get_collection: { kind: 'read', noun: 'collection' },
+  cms_create_collection: { kind: 'write', verb: 'added', noun: 'collection' },
+  cms_rename_collection: { kind: 'write', verb: 'edited', noun: 'collection' },
+  cms_delete_collection: { kind: 'write', verb: 'deleted', noun: 'collection' },
+  cms_add_field: { kind: 'write', verb: 'added', noun: 'field' },
+  cms_update_field: { kind: 'write', verb: 'edited', noun: 'field' },
+  cms_remove_field: { kind: 'write', verb: 'deleted', noun: 'field' },
+  cms_add_items: { kind: 'write', verb: 'added', noun: 'item' },
+  cms_update_item: { kind: 'write', verb: 'edited', noun: 'item' },
+  cms_remove_item: { kind: 'write', verb: 'deleted', noun: 'item' },
+  cms_set_item_translation: { kind: 'write', verb: 'edited', noun: 'translation' },
+  // A manual is reading, not a change to the document.
+  load_manual: { kind: 'read', noun: 'manual' },
+  component_example: { kind: 'read', noun: 'example' },
+  // `search_` is not a read prefix, so unlisted this read as a CHANGE.
+  search_images: { kind: 'read', noun: 'image' },
+  set_link: { kind: 'write', verb: 'edited', noun: 'link' },
+
+  // Variants: which one shows, the transitions between them, their names.
+  show_variant: { kind: 'write', verb: 'edited', noun: 'variant' },
+  add_connection: { kind: 'write', verb: 'added', noun: 'transition' },
+  remove_connection: { kind: 'write', verb: 'deleted', noun: 'transition' },
+  rename_variant: { kind: 'write', verb: 'edited', noun: 'variant' },
+  remove_variant: { kind: 'write', verb: 'deleted', noun: 'variant' },
+
+  // Design tokens, typography presets, fonts.
+  create_token: { kind: 'write', verb: 'added', noun: 'design token' },
+  remove_token: { kind: 'write', verb: 'deleted', noun: 'design token' },
+  set_dark_token: { kind: 'write', verb: 'edited', noun: 'design token' },
+  set_typography_preset: { kind: 'write', verb: 'edited', noun: 'text style' },
+  apply_typography_preset: { kind: 'write', verb: 'edited', noun: 'text style' },
+  set_font: { kind: 'write', verb: 'edited', noun: 'font' },
+
+  // Sizing, grid, transform, wrapping — all act on layers; the verb differs.
+  wrap_in_layout: { kind: 'write', verb: 'added' },
+  unfold_children: { kind: 'write', verb: 'deleted' },
+  reorder_on_breakpoint: { kind: 'write', verb: 'moved' },
+
+  // Collection lists and pages.
+  set_list_config: { kind: 'write', verb: 'edited', noun: 'collection list' },
+  set_pagination: { kind: 'write', verb: 'edited', noun: 'collection list' },
+  link_rows_to_pages: { kind: 'write', verb: 'edited', noun: 'collection list' },
+  create_collection_pages: { kind: 'write', verb: 'added', noun: 'page' },
+  unbind_cms_field: { kind: 'write', verb: 'deleted', noun: 'field binding' },
+  bind_cms_prop: { kind: 'write', verb: 'edited', noun: 'field binding' },
+  cms_reorder_items: { kind: 'write', verb: 'moved', noun: 'item' },
+  cms_reorder_fields: { kind: 'write', verb: 'moved', noun: 'field' },
+  cms_duplicate_collection: { kind: 'write', verb: 'added', noun: 'collection' },
+  delete_page: { kind: 'write', verb: 'deleted', noun: 'page' },
+  rename_page: { kind: 'write', verb: 'edited', noun: 'page' },
+  duplicate_page: { kind: 'write', verb: 'added', noun: 'page' },
+  get_seo: { kind: 'read', noun: 'SEO setting' },
+  set_page_metadata: { kind: 'write', verb: 'edited', noun: 'page setting' },
+  set_site_metadata: { kind: 'write', verb: 'edited', noun: 'site setting' },
+
+  // Motion.
+  get_motion: { kind: 'read', noun: 'animation' },
+  set_motion: { kind: 'write', verb: 'edited', noun: 'animation' },
+  remove_motion: { kind: 'write', verb: 'deleted', noun: 'animation' },
+  set_text_effect: { kind: 'write', verb: 'edited', noun: 'text effect' },
+
+  // Localization.
+  set_locales: { kind: 'write', verb: 'edited', noun: 'language' },
+  list_texts: { kind: 'read', noun: 'text' },
+  translate_texts: { kind: 'write', verb: 'edited', noun: 'translation' },
+  add_language_switcher: { kind: 'write', verb: 'added', noun: 'language switcher' },
+
+  // Built-in library.
+  list_built_in_components: { kind: 'read', noun: 'component' },
+  add_built_in_component: { kind: 'write', verb: 'added', noun: 'component' },
+
+  // Masters and instances.
+  set_variant_visibility: { kind: 'write', verb: 'edited', noun: 'variant' },
+  detach_instance: { kind: 'write', verb: 'edited', noun: 'component instance' },
+  add_component_prop: { kind: 'write', verb: 'added', noun: 'component prop' },
+
+  // Text, states, forms, media, checks.
+  set_text_on_breakpoint: { kind: 'write', verb: 'edited', noun: 'text' },
+  set_text_fit: { kind: 'write', verb: 'edited', noun: 'text' },
+  set_pseudo_style: { kind: 'write', verb: 'edited', noun: 'state style' },
+  translate_attribute: { kind: 'write', verb: 'edited', noun: 'translation' },
+  add_list_search: { kind: 'write', verb: 'added', noun: 'search field' },
+  set_form_destination: { kind: 'write', verb: 'edited', noun: 'form' },
+  add_form_field: { kind: 'write', verb: 'added', noun: 'form field' },
+  add_submit_button: { kind: 'write', verb: 'added', noun: 'submit button' },
+  set_background_video: { kind: 'write', verb: 'edited', noun: 'background video' },
+  check_project: { kind: 'review' },
+
+  // Site-level motion and templates.
+  set_smooth_scroll: { kind: 'write', verb: 'edited', noun: 'scroll setting' },
+  set_page_transition: { kind: 'write', verb: 'edited', noun: 'page transition' },
+  set_cursor: { kind: 'write', verb: 'edited', noun: 'cursor' },
+  set_glide: { kind: 'write', verb: 'edited', noun: 'animation' },
+  list_templates: { kind: 'read', noun: 'template' },
+  create_template: { kind: 'write', verb: 'added', noun: 'template' },
+  assign_template: { kind: 'write', verb: 'edited', noun: 'template' },
+
+  // Breakpoints, overrides, pins, list sources.
+  list_viewports: { kind: 'read', noun: 'breakpoint' },
+  add_viewport: { kind: 'write', verb: 'added', noun: 'breakpoint' },
+  set_viewport_width: { kind: 'write', verb: 'edited', noun: 'breakpoint' },
+  remove_viewport: { kind: 'write', verb: 'deleted', noun: 'breakpoint' },
+  reset_overrides: { kind: 'write', verb: 'edited', noun: 'override' },
+  pin_to_side: { kind: 'write', verb: 'edited' },
+  change_list_source: { kind: 'write', verb: 'edited', noun: 'collection list' },
+  add_shape: { kind: 'write', verb: 'added', noun: 'shape' },
+  search_icons: { kind: 'read', noun: 'icon' },
+  add_icon: { kind: 'write', verb: 'added', noun: 'icon' },
+  // (create_icon_set is phrased above with the MCP tool of the same name.)
+  write_override: { kind: 'write', verb: 'added', noun: 'code override' },
+  set_code_overrides: { kind: 'write', verb: 'edited', noun: 'code override' },
+  list_overrides: { kind: 'read', noun: 'code override' },
+  list_sections: { kind: 'read', noun: 'section' },
+  insert_section: { kind: 'write', verb: 'added', noun: 'section' },
+  upload_image: { kind: 'write', verb: 'added', noun: 'image' },
+  get_slots: { kind: 'read', noun: 'slot' },
+  connect_slot: { kind: 'write', verb: 'edited', noun: 'slot' },
+  disconnect_slot: { kind: 'write', verb: 'edited', noun: 'slot' },
+  reorder_slot: { kind: 'write', verb: 'moved', noun: 'slot item' },
+  list_plugins: { kind: 'read', noun: 'plugin' },
+  write_plugin: { kind: 'write', verb: 'added', noun: 'plugin' },
+  launch_plugin: { kind: 'view' },
+
+  // Branches.
+  list_branches: { kind: 'read', noun: 'branch' },
+  create_branch: { kind: 'write', verb: 'added', noun: 'branch' },
+  list_skills: { kind: 'read', noun: 'skill' },
+  read_skill: { kind: 'read', noun: 'skill' },
+  save_skill: { kind: 'write', verb: 'added', noun: 'skill' },
+  add_icons_to_set: { kind: 'write', verb: 'added', noun: 'icon' },
+  remove_icon_from_set: { kind: 'write', verb: 'deleted', noun: 'icon' },
+  switch_branch: { kind: 'write', verb: 'moved', noun: 'branch' },
+  review_branch: { kind: 'review' },
+  apply_branch: { kind: 'write', verb: 'edited', noun: 'branch' },
+  delete_branch: { kind: 'write', verb: 'deleted', noun: 'branch' },
 };
 
 /** Verb by prefix, for everything the table does not name explicitly. */

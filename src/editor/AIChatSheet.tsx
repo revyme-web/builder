@@ -2,16 +2,50 @@
 //
 // A capped-size card that fades in (matching the ⌘K command palette), can be
 // dragged anywhere by its header, and resized from the bottom-right corner.
-// It opens as a card sitting just above the bottom toolbar.
+// It opens just LEFT of the right panel (a small gap), above the bottom
+// toolbar — where the eye already is when editing, and off the canvas centre.
 
 import { motion } from 'framer-motion';
 import { useState, type ReactNode } from 'react';
 import { trace } from '@/shared/debug-trace';
 
 const MIN_WIDTH = 320;
-const MIN_HEIGHT = 160;
-const DEFAULT_WIDTH = 420;
-const DEFAULT_HEIGHT = 220;
+// The agent chat — chat picker, transcript, composer — in one card. The old
+// 220px default was sized for the one-line Vibe chat; the agent's composer
+// alone takes most of that, and the pop-out opened with no transcript in
+// view at all (owner, 2026-09-23). Tall enough to read the conversation;
+// never taller than the room above the toolbar.
+const MIN_HEIGHT = 300;
+/** Opens at its narrowest — the chat reads fine at it (owner, 2026-09-23). */
+const DEFAULT_WIDTH = MIN_WIDTH;
+const DEFAULT_HEIGHT = 520;
+/** Space between the card and the right panel. */
+const PANEL_GAP = 12;
+/** Room kept above the card (the top bar) and under it (the toolbar). */
+const TOP_ROOM = 56;
+const BOTTOM_ROOM = 76;
+
+/** The default height, fitted to the window. */
+function openingHeight(): number {
+  return Math.max(MIN_HEIGHT, Math.min(DEFAULT_HEIGHT, window.innerHeight - TOP_ROOM - BOTTOM_ROOM));
+}
+
+/** Where the right panel starts — `[data-properties-panel]`, the marker the
+ *  editor's pop-ups already place themselves against (ToolPopup). No panel
+ *  measured (comments mode, preview): its usual 260px from the edge. */
+function rightPanelLeft(): number {
+  const r = document.querySelector('[data-properties-panel]')?.getBoundingClientRect();
+  if (r && r.width > 0 && r.left > 0 && r.left < window.innerWidth) return r.left;
+  return window.innerWidth - 260;
+}
+
+/** The opening spot: left of the right panel, bottom above the toolbar. */
+function openingPosition(height: number): { x: number; y: number } {
+  return {
+    x: Math.max(8, Math.round(rightPanelLeft() - PANEL_GAP - DEFAULT_WIDTH)),
+    y: Math.max(TOP_ROOM, Math.round(window.innerHeight - BOTTOM_ROOM - height)),
+  };
+}
 
 interface Props {
   /** Optional accessory rendered in the header, right of the title
@@ -26,12 +60,8 @@ interface Props {
 }
 
 export default function AIChatSheet({ headerAccessory, contextLabel, onClose, children }: Props) {
-  const [size, setSize] = useState({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
-  // Default: a card centered horizontally, sitting just above the toolbar.
-  const [pos, setPos] = useState(() => ({
-    x: Math.round(window.innerWidth / 2 - DEFAULT_WIDTH / 2),
-    y: Math.round(window.innerHeight - 76 - DEFAULT_HEIGHT),
-  }));
+  const [size, setSize] = useState(() => ({ width: DEFAULT_WIDTH, height: openingHeight() }));
+  const [pos, setPos] = useState(() => openingPosition(openingHeight()));
 
   // Page routes arrive slash-prefixed ("/", "/about") — drop the slash so the
   // header reads cleaner; "/" alone becomes "Home". Component / icon-set names

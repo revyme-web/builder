@@ -113,7 +113,7 @@ describe('rich-text run rows + commits', () => {
   });
 
   test('listTranslatableTexts lists a marked node as ONE rich row (HTML, never raw JSX)', () => {
-    // 2026-09-07: the per-run split is gone — Framer parity, one editor per
+    // 2026-09-07: the per-run split is gone — reference parity, one editor per
     // node with the marks kept as sanitized inline HTML.
     const rows = listTranslatableTexts('en').filter(r => r.nodeId.startsWith('rich'));
     expect(rows).toHaveLength(1);

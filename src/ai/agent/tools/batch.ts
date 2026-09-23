@@ -44,7 +44,7 @@ import { getNodesSnapshot } from '@/code/stores/store';
 import { diffTurnChanges } from '../checkpoint';
 import { buildViewportTile, runDesignAudit } from './design-audit';
 import { collectEpochSnapshot, formatEpochEnvelope } from './observation-epoch';
-import { waitForRender } from './wait-for-render';
+import { waitForRender, settleObservation } from './wait-for-render';
 import { resolveViewportQuery } from './read';
 import { verifyEffect } from './verify-effect';
 import { coerceBatchOps } from './coerce';
@@ -70,7 +70,7 @@ interface BatchResultItem {
  * 2026-08-15 avec glm-4.7-flash : `{op: ...}`, `{operation: ...}`,
  * `{add_node: {...}}`, args aplatis). Le preprocess normalise vers la forme
  * canonique ; les styles/attrs JSON-stringifiés sont réparés (coerce.ts —
- * le pattern « réparer comme un navigateur » de Framer). Une forme non
+ * le pattern « réparer comme un navigateur » de the reference builder). Une forme non
  * inférable reste telle quelle : zod la rejette avec un message clair.
  */
 const operationsSchema = z
@@ -591,6 +591,9 @@ export const batchTool: AgentTool = {
       for (const vpId of vpIds) {
         if (widths[vpId] == null) continue;
         await waitForRender({ nodeIds: touchedIds, vpId, timeoutMs: 1200, intervalMs: 100, branchId: waitBranch });
+        // Rendered but measured against an older version (the batch's own
+        // writes, a panel refresh) → re-measure and wait for a fresh epoch.
+        if (!branched) await settleObservation({ vpId, nodeIds: touchedIds, onlyIfStale: true });
       }
       const vpAudits: VpAuditEntry[] = [];
       for (const vpId of vpIds) {

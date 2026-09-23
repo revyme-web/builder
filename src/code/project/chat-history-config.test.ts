@@ -62,3 +62,46 @@ describe('parseChatHistory — transcript blocks', () => {
     expect(m).toEqual({ role: 'user', content: 'hello' });
   });
 });
+
+// `_meta/chat-history.json` is hand-editable, and `images` goes straight into
+// an <img src>.
+describe('parseChatHistory — pasted image thumbnails', () => {
+  const parse = (images: unknown, extra: Record<string, unknown> = {}) =>
+    parseChatHistory(JSON.stringify({ 'app/page.tsx': [{ role: 'user', content: 'hi', images, ...extra }] }))['app/page.tsx'][0];
+
+  test('round-trips image data URLs', () => {
+    const map: ChatHistoryMap = { 'app/page.tsx': [{ role: 'user', content: 'like this', images: ['data:image/jpeg;base64,AAAA'] }] };
+    expect(parseChatHistory(serializeChatHistory(map))).toEqual(map);
+  });
+
+  test('keeps only image data URLs', () => {
+    expect(parse(['data:image/png;base64,AA', 'https://evil.example/x.png', 'javascript:alert(1)', 7, null]).images)
+      .toEqual(['data:image/png;base64,AA']);
+  });
+
+  test('a malformed or empty list is dropped, never the message', () => {
+    expect(parse('nope').images).toBeUndefined();
+    expect(parse([]).images).toBeUndefined();
+    expect(parse('nope').content).toBe('hi');
+  });
+
+  test('is sanitized on a message WITH blocks too', () => {
+    const m = parse(['data:image/png;base64,AA', 'x'], { blocks: [{ kind: 'text', text: 't' }] });
+    expect(m.images).toEqual(['data:image/png;base64,AA']);
+  });
+});
+
+describe('thinking blocks in the saved file', () => {
+  test('survive the parser — a hand-edited one without text is dropped, not the panel', () => {
+    const map = { 'app/page.tsx': [{ role: 'assistant', content: 'Done.', blocks: [
+      { kind: 'reasoning', text: 'Planning the hero.' },
+      { kind: 'reasoning', text: 42 },
+      { kind: 'text', text: 'Done.' },
+    ] }] };
+    const parsed = parseChatHistory(JSON.stringify(map)) as ChatHistoryMap;
+    expect(parsed['app/page.tsx'][0].blocks).toEqual([
+      { kind: 'reasoning', text: 'Planning the hero.' },
+      { kind: 'text', text: 'Done.' },
+    ]);
+  });
+});

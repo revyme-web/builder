@@ -84,7 +84,8 @@ describe('semantic structure tools', () => {
     expect(m.type).toBe('addNode');
     expect(m.parentId).toBe('p1');
     expect(m.node.type).toBe('div');
-    expect(m.node.styles).toEqual({});
+    // Every new node carries a position — the oracle rejects one without (NODE_MISSING_POSITION).
+    expect(m.node.styles).toEqual({ position: 'relative' });
     expect(m.node.attrs).toEqual({});
     expect(typeof m.node.id).toBe('string');
     expect(m.node.id.length).toBeGreaterThan(0);
@@ -108,14 +109,14 @@ describe('semantic structure tools', () => {
     expect(m.node.type).toBe('section');
     expect(m.node.textContent).toBe('Hello');
     expect(m.node.name).toBe('hero');
-    expect(m.node.styles).toEqual({ color: 'red' });
+    expect(m.node.styles).toEqual({ color: 'red', position: 'relative' });
     expect(m.node.attrs).toEqual({ role: 'banner' });
     expect(flushNow).toHaveBeenCalledTimes(1);
     const data = JSON.parse((result.content[0] as any).text);
     expect(data.node_id).toBe(m.node.id);
   });
 
-  it("add_node maps the HTML 'id' attribute to the node's data-id (Framer-style naming)", async () => {
+  it("add_node maps the HTML 'id' attribute to the node's data-id (reference-style naming)", async () => {
     vi.mocked(getNodesSnapshot).mockReturnValue(new Map<string, CanvasNode>());
     const ctx = makeCtx();
     const result = await addNodeTool.execute(
@@ -278,7 +279,7 @@ describe('semantic structure tools', () => {
     expect(m.node.id).not.toBe('orig');
     expect(typeof m.node.id).toBe('string');
     expect(m.node.type).toBe('button');
-    expect(m.node.styles).toEqual({ color: 'red' });
+    expect(m.node.styles).toEqual({ color: 'red', position: 'relative' });
     expect(m.node.attrs).toEqual({});
     expect(m.node.name).toBe('btn');
     expect('index' in m).toBe(false);
@@ -360,7 +361,7 @@ describe('semantic structure tools', () => {
 
     // The tree shape mirrors the source 3 levels deep.
     expect(m.node.type).toBe('div');
-    expect(m.node.styles).toEqual({ display: 'flex' });
+    expect(m.node.styles).toEqual({ display: 'flex', position: 'relative' });
     expect(m.node.attrs).toEqual({ id: 'main' });
     expect(m.node.name).toBe('Root');
     expect(m.node.children).toHaveLength(2);
@@ -396,7 +397,7 @@ describe('semantic structure tools', () => {
     expect(m.node.type).toBe('h2');
     expect(m.node.textContent).toBe('Hello');
     expect('children' in m.node).toBe(false);
-    expect(m.node.styles).toEqual({ color: 'red' });
+    expect(m.node.styles).toEqual({ color: 'red', position: 'relative' });
     const data = JSON.parse((result.content[0] as any).text);
     expect(data.node_id).toBe(m.node.id);
   });

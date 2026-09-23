@@ -142,7 +142,7 @@ describe('form-submit-gen: convertSubmitButtonInCode', () => {
 
 // ─── display must switch INSTANTLY ──────────────────────────────────────────
 //
-// Framer Motion can't interpolate `display`: a SHOW value lands at the start of
+// the reference builder's Motion can't interpolate `display`: a SHOW value lands at the start of
 // the transition, a HIDE value only at the END. Under the default spring the old
 // label stayed visible ~300ms after the state changed (measured in Chromium:
 // still `block` at 200ms, `none` by 400ms). A form whose API answers faster than

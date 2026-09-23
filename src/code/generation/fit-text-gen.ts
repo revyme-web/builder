@@ -114,7 +114,7 @@ export function calculateFitRefit(
 // FIT kept `position/left/top/transform` on the inner while the wrapper became
 // a plain flow child (`width: 100%` + `order`) — the text dropped behind its
 // siblings and drag treated it as a layout child, yet the Position tool (still
-// reading the inner) said "absolute" (live find 2026-09-06). Framer keeps an
+// reading the inner) said "absolute" (live find 2026-09-06). The reference builder keeps an
 // absolute text absolute when it goes Fit; so do we: lift on wrap, lower on
 // unwrap, and the panels read/write these keys through the wrapper.
 const FIT_LIFT_KEYS = new Set([
@@ -199,6 +199,9 @@ export function wrapInFitSVGInCode(
     // Remove width/height from inner element — SVG wrapper controls sizing
     s = s.replace(/,?\s*width:\s*['"][^'"]*['"]/, '');
     s = s.replace(/,?\s*height:\s*['"][^'"]*['"]/, '');
+    // A removed FIRST pair leaves its trailing comma behind (`{{, fontSize…`
+    // — a SyntaxError that blanked the page, agent suite 2026-09-22).
+    s = s.replace(/^\s*,\s*/, '').replace(/,\s*,/g, ',');
     // Add margin, lineHeight for FIT (no whiteSpace:'nowrap' — FIT supports multi-line)
     if (!s.includes('margin:') && !s.includes('margin :')) {
       s = s.trimEnd();

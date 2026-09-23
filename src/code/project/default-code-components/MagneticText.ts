@@ -31,7 +31,7 @@ export const MAGNETIC_TEXT_COMPONENT = `'use client';
 } */
 
 import { useEffect, useRef } from 'react';
-import { withResponsiveProps } from '@revyme/runtime';
+import { withResponsiveProps, useStaticCanvas } from '@revyme/runtime';
 
 function MagneticText({
   text = 'MAGNETIC TEXT', strength = 10, radius = 80, smoothing = 0.18,
@@ -47,10 +47,12 @@ function MagneticText({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const letterRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const chars = (text.length ? text : 'TEXT').split('');
+  const isStatic = useStaticCanvas();
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
+    if (isStatic) return;
 
     const letters = letterRefs.current.map((el) => ({
       el,
@@ -113,7 +115,7 @@ function MagneticText({
       wrapper.removeEventListener('pointermove', onMove);
       wrapper.removeEventListener('pointerleave', onLeave);
     };
-  }, [strength, radius, smoothing, highlightColor, baseColor, text]);
+  }, [strength, radius, smoothing, highlightColor, baseColor, text, isStatic]);
 
   const letterStyle = {
     display: 'inline-block',

@@ -545,6 +545,29 @@ export const SettingsConnectAiIcon: React.FC<IconProps & { size?: number }> = ({
   </svg>
 );
 
+// Slash-in-a-box — Settings → Skills (a skill is a /command in the chat).
+export const SettingsSkillsIcon: React.FC<IconProps & { size?: number }> = ({
+  size,
+  width,
+  height,
+  ...props
+}) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={width ?? size ?? 24}
+    height={height ?? size ?? 24}
+    viewBox="0 0 24 24"
+    {...props}
+  >
+    <path d="M0 0h24v24H0z" fill="none" />
+    <path
+      fill="currentColor"
+      fillRule="evenodd"
+      d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2m0 2v14h14V5zm8.9 2.2l1.8.8-4.6 9.8-1.8-.8z"
+    />
+  </svg>
+);
+
 export const SettingsStagingIcon: React.FC<IconProps & { size?: number }> = ({
   size,
   width,
@@ -659,6 +682,34 @@ export const PageDocumentIcon: React.FC<IconProps & { size?: number }> = ({
     <path d="M5 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2zm4.59 3.992L9.5 5h-3a.5.5 0 0 1-.09-.992L6.5 4h3a.5.5 0 0 1 .09.992M10 8a.5.5 0 0 1-.41.492L9.5 8.5h-3a.5.5 0 0 1-.09-.992L6.5 7.5h3a.5.5 0 0 1 .5.5m0 3.492a.5.5 0 0 1-.41.492l-.09.008h-3A.5.5 0 0 1 6.41 11l.09-.008h3a.5.5 0 0 1 .5.5" />
   </svg>
 );
+
+/**
+ * BranchIcon — the code-branch glyph (Font Awesome "code-branch", 448×512),
+ * THE branch mark everywhere: the left menu, the Branches panel rows, the
+ * chat's branch chip + list, the Code Editor's branch badge. Filled,
+ * `currentColor`, so the colour comes from the host (accent when off main).
+ * `size` sets the HEIGHT; the width follows the glyph's 0.875 ratio.
+ */
+export const BranchIcon: React.FC<IconProps & { size?: number }> = ({
+  size,
+  width,
+  height,
+  ...props
+}) => {
+  const h = height ?? size ?? 16;
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={width ?? (typeof h === 'number' ? Math.round(h * 0.875 * 100) / 100 : h)}
+      height={h}
+      viewBox="0 0 448 512"
+      fill="currentColor"
+      {...props}
+    >
+      <path d="M80 104a24 24 0 1 0 0-48a24 24 0 1 0 0 48m80-24c0 32.8-19.7 61-48 73.3v87.8c18.8-10.9 40.7-17.1 64-17.1h96c35.3 0 64-28.7 64-64v-6.7c-28.3-12.3-48-40.5-48-73.3c0-44.2 35.8-80 80-80s80 35.8 80 80c0 32.8-19.7 61-48 73.3v6.7c0 70.7-57.3 128-128 128h-96c-35.3 0-64 28.7-64 64v6.7c28.3 12.3 48 40.5 48 73.3c0 44.2-35.8 80-80 80S0 476.2 0 432c0-32.8 19.7-61 48-73.3V153.3C19.7 141 0 112.8 0 80C0 35.8 35.8 0 80 0s80 35.8 80 80m232 0a24 24 0 1 0-48 0a24 24 0 1 0 48 0M80 456a24 24 0 1 0 0-48a24 24 0 1 0 0 48" />
+    </svg>
+  );
+};
 
 /**
  * TemplateIcon — a framed box with two horizontal rules, the canonical

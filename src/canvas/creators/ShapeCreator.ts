@@ -117,7 +117,7 @@ function createInnerShapeEl(mode: ShapeMode, width: number, height: number): SVG
 
 // ─── Inner SVG Child — JSX String ───────────────────────────────────────────
 
-function innerShapeJSX(mode: ShapeMode, width: number, height: number): string {
+export function innerShapeJSX(mode: ShapeMode, width: number, height: number): string {
   trace.fn('shape-creator:innerShapeJSX', { mode, width, height });
 
   const w = Math.round(width);

@@ -22,7 +22,7 @@ import { migrateLegacyDarkBlock } from '@/code/project/preset-ops';
 import { canvasThemeMode } from '@/canvas/canvas-theme';
 import { activePreviewSlugAtom } from '@/code/stores/cms-page-store';
 import { selectedNodeAtom, codeAtom, getNodesSnapshot } from '@/code/stores/store';
-import { interactingViewportIdAtom, interactingViewportWidthAtom } from '@/code/stores/viewport-store';
+import { interactingViewportIdAtom, interactingViewportRenderWidthAtom } from '@/code/stores/viewport-store';
 import { parseVariantConfig } from '@/code/variants/variant-config';
 import { previewComponentFileOverrideAtom } from '@/code/stores/editor-store';
 import { activeLocaleAtom } from '@/code/stores/locale-store';
@@ -144,7 +144,10 @@ export default function PreviewOverlay({ open, onClose }: Props) {
   // analogue of the component-mode `initialVariant` seeding above: select inside
   // the Tablet viewport + press Play → preview boots at 768px so the page's
   // responsive (@media/@container) rules match the tile the user was editing.
-  const interactingVpWidth = useAtomValue(interactingViewportWidthAtom);
+  // The preview opens at what the TILE is drawn at: pressing Play on the
+  // phone tile should show the page the width that tile shows it, not the top
+  // of the band it represents (809 for a tile drawn at 390).
+  const interactingVpWidth = useAtomValue(interactingViewportRenderWidthAtom);
   const code = useAtomValue(codeAtom);
 
   // ─── Viewport sizing state ─────────────────────────────────────────

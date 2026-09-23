@@ -4,6 +4,8 @@
 
 import { atom, getDefaultStore } from 'jotai';
 import { projectFS, projectVersionAtom } from './project-fs';
+import { isCanvasBusy, isLockHolderScoped } from '../stores/agent-run-lock-store';
+import { toast } from 'sonner';
 import { setForceRender } from '../mutation/mutation-queue';
 import { overlayEditingIdAtom } from '../stores/overlay-store';
 import { parseComponentName } from '../components/component-ops';
@@ -536,6 +538,18 @@ export function switchActiveFile(
   },
 ): void {
   if (from === to) return;
+  // A human page switch is refused while an agent run holds this branch
+  // through the shared queue base (an unbranched run): moving
+  // `currentCode` / the active path under it would misfile its writes. A
+  // SCOPED holder (a branched run) addresses explicit files and never reads
+  // the human base, so the pointer may move. The agent's own page moves run
+  // inside its write window and pass.
+  if (isCanvasBusy() && !isLockHolderScoped()) {
+    trace.action('active-file:switch-refused-canvas-busy', { from, to });
+    // Never silent: the click did nothing, and the reader must know why.
+    toast.error('The agent is editing this branch — pages switch again when it finishes. Stop it from the chat to take over now.', { id: 'canvas-busy-switch' });
+    return;
+  }
   trace.action('active-file:switch', { from, to });
   const freshCode = projectFS.readFile(from);
   if (freshCode) {

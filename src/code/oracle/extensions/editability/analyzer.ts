@@ -20,7 +20,7 @@ import {
 } from '@/code/parsing/parser';
 import { getPageVariables } from '@/code/features/page-variables';
 import type { CanvasNode } from '@/code/parsing/parser';
-import type { OracleViolation } from '../../checks/shared';
+import { needsDataId, type OracleViolation } from '../../checks/shared';
 
 const traverse = (
   typeof _traverseImport === 'function' ? _traverseImport : (_traverseImport as any).default
@@ -191,6 +191,14 @@ function classifyStructure(
       if (!tag) return;
       if (TRANSPARENT_TAGS_LOCAL.has(tag) || TRANSPARENT_TAGS_LOCAL.has(base)) return;
       if (NON_NODE_TAGS.has(base)) return;
+      // The builder's own `const MotionLink = motion.create(forwardRef(… <Link/> / <div/>))`
+      // wrapper is plumbing, not a node — the same exemption MISSING_DATA_ID
+      // makes (checks/shared.ts). Judged as an element it turned every Button /
+      // card master with a link into "UNSUPPORTED: <Link> missing data-id".
+      if (path.findParent((p) => p.isVariableDeclarator() && t.isIdentifier(p.node.id) && p.node.id.name === 'MotionLink')) return;
+      // A rich-text mark (`<span style>` inside a text element) is not a node
+      // either — the same call MISSING_DATA_ID makes.
+      if (!needsDataId(tag, path)) return;
       totalElements++;
       const attrs = opening.attributes.filter((a): a is t.JSXAttribute => t.isJSXAttribute(a));
       const dataIdAttr = attrs.find((a) => t.isJSXIdentifier(a.name) && a.name.name === 'data-id');
@@ -420,6 +428,9 @@ function printExprShallow(expr: t.Expression): string {
   if (t.isConditionalExpression(expr)) return printExprShallow(expr.test) + ' ? ' + printExprShallow(expr.consequent) + ' : ' + printExprShallow(expr.alternate);
   if (t.isIdentifier(expr)) return expr.name;
   if (t.isStringLiteral(expr)) return JSON.stringify(expr.value);
+  // `variant === 'x'` — the variants-dialect gate. Unprinted, every Layers-eye
+  // visibility read as an "arbitrary condition" (2026-09-22 audit).
+  if (t.isBinaryExpression(expr)) return printExprShallow(expr.left as t.Expression) + ' ' + expr.operator + ' ' + printExprShallow(expr.right);
   if (t.isMemberExpression(expr)) {
     return printExprShallow(expr.object as t.Expression) + '.' + printExprShallow(expr.property as t.Expression);
   }

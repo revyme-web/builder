@@ -14,7 +14,7 @@ import { atom } from 'jotai';
 import { componentEditorFileAtom } from '@/code/stores/component-editor-store';
 import { pluginEditorFileAtom } from '@/editor/plugin-editor/plugin-editor-store';
 import { cmsEditorOpenAtom } from '@/code/stores/cms-editor-store';
-import { cmsOverlayOpenAtom } from '@/editor/left-toolbar/panels/cms/CmsOverlay';
+import { cmsOverlayOpenAtom } from './cms-editor-store';
 import { translationsOverlayOpenAtom } from '@/code/stores/left-panel-store';
 
 export const workspaceOverlayOpenAtom = atom((get) =>

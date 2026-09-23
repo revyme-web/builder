@@ -18,9 +18,23 @@ export const projectFS = {
   writeFile() {},
   deleteFile() {},
   listFiles() { return []; },
+  // Branch pointer + coarse subscription: the agent-run-lock store (pulled
+  // in through modify-file / viewer-mode) reads them. Sandbox is always
+  // "main", never locked.
+  getActiveBranchId(): string { return MAIN_BRANCH_ID; },
+  subscribe(_fn: () => void): () => void { return () => {}; },
 };
 
 export const projectVersionAtom = { init: 0 };
+
+export const MAIN_BRANCH_ID = 'main';
+
+/** Editor state (`_meta/`) lives on main whatever branch is active — the
+ *  sandbox has no branches, but modify-file imports the predicate. Keep it
+ *  in step with project-fs.ts. */
+export function isSharedAcrossBranches(path: string): boolean {
+  return path.startsWith('_meta/');
+}
 
 /** Lazy-install stub — sandbox has no real filesystem, so install is a no-op.
  *  The parent frame is the source of truth for file installs and re-renders

@@ -3092,7 +3092,7 @@ export default function Page() {
   });
 });
 
-// ─── Event props survive extraction (Framer parity: port + hoist) ──────────
+// ─── Event props survive extraction (reference parity: port + hoist) ──────────
 // A node carrying `onClick={event1}` — where `event1` is an EVENT prop of the
 // enclosing component — must not be copied verbatim into the new component:
 // `event1` would be undefined there. The prop PORTS into the child (param +

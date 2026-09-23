@@ -122,7 +122,7 @@ function axisSegment(a: MRect, b: MRect, scale: number, horizontal: boolean): Me
   // inside its range, the selection's centre would put the line past the
   // target's edge; the band centre runs it through the target. When the target
   // spans the selection the band IS the selection's range, so the two agree —
-  // which is the arrangement the Framer screenshots show.
+  // which is the arrangement the the reference builder screenshots show.
   const band = overlapBand(aAcross[0], aAcross[1], bAcross[0], bAcross[1]);
   const p = band ? (band.min + band.max) / 2 : (aAcross[0] + aAcross[1]) / 2;
   // …and how far it must travel perpendicular to actually touch the target.
@@ -160,7 +160,7 @@ function axisSegment(a: MRect, b: MRect, scale: number, horizontal: boolean): Me
  * they overlap on both — that's `computeInsetMeasure`'s picture.
  *
  * ONE MEASUREMENT PER SEPARATED AXIS, which means a DIAGONAL arrangement gets
- * TWO (user call 2026-08-09, matching Framer): the horizontal gap with a
+ * TWO (user call 2026-08-09, matching the reference builder): the horizontal gap with a
  * vertical elbow down to the target, and the vertical gap with a horizontal
  * elbow across to it. The two elbows meet at the target's near corner and the
  * pair reads as a bracket around the offset.

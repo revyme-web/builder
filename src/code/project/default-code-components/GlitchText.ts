@@ -25,7 +25,7 @@ export const GLITCH_TEXT_COMPONENT = `'use client';
   "ghostCool": { "type": "color", "label": "Ghost Cool", "default": "#00e5ff" },
   "amount": { "type": "number", "label": "Displacement", "min": 0, "max": 24, "step": 1, "default": 6, "unit": "px" },
   "burstRate": { "type": "number", "label": "Burst Rate", "min": 0.2, "max": 6, "step": 0.1, "default": 2 },
-  "tearing": { "type": "boolean", "label": "Tearing Bands", "default": true }
+  "tearing": { "type": "toggle", "label": "Tearing Bands", "default": true }
 } */
 
 import { useEffect, useRef } from 'react';

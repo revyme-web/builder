@@ -146,3 +146,16 @@ describe('convertRootStyleForMaster', () => {
     expect(out).toContain('style={{ ...style }}');
   });
 });
+
+describe('buildExtractedMaster — fluid sections with nested instances (agent extract_component)', () => {
+  it('bakes the resolved root size and carries the nested component import', async () => {
+    const { FIXTURE_FILES, HOME } = await import('@/ai/agent/capability/fixture');
+    const r = buildExtractedMaster(FIXTURE_FILES[HOME], 'hero', 'HeroSection', { rootSize: { width: '1440px', height: 'auto' } });
+    expect('error' in r).toBe(false);
+    if ('error' in r) return;
+    expect(r.masterCode).toContain("width: '1440px'");
+    expect(r.masterCode).not.toMatch(/width: '100%'[^\n]*\n[^\n]*data-name="Hero"/);
+    expect(r.masterCode).toContain("import PrimaryButton from '@/components/PrimaryButton';");
+    expect(checkFile(r.masterCode, { kind: 'component', path: 'components/HeroSection.tsx' })).toEqual([]);
+  });
+});

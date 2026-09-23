@@ -30,6 +30,8 @@ import { applyTemplate } from '@/code/project/template-ops';
 import { canvasInteractingAtom } from '@/code/stores/store';
 import { isTextEditingAtom } from '@/code/stores/editor-store';
 import { isViewerMode } from '@/code/stores/viewer-mode-store';
+import { withAgentWriteAccessAsync } from '@/code/stores/agent-run-lock-store';
+import { registerExternalRunMirror } from '@/editor/agent/external-run';
 import { projectVersionAtom } from '@/code/project/project-fs';
 import { triggerAutosave, flushSaveNow } from '@/backend/autosave';
 import { backend } from '@/backend';
@@ -49,7 +51,7 @@ import { createCmsIndexPageFile, createCmsDetailPageFile } from '@/code/project/
 import { executeCmsTool } from '@/ai/cms-agent/cms-tool-executors';
 import type { PresetToken } from '@/shared/types';
 import { gateTurnFiles, commitTurnFiles, formatBounce, type TurnFile } from '@/code/oracle/gate';
-import { agentToolManifest, agentToolCall, agentRunStart, agentRunEnd, agentRunAbort } from '@/ai/agent/bridge-tools';
+import { agentToolManifest, agentToolCall, agentRunStart, agentRunEnd, agentRunAbort, agentContext, attributeBridgeCall } from '@/ai/agent/bridge-tools';
 import { creditRead, checkStaleWrites } from './read-tracker';
 import { shareComponent } from '@/cloud/components/component-share';
 import { hasComponentControls } from '@/code/components/controls-parser';
@@ -365,6 +367,8 @@ export const bridgeHandlers: Record<string, BridgeHandler> = {
           filePath: item.filePath, nodeId: item.nodeId, locale,
           defaultLocale: config.defaultLocale, text: item.text,
           fallbackDefaultText: t.fallbackDefaultText,
+          // Without this a styled headline lost its marks in translation (audit V1).
+          rich: t.rich,
         });
         written++;
       }
@@ -897,6 +901,9 @@ export const bridgeHandlers: Record<string, BridgeHandler> = {
   // reaches the project. The tools themselves are the SAME ones the in-editor
   // agent used — one registry, one oracle, one checkpoint.
   'agent.manifest': async () => agentToolManifest(),
+  // What the chat sends at the start of a turn (context block + surface), for
+  // an external agent's begin_work — see bridge-tools agentContext.
+  'agent.context': async () => agentContext(),
   'agent.run_start': async (params: any) => agentRunStart(params ?? {}),
   'agent.tool': async (params: any) => agentToolCall(params ?? {}),
   'agent.run_end': async (params: any) => agentRunEnd(params ?? {}),
@@ -905,15 +912,54 @@ export const bridgeHandlers: Record<string, BridgeHandler> = {
 
 let source: EventSource | null = null;
 
+/**
+ * Run one bridge method. EVERY bridge request is an AGENT's — the run's own
+ * engine (the Claude CLI reaches the project through these MCP methods:
+ * submitFiles, CMS, presets…) or an external MCP client — never the human's.
+ * The run lock keeps the HUMAN from interleaving; it must not refuse the run
+ * itself. Without this window the lock (viewer reason `agent`) read these
+ * writes as a viewer's and bounced them "view-only" mid-run (2026-09-22).
+ * Role and offline still refuse inside the window (isViewerMode).
+ */
+export async function runBridgeRequest(method: string, params: unknown): Promise<unknown> {
+  const handler = bridgeHandlers[method];
+  if (!handler) throw new Error(`Unknown bridge method: ${method}`);
+  // The MCP proxy's own tools are attributed to the run like agent tools
+  // (undo step, Changes card, a row in the chat) — see attributeBridgeCall.
+  // The agent.* methods ARE the run's plumbing and go straight through.
+  const tool = MCP_TOOL_FOR_METHOD[method];
+  if (tool) {
+    return withAgentWriteAccessAsync(() =>
+      attributeBridgeCall(tool.name, (params ?? {}) as Record<string, unknown>, tool.write, () => handler(params ?? {})));
+  }
+  return withAgentWriteAccessAsync(() => handler(params ?? {}));
+}
+
+/** Bridge method → the MCP tool that calls it (the name the chat's activity
+ *  rows phrase) and whether it can write. */
+const MCP_TOOL_FOR_METHOD: Record<string, { name: string; write: boolean }> = {
+  getContext: { name: 'revyme_get_context', write: false },
+  listFiles: { name: 'revyme_list_files', write: false },
+  readFile: { name: 'revyme_read_file', write: false },
+  submitFiles: { name: 'revyme_submit_files', write: true },
+  uploadImage: { name: 'revyme_upload_image', write: true },
+  managePresets: { name: 'revyme_manage_presets', write: true },
+  manageTranslations: { name: 'revyme_manage_translations', write: true },
+  manageCms: { name: 'revyme_manage_cms', write: true },
+  publishListing: { name: 'revyme_publish_listing', write: true },
+  insertMarketplaceComponent: { name: 'revyme_insert_marketplace_item', write: true },
+  createIconSet: { name: 'revyme_create_icon_set', write: true },
+};
+
 async function dispatch(raw: string): Promise<void> {
-  let id: number | undefined;
+  // A random id (the service's per-call capability — ai-generator bridge.ts);
+  // echoed back as is.
+  let id: string | number | undefined;
   try {
-    const msg = JSON.parse(raw) as { id: number; method: string; params?: unknown };
+    const msg = JSON.parse(raw) as { id: string | number; method: string; params?: unknown };
     id = msg.id;
-    const handler = bridgeHandlers[msg.method];
-    if (!handler) throw new Error(`Unknown bridge method: ${msg.method}`);
     trace.action('mcp-bridge:request', { id: msg.id, method: msg.method });
-    const result = await handler(msg.params ?? {});
+    const result = await runBridgeRequest(msg.method, msg.params);
     await postResult({ id: msg.id, result });
   } catch (err) {
     trace.error('mcp-bridge:request-failed', err);
@@ -921,7 +967,7 @@ async function dispatch(raw: string): Promise<void> {
   }
 }
 
-async function postResult(body: { id: number; result?: unknown; error?: string }): Promise<void> {
+async function postResult(body: { id: string | number; result?: unknown; error?: string }): Promise<void> {
   try {
     await fetch(`${AI_SERVICE_URL}/bridge/result`, {
       method: 'POST',
@@ -946,6 +992,9 @@ async function postResult(body: { id: number; result?: unknown; error?: string }
  *  generation connects. */
 const BRIDGE_WINDOW_KEY = '__revymeMcpBridgeSource';
 export function startMcpBridge(): void {
+  // The chat's mirror of work asked for through MCP (editor/agent/
+  // external-run.ts) — external runs only ever arrive over this bridge.
+  registerExternalRunMirror();
   if (source) return;
   const prev = (window as any)[BRIDGE_WINDOW_KEY] as EventSource | undefined;
   if (prev) {

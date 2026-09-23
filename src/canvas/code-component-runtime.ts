@@ -6,6 +6,8 @@ import { simpleHash } from '@/shared/hash-utils';
 import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect, useReducer, useContext, createContext, forwardRef, memo, lazy, Suspense, Fragment } from 'react';
 import * as motionRuntime from 'framer-motion';
 import * as revymeRuntime from '@revyme/runtime';
+import * as ReactJSXRuntime from 'react/jsx-runtime';
+import * as motionOne from '@motionone/dom';
 import { trace } from '@/shared/debug-trace';
 import { upgradeVectorSetInstanceBranch } from '@/code/icons/icon-set-template';
 
@@ -187,6 +189,15 @@ const MODULE_MAP: Record<string, any> = {
   'lib/cursor-runtime': revymeRuntime,
   '@/lib/useIsCanvasRenderer': { default: useIsCanvasRenderer, useIsCanvasRenderer },
   'lib/useIsCanvasRenderer': { default: useIsCanvasRenderer, useIsCanvasRenderer },
+  // Both spellings a published code component may use, plus the `dist/` paths
+  // some of them import directly.
+  // published modules are compiled with the automatic JSX runtime, so they all
+  // import `jsx`/`jsxs` from here rather than using JSX syntax.
+  'react/jsx-runtime': ReactJSXRuntime,
+  'react/jsx-dev-runtime': ReactJSXRuntime,
+  // Motion One — the other animation library published code components reach for.
+  '@motionone/dom': motionOne,
+  'motion': motionOne,
   'next-themes': nextThemesStub,
   'next-intl': nextIntlStub,
 };
@@ -347,8 +358,11 @@ export function compileCodeComponent(
     // Detect-and-fill here is a thin safety net so the live preview
     // doesn't break on legacy state — the long-term fix is the
     // generator + syncImports pair, which is already in place.
+    // `\s*`, not `\s+`: a minified module writes `from"framer-motion"`, and
+    // missing it here injected a SECOND motion binding beside the module's own
+    // — "Identifier 'motion' has already been declared", component dead.
     if (/\bmotion\./.test(cleanCode) &&
-        !/from\s+['"]framer-motion['"]/.test(cleanCode)) {
+        !/from\s*['"]framer-motion['"]/.test(cleanCode)) {
       trace.action('code-component-runtime:auto-inject-motion-import', { componentName });
       cleanCode = `import { motion } from 'framer-motion';\n` + cleanCode;
     }
@@ -358,14 +372,44 @@ export function compileCodeComponent(
     // Transform: import { a, b } from 'mod' → const { a, b } = __require('mod')
     // Transform: import X, { a, b } from 'mod' → combined
     // SPECIAL: 'import React' is skipped because React is already passed as IIFE parameter
+    // An ALIASED named import (`import { jsx as _jsx } from …`) turns into a
+    // destructure below, where the rename is spelled `jsx: _jsx`. Left as
+    // `as`, the generated line is a syntax error and the whole component
+    // fails to compile — which is every published module.
+    cleanCode = cleanCode.replace(/import\s*\{([^}]+)\}\s*from/g, (_m, inner: string) =>
+      `import {${inner.replace(/([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)/g, '$1: $2')}} from`);
+
+    // NOTE the `\s*` throughout: a published module is MINIFIED, so it
+    // reads `import{useMemo}from"react"` with no space anywhere. Requiring
+    // whitespace left every one of those imports untouched, and an `import`
+    // inside the IIFE below is a syntax error — so no the reference builder module compiled.
     cleanCode = cleanCode
-      .replace(/import\s+React\s*,\s*\{([^}]+)\}\s+from\s+['"]react['"]/g,
+      .replace(/import\s*React\s*,\s*\{([^}]+)\}\s*from\s*['"]react['"]/g,
         'const {$1} = __require("react")')
-      .replace(/import\s+React\s+from\s+['"]react['"]/g, '/* React provided by runtime */')
-      .replace(/import\s+(\w+)\s*,\s*\{([^}]+)\}\s+from\s+['"]([^'"]+)['"]/g,
+      .replace(/import\s+React\s*from\s*['"]react['"]/g, '/* React provided by runtime */')
+      // …and the NAMESPACE form of the same thing. React is already in scope
+      // as the wrapper's own parameter, so binding it again is
+      // `Identifier 'React' has already been declared` and the whole module
+      // compiles to null — a published component written
+      // `import * as React from "react"` rendered as nothing at all.
+      .replace(/import\s*\*\s*as\s+React\s*from\s*['"]react['"]\s*;?/g, '/* React provided by runtime */')
+      // `import * as X from "…"` — the namespace form for everything else.
+      .replace(/import\s*\*\s*as\s+(\w+)\s*from\s*['"]([^'"]+)['"]/g,
+        'const $1 = __require("$2")')
+      .replace(/import\s+(\w+)\s*,\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g,
         'const $1 = __require("$3").default || __require("$3"); const {$2} = __require("$3")')
-      .replace(/import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"]/g, 'const {$1} = __require("$2")')
-      .replace(/import\s+(\w+)\s+from\s+['"]([^'"]+)['"]/g, 'const $1 = __require("$2").default || __require("$2")');
+      .replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g, 'const {$1} = __require("$2")')
+      .replace(/import\s+(\w+)\s*from\s*['"]([^'"]+)['"]/g, 'const $1 = __require("$2").default || __require("$2")')
+      // A bare side-effect import has nothing to bind; drop it.
+      .replace(/import\s*['"][^'"]+['"]\s*;?/g, '');
+
+    // A NAMED export is legal in a module and a syntax error inside the IIFE
+    // below. A publisher appends a metadata export to everything it
+    // publishes, so without this no published module compiles — and any user
+    // component with a named export failed the same way.
+    cleanCode = cleanCode
+      .replace(/export\s+(const|let|var|function|class|async)\b/g, '$1')
+      .replace(/export\s*\{[^}]*\}\s*;?/g, '');
 
     // 4. Convert export default → variable assignment
     cleanCode = cleanCode.replace(/export\s+default\s+function\s+(\w+)/, 'var __CODE_COMPONENT__ = function $1');

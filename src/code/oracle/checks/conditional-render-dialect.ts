@@ -97,6 +97,23 @@ function injectedHelperRanges(code: string): Array<[number, number]> {
   }
   const fence = code.match(/\/\/ @useResponsiveText-begin[\s\S]*?\/\/ @useResponsiveText-end/);
   if (fence && fence.index !== undefined) ranges.push([fence.index, fence.index + fence[0].length]);
+  // The per-breakpoint collection-list resolver (cms-responsive-gen.ts): a
+  // fenced `useResponsiveListConfig` hook that reads `window.innerWidth` and
+  // the per-list `const listCfg<Id> = useResponsiveListConfig(…)` calls —
+  // the Collection List panel's own output when a filter / sort differs on a
+  // breakpoint. Matched by the fence AND by the declaration (babel drops the
+  // marker comments when it regenerates the node they sit on).
+  const listFence = code.match(/\/\/ @responsiveList-begin[\s\S]*?\/\/ @responsiveList-end/);
+  if (listFence && listFence.index !== undefined) ranges.push([listFence.index, listFence.index + listFence[0].length]);
+  const listHook = code.match(/function useResponsiveListConfig\([\s\S]*?\n\}/);
+  if (listHook && listHook.index !== undefined) ranges.push([listHook.index, listHook.index + listHook[0].length]);
+  for (const helper of [/function __matchListFilter\([\s\S]*?\n\}/, /function __cmpListSort\([\s\S]*?\n\}/, /function __applyListConfig\([\s\S]*?\n\}/]) {
+    const hm = code.match(helper);
+    if (hm && hm.index !== undefined) ranges.push([hm.index, hm.index + hm[0].length]);
+  }
+  const listCallRe = /const listCfg\w+ = useResponsiveListConfig\([\s\S]*?\);/g;
+  let lm: RegExpExecArray | null;
+  while ((lm = listCallRe.exec(code)) !== null) ranges.push([lm.index, lm.index + lm[0].length]);
   // Overlay runtime effects (overlay-gen.ts): the RELATIVE positioner reads
   // `window.innerWidth` for the responsive band and listens to resize/scroll;
   // the FIXED modal effect locks body scroll. Both end on the overlay's own

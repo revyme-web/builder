@@ -75,7 +75,11 @@ export function checkResolutionFidelity(
   // appear and then silently revert on the next parse. MISSING_DATA_ID (tier 2)
   // catches most of these earlier; this is the backstop for shapes its
   // exemption list gets wrong.
-  const autoIds = [...nodes.values()].filter((n) => n.id.startsWith('auto_'));
+  // The FIT-text wrapper's <foreignObject> (svg[data-id="X-svg"] > foreignObject
+  // > p[data-id="X"]) is a structural container the builder writes without an
+  // id — MISSING_DATA_ID exempts it (checks/shared.ts) and so does this backstop.
+  const autoIds = [...nodes.values()].filter((n) => n.id.startsWith('auto_')
+    && !(n.type === 'foreignObject' && n.parentId && /-svg$/.test(n.parentId)));
   for (const n of autoIds.slice(0, 5)) {
     v.push({
       code: 'RESOLVE_UNIDENTIFIED_ELEMENT', tier: 3,

@@ -3,6 +3,7 @@
 // Creates header bars above each viewport with drag, hover, click, snap.
 
 import type { ViewportConfig, SnapGuide, SpacingGuide, Rect } from '@/shared/types';
+import { renderWidth } from '@/shared/types';
 import { transformManager } from './transform';
 import { calculateSnap, getMouseVelocity } from './drag/handlers/snap-handler';
 import { getActiveRulerGuideSnapLines } from '@/code/stores/ruler-guides-store';
@@ -143,7 +144,7 @@ export function renderViewportHeaders(
     // (user report 2026-07-27). Height 0 is fine — headers sit ABOVE the
     // tile; only the drag preview reads height, and it re-derives live.
     if (!posData && typeof vp.x === 'number' && vp.width > 0) {
-      posData = { left: vp.x, top: vp.y ?? 0, width: vp.width, height: 0 };
+      posData = { left: vp.x, top: vp.y ?? 0, width: renderWidth(vp), height: 0 };
     }
     if (!posData) continue;
 

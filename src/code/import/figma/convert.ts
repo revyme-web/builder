@@ -401,7 +401,16 @@ export function parseFigmaSvg(svg: string): ParsedSvg | null {
     }
   };
 
-  walk(root, 0, 0, {});
+  // Paint declared on the ROOT <svg> is inherited by every shape — icon packs
+  // (lucide, tabler, heroicons) put `fill="none" stroke="currentColor"
+  // stroke-width="2"` there and leave the paths bare. Without it a stroke icon
+  // decomposed into filled zero-height paths (an invisible burger, 2026-09-22).
+  const rootPaint: Record<string, string> = {};
+  for (const k of PATH_PAINT_ATTRS) {
+    const v = root.getAttribute(k);
+    if (v != null && v !== '') rootPaint[k] = v;
+  }
+  walk(root, 0, 0, rootPaint);
   if (complex) return { viewBox: { w, h }, shapes, complex: true };
   if (shapes.length === 0) return null;
   return { viewBox: { w, h }, shapes, complex: false };

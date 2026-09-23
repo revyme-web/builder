@@ -241,6 +241,18 @@ export const interactingViewportWidthAtom = atom((get) => {
   return widths[vpId] ?? DEFAULT_VIEWPORT_WIDTH;
 });
 
+/** What the interacting viewport's tile is DRAWN at — its design width where
+ *  it has one, its band width otherwise. Anything showing the page the way
+ *  the tile shows it (the preview) wants this; anything resolving a BAND
+ *  (@container rules, replica routing) wants `interactingViewportWidthAtom`.
+ *  They are the same number until a viewport says otherwise. */
+export const interactingViewportRenderWidthAtom = atom((get) => {
+  const vpId = get(interactingViewportIdAtom);
+  const vp = get(viewportsConfigAtom).find((v) => v.id === vpId);
+  const band = get(viewportWidthsAtom)[vpId] ?? DEFAULT_VIEWPORT_WIDTH;
+  return vp?.designWidth && vp.designWidth > 0 ? vp.designWidth : band;
+});
+
 // All viewports to show on canvas — switches between page viewports and component variants
 export const visibleViewportsAtom = atom<ViewportConfig[]>((get) => {
   const filePath = get(activeFilePathAtom);
