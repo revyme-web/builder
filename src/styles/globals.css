@@ -651,16 +651,28 @@ html.theme-transition *::after {
  *      --cut-border-color pins scattered across the app become inert; the
  *      visible borders are separate `border-*` utilities and are untouched,
  *      hover and focus states included. */
-.cut-corners,
+/* Controls — buttons, chips, inputs, menus. These float inside the UI, so
+ * rounding reads the way it does in any other app. */
+.cut-corners {
+  border-radius: var(--cut-round);
+  /* `clip-path` also CLIPPED CHILDREN. border-radius alone does not, so an
+   * element relying on the polygon to trim a child image needs its own
+   * `overflow-hidden` — most already carry one. */
+  clip-path: none;
+}
+
+/* SURFACES — the single-corner classes. These are the big chrome panels
+ * (left toolbar, the Settings/Export/Publish bar, layer-row edges), pinned
+ * flush to the viewport. The one cut corner existed to notch the single
+ * edge that met the canvas, so with the cut gone the honest shape is
+ * SQUARE: a panel welded to the screen edge with a rounded corner floating
+ * over the canvas reads as a hole, which is the artefact this replaced. */
 .cut-br,
 .cut-tl,
 .cut-bl,
 .cut-tr,
 .cut-r {
-  border-radius: var(--cut-round);
-  /* `clip-path` also CLIPPED CHILDREN. border-radius alone does not, so an
-   * element relying on the polygon to trim a child image needs its own
-   * `overflow-hidden` — most already carry one. */
+  border-radius: 0;
   clip-path: none;
 }
 .cut-border,
