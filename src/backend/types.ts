@@ -64,6 +64,12 @@ export interface WorkspaceFont {
   url: string;
   uploadedAt: string;
   uploadedBy: string;
+  /** One file covering a weight RANGE rather than a single cut. */
+  isVariable?: boolean;
+  /** `wght` axis bounds → CSS `font-weight: <min> <max>`. */
+  weightRange?: { min: number; max: number };
+  /** `file` = read from the font's own tables, `filename` = guessed. */
+  source?: 'file' | 'filename';
 }
 
 export interface RevymeUser {

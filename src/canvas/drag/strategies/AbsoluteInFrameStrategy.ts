@@ -39,6 +39,7 @@ import { projectFS } from '@/code/project/project-fs';
 import { getReplicaContext } from '../replica-context';
 import { getConsolidationClone, clearConsolidationClone } from '../consolidation-clone-store';
 import { registerPendingReplicaExtraction, getPendingReplicaExtraction, clearPendingReplicaExtraction } from '../pending-replica-extraction-store';
+import { exitSize } from '../exit-size';
 import { commitExitToCanvas } from '../exit-commit';
 import { getInsetState, mergeVariantPinStyles } from '@/shared/pin-utils';
 import { parentHighlightOps } from '@/canvas/selection/parent-highlight-store';
@@ -1907,12 +1908,15 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
               // W/2 / H/2 (the very offset the drag was already accounting
               // for inside the parent). Keep rotate/scale/skew untouched.
               const exitTransform = stripTranslateFunctions(orig);
+              // Content-sized stays content-sized — see exit-size.ts.
+              const keepAuto = (prop: 'width' | 'height', px: string): string =>
+                exitSize(nd?.styles, prop, px);
               const ms: Record<string, string> = {
                 position: 'absolute',
                 left: `${cssLeft}px`,
                 top: `${cssTop}px`,
-                width: `${Math.round(cssWidth)}px`,
-                height: `${Math.round(cssHeight)}px`,
+                width: keepAuto('width', `${Math.round(cssWidth)}px`),
+                height: keepAuto('height', `${Math.round(cssHeight)}px`),
                 transform: exitTransform,
               };
               if (nd?.styles?.right || nd?.styles?.bottom) { ms.right = ''; ms.bottom = ''; }
@@ -1951,8 +1955,8 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
                     position: 'absolute',
                     left: `${cssLeft}px`,
                     top: `${cssTop}px`,
-                    width: `${Math.round(cssWidth)}px`,
-                    height: `${Math.round(cssHeight)}px`,
+                    width: keepAuto('width', `${Math.round(cssWidth)}px`),
+                    height: keepAuto('height', `${Math.round(cssHeight)}px`),
                     // Strip translate — `cssLeft/cssTop` is visible top-left,
                     // keeping the translate would shift the clone by W/2.
                     transform: exitTransform,

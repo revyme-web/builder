@@ -100,6 +100,7 @@ export { GOOGLE_FORM_EMBED_COMPONENT } from './GoogleFormEmbed';
 // ─── Interactive utility Code components (theme + locale, real on the live site) ───
 export { THEME_TOGGLE_COMPONENT } from './ThemeToggle';
 export { COPY_BUTTON_COMPONENT } from './CopyButton';
+export { EMBED_COMPONENT } from './Embed';
 export { LOCALE_SWITCHER_COMPONENT } from './LocaleSwitcher';
 
 // ─── WebGL background pack (hand-written GLSL, hash + value-noise fBm) ────

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useWorkspaceFonts, workspaceFamilyWeights } from '@/code/stores/workspace-fonts-store';
 import { ToolInput, ToolSlider, ToolSelect, ToolSegmentedControl, ControlLabel } from '../../../controls';
 import { resolveControl } from '../../../controls/control-registry';
 import { LegacyVariableBoundPill } from '../../../controls/VariableBoundPill';
@@ -163,6 +164,29 @@ interface TextPropertyControlProps {
   onChange?: (value: string) => void;
 }
 
+/**
+ * Weight options for the selected node's font, or `null` to keep the
+ * standard 100–900 list.
+ *
+ * Only a workspace (uploaded) family can answer this: we hold its files, so
+ * we know which cuts exist. Google and system families keep the flat list.
+ */
+function useWorkspaceWeightOptions(
+  property: string,
+  familyValue: string,
+): Array<{ value: string; label: string }> | null {
+  // Subscribe so the list fills in when the library finishes loading.
+  const fonts = useWorkspaceFonts();
+  return useMemo(() => {
+    if (property !== 'fontWeight') return null;
+    // `fontFamily` is a STACK — take the first name and unquote it.
+    const first = (familyValue || '').split(',')[0]?.trim() ?? '';
+    const family = first.replace(/^['"]|['"]$/g, '');
+    if (!family) return null;
+    return workspaceFamilyWeights(family);
+  }, [property, familyValue, fonts]);
+}
+
 export function TextPropertyControl({ property, label, value: externalValue, onChange: externalOnChange }: TextPropertyControlProps) {
   const isExternal = externalValue !== undefined && externalOnChange !== undefined;
   // Only call useTextStyles when NOT in external mode (it requires ControlProvider)
@@ -170,6 +194,15 @@ export function TextPropertyControl({ property, label, value: externalValue, onC
   const { value: textValue, isMixed } = isExternal ? { value: externalValue!, isMixed: false } : text!.get(property);
   const value = isExternal ? externalValue! : textValue;
   const registryDef = resolveControl(property);
+
+  // Weight is family-dependent. The registry's list is a flat 100–900, so on
+  // a custom family that only ships Light/Regular/Bold the other six entries
+  // produce a SYNTHESISED weight — the browser smearing the nearest cut —
+  // with nothing on screen saying so. When the family is one of the
+  // workspace's own fonts we know exactly which cuts exist, so offer those
+  // and name them the way the foundry does.
+  const familyValue = isExternal ? '' : text!.get('fontFamily').value;
+  const weightOptions = useWorkspaceWeightOptions(property, familyValue);
 
   const selectedId = useAtomValue(selectedNodeAtom);
   const setSelectedIds = useSetAtom(selectedIdsAtom);
@@ -315,7 +348,11 @@ export function TextPropertyControl({ property, label, value: externalValue, onC
     return (
       <div className="flex items-center justify-between w-full">
         <ControlLabel label={label} property={property} plain={isExternal} />
-        <ToolSelect value={isMixed ? '' : value} onChange={setValue} options={registryDef.options} />
+        <ToolSelect
+          value={isMixed ? '' : value}
+          onChange={setValue}
+          options={weightOptions ?? registryDef.options}
+        />
       </div>
     );
   }

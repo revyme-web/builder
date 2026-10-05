@@ -1399,6 +1399,36 @@ export function EffectThemeToggleIcon() {
 // actually produces (the component is text-only; a glyph on the tile promised
 // an icon the dropped button doesn't have).
 
+/** Embed — a browser-ish frame with an address bar, which is what the
+ *  component drops: someone else's page inside a box on yours. */
+export function EffectEmbedIcon() {
+  return (
+    <div className="w-full h-full flex items-center justify-center">
+      <div
+        style={{
+          width: 54,
+          height: 38,
+          borderRadius: 5,
+          background: '#0f172a',
+          boxShadow: 'inset 0 0 0 1px #334155',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <div style={{ height: 10, display: 'flex', alignItems: 'center', gap: 3, padding: '0 5px', background: '#1e293b' }}>
+          <span style={{ width: 3, height: 3, borderRadius: 3, background: '#475569' }} />
+          <span style={{ width: 3, height: 3, borderRadius: 3, background: '#475569' }} />
+          <span style={{ flex: 1, height: 4, borderRadius: 2, background: '#334155', marginLeft: 2 }} />
+        </div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ width: 16, height: 16, borderRadius: 8, boxShadow: 'inset 0 0 0 1.5px #3b82f6' }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function EffectCopyButtonIcon() {
   return (
     <div className="w-full h-full flex items-center justify-center">

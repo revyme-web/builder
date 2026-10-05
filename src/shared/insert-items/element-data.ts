@@ -213,6 +213,7 @@ const INTERACTIVE_UTILITY_ITEMS: InsertItem[] = [
   { id: 'cs-themeToggle', name: 'Theme Toggle', iconKey: 'effectThemeToggle', gradientColors: ['#F59E0B', '#1F2937'] },
   { id: 'cs-localeSwitcher', name: 'Locale Switcher', iconKey: 'effectLocaleSwitcher', gradientColors: ['#10B981', '#059669'] },
   { id: 'cs-copyButton', name: 'Copy Button', iconKey: 'effectCopyButton', gradientColors: ['#171A16', '#16A34A'] },
+  { id: 'cs-embed', name: 'Embed', iconKey: 'effectEmbed', gradientColors: ['#1E293B', '#3B82F6'] },
 ];
 
 // Patterns drop as a `<div>` with a CSS background pattern (or an SVG-data

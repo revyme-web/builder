@@ -264,9 +264,13 @@ select option:disabled {
     /* Cut design system — THE two knobs. --cut = slice size, --cut-round =
        rounding of the uncut corners. Every .cut-* class consumes these via
        inheritance; element-level overrides (.cut-sm/.cut-lg, inline vars)
-       still win. Change these two lines and the whole chrome follows. */
-    --cut: 6px;
-    --cut-round: 0px;
+       still win. Change these two lines and the whole chrome follows.
+
+       --cut: 0 retires the diagonal slice in favour of ordinary rounded
+       corners (see "Rounded-corner chrome" below). The polygons are kept
+       intact so putting the angular look back is a two-line change. */
+    --cut: 0px;
+    --cut-round: 6px;
 
     /* Radius */
     --radius-sm: 4px;
@@ -613,12 +617,55 @@ html.theme-transition *::after {
 }
 
 /* Size modifiers — pair with .cut-corners on the same element. sm for small
- * chips/thumbs (~24px tall), lg for large containers (~44px+). */
+ * chips/thumbs (~24px tall), lg for large containers (~44px+). They drive
+ * BOTH knobs so they keep meaning whichever shape is active. */
 .cut-sm {
   --cut: 4px;
+  --cut-round: 4px;
 }
 .cut-lg {
   --cut: 8px;
+  --cut-round: 8px;
+}
+
+/* ─── Rounded-corner chrome ────────────────────────────────────────────────
+ * The app now uses ordinary rounded corners rather than the angular cut.
+ *
+ * Everything above still defines the cut; this block neutralises it in ONE
+ * place instead of touching the ~190 files that use the classes. The class
+ * names stay as-is and simply come to mean "rounded", so reverting is
+ * deleting this block and restoring --cut: 6px / --cut-round: 0.
+ *
+ * Unlayered and LAST on purpose: the .cut-* rules are unlayered so they can
+ * beat Tailwind's rounded-*, so only equal specificity later in the file
+ * wins over them.
+ *
+ * Two things this has to undo:
+ *   1. Per-corner radius. Each cut class zeroes the corners its polygon
+ *      slices, so a plain --cut: 0 would leave those corners square. Round
+ *      all four explicitly.
+ *   2. The painted border. clip-path cut the real border along the
+ *      diagonals, so .cut-border repainted the missing segments as corner
+ *      gradients. With no clip the real border is whole again and those
+ *      tiles would be stray diagonal marks, so drop the image. The
+ *      --cut-border-color pins scattered across the app become inert; the
+ *      visible borders are separate `border-*` utilities and are untouched,
+ *      hover and focus states included. */
+.cut-corners,
+.cut-br,
+.cut-tl,
+.cut-bl,
+.cut-tr,
+.cut-r {
+  border-radius: var(--cut-round);
+  /* `clip-path` also CLIPPED CHILDREN. border-radius alone does not, so an
+   * element relying on the polygon to trim a child image needs its own
+   * `overflow-hidden` — most already carry one. */
+  clip-path: none;
+}
+.cut-border,
+.cut-border-tl {
+  background-image: none;
 }
 
 /* Add-Breakpoint menu rows — CSS hover (replaces brittle JS span-color toggling that left icons

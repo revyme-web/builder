@@ -42,6 +42,7 @@ import { calculateLayoutInsertIndexById, computeReorderAssignments } from '../re
 import { rankToOrder, pickPlaceholderOrder, normalizeFlowSpans } from './order-positioning';
 import { commitOrderAssignments, computeLayoutBrackets } from './order-commit';
 import { queueMutation, flushNow, getCurrentCode, hasPendingDeferredFanOut } from '@/code/mutation/mutation-queue';
+import { exitSizes } from '../exit-size';
 import { commitExitToCanvas, flushExitToCanvas } from '../exit-commit';
 import { registerDragEndRestore } from '../drag-end-restores';
 import { computeExitCanvasPosition } from '../transform-reparent';
@@ -2614,8 +2615,20 @@ export class LayoutLiftedStrategy implements DragStrategy {
           currentLeft = lifted ? `${Math.round(lifted.left)}px` : '0px';
           currentTop = lifted ? `${Math.round(lifted.top)}px` : '0px';
         }
-        const currentWidth = lifted ? `${Math.round(lifted.width)}px` : '';
-        const currentHeight = lifted ? `${Math.round(lifted.height)}px` : '';
+        // A node that sized itself to its CONTENT keeps doing so on the
+        // canvas. `lifted.width` is a MEASUREMENT of the box it happened to
+        // fill inside its parent, so committing it as px turns an auto-width
+        // text into a frozen 123px box — the Dimensions panel then reads
+        // "123" where it read "auto" a moment earlier, and editing the text
+        // no longer resizes it (user report 2026-10-05). Only `auto` is
+        // carried over: a percentage or stretch was resolved AGAINST THE
+        // PARENT, which the node no longer has, so for those the measured px
+        // really is the honest preservation of what the user saw.
+        const { width: currentWidth, height: currentHeight } = exitSizes(
+          context.nodes.get(node.id)?.styles,
+          lifted ? `${Math.round(lifted.width)}px` : '',
+          lifted ? `${Math.round(lifted.height)}px` : '',
+        );
 
         // Replica drag-out: two sub-paths, mirroring AbsoluteInFrameStrategy's
         // replica exit:

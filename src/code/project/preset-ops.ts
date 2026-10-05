@@ -216,6 +216,13 @@ export interface WorkspaceFontFaceSpec {
   style: 'normal' | 'italic';
   ext: 'woff2' | 'woff' | 'otf' | 'ttf';
   /**
+   * VARIABLE font: one file covering a range of weights. CSS takes two
+   * numbers — `font-weight: 100 900` — and the browser interpolates. Pinning
+   * it to a single weight would make every other weight synthesise (faux
+   * bold) instead of using the real axis the file ships.
+   */
+  weightRange?: { min: number; max: number };
+  /**
    * A SUBSETTED face declares the same family/weight/style many times, one
    * file per script, told apart by unicode-range. Without it the rules
    * collapse onto the last one declared — which may be a Cyrillic subset
@@ -246,7 +253,7 @@ export function addWorkspaceFontFacesToCss(css: string, fonts: WorkspaceFontFace
       `@font-face {\n` +
         `  font-family: '${f.family.replace(/'/g, "\\'")}';\n` +
         `  src: url('${f.url}') format('${fontFaceFormat(f.ext)}');\n` +
-        `  font-weight: ${f.weight};\n` +
+        `  font-weight: ${f.weightRange ? `${f.weightRange.min} ${f.weightRange.max}` : f.weight};\n` +
         `  font-style: ${f.style};\n` +
         (f.unicodeRange ? `  unicode-range: ${f.unicodeRange};\n` : '') +
         `  font-display: swap;\n` +
