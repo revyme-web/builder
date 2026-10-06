@@ -10,6 +10,7 @@
 import { escapeRegExp } from '@/shared/regex-utils';
 import { trace } from '@/shared/debug-trace';
 import { insertBeforeRenderReturn, insertAfterLastImportLine } from './generator-utils';
+import { parseJSX, traverse } from '@/code/parsing/ast-utils';
 import type { ResolvedScope } from '@/code/animations/animation-scope';
 
 /** Which variant variable a conditional ternary should key off: `variant`
@@ -340,6 +341,67 @@ export function ensureMediaGate(code: string, query: string): { code: string; ga
  *  deps); a declaration-only gate is provably dead. The query lives in a string literal,
  *  never matching `\b__mqN\b`, so the count is exact. Run AFTER all ensureMediaGate calls
  *  for a generation (the sweep + max+1 numbering are co-safe — holes never collide). */
+/**
+ * Move a render gate — `const __mqN = useMediaQuery('…')` or `const __activeLocale =
+ * useLocale()` — above the first statement of its component that reads it.
+ *
+ * `ensureMediaGate` anchors a new gate just before the render `return`, i.e. BELOW
+ * any hook a caller already wrote. A responsive Scroll Transform rewrites its
+ * existing `useTransform(…, (__mq0 ? … : …))` to read the gate, so the gate landed
+ * under its own reader: the canvas tolerates that, the live site throws "Cannot
+ * access '__mq0' before initialization" (found by the use-before-declare check,
+ * 2026-10-06). A gate's only input is a string literal, so moving it up is always
+ * safe. Cheap when nothing is out of order — a text pre-check; parses only on a hit.
+ */
+export function hoistRenderGatesInCode(code: string): string {
+  const gateRe = /const\s+(__mq\d+|__activeLocale)\s*=\s*(?:useMediaQuery\('[^']*'\)|useLocale\(\))/g;
+  const late = new Set<string>();
+  for (const m of code.matchAll(gateRe)) {
+    const first = new RegExp(`\\b${m[1]}\\b`).exec(code);
+    if (first && first.index < m.index!) late.add(m[1]);
+  }
+  if (late.size === 0) return code;
+  const ast = parseJSX(code);
+  if (!ast) return code;
+
+  // One move per parse: offsets shift after a splice, and a hit is rare.
+  let move: { from: number; to: number; at: number; text: string; name: string } | null = null;
+  traverse(ast, {
+    VariableDeclarator(p: any) {
+      if (move || p.node.id.type !== 'Identifier' || !late.has(p.node.id.name)) return;
+      const stmt = p.parentPath;
+      if (!stmt.isVariableDeclaration() || stmt.node.declarations.length !== 1 || typeof stmt.key !== 'number') return;
+      const binding = p.scope.getBinding(p.node.id.name);
+      if (!binding) return;
+      let firstIdx = Infinity;
+      let firstStmt: any = null;
+      for (const ref of binding.referencePaths) {
+        const s = ref.find((a: any) => a.parentPath === stmt.parentPath && a.listKey === stmt.listKey);
+        if (s && typeof s.key === 'number' && s.key < firstIdx) { firstIdx = s.key; firstStmt = s; }
+      }
+      if (!firstStmt || firstIdx >= stmt.key) return;
+      const lineStart = (i: number) => {
+        const ls = code.lastIndexOf('\n', i - 1) + 1;
+        return /^[ \t]*$/.test(code.slice(ls, i)) ? ls : i;
+      };
+      const from = lineStart(stmt.node.start);
+      let to = stmt.node.end;
+      while (to < code.length && (code[to] === ' ' || code[to] === '\t')) to++;
+      if (code[to] === '\n') to++;
+      const at = lineStart(firstStmt.node.start);
+      const indent = code.slice(at, firstStmt.node.start).match(/^[ \t]*/)?.[0] ?? '  ';
+      move = { from, to, at, text: `${indent}${code.slice(stmt.node.start, stmt.node.end)}\n`, name: p.node.id.name };
+      p.stop();
+    },
+  });
+  if (!move) return code;
+  const { from, to, at, text, name } = move as { from: number; to: number; at: number; text: string; name: string };
+  trace.action('scoped-expr:hoist-render-gate', { gate: name });
+  // `at` < `from`: cutting the late declaration leaves the target offset intact.
+  const without = code.slice(0, from) + code.slice(to);
+  return hoistRenderGatesInCode(without.slice(0, at) + text + without.slice(at));
+}
+
 export function sweepOrphanMediaGates(code: string): string {
   const decl = /\n[ \t]*const (__mq\d+) = useMediaQuery\('[^']*'\);/g;
   const dead: string[] = [];

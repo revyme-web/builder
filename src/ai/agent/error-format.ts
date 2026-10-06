@@ -190,8 +190,8 @@ export const ORACLE_RULES: Record<string, OracleRule> = {
     useInstead: 'right: \'32px\', bottom: \'16px\' — or anchor from the other edge with left/top (which accept %).',
   },
   WOULD_CRASH: {
-    rule: 'The file would crash at runtime — every referenced identifier must resolve.',
-    useInstead: 'Reference ONLY identifiers declared in this file or explicitly imported; remove or declare the offender, then return the complete corrected file.',
+    rule: 'The file would crash at runtime — every referenced identifier must resolve, and be declared ABOVE any use that runs during render (a hook\'s dependency array included).',
+    useInstead: 'Reference ONLY identifiers declared in this file or explicitly imported; remove or declare the offender — or, when it is declared below its use, MOVE the declaration up (never add a second one) — then return the complete corrected file.',
   },
 };
 

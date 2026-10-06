@@ -26,11 +26,12 @@ import { canvasRootFlowReset } from '@/shared/flex-helpers';
 // those use canvasInteractingAtom). drag-state-store is a leaf module.
 import { dragStateOps } from '@/canvas/drag/drag-state-store';
 import { getDefaultStore } from 'jotai';
-import { healMissingLocaleHook } from '@/code/generation/scoped-expr';
+import { healMissingLocaleHook, hoistRenderGatesInCode } from '@/code/generation/scoped-expr';
 import { trace } from '@/shared/debug-trace';
 import { isAgentWriteOpen, isBranchLocked } from '@/code/stores/agent-run-lock-store';
 import { parse } from '@babel/parser';
 import _traverse from '@babel/traverse';
+import { findUseBeforeDeclare, describeUseBeforeDeclare } from './use-before-declare';
 import { isViewerMode } from '../stores/viewer-mode-store';
 const traverse = (typeof _traverse === 'function' ? _traverse : (_traverse as any).default) as typeof _traverse;
 import {
@@ -203,7 +204,7 @@ import { addTextAnimInCode, updateTextAnimInCode, removeTextAnimFromCode, nodeHa
 import { setTextOverrideInCode, removeTextOverrideInCode } from '../generation/text-override-gen';
 import { parseCanvasConfig } from '../project/canvas-config';
 import { DEFAULT_VIEWPORTS } from '../stores/viewport-store';
-import { createOverlayInCode, createCanvasOverlayInCode, cloneOverlayToCanvasTriggerInCode, updateOverlayPositionInCode, updateOverlayConfigInCode, updateOverlayTriggerInCode, removeOverlayInCode, extractOverlayToCanvasInCode, rehydrateOverlayFromCanvasInCode, healDanglingOverlayState, pruneOverlayDuplicatesInCode, liftNestedCanvasOverlaysToRoot, stripOverlaysNestedInOverlaysInCode, syncOverlayAppearTransformInCode, healMissingOverlayEffectsInCode, healUnwrappedOverlayInCode, healMisplacedOverlayInCode } from '../generation/overlay-gen';
+import { createOverlayInCode, createCanvasOverlayInCode, cloneOverlayToCanvasTriggerInCode, updateOverlayPositionInCode, updateOverlayConfigInCode, updateOverlayTriggerInCode, removeOverlayInCode, extractOverlayToCanvasInCode, rehydrateOverlayFromCanvasInCode, healDanglingOverlayState, pruneOverlayDuplicatesInCode, liftNestedCanvasOverlaysToRoot, stripOverlaysNestedInOverlaysInCode, syncOverlayAppearTransformInCode, healMissingOverlayEffectsInCode, healUnwrappedOverlayInCode, healMisplacedOverlayInCode, removeOverlayNodeInCode } from '../generation/overlay-gen';
 import { setChildEventFireInCode, removeChildEventFireInCode, type EventFireTrigger } from '../generation/event-fire-gen';
 import { parseOverlayTriggerCalls } from '../parsing/overlay-parser';
 import { wrapInFitSVGInCode, unwrapFitSVGInCode } from '../generation/fit-text-gen';
@@ -1168,6 +1169,9 @@ export function flushNow(scope?: QueueScope): void {
     // what the syntax gate below decides about the PAGE code — announce them.
     bumpVersionForGlobalsCssMutations(mutations);
     code = reglideInsertedParents(code, mutations);
+    // A `__mqN` / `__activeLocale` gate below a hook that reads it renders in the
+    // canvas and crashes the live site — lift it (text pre-check; parses only on a hit).
+    code = hoistRenderGatesInCode(code);
     // Heal any overlay runtime orphaned by a structural mutation BEFORE import
     // sync (so the re-declared useState keeps the React import). PRUNE first —
     // drop duplicate/orphan overlay elements left by a fragile canvas↔viewport
@@ -1601,6 +1605,11 @@ export function validateGeneratedCode(code: string): string | null {
     if (dangling.length) {
       return `References undefined identifier${dangling.length > 1 ? 's' : ''}: ${dangling.slice(0, 4).join(', ')}${dangling.length > 4 ? ` (+${dangling.length - 4} more)` : ''} — would crash at runtime`;
     }
+    // Declared — but LATER than a use that runs during render (a hook's deps
+    // array above the `const` it names). Passes everything above, renders in
+    // the canvas, and throws on the live site (CF 1101, 2026-10-06).
+    const tdz = findUseBeforeDeclare(ast);
+    if (tdz) return describeUseBeforeDeclare(tdz);
   } catch (e) {
     // Scope crawl failed — fall back to the syntax-only check above, but DON'T swallow
     // silently: this is the undefined-identifier safety net, and a silent failure here
@@ -2192,6 +2201,8 @@ function processQueue(): void {
   // what validation below decides about the PAGE code — announce them.
   bumpVersionForGlobalsCssMutations(mutations);
   code = reglideInsertedParents(code, mutations);
+  // Gates below their readers crash the live site — see the flushNow twin.
+  code = hoistRenderGatesInCode(code);
 
   // Prune duplicate/orphan overlay elements (ghost from a canvas↔viewport
   // round-trip), THEN heal overlay runtime orphaned by a structural mutation
@@ -2986,7 +2997,16 @@ function applyMutationCore(code: string, mutation: Mutation): string {
         // arrow would otherwise linger as dead data). Presence-based so it also
         // covers deleting a parent of the trigger. No-op for non-component
         // files / when every sourceNode still exists.
-        const afterRemove = removeNodeInCode(code, mutation.nodeId);
+        //
+        // A runtime OVERLAY element is one mechanism with its state, effect and
+        // trigger wiring — tear it down whole first (the canvas Delete key already
+        // routes it through removeOverlay). The plain strip alone dropped the
+        // state but kept the effect, and the structural heal re-declared the
+        // state BELOW that effect → TDZ crash on the live site (CF 1101,
+        // 2026-10-06). The agent's delete_node and every other raw removeNode
+        // sender land here. No-op for anything that isn't a runtime overlay.
+        const withoutOverlay = removeOverlayNodeInCode(code, mutation.nodeId);
+        const afterRemove = removeNodeInCode(withoutOverlay, mutation.nodeId);
         // Deleting a paginated collection list removes its JSX (incl. the
         // `.slice()`), but leaves its body hooks (useState/useRef/useEffect)
         // orphaned — and those keep referencing the deleted list's slug, which

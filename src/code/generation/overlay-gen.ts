@@ -852,8 +852,14 @@ export function createOverlayInCode(
       : (overlayConfig.type === 'fixed'
         ? buildFixedOverlayRuntimeEffect(overlayId, scoped)
         : buildRelativeOverlayPosEffect(overlayId, scoped));
-    if (decl || effect) {
+    if (decl && effect) {
       result = result.slice(0, statePos) + decl + effect + result.slice(statePos);
+    } else if (decl) {
+      // Top-up after a half-removal that kept the effect: the state goes ABOVE
+      // that effect, never at the prologue end below it (TDZ on the live site).
+      result = insertOverlayStateDecl(result, varName, decl);
+    } else if (effect) {
+      result = insertOverlayEffectAfterState(result, varName, effect, statePos);
     }
   }
   // Master: instance-scoped lookups need the root ref + finder (idempotent).
@@ -1585,11 +1591,108 @@ function removeOverlayEffectBlock(code: string, varName: string): string {
   if (start < 0) return code;
   let s = start;
   while (s > 0 && /[ \t]/.test(code[s - 1])) s--;   // trim leading indent
-  if (s > 0 && code[s - 1] === '\n') s--;            // and the newline before it
   let e = depIdx + dep.length;
   if (code[e] === '\n') e++;                          // trailing newline
+  // Eat ONE newline, not both — taking the one before as well joined the
+  // neighbouring statements onto a single line (`}, [a]);  const [b…`).
+  else if (s > 0 && code[s - 1] === '\n') s--;
   trace.action('overlay-gen:remove-effect-block', { varName, start: s, end: e });
   return code.slice(0, s) + code.slice(e);
+}
+
+/** Line-start offset of the runtime effect whose deps are `[<varName>]`, or -1.
+ *  Same anchor as `removeOverlayEffectBlock`. */
+function overlayEffectLineStart(code: string, varName: string): number {
+  const depIdx = code.indexOf(`, [${varName}]);`);
+  if (depIdx < 0) return -1;
+  const before = code.slice(0, depIdx);
+  const start = Math.max(before.lastIndexOf('useLayoutEffect('), before.lastIndexOf('useEffect('));
+  if (start < 0) return -1;
+  return code.lastIndexOf('\n', start) + 1;
+}
+
+/** Insert an overlay's `useState` declaration ABOVE its first render-time use.
+ *
+ *  The runtime effect's deps array `[<var>]` is evaluated during render, so when
+ *  that effect already exists the declaration must precede it. The prologue end
+ *  (`findStateInsertPos`) sits BELOW every existing effect: a state re-declared
+ *  there is read before it is initialised — the canvas tolerates that, production
+ *  SSR throws "Cannot access '<var>' before initialization" and the live site
+ *  serves Cloudflare 1101 (PearlRhine, 2026-10-06). */
+function insertOverlayStateDecl(code: string, varName: string, decl: string): string {
+  const statePos = findStateInsertPos(code);
+  const effectLine = overlayEffectLineStart(code, varName);
+  const pos = effectLine >= 0 && (statePos < 0 || effectLine < statePos) ? effectLine : statePos;
+  if (pos < 0) return code;
+  return code.slice(0, pos) + decl + code.slice(pos);
+}
+
+/** Insert an overlay's runtime effect BELOW its existing `useState`. The prologue
+ *  end stops at the first non-hook line, so a state declared after one (e.g. after
+ *  a `useRef`) sits below `statePos` — an effect placed there would read the state
+ *  in its deps before it exists. */
+function insertOverlayEffectAfterState(code: string, varName: string, effect: string, statePos: number): string {
+  const m = new RegExp(`const\\s*\\[\\s*${escapeRegExp(varName)}\\s*,[^\\]]*\\]\\s*=\\s*useState\\([^;]*\\);[^\\n]*\\n`).exec(code);
+  const afterState = m ? m.index + m[0].length : -1;
+  const pos = Math.max(statePos, afterState);
+  if (pos < 0) return code;
+  return code.slice(0, pos) + effect + code.slice(pos);
+}
+
+/**
+ * Move an overlay `useState` that sits BELOW its own runtime effect back above it.
+ *
+ * Repairs pages already written by the end-of-prologue re-declaration (see
+ * `insertOverlayStateDecl`): those render in the editor and crash the published
+ * site, so they're healed on the next overlay-structural flush. Only the plain
+ * single-line declaration at the start of a line is moved. Idempotent.
+ */
+export function healMisorderedOverlayStateInCode(code: string): string {
+  let result = code;
+  let moved = 0;
+  const vars = [...code.matchAll(/const\s*\[\s*(\w+Open)\s*,\s*set\w+\s*\]\s*=\s*useState\(false\);/g)].map(m => m[1]);
+  for (const varName of new Set(vars)) {
+    const lineRe = new RegExp(`(^|\\n)([ \\t]*const\\s*\\[\\s*${escapeRegExp(varName)}\\s*,\\s*set\\w+\\s*\\]\\s*=\\s*useState\\(false\\);[ \\t]*\\n?)`);
+    const dm = lineRe.exec(result);
+    if (!dm) continue;
+    const declStart = dm.index + dm[1].length;
+    const effectLine = overlayEffectLineStart(result, varName);
+    if (effectLine < 0 || effectLine >= declStart) continue;
+    const line = dm[2].endsWith('\n') ? dm[2] : `${dm[2]}\n`;
+    // effectLine < declStart, so cutting the declaration leaves its offset intact.
+    const without = result.slice(0, declStart) + result.slice(declStart + dm[2].length);
+    result = without.slice(0, effectLine) + line + without.slice(effectLine);
+    moved++;
+  }
+  if (moved) trace.action('overlay-gen:healMisorderedState', { moved });
+  return result;
+}
+
+/**
+ * `removeNode` on a RUNTIME overlay element tears down the whole mechanism (the
+ * conditional block, its `useState` + effect, the trigger's attr + handler) —
+ * what the canvas Delete key already does via `removeOverlay`.
+ *
+ * Every other `removeNode` sender (the agent's `delete_node` among them) reached
+ * the plain strip, whose scroll-fx const sweep matched the state by name
+ * (`stateVarName` is `<cn>Open`) but missed the multi-line effect; the heal then
+ * re-declared the state below that effect → TDZ crash on the live site.
+ *
+ * Returns the code unchanged when `nodeId` is not a runtime overlay (a canvas
+ * overlay has no runtime — the plain strip is right for it).
+ */
+export function removeOverlayNodeInCode(code: string, nodeId: string): string {
+  const overlay = parseOverlayCalls(code).find(o => o.overlayId === nodeId);
+  if (!overlay) return code;
+  const idIdx = findJSXDataIdIndex(code, nodeId);
+  if (idIdx < 0) return code;
+  const tagClose = findTagClose(code, idIdx);
+  if (tagClose < 0 || /data-canvas-node/.test(code.slice(code.lastIndexOf('<', idIdx), tagClose))) return code;
+  const triggerId = overlay.config.triggerId
+    || parseOverlayTriggerCalls(code).find(t => t.config.targetId === nodeId)?.triggerId
+    || '';
+  trace.action('overlay-gen:removeNode-routed-to-removeOverlay', { overlayId: nodeId, triggerId });
+  return removeOverlayInCode(code, nodeId, triggerId);
 }
 
 export function removeOverlayInCode(code: string, overlayId: string, triggerId: string): string {
@@ -2259,8 +2362,10 @@ export function rehydrateOverlayFromCanvasInCode(code: string, triggerId: string
  * component variants leaves the conditional behind but drops the `useState` —
  * the validator then blocks the NEXT mutation ("references undefined identifier
  * <var>Open"). We re-declare the missing `useState(false)` inside the component
- * body so the reference resolves. Idempotent (declared vars are skipped). Safe to
- * run after every move into a viewport.
+ * body — ABOVE the effect that reads it — so the reference resolves; an effect
+ * nothing else references is dropped instead. Also moves a state already sitting
+ * below its effect (`healMisorderedOverlayStateInCode`). Idempotent (declared vars
+ * are skipped). Safe to run after every move into a viewport.
  */
 export function healDanglingOverlayState(code: string): string {
   // Vars referenced by an overlay conditional `{<x>Open && …}` OR the positioning
@@ -2285,15 +2390,28 @@ export function healDanglingOverlayState(code: string): string {
     },
   );
   let added = 0;
+  let droppedEffects = 0;
   for (const varName of referenced) {
     if (new RegExp(`const\\s*\\[\\s*${escapeRegExp(varName)}\\s*,`).test(result)) continue; // already declared
     const setter = `set${varName.charAt(0).toUpperCase() + varName.slice(1)}`;
-    const statePos = findStateInsertPos(result);
-    if (statePos < 0) continue;
-    result = result.slice(0, statePos) + `  const [${varName}, ${setter}] = useState(false);\n` + result.slice(statePos);
-    added++;
+    // Only the overlay's own runtime effect still names it (no conditional, no
+    // trigger handler) → the overlay is gone. Drop the dead effect instead of
+    // declaring state to keep it alive.
+    const withoutEffect = removeOverlayEffectBlock(result, varName);
+    if (withoutEffect !== result
+      && !new RegExp(`\\b(?:${escapeRegExp(varName)}|${escapeRegExp(setter)})\\b`).test(withoutEffect)) {
+      result = withoutEffect;
+      droppedEffects++;
+      continue;
+    }
+    const before = result;
+    result = insertOverlayStateDecl(result, varName, `  const [${varName}, ${setter}] = useState(false);\n`);
+    if (result !== before) added++;
   }
-  if (added || removed) trace.action('overlay-gen:healDanglingState', { added, removed });
+  // Pages already written with the state BELOW its effect (the pre-2026-10-06
+  // re-declaration position) render in the editor and crash the live site.
+  result = healMisorderedOverlayStateInCode(result);
+  if (added || removed || droppedEffects) trace.action('overlay-gen:healDanglingState', { added, removed, droppedEffects });
   return result;
 }
 

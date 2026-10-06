@@ -10,7 +10,7 @@ import { findTagClose, findJSXDataIdIndex, insertBeforeRenderReturn, findStyleOb
 import { setScrollVariantInCode } from './scroll-variant-gen';
 import { setInstanceFxInCode } from './instance-fx-gen';
 import { type ResolvedScope } from '@/code/animations/animation-scope';
-import { scopeTest, scopeKey, buildScopedScalarExpr, parseScopedScalarExpr, type SerScope } from './scoped-expr';
+import { scopeTest, scopeKey, buildScopedScalarExpr, parseScopedScalarExpr, hoistRenderGatesInCode, type SerScope } from './scoped-expr';
 import { findMotionPropExpr, parseScopedExpr, rebuildScopedExpr, readMotionPropResponsive, updateMotionPropInCode, setMotionPropScopedValue } from './generator-motion-props';
 import { updateScrollAnimInCode, updateScrollDirectionAnimInCode, removeScrollDirectionFromCode, ensureMotionTag, type ScrollTrigger, type ScrollAnimConfig, type ScrollSpeedConfig } from './generator-motion-scroll';
 import { parseTagObject, hasAppearTransformConflict, composeScrollAppearInCode, hasDirectionTransformConflict, composeScrollDirectionTransformInCode, hasGestureTransformConflict, composeGestureInCode, decomposeGestureInCode } from './generator-motion-compose';
@@ -541,6 +541,11 @@ export function clearNodeScrollFx(code: string, nodeId: string): string {
   //     Appear decl is already gone, so decompose's gate never ran). Both anchors carry the
   //     node's own name, so the lazy middle can't swallow a neighbouring effect.
   result = result.replace(new RegExp(`\\s*useEffect\\(\\(\\)\\s*=>\\s*\\{\\s*if\\s*\\(${e}(?!${TEXT_ANIM_TAIL})[A-Z]\\w*\\)[\\s\\S]*?\\},\\s*\\[${e}(?!${TEXT_ANIM_TAIL})[A-Z]\\w*\\]\\);`, 'g'), '');
+  // An overlay's open state is `<cn>Open` (overlay-gen `stateVarName`) — overlay-gen
+  // owns it, never scroll-fx. Clearing the overlay ELEMENT matched it below and
+  // dropped the state while its multi-line effect survived; the heal then
+  // re-declared it under that effect → TDZ crash on the live site (2026-10-06).
+  const overlayStateRe = new RegExp(`^const \\[\\s*${e}Open\\s*,`);
   result = result.split('\n').filter((line) => {
     const t = line.trim();
     // A line that OPENS something it does not close is NOT a single-line
@@ -562,6 +567,7 @@ export function clearNodeScrollFx(code: string, nodeId: string): string {
     const fx = `${e}(?!${TEXT_ANIM_TAIL})[A-Z]`;
     const protectedRef = clearProtectRef && new RegExp(`^const ${e}Ref\\s*=`).test(t);
     if (protectedRef) return true;
+    if (overlayStateRe.test(t)) return true;
     if (new RegExp(`^const ${fx}\\w*\\s*=`).test(t)) return false;              // const cnXxx = …
     if (new RegExp(`^const \\{[^}]*:\\s*${fx}\\w*\\s*\\}\\s*=`).test(t)) return false; // const { k: cnXxx } = …
     if (new RegExp(`^const \\[\\s*${fx}\\w*`).test(t)) return false;            // const [cnXxx, …] = useState
@@ -970,7 +976,9 @@ function gateScrollTransformResponsive(
     const re = new RegExp(`(const ${vn} = useTransform\\([^,]+,\\s*\\[[^\\]]*\\],\\s*)${esc}(\\s*\\))`);
     result = result.replace(re, `$1${outExpr}$2`);
   }
-  return result;
+  // The `useTransform` lines were written BEFORE their gates, which ensureMediaGate
+  // anchors at the render return — below them. Lift each gate above its reader.
+  return hoistRenderGatesInCode(result);
 }
 
 /** Add a `prop: motionVar` binding to a node's `style={{ … }}` (motion.<tag>). */

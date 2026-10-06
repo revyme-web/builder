@@ -1592,7 +1592,7 @@ export function checkFile(
     if (crash) {
       v.push({
         code: 'WOULD_CRASH', tier: 3,
-        message: `This file would crash at runtime: ${crash}. Every referenced identifier must be declared in the file or imported; remove or declare the offender and return the complete corrected file.`,
+        message: `This file would crash at runtime: ${crash}. Every referenced identifier must be declared (above its first use) in the file or imported; remove, move or declare the offender and return the complete corrected file.`,
       });
     }
   }
