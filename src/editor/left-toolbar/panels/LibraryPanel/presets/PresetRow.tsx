@@ -2,14 +2,37 @@
 // usage badge, edit/rename UI).
 
 import React from 'react';
+import { useAtomValue } from 'jotai';
 import SidebarRow from '@/design-system/SidebarRow';
 import { type DropdownMenuEntry } from '@/design-system/DropdownMenu';
-import { type PresetUsage } from '@/code/stores/preset-store';
+import { type PresetUsage, livePresetTokenAtom } from '@/code/stores/preset-store';
 import type { PresetToken } from '@/shared/types';
 import { formatTokenLabel } from '../shared/format-utils';
 import { MULTI_SELECT_OUTLINE } from '../shared/section-utils';
 import { ValuePreview } from './ValuePreview';
 import { UsageBadge } from './UsagePopup';
+import { presetValueLabel } from './preset-value-label';
+
+/** Right side of every preset row: the light-gray value text, then the usage
+ *  badge. The badge slot keeps its width even with no usages, so the values
+ *  of one category line up in a column. */
+export function PresetRowTrail({ value, usages }: { value: string; usages: PresetUsage[] }) {
+  return (
+    <>
+      {value && (
+        <span
+          className="shrink-0 max-w-[45%] ml-1 truncate text-[10px] tabular-nums text-[var(--text-disabled)]"
+          title={value}
+        >
+          {value}
+        </span>
+      )}
+      <span className="shrink-0 w-4 h-4 flex items-center justify-center">
+        <UsageBadge count={usages.length} usages={usages} />
+      </span>
+    </>
+  );
+}
 
 interface PresetRowProps {
   token: PresetToken;
@@ -43,6 +66,9 @@ interface PresetRowProps {
 
 export function PresetRow({ token, isEditing, isRenaming, renameValue, onRenameChange, onRenameSubmit, onRenameCancel, onEdit, onStartRename, onDelete, usages, onShiftClick, isMultiSelected, menuOverride }: PresetRowProps) {
   const displayLabel = token.label ?? formatTokenLabel(token.name);
+  // Follow the colour popup's live drag, same as the swatch (ValuePreview).
+  const livePreset = useAtomValue(livePresetTokenAtom);
+  const valueText = presetValueLabel(livePreset?.name === token.name ? { ...token, value: livePreset.value } : token);
   // Direct actions — the old entries routed through the legacy
   // PresetContextMenu (opened at 0,0 and needed a second click).
   const menuItems: DropdownMenuEntry[] = menuOverride ?? [
@@ -89,7 +115,7 @@ export function PresetRow({ token, isEditing, isRenaming, renameValue, onRenameC
         onEdit(token.name);
       }}
       style={isMultiSelected ? { cursor: 'pointer', ...MULTI_SELECT_OUTLINE } : { cursor: 'pointer' }}
-      right={<UsageBadge count={usages.length} usages={usages} />}
+      right={<PresetRowTrail value={valueText} usages={usages} />}
     />
   );
 }

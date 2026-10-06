@@ -22,10 +22,10 @@ import { type PresetUsage } from '@/code/stores/preset-store';
 import { groupBorderTokens, type BorderGroup } from '@/editor/ui/border-preset-utils';
 import type { PresetToken } from '@/shared/types';
 import type { TypoGroup as TypographyGroup } from '@/editor/tools/typography-utils';
-import { PresetRow } from './PresetRow';
+import { PresetRow, PresetRowTrail } from './PresetRow';
 import { TypographyGroupRow } from './TypographyGroupRow';
 import { CreatePresetInline } from './CreatePresetInline';
-import { UsageBadge } from './UsagePopup';
+import { borderGroupValueLabel } from './preset-value-label';
 import { CreatorFolderIcon } from '../shared/icons';
 import { bulkDeleteMenuEntry, MULTI_SELECT_OUTLINE } from '../shared/section-utils';
 import type { LibraryMultiSelect } from '../shared/useLibraryMultiSelect';
@@ -450,7 +450,7 @@ export function BorderGroupRow({ group, isEditing, onEdit, onDelete, usages, onS
       }}
       style={isMultiSelected ? MULTI_SELECT_OUTLINE : undefined}
       menuItems={menuItems}
-      right={<UsageBadge count={usages.length} usages={usages} />}
+      right={<PresetRowTrail value={borderGroupValueLabel(group)} usages={usages} />}
     />
   );
 }

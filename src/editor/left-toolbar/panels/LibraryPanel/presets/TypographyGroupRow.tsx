@@ -12,7 +12,8 @@ import type { TypoGroup as TypographyGroup } from '@/editor/tools/typography-uti
 import { getTypoTag } from '@/editor/tools/typography-utils';
 import { TypoTagBadge } from '@/editor/controls';
 import { MULTI_SELECT_OUTLINE } from '../shared/section-utils';
-import { UsageBadge } from './UsagePopup';
+import { PresetRowTrail } from './PresetRow';
+import { typographyValueLabel } from './preset-value-label';
 
 interface TypographyGroupRowProps {
   group: TypographyGroup;
@@ -62,7 +63,7 @@ export function TypographyGroupRow({ group, isEditing, onEdit, onDelete, usages,
           onEdit();
         }}
         style={{ cursor: 'pointer' }}
-        right={<UsageBadge count={usages.length} usages={usages} />}
+        right={<PresetRowTrail value={typographyValueLabel(group)} usages={usages} />}
       />
     </div>
   );
