@@ -288,14 +288,16 @@ export const CMS_CASES: CapabilityCase[] = [
     files: { [HOME]: LIST_PAGE() },
     calls: [
       { tool: 'bind_cms_list', args: { node_id: 'post-row', collection_slug: 'blog' } },
-      { tool: 'set_list_config', args: { node_id: 'posts', viewport: 375, filters: [{ field: 'cover', operator: 'exists' }] } },
+      // This page declares no breakpoints, so the default ladder applies (Desktop 1200 / Tablet 810–1199 /
+      // Mobile below 810, since 2026-09-30) — Mobile's overrides are keyed 809, the end of its range.
+      { tool: 'set_list_config', args: { node_id: 'posts', viewport: 809, filters: [{ field: 'cover', operator: 'exists' }] } },
     ],
     expect: (w) => {
       const code = w.read(HOME) ?? '';
       must(/__applyListConfig|applyListConfig/.test(code), 'the list was not upgraded to the responsive config shape');
-      must(/375/.test(code) && /cover/.test(code), 'no 375px override on the cover field');
+      must(/809/.test(code) && /cover/.test(code), 'no mobile (809) override on the cover field');
       const list = w.node('posts').collectionList;
-      must(list?.responsive?.['375']?.filterGroup?.filters.some((f) => f.field === 'cover'), 'the parser does not read the mobile filter back');
+      must(list?.responsive?.['809']?.filterGroup?.filters.some((f) => f.field === 'cover'), 'the parser does not read the mobile filter back');
     },
   },
   {

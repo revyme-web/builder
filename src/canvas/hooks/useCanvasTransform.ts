@@ -190,18 +190,24 @@ export function useCanvasTransform(opts: UseCanvasTransformOptions) {
     // This prevents browser auto-scroll AND gives reliable button-matched up/down.
     const detachMiddlePan = attachMiddleMousePan(container, setPanCursor);
 
-    // Wheel events INSIDE the iframe don't bubble to parent — sandbox forwards
-    // them via postMessage. Synthesize a WheelEvent here so handleWheel works
-    // unchanged. Coordinates from the message are iframe-local; add the
-    // iframe's screen offset so handleWheel's container-relative math is correct.
+    // Wheel events INSIDE the iframe don't bubble to parent — the sandbox
+    // forwards them via postMessage (canvas-sandbox/wheel-forward.ts). They only
+    // land there while text / vector edit flips the iframe to pointer-events:
+    // auto. Synthesize a WheelEvent here so handleWheel works unchanged.
+    // Coordinates from the message are iframe-local; add the iframe's screen
+    // offset so handleWheel's container-relative math is correct.
     const onIframeWheel = (e: MessageEvent) => {
       if (!e.data || e.data.type !== 'wheel') return;
       const iframe = iframeRef.current;
       if (!iframe) return;
+      // Only the canvas iframe drives the camera — not a plugin or preview frame.
+      if (e.source !== iframe.contentWindow) return;
       const ir = iframe.getBoundingClientRect();
       const synthetic = new WheelEvent('wheel', {
         deltaX: e.data.deltaX,
         deltaY: e.data.deltaY,
+        // Pixels vs lines decides pinch vs mouse-wheel zoom speed (isTrackpadPinch).
+        deltaMode: e.data.deltaMode ?? 0,
         ctrlKey: e.data.ctrlKey,
         metaKey: e.data.metaKey,
         clientX: e.data.clientX + ir.left,

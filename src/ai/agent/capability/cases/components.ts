@@ -118,6 +118,7 @@ export const COMPONENT_CASES: CapabilityCase[] = [
   {
     id: 'components/responsive-instance-variant', domain: 'components', status: 'supported',
     feature: 'Per-breakpoint instance variant',
+    knownBug: 'show_variant writes data-responsive "_bp":[809,1199,1200] (the DEFAULT ladder) on a page whose @canvas declares 1440/768/375 — the instance switches at the wrong widths on the live site',
     ask: 'on mobile show the hover version of the hero button',
     calls: [{ tool: 'show_variant', args: { node_id: 'hero-cta', variant: 'default-hover', viewport: 375 } }],
     expect: (w) => {

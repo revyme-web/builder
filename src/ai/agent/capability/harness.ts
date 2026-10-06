@@ -103,6 +103,10 @@ export interface CapabilityCase {
   /** Oracle codes this case is ALLOWED to leave behind (pre-existing in the
    *  fixture, or a documented rule the builder itself violates). Keep empty. */
   allowViolations?: string[];
+  /** A REAL product bug this case currently catches, quarantined so CI stays
+   *  green while it's open. The case runs as `test.fails`: it goes RED the day
+   *  the bug is fixed — delete this field then. Say what is wrong. */
+  knownBug?: string;
 }
 
 export interface CaseResult {

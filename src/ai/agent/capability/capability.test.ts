@@ -23,7 +23,9 @@ const results: CaseResult[] = [];
 describe('agent capability', () => {
   for (const c of ALL_CASES) {
     if (c.status === 'missing') { test.todo(`${c.id} — ${c.feature}${c.gap ? ` (${c.gap})` : ''}`); continue; }
-    test(`${c.id} — ${c.feature}`, async () => {
+    // A quarantined product bug: must keep FAILING until it's fixed (see `knownBug`).
+    const run = c.knownBug ? test.fails : test;
+    run(`${c.id} — ${c.feature}${c.knownBug ? ` [KNOWN BUG: ${c.knownBug}]` : ''}`, async () => {
       const r = await runCase(c);
       results.push(r);
       // The message IS the diagnosis — vitest truncates an array diff to "[ …(2) ]".

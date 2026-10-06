@@ -61,6 +61,7 @@ import {
   getTransformedCorners, getBBox, captureElement,
 } from './sandbox/read-handlers';
 import { bakeGroupResize, clearGroupResizeBake, liveRefitGroup } from './sandbox/group-resize';
+import { installWheelForwarding } from './wheel-forward';
 import {
   removeElement, reparentLive, createPlaceholder, movePlaceholder, patchPlaceholderStyles,
   swapTwoElements, removePlaceholders, getPlaceholderRect, liftNode, restoreNode, commitMergedOrder,
@@ -110,6 +111,10 @@ export function initSandbox(_containerEl: HTMLElement, contentRootEl: HTMLElemen
       emit({ type: 'sandboxMouseMove', clientX: lastMouseX, clientY: lastMouseY });
     });
   });
+  // Wheel + trackpad pinch → the parent's camera. Only reachable while text /
+  // vector edit makes the iframe take clicks; without it a pinch zoomed the
+  // whole browser page instead of the canvas (see wheel-forward.ts).
+  installWheelForwarding(window, (msg) => self.parent.postMessage(msg, '*'));
   // Expose the API to the parent. Comlink wraps postMessage under the hood;
   // every method becomes an awaited RPC call on the parent side.
   Comlink.expose(api, Comlink.windowEndpoint(self.parent));
