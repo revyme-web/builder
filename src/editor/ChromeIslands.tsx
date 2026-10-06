@@ -3,9 +3,10 @@
 // LEFT island = LeftHeader + LeftMenu rail + LeftPanel; RIGHT island =
 // RightHeader + the right sidebar. The individual components keep all
 // their logic and z-order but render TRANSPARENT, positioned on top of
-// these two fixed glass backdrops (z-4998, under all chrome at z-5000+).
-// One surface per side means one border, one blur pass, one pair of cut
-// corners — no seams between header/rail/panel.
+// these two fixed backdrops (z-4998, under all chrome at z-5000+).
+// One surface per side means one border, one pair of cut corners — no
+// seams between header/rail/panel. Solid fill, no backdrop blur (removed
+// 2026-10-06, user call).
 //
 // Geometry contract (mirrored by the pieces):
 //   left slab:      DOCKED to the screen edges (user call 2026-08-20) —
@@ -25,10 +26,8 @@ import { useAtomValue } from 'jotai';
 import { workspaceOverlayOpenAtom } from '@/code/stores/workspace-overlay-store';
 import { useTopChromeHeight } from '@/canvas/ui/use-top-chrome-height';
 
-const GLASS: React.CSSProperties = {
-  background: 'color-mix(in srgb, var(--bg-surface) 93%, transparent)',
-  backdropFilter: 'blur(18px) saturate(1.15)',
-  WebkitBackdropFilter: 'blur(18px) saturate(1.15)',
+const SURFACE: React.CSSProperties = {
+  background: 'var(--bg-surface)',
   ['--cut-border-color' as string]: 'var(--border-light)',
 };
 
@@ -46,17 +45,17 @@ export default function ChromeIslands() {
       <div
         aria-hidden
         className={`fixed z-[4998] border-r border-[var(--border-light)] ${cutLeft}`}
-        style={{ left: 0, top: 0, width: 308, height: '100vh', ...GLASS }}
+        style={{ left: 0, top: 0, width: 308, height: '100vh', ...SURFACE }}
       />
       <div
         aria-hidden
         className={`fixed z-[4998] border-b border-l border-[var(--border-light)] [--cut-border-color:var(--border-light)] ${overlayOpen || topBarPresent ? '' : 'cut-tl cut-border cut-lg'}`}
-        style={{ right: 0, top: 0, width: 260, height: 52, ...GLASS }}
+        style={{ right: 0, top: 0, width: 260, height: 52, ...SURFACE }}
       />
       <div
         aria-hidden
         className="fixed z-[4998] border-l border-[var(--border-light)]"
-        style={{ right: 0, top: 52, width: 260, height: 'calc(100vh - 52px)', ...GLASS }}
+        style={{ right: 0, top: 52, width: 260, height: 'calc(100vh - 52px)', ...SURFACE }}
       />
     </>
   );

@@ -214,9 +214,9 @@ export default function App() {
 
       {/* Main — offset ONLY by the 52px icon rail: the canvas runs FULL-BLEED
           under both side panels (the right sidebar pulls itself over it with
-          marginLeft: -260). This is what feeds the panels' glassmorphism —
-          backdrop-blur needs real canvas behind the glass, not app
-          background — and the cut notches keep working for free. Camera
+          marginLeft: -260). Originally fed the panels' backdrop blur (now
+          removed — the ChromeIslands are solid); the cut notches still
+          need real canvas behind them. Camera
           fits/pans center in the VISIBLE strip between the slabs:
           getAvailableArea (CameraCommands) adds insets.left now that the
           container origin is 0. To revert to opaque panels,
