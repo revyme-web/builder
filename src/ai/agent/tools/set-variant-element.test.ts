@@ -3,9 +3,10 @@
 // Before, the page-side write could only reach the master's ROOT, so a
 // variant that recolours a card's text was not expressible by any agent.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getDefaultStore } from 'jotai';
 import { agentToolCall, agentRunEnd } from '@/ai/agent/bridge-tools';
+import { backend } from '@/backend';
 import { projectFS, resetProjectFS } from '@/code/project/project-fs';
 import { activeFilePathAtom } from '@/code/project/active-file-store';
 import { setActiveFilePath, syncQueueCode, initMutationQueue } from '@/code/mutation/mutation-queue';
@@ -35,6 +36,18 @@ function Card({ style, initialVariant = 'default' }: { style?: React.CSSProperti
 
 export default withResponsiveProps(Card);
 `;
+
+// External-agent writes await a REAL save (bridge-tools persistAgentWrites)
+// and report failure honestly: a resolved project and a backend that
+// accepts the save.
+beforeEach(() => {
+  window.history.pushState({}, '', '/builder/proj123');
+  vi.spyOn(backend, 'saveProject').mockResolvedValue(undefined);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  window.history.pushState({}, '', '/');
+});
 
 beforeEach(() => {
   resetProjectFS(new Map([[PAGE_PATH, PAGE], ['components/Card.tsx', MASTER]]));

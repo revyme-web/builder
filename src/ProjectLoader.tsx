@@ -283,9 +283,9 @@ export default function ProjectLoader() {
         // behaves exactly as before. Never a throw: a corrupt branch record
         // must not brick the project — main is already loaded above.
         try {
-          const raw = data as { branches?: unknown; activeBranchId?: unknown } | null | undefined;
+          const raw = data as { branches?: unknown; activeBranchId?: unknown; files?: unknown } | null | undefined;
           if (raw && typeof raw === 'object' && raw.branches) {
-            projectFS.hydrateBranches(raw.branches, raw.activeBranchId);
+            projectFS.hydrateBranches(raw.branches, raw.activeBranchId, raw.files);
             trace.action('project-loader:branches-loaded', { branches: projectFS.listBranches().length - 1, active: projectFS.getActiveBranchId() });
           }
         } catch (err) {

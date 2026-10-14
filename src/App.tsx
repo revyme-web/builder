@@ -47,6 +47,7 @@ import { useIsViewer, useIsViewerRole, useViewerReason, setOfflineMode } from '.
 import { useActiveBranchId } from './code/stores/agent-run-lock-store';
 import { MAIN_BRANCH_ID } from './code/project/project-fs';
 import { suspendBuilderTheme, resumeBuilderTheme } from '@/editor/builder-theme';
+import SaveProblemBanner from './editor/SaveProblemBanner';
 // Sketch draw animations intentionally do NOT auto-play on the canvas —
 // it's an editing surface, and auto-playback on every preview exit /
 // page open is distracting noise. The animation runs in PREVIEW (and at
@@ -191,6 +192,9 @@ export default function App() {
           state when the connection drops, and the matching toast. */}
       <OfflineWatcher />
       <OfflineToast />
+      {/* A save the backend refused (stale tab / failure) — the only place
+          that state is visible. */}
+      <SaveProblemBanner />
 
       {/* Headers — fixed at top corners, canvas visible between them */}
       <LeftHeader />

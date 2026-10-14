@@ -18,6 +18,21 @@ export function isKnownProjectFormat(value: unknown): value is ProjectFormat {
   return value === 'revyme-v1' || value === 'revyme-v2' || value === 'canvas-poc-v1';
 }
 
+/**
+ * The backend refused a save because the row moved on since this tab's copy
+ * was loaded — another tab or device saved newer work (save-revision.ts).
+ * `serverRevision` is the row's current revision (null if the backend did
+ * not say), the base an explicit "overwrite" saves against.
+ */
+export class SaveConflictError extends Error {
+  readonly serverRevision: number | null;
+  constructor(serverRevision: number | null) {
+    super('This project was saved from another tab or device after this tab loaded it.');
+    this.name = 'SaveConflictError';
+    this.serverRevision = serverRevision;
+  }
+}
+
 export interface ProjectData {
   format: ProjectFormat;
   /** MAIN's files — the publish / export / backup truth, in BOTH formats.
@@ -25,8 +40,13 @@ export interface ProjectData {
    *  that reads `files` keeps working and never needs to know about them. */
   files: Record<string, string>;  // ProjectFS snapshot: { filePath: fileContent }
   /** v2 only: non-main branches, each with its working files and the merge
-   *  base it was cut from. Absent while the project has no branches. */
+   *  base it was cut from. Absent while the project has no branches. Saved as
+   *  deltas — `baseDelta` against main's `files`, `filesDelta` against the
+   *  branch's own base (project-fs FileDelta); `files` / `baseSnapshot` are
+   *  the legacy full copies, still read on load. */
   branches?: Record<string, {
+    baseDelta?: { set: Record<string, string>; del: string[] };
+    filesDelta?: { set: Record<string, string>; del: string[] };
     files?: Record<string, string>;
     baseSnapshot?: Record<string, string>;
     status?: string;

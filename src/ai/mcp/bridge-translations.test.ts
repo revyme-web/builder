@@ -1,7 +1,8 @@
 // manageTranslations bridge op — locales CRUD + text translations through the
 // editor's own {t()}+messages pipeline.
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { bridgeHandlers } from './bridge-client';
+import { backend } from '@/backend';
 import { projectFS, resetProjectFS } from '@/code/project/project-fs';
 
 const PAGE_PATH = 'app/page.client.tsx';
@@ -23,6 +24,17 @@ export default function Page() {
 const CONFIG = JSON.stringify({
   defaultLocale: 'en',
   locales: [{ code: 'en', label: 'English' }, { code: 'fr', label: 'French' }],
+});
+
+// Translation writes await a real save (bridge-client persistBridgeWrite):
+// a resolved project and a backend that accepts it.
+beforeEach(() => {
+  window.history.pushState({}, '', '/builder/proj123');
+  vi.spyOn(backend, 'saveProject').mockResolvedValue(undefined);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  window.history.pushState({}, '', '/');
 });
 
 beforeEach(() => {

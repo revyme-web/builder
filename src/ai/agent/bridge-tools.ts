@@ -28,6 +28,7 @@ import { readAgentSurface } from './surface-state';
 import { surfaceForRequest } from './surface';
 import { runBeforeAgentTurn } from './turn-hooks';
 import { trace } from '@/shared/debug-trace';
+import { describeSaveFailure, flushSaveNow, localWriteCount, triggerAutosave, type SaveOutcome } from '@/backend/autosave';
 
 /**
  * Who opened a run.
@@ -52,6 +53,52 @@ interface ActiveRun {
   source: RunSource;
   /** Tool calls made in this run, for the per-call ids the mirror keys on. */
   calls: number;
+  /** The external MCP client that owns the run ("claude-code", "cursor"…), when known. */
+  client?: string;
+  /** The request it is working on (begin_work), for the refusal message. */
+  request?: string;
+  /** Local ProjectFS writes when the run opened — run end saves if it moved. */
+  writesAtStart: number;
+}
+
+/**
+ * Who is calling, as the MCP proxy tells it (`__caller` on bridge params):
+ * the run its session opened with begin_work, and the client's name. Absent
+ * for the builder's own chat (the service) and older proxies.
+ */
+export interface BridgeCaller {
+  runId?: string | null;
+  client?: string | null;
+}
+
+/**
+ * ONE AGENT AT A TIME. An editor tab has one run: one lock, one checkpoint,
+ * one Changes card. A second agent's begin_work used to silently END the
+ * first one's run, and every tool call landed in whichever run was open — so
+ * with four clients on one project (Claude.ai, Cursor, Claude Code, an
+ * orchestrator) finish_work reported "0 file(s) changed", or another agent's
+ * files (2026-10-14). Now an external agent cannot take over or write into
+ * another agent's open run; it is told to wait.
+ */
+function isOtherAgentsRun(run: ActiveRun, caller: BridgeCaller | undefined): boolean {
+  if (!caller) return false;
+  if (run.source === 'service') return !caller.runId || caller.runId !== run.runId;
+  if (caller.runId) return caller.runId !== run.runId;
+  // A caller without a run of its own (tools without begin_work): the same
+  // client may keep using its lazy run; another client may not.
+  return !!caller.client && !!run.client && caller.client !== run.client;
+}
+
+export function anotherAgentWorkingMessage(run: ActiveRun): string {
+  const who = run.source === 'service'
+    ? "the Revyme editor's own AI agent"
+    : run.client ? `another agent (${run.client})` : 'another agent';
+  const what = run.request ? ` on "${run.request.slice(0, 120)}"` : '';
+  const lease = RUN_LEASE_MS[run.source];
+  const expiry = lease ? ` or its run expires after ${Math.round(lease / 1000)}s without activity` : '';
+  return `Refused: ${who} is working in this Revyme project right now${what}. `
+    + 'Two agents in one editor at the same time overwrite each other\'s work and runs, so only one may work at a time. '
+    + `Wait until it calls finish_work${expiry}, then try again. Nothing was changed.`;
 }
 
 let active: ActiveRun | null = null;
@@ -168,7 +215,18 @@ export function agentRunStart(params: { runId?: string; source?: RunSource; requ
   const source: RunSource = params.source === 'mcp' || params.source === 'lazy' ? params.source : 'service';
   const runId = params.runId ?? `run-${Date.now().toString(36)}`;
   if (active?.runId === runId) return { runId, branch: projectFS.getActiveBranchId() };
-  if (active) agentRunEnd({ runId: active.runId });
+  if (active) {
+    // An external agent's begin_work never ends ANOTHER agent's open run (the
+    // user's own chat turn still may — that is the user acting). The same
+    // client starting its next request does end its previous run.
+    const sameClient = active.source !== 'service'
+      && (!active.client || !params.client || active.client === params.client);
+    if (source !== 'service' && !sameClient) {
+      trace.action('agent-bridge:run-start-refused', { active: active.runId, activeClient: active.client, client: params.client });
+      throw new Error(anotherAgentWorkingMessage(active));
+    }
+    agentRunEnd({ runId: active.runId });
+  }
   // A new request from the external agent ends the "you were stopped" window.
   if (source === 'mcp') externalStopUntil = 0;
   const branch = projectFS.getActiveBranchId();
@@ -179,8 +237,11 @@ export function agentRunStart(params: { runId?: string; source?: RunSource; requ
     releaseLock: (lockBranch(branch), () => unlockBranch(branch)),
     source,
     calls: 0,
+    client: params.client || undefined,
+    request: params.request,
+    writesAtStart: localWriteCount(),
   };
-  trace.action('agent-bridge:run-start', { runId, branch, source });
+  trace.action('agent-bridge:run-start', { runId, branch, source, client: params.client });
   if (source !== 'service') {
     const ext = source;
     notify((o) => o.begin({ runId, source: ext, request: params.request, client: params.client }));
@@ -198,7 +259,10 @@ export function agentRunEnd(params: { runId?: string; summary?: string } = {}): 
 function endRun(params: { runId?: string; summary?: string }, stopped: boolean): { runId: string | null; changes: TurnFileChange[] } {
   if (!active) return { runId: null, changes: [] };
   if (params.runId && params.runId !== active.runId) {
+    // Someone else's run is open (theirs expired or was stopped and another
+    // began): closing it would hand THEM a "0 files changed" — leave it.
     trace.action('agent-bridge:run-end-mismatch', { asked: params.runId, active: active.runId });
+    return { runId: null, changes: [] };
   }
   const { runId, checkpoint, releaseLock, source } = active;
   active = null;
@@ -214,6 +278,32 @@ function endRun(params: { runId?: string; summary?: string }, stopped: boolean):
   trace.action('agent-bridge:run-end', { runId, files: changes.length, source, stopped });
   if (source !== 'service') notify((o) => o.end({ runId, changes, summary: params.summary, stopped }));
   return { runId, changes };
+}
+
+/**
+ * Persist what a run (or one of its calls) wrote, and say whether it reached
+ * the server. Flushes the mutation queue first — semantic tools queue their
+ * writes. Null when nothing was written since `writesBefore`.
+ */
+async function persistAgentWrites(writesBefore: number): Promise<SaveOutcome | null> {
+  try { flushNow(); } catch { /* nothing queued */ }
+  if (localWriteCount() === writesBefore) return null;
+  triggerAutosave({ force: true });
+  return flushSaveNow();
+}
+
+/**
+ * `run_end` over the bridge: close the run, then make sure its work is SAVED
+ * before the agent is told it is finished. `saved.ok: false` carries the
+ * reason (finish_work reports it instead of "work finished").
+ */
+export async function agentRunEndAndSave(params: { runId?: string; summary?: string } = {}): Promise<{ runId: string | null; changes: TurnFileChange[]; saved?: { ok: boolean; error?: string } }> {
+  const writesAtStart = active && (!params.runId || params.runId === active.runId) ? active.writesAtStart : null;
+  const ended = agentRunEnd(params);
+  if (!ended.runId || writesAtStart === null) return ended;
+  const saved = await persistAgentWrites(writesAtStart);
+  if (!saved) return { ...ended, saved: { ok: true } };
+  return { ...ended, saved: saved.ok ? { ok: true } : { ok: false, error: describeSaveFailure(saved) } };
 }
 
 /**
@@ -251,11 +341,15 @@ export async function attributeBridgeCall<T>(
   input: Record<string, unknown>,
   write: boolean,
   fn: () => Promise<T>,
+  caller?: BridgeCaller,
 ): Promise<T> {
+  if (active && write && isOtherAgentsRun(active, caller)) {
+    throw new Error(anotherAgentWorkingMessage(active));
+  }
   if (!active) {
     if (Date.now() < externalStopUntil) throw new Error(EXTERNAL_STOPPED_MESSAGE);
     if (!write) return fn();
-    agentRunStart({ source: 'lazy' });
+    agentRunStart({ source: 'lazy', runId: caller?.runId || undefined, client: caller?.client || undefined });
   }
   const run = active!;
   if (write) run.checkpoint.begin();
@@ -290,12 +384,19 @@ export async function agentToolCall(params: {
   name?: string;
   input?: Record<string, unknown>;
   runId?: string;
+  /** The MCP client's name — set by the MCP proxy, absent for the chat. */
+  client?: string;
 }): Promise<{ isError: boolean; content: unknown[] }> {
   const name = String(params.name ?? '');
   const tool = findTool(name);
   if (!tool) {
     const known = buildToolManifest().map((t) => t.name).join(', ');
     return { isError: true, content: [{ type: 'text', text: `Unknown tool "${name}". Available: ${known}` }] };
+  }
+  // Another agent's run is open: this call must not write into it.
+  const caller: BridgeCaller | undefined = params.client !== undefined ? { runId: params.runId, client: params.client } : undefined;
+  if (active && isOtherAgentsRun(active, caller)) {
+    return { isError: true, content: [{ type: 'text', text: anotherAgentWorkingMessage(active) }] };
   }
   if (!active) {
     // The user stopped this external agent a moment ago: refuse, and say why,
@@ -305,7 +406,7 @@ export async function agentToolCall(params: {
     }
     // No run_start / begin_work came first: an external client calling
     // tools directly. It will never close the run itself — it gets a lease.
-    agentRunStart({ runId: params.runId, source: 'lazy' });
+    agentRunStart({ runId: params.runId, source: 'lazy', client: params.client });
   }
   const run = active!;
   const external = run.source !== 'service';
@@ -313,8 +414,20 @@ export async function agentToolCall(params: {
   const began = Date.now();
   if (external) notify((o) => o.toolStart({ id: callId, name, input: params.input ?? {} }));
   callsInFlight++;
+  const writesBefore = localWriteCount();
   try {
-    const result = await executeToolCall(tool, name, params, run);
+    let result = await executeToolCall(tool, name, params, run);
+    // An EXTERNAL agent hears "done" only once the write is on the server: it
+    // has no save indicator to watch, and verifies by reading back from this
+    // same tab — which shows the in-memory copy whether or not it was saved.
+    // (The chat's own runs save at run end — agentRunEndAndSave.)
+    if (external && !result.isError) {
+      const saved = await persistAgentWrites(writesBefore);
+      if (saved && !saved.ok) {
+        trace.error('agent-bridge:tool-save-failed', { name, error: saved.error, conflict: !!saved.conflict });
+        result = { isError: true, content: [{ type: 'text', text: describeSaveFailure(saved) }, ...result.content] };
+      }
+    }
     if (external) {
       const blocks = result.content as Array<{ type?: string; text?: string; dataUrl?: string }>;
       notify((o) => o.toolEnd({

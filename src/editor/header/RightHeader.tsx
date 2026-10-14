@@ -200,7 +200,21 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
         return;
       }
       const { flushSaveNow } = await import('@/backend/autosave');
-      await flushSaveNow();
+      // Publish builds from the SAVED row, not from this tab: a failed save
+      // would deploy the previous version while the editor shows the new one
+      // (a deleted page "coming back" after publish, 2026-10-14). Refuse.
+      const saved = await flushSaveNow();
+      if (!saved.ok) {
+        trace.error('header:publish-save-failed', { error: saved.error, conflict: !!saved.conflict });
+        setProgress(0);
+        setPublishError({
+          message: saved.conflict
+            ? 'Not published — this project was changed in another tab or device. Reload the editor to get the latest version, then publish.'
+            : `Not published — your latest changes could not be saved (${saved.error}). Try again in a moment.`,
+          upgradable: false,
+        });
+        return;
+      }
       const res = await fetch(`/api/websites/${id}/publish`, { method: 'POST' });
       const json = await res.json();
       if (json.success && json.url) {

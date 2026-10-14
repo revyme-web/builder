@@ -12,6 +12,7 @@ import {
 } from '@/ai/agent/bridge-tools';
 import { clientLabel, registerExternalRunMirror } from './external-run';
 import { runBridgeRequest } from '@/ai/mcp/bridge-client';
+import { backend } from '@/backend';
 import { isBranchLocked, isActiveBranchLocked } from '@/code/stores/agent-run-lock-store';
 import { isViewerMode } from '@/code/stores/viewer-mode-store';
 import { projectFS, resetProjectFS, MAIN_BRANCH_ID } from '@/code/project/project-fs';
@@ -26,6 +27,18 @@ const PAGE = `export default function Page() {
   </div>);
 }`;
 const store = getDefaultStore();
+
+// External-agent writes await a REAL save (bridge-tools persistAgentWrites)
+// and report failure honestly: a resolved project and a backend that
+// accepts the save.
+beforeEach(() => {
+  window.history.pushState({}, '', '/builder/proj123');
+  vi.spyOn(backend, 'saveProject').mockResolvedValue(undefined);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  window.history.pushState({}, '', '/');
+});
 
 beforeEach(() => {
   registerExternalRunMirror();

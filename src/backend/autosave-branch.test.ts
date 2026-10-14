@@ -34,10 +34,14 @@ describe('buildProjectData', () => {
     expect(data.format).toBe('revyme-v2');
     expect(data.files['app/page.client.tsx']).toBe('main-home');
     expect(data.files['components/New.tsx']).toBeUndefined();
-    expect(data.branches?.redesign?.files).toEqual({
-      'app/page.client.tsx': 'branch-home', 'components/A.tsx': 'a', 'components/New.tsx': 'new',
+    // Stored as deltas, not copies: the base equals main (no changes), the
+    // branch's files are its base plus exactly the two writes.
+    expect(data.branches?.redesign?.baseDelta).toEqual({ set: {}, del: [] });
+    expect(data.branches?.redesign?.filesDelta).toEqual({
+      set: { 'app/page.client.tsx': 'branch-home', 'components/New.tsx': 'new' }, del: [],
     });
-    expect(data.branches?.redesign?.baseSnapshot?.['app/page.client.tsx']).toBe('main-home');
+    expect(data.branches?.redesign?.files).toBeUndefined();
+    expect(data.branches?.redesign?.baseSnapshot).toBeUndefined();
     expect(data.activeBranchId).toBe('redesign');
     expect(data.mainBranchId).toBe(MAIN_BRANCH_ID);
   });

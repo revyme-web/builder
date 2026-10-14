@@ -212,10 +212,49 @@ function mapsEqual(a: Map<string, string>, b: Map<string, string>): boolean {
 }
 
 /**
+ * BRANCH STORAGE = DELTAS. A branch used to be saved as two FULL copies of
+ * the site (`files` + `baseSnapshot`), inside the same single-row blob as
+ * main — so every branch added ~2x the project to every autosave. Four
+ * branches on a 1.8 MB site made a 16 MB save, past the database's packet
+ * limit, and from then on every save failed (2026-10-12). A branch is almost
+ * always main plus a few edits, so it is now stored as:
+ *   · `baseDelta`  — its merge base, as changes against main's `files`;
+ *   · `filesDelta` — its live files, as changes against its own base.
+ * Legacy records (`files` + `baseSnapshot`) still load; the next save writes
+ * deltas. Nothing outside the editor reads branch records.
+ */
+export interface FileDelta {
+  set: Record<string, string>;
+  del: string[];
+}
+
+/** `to` expressed as changes against `from`. */
+export function diffFileMaps(from: Map<string, string>, to: Map<string, string>): FileDelta {
+  const set: Record<string, string> = {};
+  const del: string[] = [];
+  for (const [k, v] of to) if (from.get(k) !== v) set[k] = v;
+  for (const k of from.keys()) if (!to.has(k)) del.push(k);
+  return { set, del };
+}
+
+/** `from` with `delta` applied; null when the delta is malformed. */
+export function applyFileDelta(from: Map<string, string>, delta: unknown): Map<string, string> | null {
+  if (!delta || typeof delta !== 'object') return null;
+  const d = delta as { set?: unknown; del?: unknown };
+  if (!d.set || typeof d.set !== 'object' || !Array.isArray(d.del)) return null;
+  const out = new Map(from);
+  for (const k of d.del) if (typeof k === 'string') out.delete(k);
+  for (const [k, v] of Object.entries(d.set as Record<string, unknown>)) if (typeof v === 'string') out.set(k, v);
+  return out;
+}
+
+/**
  * Parse envelope branch records into BranchData. Skips malformed entries
  * with a trace (never throws) — shared by fromEnvelope + hydrateBranches.
+ * `mainFiles` is main's map AS SAVED in the same envelope — delta records
+ * are reconstructed against it.
  */
-function parseBranchRecords(rawBranches: unknown): Map<string, BranchData> {
+function parseBranchRecords(rawBranches: unknown, mainFiles: Map<string, string> | null): Map<string, BranchData> {
   const branches = new Map<string, BranchData>();
   if (!rawBranches || typeof rawBranches !== 'object') return branches;
   for (const [id, raw] of Object.entries(rawBranches as Record<string, unknown>)) {
@@ -227,20 +266,37 @@ function parseBranchRecords(rawBranches: unknown): Map<string, BranchData> {
       trace.action('project-fs:envelope-branch-skipped', { id, reason: 'not-an-object' });
       continue;
     }
-    const rec = raw as { files?: unknown; baseSnapshot?: unknown; status?: unknown; parentId?: unknown; order?: unknown; lastEditedAt?: unknown; createdAt?: unknown };
-    if (!rec.files || typeof rec.files !== 'object') {
-      trace.action('project-fs:envelope-branch-skipped', { id, reason: 'missing-files' });
-      continue;
-    }
-    const bFiles = new Map<string, string>();
-    for (const [k, v] of Object.entries(rec.files as Record<string, unknown>)) {
-      if (typeof v === 'string') bFiles.set(k, v);
-    }
-    let base = new Map<string, string>(bFiles);
-    if (rec.baseSnapshot && typeof rec.baseSnapshot === 'object') {
-      base = new Map<string, string>();
-      for (const [k, v] of Object.entries(rec.baseSnapshot as Record<string, unknown>)) {
-        if (typeof v === 'string') base.set(k, v);
+    const rec = raw as { files?: unknown; baseSnapshot?: unknown; baseDelta?: unknown; filesDelta?: unknown; status?: unknown; parentId?: unknown; order?: unknown; lastEditedAt?: unknown; createdAt?: unknown };
+    let bFiles: Map<string, string>;
+    let base: Map<string, string>;
+    if (rec.baseDelta !== undefined || rec.filesDelta !== undefined) {
+      if (!mainFiles) {
+        trace.action('project-fs:envelope-branch-skipped', { id, reason: 'delta-without-main' });
+        continue;
+      }
+      const b = applyFileDelta(withoutShared(mainFiles), rec.baseDelta);
+      const f = b ? applyFileDelta(b, rec.filesDelta) : null;
+      if (!b || !f) {
+        trace.action('project-fs:envelope-branch-skipped', { id, reason: 'malformed-delta' });
+        continue;
+      }
+      base = b;
+      bFiles = f;
+    } else {
+      if (!rec.files || typeof rec.files !== 'object') {
+        trace.action('project-fs:envelope-branch-skipped', { id, reason: 'missing-files' });
+        continue;
+      }
+      bFiles = new Map<string, string>();
+      for (const [k, v] of Object.entries(rec.files as Record<string, unknown>)) {
+        if (typeof v === 'string') bFiles.set(k, v);
+      }
+      base = new Map<string, string>(bFiles);
+      if (rec.baseSnapshot && typeof rec.baseSnapshot === 'object') {
+        base = new Map<string, string>();
+        for (const [k, v] of Object.entries(rec.baseSnapshot as Record<string, unknown>)) {
+          if (typeof v === 'string') base.set(k, v);
+        }
       }
     }
     const status: BranchStatus = rec.status === 'dirty' || rec.status === 'conflict' ? rec.status : 'clean';
@@ -975,11 +1031,13 @@ export class InMemoryProjectFS implements ProjectFS {
     if (this.branches.size === 0) {
       return { format: 'revyme-v1', files };
     }
-    const branches: Record<string, { files: Record<string, string>; baseSnapshot: Record<string, string>; status: BranchStatus; parentId: string | null; order: number; createdAt: number; lastEditedAt: number | null }> = {};
+    // Deltas, not copies — see FileDelta. Main's site files are the anchor.
+    const mainSite = withoutShared(this.files);
+    const branches: Record<string, { baseDelta: FileDelta; filesDelta: FileDelta; status: BranchStatus; parentId: string | null; order: number; createdAt: number; lastEditedAt: number | null }> = {};
     for (const [id, b] of this.branches) {
       branches[id] = {
-        files: Object.fromEntries(b.files),
-        baseSnapshot: Object.fromEntries(b.baseSnapshot),
+        baseDelta: diffFileMaps(mainSite, b.baseSnapshot),
+        filesDelta: diffFileMaps(b.baseSnapshot, b.files),
         status: b.status,
         parentId: b.parentId,
         order: b.order,
@@ -1010,7 +1068,7 @@ export class InMemoryProjectFS implements ProjectFS {
     for (const [k, v] of Object.entries(data.files)) {
       if (typeof v === 'string') files.set(k, v);
     }
-    const branches = parseBranchRecords((data as { branches?: unknown }).branches);
+    const branches = parseBranchRecords((data as { branches?: unknown }).branches, files);
     this.files = files;
     this.branches = branches;
     const wantActive = typeof data.activeBranchId === 'string' ? data.activeBranchId : MAIN_BRANCH_ID;
@@ -1030,8 +1088,15 @@ export class InMemoryProjectFS implements ProjectFS {
    * this adds the v2 envelope on top. Never throws; unknown active falls
    * back to main.
    */
-  hydrateBranches(rawBranches: unknown, wantActive: unknown): void {
-    const parsed = parseBranchRecords(rawBranches);
+  hydrateBranches(rawBranches: unknown, wantActive: unknown, rawMainFiles?: unknown): void {
+    // Delta branches are rebuilt against main AS SAVED — not this.files, which
+    // the load migrations may already have rewritten.
+    let main: Map<string, string> = this.files;
+    if (rawMainFiles && typeof rawMainFiles === 'object') {
+      main = new Map<string, string>();
+      for (const [k, v] of Object.entries(rawMainFiles as Record<string, unknown>)) if (typeof v === 'string') main.set(k, v);
+    }
+    const parsed = parseBranchRecords(rawBranches, main);
     for (const [id, b] of parsed) this.branches.set(id, b);
     const active = typeof wantActive === 'string' ? wantActive : MAIN_BRANCH_ID;
     this.activeBranchId = active === MAIN_BRANCH_ID || this.branches.has(active) ? active : MAIN_BRANCH_ID;

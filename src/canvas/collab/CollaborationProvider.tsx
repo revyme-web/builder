@@ -32,6 +32,7 @@ import { syncQueueCode } from '@/code/mutation/mutation-queue';
 import { activeFilePathAtom } from '@/code/project/active-file-store';
 import { forceCanvasRender } from '@/canvas/node-ops';
 import { setIsSaveLeader } from '@/backend/autosave';
+import { noteRemoteSaved, noteRoomJoined, noteRoomLeft } from '@/backend/save-revision';
 import { useSetAtom, getDefaultStore } from 'jotai';
 import { trace } from '@/shared/debug-trace';
 import { listCollaborators } from '@/backend/revyme-backend';
@@ -210,11 +211,14 @@ function CloudProvider({ children }: { children: ReactNode }) {
       socket.emit(
         'join',
         { websiteId },
-        (res: { ok: boolean; users?: ActiveUser[]; leader?: string | null; error?: string }) => {
+        (res: { ok: boolean; users?: ActiveUser[]; leader?: string | null; revision?: number | null; error?: string }) => {
           if (!res?.ok) {
             trace.error('collab:join-failed', { error: res?.error });
             return;
           }
+          // In sync with the room only if nobody saved since this tab's copy
+          // (save-revision.ts) — otherwise this tab missed writes.
+          noteRoomJoined(res.revision);
           setIsConnected(true);
           const me = res.users?.find((u) => u.socketId === socket.id) ?? null;
           setSelf(me);
@@ -239,6 +243,8 @@ function CloudProvider({ children }: { children: ReactNode }) {
 
     socket.on('disconnect', (reason: string) => {
       trace.action('collab:socket-disconnect', { reason });
+      // Relayed writes may be missed from here on: stop adopting the room's saves.
+      noteRoomLeft();
       setIsConnected(false);
       setRemoteUsers([]);
       cursorsRef.current.clear();
@@ -283,6 +289,15 @@ function CloudProvider({ children }: { children: ReactNode }) {
 
     socket.on('save-leader', ({ leader: l }: { leader: string | null }) => {
       setLeader(l);
+    });
+
+    // Another room member saved the row. Its content already reached us
+    // through file-sync, so adopt its revision as our save base — unless
+    // either side may have missed writes (save-revision.ts), in which case
+    // our next save is refused as stale and the user decides.
+    socket.on('project-saved', ({ revision, inSync }: { revision: number; inSync?: boolean }) => {
+      const adopted = noteRemoteSaved(revision, inSync === true);
+      trace.action('collab:project-saved', { revision, inSync, adopted });
     });
 
     // ─── File-sync (RECV) ──────────────────────────────────────────────────

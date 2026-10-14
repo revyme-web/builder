@@ -10,7 +10,8 @@
 // Credentials ride along on the session cookie either way.
 
 import type { ProjectBackend, ProjectData, RevymeUser, WorkspaceFont } from './types';
-import { isKnownProjectFormat } from './types';
+import { isKnownProjectFormat, SaveConflictError } from './types';
+import { getBaseRevision, isRevisionInSync, noteSaved, setLoadedRevision } from './save-revision';
 import { trace } from '@/shared/debug-trace';
 
 const API_URL = ((import.meta as ImportMeta & { env: Record<string, string> }).env?.VITE_API_URL ?? '').replace(/\/$/, '');
@@ -23,7 +24,50 @@ function url(path: string): string {
   return API_URL ? `${API_URL}${p}` : p;
 }
 
+/** The website row as the role / name / flag getters read it — never the
+ *  project blob. */
+interface WebsiteRow {
+  _role?: 'owner' | 'editor' | 'viewer';
+  name?: string | null;
+  closed_source?: boolean;
+  workspace_id?: string | null;
+  revision?: number;
+}
+
+/** How long one row fetch answers every getter that asks for it. Boot asks
+ *  four of them at once (role, name, closed-source, then workspace). */
+const WEBSITE_ROW_TTL_MS = 3000;
+
 export class RevymeBackend implements ProjectBackend {
+  private websiteRows = new Map<string, { at: number; row: Promise<{ ok: true; row: WebsiteRow } | { ok: false; status?: number; error?: unknown }> }>();
+
+  /**
+   * The website row WITHOUT its `json` blob. `GET /api/websites/:id` returns
+   * the whole project (13 MB for a big site), and boot used to fetch it once
+   * per getter — seven times per page load. `/meta` is the same row minus the
+   * blob; a backend that predates it answers 404 and we fall back to the full
+   * GET. Concurrent callers share one request.
+   */
+  private fetchWebsiteRow(id: string): Promise<{ ok: true; row: WebsiteRow } | { ok: false; status?: number; error?: unknown }> {
+    const cached = this.websiteRows.get(id);
+    if (cached && Date.now() - cached.at < WEBSITE_ROW_TTL_MS) return cached.row;
+    const row = (async () => {
+      try {
+        const enc = encodeURIComponent(id);
+        let res = await fetch(url(`/api/websites/${enc}/meta`), { credentials: 'include' });
+        if (res.status === 404) {
+          res = await fetch(url(`/api/websites/${enc}`), { credentials: 'include' });
+        }
+        if (!res.ok) return { ok: false as const, status: res.status };
+        return { ok: true as const, row: (await res.json()) as WebsiteRow };
+      } catch (error) {
+        return { ok: false as const, error };
+      }
+    })();
+    this.websiteRows.set(id, { at: Date.now(), row });
+    return row;
+  }
+
   async getUser(): Promise<RevymeUser | null> {
     try {
       const res = await fetch(url('/api/auth/session'), { credentials: 'include' });
@@ -50,7 +94,10 @@ export class RevymeBackend implements ProjectBackend {
         trace.error('backend:load-project', { id, status: res.status });
         return null;
       }
-      const row = await res.json() as { id: string; name: string; json: string };
+      const row = await res.json() as { id: string; name: string; json: string; revision?: number };
+      // The save base: every later save names it, and the backend refuses a
+      // save based on an older revision (a stale tab) — see save-revision.ts.
+      setLoadedRevision(row.revision);
       let data: Partial<ProjectData> | null = null;
       try {
         data = row.json ? JSON.parse(row.json) as Partial<ProjectData> : null;
@@ -81,47 +128,31 @@ export class RevymeBackend implements ProjectBackend {
   }
 
   async getWebsiteRole(id: string): Promise<'owner' | 'editor' | 'viewer'> {
-    // The website GET endpoint returns the caller's effective role on
-    // the site (`_role`). Falling back to 'viewer' is the conservative
-    // choice on any error — the worst case is the user can't edit (a
-    // toast surfaces the underlying problem) rather than letting writes
-    // through without authorization.
-    try {
-      const res = await fetch(url(`/api/websites/${encodeURIComponent(id)}`), {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        trace.error('backend:get-website-role', { id, status: res.status });
-        return 'viewer';
-      }
-      const row = (await res.json()) as { _role?: 'owner' | 'editor' | 'viewer' };
-      return row._role ?? 'viewer';
-    } catch (err) {
-      trace.error('backend:get-website-role', err);
+    // The website row carries the caller's effective role on the site
+    // (`_role`). Falling back to 'viewer' is the conservative choice on any
+    // error — the worst case is the user can't edit (a toast surfaces the
+    // underlying problem) rather than letting writes through without
+    // authorization.
+    const r = await this.fetchWebsiteRow(id);
+    if (!r.ok) {
+      trace.error('backend:get-website-role', { id, status: r.status, error: r.error ? String(r.error) : undefined });
       return 'viewer';
     }
+    return r.row._role ?? 'viewer';
   }
 
   async getWebsiteClosedSource(id: string): Promise<boolean> {
-    // Same website GET as getWebsiteRole — `closed_source` is stamped onto
-    // remixed websites created from a closed-source template. Defaulting to
-    // FALSE on error is deliberate: worst case the code panel shows (the
-    // template author's protection degrades gracefully) rather than locking
-    // a legitimate owner out of their own code.
-    try {
-      const res = await fetch(url(`/api/websites/${encodeURIComponent(id)}`), {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        trace.error('backend:get-website-closed-source', { id, status: res.status });
-        return false;
-      }
-      const row = (await res.json()) as { closed_source?: boolean };
-      return row.closed_source === true;
-    } catch (err) {
-      trace.error('backend:get-website-closed-source', err);
+    // `closed_source` is stamped onto remixed websites created from a
+    // closed-source template. Defaulting to FALSE on error is deliberate:
+    // worst case the code panel shows (the template author's protection
+    // degrades gracefully) rather than locking a legitimate owner out of
+    // their own code.
+    const r = await this.fetchWebsiteRow(id);
+    if (!r.ok) {
+      trace.error('backend:get-website-closed-source', { id, status: r.status, error: r.error ? String(r.error) : undefined });
       return false;
     }
+    return r.row.closed_source === true;
   }
 
   async getCredits(workspaceId: string): Promise<number | null> {
@@ -166,54 +197,57 @@ export class RevymeBackend implements ProjectBackend {
   }
 
   async getWebsiteWorkspaceId(id: string): Promise<string | null> {
-    // Same endpoint + same shape as getWebsiteRole, different field. We
-    // could collapse both into a single getWebsiteDetails() call, but
-    // the two callers fire at very different times (getWebsiteRole on
-    // load, getWebsiteWorkspaceId on a menu click) and keeping them
-    // independent avoids coupling the menu's click latency to the
-    // critical-path role check on initial render. Returns null on any
-    // error — caller treats null as "skip the ws param" so the
-    // dashboard URL still opens (just without workspace pre-selection).
-    try {
-      const res = await fetch(url(`/api/websites/${encodeURIComponent(id)}`), {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        trace.error('backend:get-website-workspace-id', { id, status: res.status });
-        return null;
-      }
-      // The website GET returns the raw Prisma row spread into the
-      // response, so the field is snake_case `workspace_id` — NOT
-      // `workspaceId`. (Reading the camelCase name was a latent bug:
-      // it always resolved undefined → null, silently breaking the
-      // workspace deep-link here and in the LeftHeader account menu.)
-      const row = (await res.json()) as { workspace_id?: string | null };
-      return typeof row.workspace_id === 'string' ? row.workspace_id : null;
-    } catch (err) {
-      trace.error('backend:get-website-workspace-id', err);
+    // Null on any error — the caller treats null as "skip the ws param" so
+    // the dashboard URL still opens (just without workspace pre-selection).
+    // The row is the raw Prisma shape, so the field is snake_case
+    // `workspace_id` — NOT `workspaceId` (reading the camelCase name always
+    // resolved undefined, silently breaking the workspace deep-link here and
+    // in the LeftHeader account menu).
+    const r = await this.fetchWebsiteRow(id);
+    if (!r.ok) {
+      trace.error('backend:get-website-workspace-id', { id, status: r.status, error: r.error ? String(r.error) : undefined });
       return null;
     }
+    return typeof r.row.workspace_id === 'string' ? r.row.workspace_id : null;
   }
 
   async saveProject(id: string, data: ProjectData): Promise<void> {
-    // Hono backend (src/routes/websites.ts) Zod-validates `{ name?, json? }`.
-    // Anything else in the body is silently dropped — and if neither is
-    // present it throws "Nothing to update". Earlier this sent the
-    // legacy Next.js shape `{ data, sourceWebsiteId }`, both of which
-    // got dropped, hitting the 400. The full ProjectData is passed as
-    // a JSON-encoded string in `json`.
+    // Hono backend (src/routes/websites.ts) Zod-validates `{ name?, json?,
+    // baseRevision?, inSync? }` — the full ProjectData rides as a
+    // JSON-encoded string in `json`. `baseRevision` is the row revision this
+    // tab's copy is based on: a save based on an older one is refused with
+    // 409 rather than overwriting newer work (save-revision.ts). A backend
+    // that predates revisions strips the extra keys and saves as before.
+    const baseRevision = getBaseRevision();
+    const body: Record<string, unknown> = { json: JSON.stringify(data) };
+    if (baseRevision !== null) {
+      body.baseRevision = baseRevision;
+      body.inSync = isRevisionInSync();
+    }
     const res = await fetch(url(`/api/websites/${id}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ json: JSON.stringify(data) }),
+      body: JSON.stringify(body),
     });
+    if (res.status === 409) {
+      const payload = await res.json().catch(() => null) as { error?: { details?: { revision?: number } } } | null;
+      const serverRevision = payload?.error?.details?.revision;
+      trace.error('backend:save-project-conflict', { id, baseRevision, serverRevision });
+      throw new SaveConflictError(typeof serverRevision === 'number' ? serverRevision : null);
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       trace.error('backend:save-project', { id, status: res.status, body: text });
-      throw new Error(`Save failed: ${res.status} ${text}`);
+      // The API's `{ error: { message } }` is written for a person ("This
+      // project is 16.4 MB — too large to save…"); show that, not raw JSON.
+      let message = text;
+      try { message = (JSON.parse(text) as { error?: { message?: string } })?.error?.message ?? text; } catch { /* not JSON */ }
+      throw new Error(`Save failed: ${res.status} ${message}`);
     }
-    trace.action('backend:save-project', { id, fileCount: Object.keys(data.files).length });
+    const saved = await res.json().catch(() => null) as { revision?: number } | null;
+    noteSaved(saved?.revision);
+    trace.action('backend:save-project', { id, fileCount: Object.keys(data.files).length, revision: saved?.revision });
   }
 
   async renameWebsite(id: string, name: string): Promise<void> {
@@ -231,24 +265,17 @@ export class RevymeBackend implements ProjectBackend {
       trace.error('backend:rename-website', { id, name, status: res.status, body: text });
       throw new Error(`Rename failed: ${res.status} ${text}`);
     }
+    this.websiteRows.delete(id);
     trace.action('backend:rename-website', { id, name });
   }
 
   async getWebsiteName(id: string): Promise<string | null> {
-    try {
-      const res = await fetch(url(`/api/websites/${encodeURIComponent(id)}`), {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        trace.error('backend:get-website-name', { id, status: res.status });
-        return null;
-      }
-      const row = (await res.json()) as { name?: string | null };
-      return typeof row.name === 'string' ? row.name : null;
-    } catch (err) {
-      trace.error('backend:get-website-name', err);
+    const r = await this.fetchWebsiteRow(id);
+    if (!r.ok) {
+      trace.error('backend:get-website-name', { id, status: r.status, error: r.error ? String(r.error) : undefined });
       return null;
     }
+    return typeof r.row.name === 'string' ? r.row.name : null;
   }
 
   async fetchMediaBytes(remoteUrl: string): Promise<Blob> {

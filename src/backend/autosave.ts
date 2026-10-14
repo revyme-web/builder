@@ -5,8 +5,9 @@ import { getDefaultStore } from 'jotai';
 import { CLOUD_ENABLED } from '@/shared/cloud-flag';
 import { backend } from './index';
 import { getProjectId } from './project-id';
-import { saveStatusAtom } from './save-store';
-import type { ProjectData } from './types';
+import { saveErrorAtom, saveStatusAtom } from './save-store';
+import { SaveConflictError, type ProjectData } from './types';
+import { adoptForOverwrite, getBaseRevision, isRevisionInSync, setLoadedRevision } from './save-revision';
 import { projectFS } from '../code/project/project-fs';
 import { trace } from '@/shared/debug-trace';
 
@@ -20,7 +21,78 @@ let saveFailures = 0;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingSave = false;
 let isSaving = false;
-let currentSave: Promise<void> | null = null;
+let currentSave: Promise<SaveOutcome> | null = null;
+
+/**
+ * What a save attempt came to. Callers that report a write as done — the MCP
+ * bridge (`committed`), agent tools, Publish — MUST read this: a save can fail
+ * (backend down, a payload the database refuses, a stale tab) and the editor
+ * keeps the change only in memory, gone on reload. Returning void here is how
+ * `committed: true` came back for writes that never reached the server
+ * (2026-10-14).
+ */
+export type SaveOutcome =
+  | { ok: true }
+  | { ok: false; error: string; conflict?: boolean };
+let lastOutcome: SaveOutcome = { ok: true };
+
+/** Set while the backend refuses this tab's saves as stale (409). Saving
+ *  stops — every retry would be refused the same way — until the user
+ *  reloads or chooses to overwrite (`overwriteAfterConflict`). */
+let conflict: { serverRevision: number | null } | null = null;
+
+export const SAVE_CONFLICT_MESSAGE =
+  'This project was saved from another tab or device after this tab loaded it, so this tab\'s copy is out of date. '
+  + 'Nothing from this tab was saved. Reload the editor tab to get the latest version (or overwrite it with this tab\'s copy).';
+
+/** The sentence an agent tool returns when its write did not persist. Written
+ *  for a model: what happened, that it is NOT done, and what to do. */
+export function describeSaveFailure(outcome: { error: string; conflict?: boolean }): string {
+  if (outcome.conflict) {
+    return `NOT SAVED: ${outcome.error} Stop and tell the user — reload the Revyme editor tab, then redo this change.`;
+  }
+  return `The change was applied in the editor but saving it to the server FAILED (${outcome.error}). `
+    + 'It is NOT persisted and will be lost when the editor tab reloads. Do not report this as done — tell the user saving is failing.';
+}
+
+function record(outcome: SaveOutcome): SaveOutcome {
+  lastOutcome = outcome;
+  return outcome;
+}
+
+/** The last save attempt's outcome. */
+export function getLastSaveOutcome(): SaveOutcome {
+  return lastOutcome;
+}
+
+/** Is there work this tab has not (successfully) saved? */
+export function hasUnsavedChanges(): boolean {
+  return pendingSave || debounceTimer !== null || isSaving || !lastOutcome.ok;
+}
+
+/**
+ * Local (non-remote) ProjectFS writes since load. A caller that must persist
+ * what an operation wrote compares this before/after: `hasUnsavedChanges`
+ * alone misses a non-leader tab, whose flush-triggered autosave is skipped
+ * without marking anything pending.
+ */
+let localWrites = 0;
+// `projectFS` is a live binding that `resetProjectFS` replaces (debug
+// toolbar, harnesses): follow the current instance.
+let countedFS: typeof projectFS | null = null;
+let stopCounting: (() => void) | null = null;
+export function localWriteCount(): number {
+  if (countedFS !== projectFS && typeof projectFS?.subscribeWrites === 'function') {
+    stopCounting?.();
+    countedFS = projectFS;
+    stopCounting = projectFS.subscribeWrites((e) => { if (e.origin !== 'remote') localWrites++; });
+  }
+  return localWrites;
+}
+
+export function getSaveConflict(): { serverRevision: number | null } | null {
+  return conflict;
+}
 
 function getStore() {
   return getDefaultStore();
@@ -40,7 +112,22 @@ export function buildProjectData(): ProjectData {
   return projectFS.toEnvelope();
 }
 
-async function performSave(): Promise<void> {
+/** A 409 for an IN-SYNC tab is usually a race, not a stale copy: a room
+ *  member's save landed a moment before ours and its `project-saved` event
+ *  (which we would adopt) is still in flight. Wait briefly for it. */
+const ADOPTION_WAIT_MS = 1500;
+async function waitForAdoption(serverRevision: number): Promise<boolean> {
+  const until = Date.now() + ADOPTION_WAIT_MS;
+  while (Date.now() < until) {
+    const base = getBaseRevision();
+    if (base !== null && base >= serverRevision) return true;
+    if (!isRevisionInSync()) return false;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return false;
+}
+
+async function performSave(attempt = 0): Promise<SaveOutcome> {
   const store = getStore();
   const id = getProjectId();
   // An unresolved project id means this client never finished booting into a
@@ -48,7 +135,12 @@ async function performSave(): Promise<void> {
   // its PUT /api/websites/local can only 401 or, worse, clobber. Never ship it.
   if (CLOUD_ENABLED && id === 'local') {
     trace.action('autosave:skipped-unresolved-project-id', { id });
-    return;
+    return record({ ok: false, error: 'The editor has not resolved this project yet — nothing was saved.' });
+  }
+  if (conflict) {
+    store.set(saveStatusAtom, 'conflict');
+    trace.action('autosave:skipped-conflict', { id });
+    return record({ ok: false, conflict: true, error: SAVE_CONFLICT_MESSAGE });
   }
   const data = buildProjectData();
 
@@ -59,12 +151,31 @@ async function performSave(): Promise<void> {
   try {
     await backend.saveProject(id, data);
     store.set(saveStatusAtom, 'saved');
+    store.set(saveErrorAtom, null);
     pendingSave = false;
     saveFailures = 0;
     trace.action('autosave:success', { id });
+    return record({ ok: true });
   } catch (err) {
-    store.set(saveStatusAtom, 'error');
     debounceTimer = null;
+    if (err instanceof SaveConflictError && attempt === 0 && err.serverRevision !== null
+      && isRevisionInSync() && await waitForAdoption(err.serverRevision)) {
+      trace.action('autosave:conflict-raced-adopted', { id, serverRevision: err.serverRevision });
+      return performSave(1);
+    }
+    if (err instanceof SaveConflictError) {
+      // Stale tab: retrying cannot succeed and must not be attempted — the
+      // user decides (SaveProblemBanner). The edit stays pending.
+      conflict = { serverRevision: err.serverRevision };
+      pendingSave = true;
+      store.set(saveStatusAtom, 'conflict');
+      store.set(saveErrorAtom, SAVE_CONFLICT_MESSAGE);
+      trace.error('autosave:conflict', { id, serverRevision: err.serverRevision });
+      return record({ ok: false, conflict: true, error: SAVE_CONFLICT_MESSAGE });
+    }
+    const message = String((err as Error)?.message ?? err);
+    store.set(saveStatusAtom, 'error');
+    store.set(saveErrorAtom, message);
     trace.error('autosave:error', err);
     saveFailures++;
     if (saveFailures <= MAX_RETRIES && !_disposed && !isHeld) {
@@ -75,13 +186,14 @@ async function performSave(): Promise<void> {
       }, RETRY_MS);
       trace.action('autosave:retry-scheduled', { attempt: saveFailures, inMs: RETRY_MS });
     }
+    return record({ ok: false, error: message });
   } finally {
     isSaving = false;
   }
 }
 
 /** Start a save and track its promise so `flushSaveNow` can await it. */
-function startSave(): Promise<void> {
+function startSave(): Promise<SaveOutcome> {
   const p = performSave().finally(() => {
     if (currentSave === p) currentSave = null;
   });
@@ -98,7 +210,7 @@ function startSave(): Promise<void> {
  *  save runs UNCONDITIONALLY (not gated on pendingSave): a redundant save
  *  is harmless, and it also covers a non-leader collab tab (whose
  *  triggerAutosave early-returns without ever setting pendingSave). */
-export async function flushSaveNow(): Promise<void> {
+export async function flushSaveNow(): Promise<SaveOutcome> {
   if (debounceTimer !== null) {
     clearTimeout(debounceTimer);
     debounceTimer = null;
@@ -107,7 +219,30 @@ export async function flushSaveNow(): Promise<void> {
     try { await currentSave; } catch { /* status handled in performSave */ }
   }
   trace.action('autosave:flush-now');
-  await startSave();
+  return startSave();
+}
+
+/**
+ * Conflict resolution — keep THIS tab's copy: base it on the row's current
+ * revision and save, replacing what the other tab / device saved. Only ever
+ * on the user's explicit choice.
+ */
+export async function overwriteAfterConflict(): Promise<SaveOutcome> {
+  if (!conflict) return lastOutcome;
+  if (conflict.serverRevision !== null) adoptForOverwrite(conflict.serverRevision);
+  else setLoadedRevision(null); // backend gave no revision: save unconditionally
+  conflict = null;
+  saveFailures = 0;
+  trace.action('autosave:conflict-overwrite');
+  return startSave();
+}
+
+/** Conflict resolution — take the newer version: drop this tab's unsaved
+ *  copy (so the unload guard does not offer to keep it) and reload. */
+export function reloadAfterConflict(): void {
+  cancelPendingAutosave();
+  trace.action('autosave:conflict-reload');
+  window.location.reload();
 }
 
 /** Save-leader gate. CollaborationProvider calls `setIsSaveLeader()` on
@@ -192,6 +327,13 @@ export function triggerAutosave(opts?: { force?: boolean }): void {
     trace.action('autosave:skipped-non-leader');
     return;
   }
+  if (conflict) {
+    // Stale tab — saving would be refused; remember the edit, show the state.
+    pendingSave = true;
+    getStore().set(saveStatusAtom, 'conflict');
+    trace.action('autosave:deferred-conflict');
+    return;
+  }
 
   pendingSave = true;
   saveFailures = 0; // fresh user intent — a new edit re-earns the retry budget
@@ -239,6 +381,14 @@ function onBeforeUnloadSave(e: BeforeUnloadEvent): void {
     // lost every import whose PUT was mid-flight when the user clicked
     // Dashboard ("went back and the design was gone", 2026-08-07).
     if (!pendingSave && !isSaving) return;
+    if (conflict) {
+      // A stale copy must not be beaconed over the newer row — but the user
+      // still gets the leave-confirmation for the work only this tab holds.
+      trace.action('autosave:beacon-skipped', { reason: 'save conflict' });
+      e.preventDefault();
+      e.returnValue = '';
+      return;
+    }
     if (isHeld) {
       // Held = the fresh-site prompt is still deciding. The only deferred
       // content is the boot scaffold (a reload reseeds it identically) —
