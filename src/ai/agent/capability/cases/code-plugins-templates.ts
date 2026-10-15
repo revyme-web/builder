@@ -93,7 +93,50 @@ export const CODE_PLUGINS_TEMPLATES_CASES: CapabilityCase[] = [
       `<Galaxy data-id="galaxy-1" data-name="Galaxy" speed="1" style={{ position: 'relative', width: '320px', height: '200px', flex: '0 0 auto', order: '3' }} />\n        <div data-id="card-3" data-name="Card"`,
     ).replace("import PrimaryButton from '@/components/PrimaryButton';", "import PrimaryButton from '@/components/PrimaryButton';\nimport Galaxy from '@/components/Galaxy';") },
     calls: [{ tool: 'set_component_prop', args: { node_id: 'galaxy-1', component_name: 'Galaxy', prop: 'speed', value: '4' } }],
-    expect: (w) => must(/speed="4"/.test(w.read(HOME) ?? ''), 'speed was not set to 4'),
+    // A slider control is a NUMBER: speed={4} replaces speed="1" in place
+    // (never a second speed attribute, never the string "4").
+    expect: (w) => {
+      const home = w.read(HOME) ?? '';
+      must(/speed=\{4\}/.test(home), 'speed was not set to the number 4');
+      must((home.match(/ speed=/g) ?? []).length === 1, 'speed is on the tag more than once');
+    },
+  },
+  {
+    id: 'code-plugins-templates/edit-source-partial', domain: 'code-plugins-templates', status: 'supported',
+    feature: 'Change part of a page\'s code without rewriting the file',
+    ask: 'in the code, change the hero subtitle and give the hero image a bigger radius',
+    calls: [
+      { tool: 'read_source', args: { node_id: 'hero-image' } },
+      { tool: 'edit_source', args: { path: HOME, edits: [
+        { old_text: 'The software for roadmaps and releases.', new_text: 'Roadmaps your whole team can follow.' },
+        { old_text: "backgroundPosition: 'center', borderRadius: '16px'", new_text: "backgroundPosition: 'center', borderRadius: '32px'" },
+      ] } },
+    ],
+    expect: (w) => {
+      const home = w.read(HOME) ?? '';
+      must(/>Roadmaps your whole team can follow\.</.test(home), 'the subtitle did not change');
+      must(/borderRadius: '32px'/.test(home), 'the radius did not change');
+      must(/Plan, build and release/.test(home) && /data-id="card-3"/.test(home), 'untouched code was lost');
+      must(/"hero-image"/.test(w.replies[0].text) && /node_lines/.test(w.replies[0].text), 'read_source did not return the node');
+    },
+  },
+  {
+    id: 'code-plugins-templates/edit-source-ambiguous', domain: 'code-plugins-templates', status: 'supported',
+    feature: 'An ambiguous code edit is refused with the matching lines, nothing written',
+    ask: '(safety) replace text that appears on three cards',
+    calls: [{ tool: 'edit_source', args: { path: HOME, edits: [{ old_text: "height: '200px', backgroundColor: '#f4f4f5'", new_text: "height: '240px', backgroundColor: '#f4f4f5'" }] } }],
+    allowFailedCalls: true,
+    expect: (w) => {
+      must(w.replies[0].isError && /matches 3 places \(lines \d+, \d+, \d+\)/.test(w.replies[0].text), 'not refused with the match lines');
+      must(!/height: '240px'/.test(w.read(HOME) ?? ''), 'an ambiguous edit was written anyway');
+    },
+  },
+  {
+    id: 'code-plugins-templates/find-code', domain: 'code-plugins-templates', status: 'supported',
+    feature: 'Find where something is in a page\'s code',
+    ask: 'where is the trial button in the code?',
+    calls: [{ tool: 'read_source', args: { query: 'Start free trial' } }],
+    expect: (w) => must(/"line":\s*\d+/.test(w.replies[0].text) && /hero-cta/.test(w.replies[0].text), 'the search did not return the line'),
   },
   {
     id: 'code-plugins-templates/read-code-component', domain: 'code-plugins-templates', status: 'supported',

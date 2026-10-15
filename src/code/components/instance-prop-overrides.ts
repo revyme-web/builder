@@ -12,20 +12,21 @@
 // for data-responsive).
 
 import { parseExpression } from '@babel/parser';
-import { findStyleObjectEnd, findTagClose } from '../generation/generator-utils';
+import { findTagClose } from '../generation/generator-utils';
 import { getViewportWidths } from '@/code/stores/viewport-store';
 import { parseJSXToNodes } from '@/code/parsing/parser';
 import {
-  parseConditionalPropExpression,
   setConditionalPropEntry,
   hasVariantOverrides,
   formatConditionalPropExpression,
   parseRichConditionalProp,
   formatRichConditionalProp,
   classifyCondBranch,
+  currentConditionalMap,
   type RichConditionalPropMap,
   type RichCondBranch,
 } from './instance-conditional-prop';
+import { formatStringAttr, readTagAttr, writeTagAttr } from './jsx-tag-attrs';
 
 export interface InstanceTagRange { tagStart: number; tagEnd: number }
 
@@ -85,27 +86,13 @@ export function removeInstanceProp(code: string, nodeId: string, componentName: 
   const tag = findInstanceTag(code, nodeId, componentName);
   if (!tag) return code;
   const tagContent = code.slice(tag.tagStart, tag.tagEnd);
-  // `(?<![\w-])` so a prop like `name` never matches inside `data-name=`, and `cursor` never
-  // matches the `cursor` inside `cursorOpts=` (the `=` anchor already excludes that, but the
-  // two props coexist on the same tag so the boundary carries real weight here).
-  const at = tagContent.search(new RegExp(`\\s*(?<![\\w-])${propName}=`));
-  if (at === -1) return code;
-  const eq = tagContent.indexOf('=', at) + 1;
-  const open = tagContent[eq];
-  let end: number;
-  if (open === '"' || open === "'") {
-    end = tagContent.indexOf(open, eq + 1);
-    if (end === -1) return code;                     // unterminated — leave the file alone
-    end += 1;
-  } else if (open === '{') {
-    const close = findStyleObjectEnd(tagContent, eq + 1);
-    if (close === -1) return code;                   // unbalanced — leave the file alone
-    end = close + 1;
-  } else {
-    return code;                                     // bare/shorthand prop — nothing to slice
-  }
-  const newTag = tagContent.slice(0, at) + tagContent.slice(end);
-  return code.slice(0, tag.tagStart) + newTag + code.slice(tag.tagEnd);
+  // The JSX attribute scanner gives the exact span — `cursor` never matches
+  // inside `cursorOpts=`, `name` never inside `data-name=`, a bare/shorthand
+  // prop is removed too, and every duplicate copy goes. An unreadable tag
+  // (unbalanced value) leaves the file alone.
+  const next = writeTagAttr(tagContent, propName, null);
+  if (next === null || next === tagContent) return code;
+  return code.slice(0, tag.tagStart) + next + code.slice(tag.tagEnd);
 }
 
 /**
@@ -471,12 +458,9 @@ export function setConditionalInstanceProp(
 
   const tagContent = code.slice(tag.tagStart, tag.tagEnd);
 
-  // `(?<![\w-])` so `name` doesn't match inside `data-name=`.
-  const literalMatch = tagContent.match(new RegExp(`(?<![\\w-])${propName}="([^"]*)"`));
-  const exprMatch = tagContent.match(new RegExp(`(?<![\\w-])${propName}=\\{([^}]+)\\}`));
-  let currentMap: Record<string, string> | null = null;
-  if (exprMatch) currentMap = parseConditionalPropExpression(exprMatch[1]);
-  if (!currentMap && literalMatch) currentMap = { default: literalMatch[1] };
+  // Scanner-read (jsx-tag-attrs): `name` never matches inside `data-name=`,
+  // and a `{…}` value is read whole, nested braces and all.
+  const currentMap = currentConditionalMap(readTagAttr(tagContent, propName));
 
   const nextMap = setConditionalPropEntry(currentMap, parentVariantName, value);
 
@@ -490,16 +474,12 @@ export function setConditionalInstanceProp(
   // toggle); else the frozen `initialVariant` prop. Mirror of generator-styles.
   const parentVarName = code.includes('useState(initialVariant)') ? 'variant' : 'initialVariant';
   const formattedAttr = onlyDefault
-    ? `${propName}="${defaultVal}"`
+    ? formatStringAttr(propName, defaultVal)
     : `${propName}={${formatConditionalPropExpression(nextMap, parentVarName)}}`;
 
-  const existingRegex = new RegExp(`(?<![\\w-])${propName}=(?:"[^"]*"|'[^']*'|\\{[^}]+\\})`);
-  if (existingRegex.test(tagContent)) {
-    const newTag = tagContent.replace(existingRegex, formattedAttr);
-    return code.slice(0, tag.tagStart) + newTag + code.slice(tag.tagEnd);
-  }
-  const nameEnd = tag.tagStart + `<${componentName}`.length;
-  return code.slice(0, nameEnd) + ` ${formattedAttr}` + code.slice(nameEnd);
+  const next = writeTagAttr(tagContent, propName, formattedAttr);
+  if (next === null) return code;
+  return code.slice(0, tag.tagStart) + next + code.slice(tag.tagEnd);
 }
 
 /**

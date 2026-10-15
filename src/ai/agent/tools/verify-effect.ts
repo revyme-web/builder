@@ -337,7 +337,7 @@ const FORM_MECHANISM: MechanismSpec = {
   scanScope: 'section',
   species: true,
   fixHint:
-    'wire the submit: a real onSubmit that prevents default and sends the data (set_form or apply_file_edit) — a <form> that cannot submit is a no-op.',
+    'wire the submit: a real onSubmit that prevents default and sends the data (set_form or edit_source) — a <form> that cannot submit is a no-op.',
 };
 
 const OVERLAY_MECHANISM: MechanismSpec = {

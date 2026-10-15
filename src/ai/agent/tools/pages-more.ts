@@ -27,6 +27,7 @@ import { setWebsiteWatermark } from '@/backend/revyme-backend';
 import { getProjectId } from '@/backend/project-id';
 import { CLOUD_ENABLED } from '@/shared/cloud-flag';
 import { trace } from '@/shared/debug-trace';
+import { INLINE_DATA_URI_MAX_CHARS } from '@/code/oracle/checks/attribute-hygiene';
 
 const store = getDefaultStore();
 
@@ -265,6 +266,38 @@ export const getSeoTool: AgentTool = {
   },
 };
 
+/** Base64 data URIs at or above the oracle's inline limit, keyed by a payload
+ *  prefix (the same blob re-sent with the rest of the custom code matches). */
+function largeDataUris(html: string): Map<string, { type: string; kb: number }> {
+  const out = new Map<string, { type: string; kb: number }>();
+  const re = /data:([\w.+-]+\/[\w.+-]+)(?:;[\w=.+-]+)*;base64,([A-Za-z0-9+/=]{1000,})/g;
+  for (let m = re.exec(html); m; m = re.exec(html)) {
+    if (m[0].length < INLINE_DATA_URI_MAX_CHARS) continue;
+    out.set(m[2].slice(0, 96), { type: m[1], kb: Math.round(m[0].length / 1024) });
+  }
+  return out;
+}
+
+/**
+ * Custom code ships in the HTML of every page view: a pasted base64 font or
+ * image there is downloaded on every visit and can never be cached (a 101 KB
+ * woff2 in a site's custom head, 2026-10-15). A NEW large data URI is refused;
+ * one already there passes with a warning, so an unrelated custom-code change
+ * (adding analytics) is never blocked by an older choice.
+ */
+function customCodeDataUriCheck(next: string, current: string): { error?: string; warning?: string } {
+  const incoming = largeDataUris(next);
+  if (incoming.size === 0) return {};
+  const existing = largeDataUris(current);
+  const added = [...incoming].filter(([k]) => !existing.has(k)).map(([, v]) => v);
+  const describe = (xs: Array<{ type: string; kb: number }>) => xs.map((x) => `${x.type} (${x.kb} KB)`).join(', ');
+  const fix = 'Fonts belong in the font library (the user uploads the file in the font picker; then set_font / a typography preset); images are uploaded with upload_image and referenced by URL.';
+  if (added.length > 0) {
+    return { error: `Custom code would embed ${describe(added)} as an inline base64 data URI — it ships inside every page's HTML on every visit and can never be cached. ${fix} Nothing was saved.` };
+  }
+  return { warning: `Custom code still embeds ${describe([...incoming.values()])} inline — it ships uncached in every page's HTML. ${fix}` };
+}
+
 export const setSiteMetadataTool: AgentTool = {
   name: 'set_site_metadata',
   description:
@@ -292,6 +325,14 @@ export const setSiteMetadataTool: AgentTool = {
     const badge = typeof args.made_in_revyme_badge === 'boolean' ? args.made_in_revyme_badge : undefined;
     if (Object.keys(meta).length === 0 && Object.keys(config).length === 0 && badge === undefined) return fail('Nothing to set.');
     if (isBranchedRun(ctx)) return fail('Site settings are written on the active branch only — run unbranched.');
+    const before = parseSiteConfigFromCode(projectFS.readFile('app/layout.tsx') ?? '') as { customHead?: string; customBody?: string };
+    const warnings: string[] = [];
+    for (const [key, next] of [['customHead', config.customHead], ['customBody', config.customBody]] as const) {
+      if (next === undefined) continue;
+      const verdict = customCodeDataUriCheck(next, before[key] ?? '');
+      if (verdict.error) return fail(verdict.error);
+      if (verdict.warning) warnings.push(verdict.warning);
+    }
     ctx.ensureCheckpoint();
     flushTool(ctx);
     if (Object.keys(meta).length > 0) {
@@ -320,6 +361,7 @@ export const setSiteMetadataTool: AgentTool = {
       settings: parseSiteConfigFromCode(layout),
       ...(badge !== undefined && !badgeNote ? { made_in_revyme_badge: badge } : {}),
       ...(badgeNote ? { note: badgeNote } : {}),
+      ...(warnings.length > 0 ? { warning: warnings.join(' ') } : {}),
     });
   },
 };

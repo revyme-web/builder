@@ -30,6 +30,10 @@ vi.mock('@/code/mutation/mutation-queue', () => ({
   getQueueActiveFilePath: vi.fn(() => 'app/page.client.tsx'),
 }));
 
+// Typed instance props are written by a whole-file transform after the
+// insert (modifyToolFile → modifyProjectFile); captured here, applied below.
+vi.mock('@/code/project/modify-file', () => ({ modifyProjectFile: vi.fn(() => '') }));
+
 vi.mock('@/code/stores/store', () => ({
   getNodesSnapshot: vi.fn(),
   selectedIdsAtom: atom<string[]>([]),
@@ -41,6 +45,7 @@ vi.mock('@/code/components/component-registry', async (importOriginal) => {
 });
 
 import { buildComponentRegistry } from '@/code/components/component-registry';
+import { modifyProjectFile } from '@/code/project/modify-file';
 
 type AddNodeMutation = Extract<Mutation, { type: 'addNode' }>;
 
@@ -508,7 +513,12 @@ describe('component instance tools', () => {
     // Explicit placement — the oracle bounces position-less nodes
     // (NODE_MISSING_POSITION); the editor's drop path does the same.
     expect(m.node.styles).toEqual({ position: 'relative' });
-    expect(m.node.attrs).toEqual({ title: 'Hello', variant: 'dark', count: '60' });
+    // A Number prop is not a string attribute: it is written as count={60}
+    // by the typed write that follows the insert.
+    expect(m.node.attrs).toEqual({ title: 'Hello', variant: 'dark' });
+    expect(modifyProjectFile).toHaveBeenCalledTimes(1);
+    const transform = vi.mocked(modifyProjectFile).mock.calls[0][1];
+    expect(transform(`<div data-id="page"><Hero data-id="${m.node.id}" title="Hello" /></div>`)).toContain(`<Hero count={60} data-id="${m.node.id}"`);
     expect('index' in m).toBe(false);
     expect(flushNow).toHaveBeenCalledTimes(1);
     const data = JSON.parse((result.content[0] as any).text);
@@ -573,39 +583,8 @@ describe('component instance tools', () => {
     expect(flushNow).not.toHaveBeenCalled();
   });
 
-  it('set_component_prop queues updateHtmlAttrs with the value', async () => {
-    registryWith({ Hero: HERO_INFO });
-    const ctx = makeCtx();
-    const result = await setComponentPropTool.execute(
-      { node_id: 'n1', component_name: 'Hero', prop: 'title', value: 'Hello' },
-      ctx,
-    );
-    expect(ctx.ensureCheckpoint).toHaveBeenCalledTimes(1);
-    expect(queueMutation).toHaveBeenCalledWith({
-      type: 'updateHtmlAttrs',
-      nodeId: 'n1',
-      attrs: { title: 'Hello' },
-    }, expect.anything());
-    expect(flushNow).toHaveBeenCalledTimes(1);
-    const data = JSON.parse((result.content[0] as any).text);
-    expect(data.removed).toBe(false);
-    expect(result.isError).toBeUndefined();
-  });
-
-  it('set_component_prop removes the prop when the value is empty string', async () => {
-    registryWith({ Hero: HERO_INFO });
-    const ctx = makeCtx();
-    const result = await setComponentPropTool.execute(
-      { node_id: 'n1', component_name: 'Hero', prop: 'title', value: '' },
-      ctx,
-    );
-    expect(queueMutation).toHaveBeenCalledWith({
-      type: 'updateHtmlAttrs',
-      nodeId: 'n1',
-      attrs: { title: '' },
-    }, expect.anything());
-    expect(JSON.parse((result.content[0] as any).text).removed).toBe(true);
-  });
+  // The write itself (typed values, expressions, in-place replace, removal)
+  // runs against real source in set-component-prop.test.ts.
 
   it('set_component_prop rejects structural props', async () => {
     registryWith({ Hero: HERO_INFO });
@@ -648,19 +627,6 @@ describe('component instance tools', () => {
     expect(missingRequiredProps(HERO_INFO as never, {})).toEqual(['count', 'eyebrow']);
   });
 
-  it('set_component_prop proceeds best-effort when the component is not in the registry', async () => {
-    const ctx = makeCtx();
-    const result = await setComponentPropTool.execute(
-      { node_id: 'n1', component_name: 'Aliased', prop: 'any', value: '1' },
-      ctx,
-    );
-    expect(queueMutation).toHaveBeenCalledWith({
-      type: 'updateHtmlAttrs',
-      nodeId: 'n1',
-      attrs: { any: '1' },
-    }, expect.anything());
-    expect(result.isError).toBeUndefined();
-  });
 });
 
 // ─── Branch routing (P8) ─────────────────────────────────────────────────────

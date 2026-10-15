@@ -241,7 +241,7 @@ export const bindVariableTool: AgentTool = {
 export const setPageVariableTool: AgentTool = {
   name: 'set_page_variable',
   description:
-    "Declare (or update) a PAGE variable — interactive state for the page.\n\nInputs:\n  name: string — camelCase, e.g. \"faqOpen\" (existing name = update)\n  type: \"number\" | \"text\" | \"boolean\" | \"color\" | \"image\" | \"componentCursor\"\n  value: string (optional) — default as string, e.g. \"false\", \"0.5\", \"#6366f1\"\n\nExample: {\"name\":\"faqOpen\",\"type\":\"boolean\",\"value\":\"false\"}\n\nErrors:\n  - value must be \"true\"/\"false\" for booleans (not \"toggle\")\n  - name must be camelCase (not \"faq_open\")\n\nDoes NOT write conditional rendering ({open && …}) or useState — use apply_file_edit for JSX changes.",
+    "Declare (or update) a PAGE variable — interactive state for the page.\n\nInputs:\n  name: string — camelCase, e.g. \"faqOpen\" (existing name = update)\n  type: \"number\" | \"text\" | \"boolean\" | \"color\" | \"image\" | \"componentCursor\"\n  value: string (optional) — default as string, e.g. \"false\", \"0.5\", \"#6366f1\"\n\nExample: {\"name\":\"faqOpen\",\"type\":\"boolean\",\"value\":\"false\"}\n\nErrors:\n  - value must be \"true\"/\"false\" for booleans (not \"toggle\")\n  - name must be camelCase (not \"faq_open\")\n\nDoes NOT write conditional rendering ({open && …}) or useState — use edit_source for JSX changes.",
   inputSchema: {
     name: z
       .string()

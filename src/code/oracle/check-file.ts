@@ -30,6 +30,7 @@ import { SELECT_ICON_ATTR, parseSelectIconSpec } from '@/editor/tools/InputTool/
 import { checkVariantDialect, checkVariantTernaryPrimary } from './checks/variant-dialect';
 import { checkScrollDialect } from './checks/scroll-dialect';
 import { checkPageVariableTypes, checkEventVariables, checkComponentFluidWidth } from './checks/element-identity';
+import { checkDuplicateAttributes, checkInlineDataUris } from './checks/attribute-hygiene';
 import { checkSlotComponentInlineChildren, checkUnresolvableTernary, checkGridNeedsTemplate, checkGridChildSpan, checkCanvasFillFeedback, checkPaddingNeedsLayout, checkFlexChildOrder, checkOrderIsString, checkFlexChildShrink, checkFlexRowChildFullWidth, checkImageBackgroundFrame, checkNoLayoutParentRelativeChild, checkMediaColumnFlipRebase } from './checks/layout-rules';
 import { checkCanvasConfig } from './checks/canvas-config';
 import { checkOverlayDialect } from './checks/overlay-dialect';
@@ -1316,6 +1317,13 @@ export function checkFile(
   if (/@pageVariables/.test(code)) {
     checkPageVariableTypes(code, v);
   }
+  // ── ATTRIBUTE HYGIENE — a duplicated JSX attribute (only the last copy
+  //    applies) and large inline base64 data URIs (shipped uncached in every
+  //    page view). Cheap string scans; no AST walk. A CODE COMPONENT's data
+  //    URIs (the built-in shaders' noise textures) ship in the JS bundle,
+  //    which is cached — not in each page's HTML — so they are exempt. ─────
+  checkDuplicateAttributes(code, v);
+  if (!isCodeComponent && code.includes(';base64,')) checkInlineDataUris(code, v);
   // ── COMPONENT LINKS (design components) — every element is motion.* for the
   //    FLIP/variant system, so a navigating link must be MotionLink =
   //    motion.create(Link): a plain <Link> won't animate, and <motion.a href>/

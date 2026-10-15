@@ -308,7 +308,7 @@ export const setMotionPresetTool: AgentTool = {
       const masterCode = readToolFile(ctx, masterPath);
       if (!masterCode) return fail(`Master ${masterPath} is empty or missing.`);
       if (hasComponentControls(masterCode)) {
-        return fail(`${node.type} is a CODE component — its motion lives in its own code (edit ${masterPath} with apply_file_edit); presets apply to design components and plain elements.`);
+        return fail(`${node.type} is a CODE component — its motion lives in its own code (edit ${masterPath} with edit_source); presets apply to design components and plain elements.`);
       }
       const masterNode = masterTargetNodeId(masterCode, nodeId);
       if (!masterNode) return fail(`Master ${masterPath} has no root node to animate.`);

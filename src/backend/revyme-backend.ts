@@ -10,6 +10,7 @@
 // Credentials ride along on the session cookie either way.
 
 import type { ProjectBackend, ProjectData, RevymeUser, WorkspaceFont } from './types';
+import { disableGzipBodies, encodeSaveBody, noteServerEncodings } from './save-encoding';
 import { isKnownProjectFormat, SaveConflictError } from './types';
 import { getBaseRevision, isRevisionInSync, noteSaved, setLoadedRevision } from './save-revision';
 import { trace } from '@/shared/debug-trace';
@@ -58,6 +59,7 @@ export class RevymeBackend implements ProjectBackend {
         if (res.status === 404) {
           res = await fetch(url(`/api/websites/${enc}`), { credentials: 'include' });
         }
+        noteServerEncodings(res);
         if (!res.ok) return { ok: false as const, status: res.status };
         return { ok: true as const, row: (await res.json()) as WebsiteRow };
       } catch (error) {
@@ -90,6 +92,7 @@ export class RevymeBackend implements ProjectBackend {
     // load against the Hono backend.
     try {
       const res = await fetch(url(`/api/websites/${id}`), { credentials: 'include' });
+      noteServerEncodings(res);
       if (!res.ok) {
         trace.error('backend:load-project', { id, status: res.status });
         return null;
@@ -224,12 +227,27 @@ export class RevymeBackend implements ProjectBackend {
       body.baseRevision = baseRevision;
       body.inSync = isRevisionInSync();
     }
-    const res = await fetch(url(`/api/websites/${id}`), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(body),
-    });
+    // Gzipped once the API has said it reads gzip (save-encoding.ts); a
+    // compressed save it refuses is resent plain, and compression stays off.
+    const payload = JSON.stringify(body);
+    const put = async (allowGzip: boolean) => {
+      const encoded = await encodeSaveBody(payload, allowGzip);
+      const r = await fetch(url(`/api/websites/${id}`), {
+        method: 'PUT',
+        headers: encoded.headers,
+        credentials: 'include',
+        body: encoded.body,
+      });
+      return { r, gzip: encoded.gzip };
+    };
+    const first = await put(true);
+    let res = first.r;
+    if (first.gzip && (res.status === 400 || res.status === 415)) {
+      trace.error('backend:save-gzip-refused', { id, status: res.status });
+      disableGzipBodies();
+      res = (await put(false)).r;
+    }
+    noteServerEncodings(res);
     if (res.status === 409) {
       const payload = await res.json().catch(() => null) as { error?: { details?: { revision?: number } } } | null;
       const serverRevision = payload?.error?.details?.revision;

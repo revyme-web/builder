@@ -250,3 +250,46 @@ describe('RevymeBackend — revisions and the light row', () => {
     expect(calls[0].url).toBe(`${API}/api/websites/1/meta`);
   });
 });
+
+describe('RevymeBackend — compressed saves', () => {
+  const big = { format: 'revyme-project@2', files: { 'app/page.client.tsx': 'x'.repeat(200_000) } } as never;
+
+  beforeEach(async () => {
+    (await import('./save-encoding')).resetSaveEncodingForTest();
+  });
+
+  it('sends plain JSON until the API has advertised gzip', async () => {
+    setResponse({ revision: 1 });
+    await new RevymeBackend().saveProject('site-1', big);
+    expect((calls[0].init.headers as Record<string, string>)['Content-Encoding']).toBeUndefined();
+    expect(typeof calls[0].init.body).toBe('string');
+  });
+
+  it('gzips a large save once a response carried x-revyme-accept-encoding: gzip', async () => {
+    setResponse({ revision: 1 }, { status: 200, headers: { 'x-revyme-accept-encoding': 'gzip' } });
+    const backend = new RevymeBackend();
+    await backend.saveProject('site-1', big); // learns the capability
+    await backend.saveProject('site-1', big);
+    const second = calls[1].init;
+    expect((second.headers as Record<string, string>)['Content-Encoding']).toBe('gzip');
+    const inflated = await new Response(new Response(second.body as ArrayBuffer).body!.pipeThrough(new DecompressionStream('gzip'))).text();
+    expect(JSON.parse(JSON.parse(inflated).json).files['app/page.client.tsx']).toHaveLength(200_000);
+    expect((second.body as ArrayBuffer).byteLength).toBeLessThan(20_000);
+  });
+
+  it('a refused compressed save is resent plain, and compression stays off', async () => {
+    setResponse({ revision: 1 }, { status: 200, headers: { 'x-revyme-accept-encoding': 'gzip' } });
+    const backend = new RevymeBackend();
+    await backend.saveProject('site-1', big);
+    vi.mocked(fetch).mockImplementationOnce(async (u, init) => {
+      calls.push({ url: String(u), init: init ?? {} });
+      return new Response(JSON.stringify({ error: { message: 'bad body' } }), { status: 400 });
+    });
+    setResponse({ revision: 2 });
+    await backend.saveProject('site-1', big);
+    expect((calls[1].init.headers as Record<string, string>)['Content-Encoding']).toBe('gzip');
+    expect((calls[2].init.headers as Record<string, string>)['Content-Encoding']).toBeUndefined();
+    await backend.saveProject('site-1', big);
+    expect((calls[3].init.headers as Record<string, string>)['Content-Encoding']).toBeUndefined();
+  });
+});

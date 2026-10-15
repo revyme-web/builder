@@ -31,6 +31,47 @@ export type ConditionalPropMap = Record<string, string>;
 
 const PARENT_VARIANT_VARS = ['initialVariant', 'variant'] as const;
 
+/** `'…'` or `"…"` with backslash escapes — two capture groups (single, double). */
+const STRING_LITERAL_SRC = `'((?:[^'\\\\\\n]|\\\\.)*)'|"((?:[^"\\\\\\n]|\\\\.)*)"`;
+
+function unescapeSingle(body: string): string {
+  return body.replace(/\\(.)/g, '$1');
+}
+
+function unescapeDouble(body: string): string {
+  try { return JSON.parse(`"${body}"`) as string; } catch { return body.replace(/\\(.)/g, '$1'); }
+}
+
+/** A JS string literal for `v`: `'v'` when that is safe, else an escaped
+ *  double-quoted literal (an apostrophe in `'…'` ends the string early). */
+function quoteLiteral(v: string): string {
+  return /['\\\n]/.test(v) ? JSON.stringify(v) : `'${v}'`;
+}
+
+/**
+ * The conditional map behind an instance prop's CURRENT value (as read by the
+ * JSX attribute scanner): a string attr is the default branch; an expression is
+ * a parent-variant ternary, a raw number/boolean, or an escaped string literal.
+ * Null when absent or not a shape the map can carry (a variable, a call…).
+ */
+export function currentConditionalMap(
+  value: { kind: 'string'; text: string } | { kind: 'expr'; source: string } | { kind: 'bare' } | null,
+): ConditionalPropMap | null {
+  if (!value) return null;
+  if (value.kind === 'string') return { default: value.text };
+  if (value.kind === 'bare') return { default: 'true' };
+  const src = value.source.trim();
+  const parsed = parseConditionalPropExpression(src);
+  if (parsed) return parsed;
+  // Expression form that isn't a ternary yet (`prop={18}`, `prop={true}`)
+  // — seed the default branch from the raw literal so the first per-variant
+  // write keeps the base value instead of dropping it.
+  if (/^(-?\d+(?:\.\d+)?|true|false)$/.test(src)) return { default: src };
+  const lit = new RegExp(`^(?:${STRING_LITERAL_SRC})$`, 's').exec(src);
+  if (lit) return { default: lit[1] !== undefined ? unescapeSingle(lit[1]) : unescapeDouble(lit[2]) };
+  return null;
+}
+
 /**
  * Try to parse a JSX expression value as a conditional prop ternary
  * (initialVariant === 'X' ? 'A' : ...). Returns the parsed map, or null when
@@ -48,8 +89,12 @@ export function parseConditionalPropExpression(expr: string): ConditionalPropMap
   // <value> must be a string literal (single or double quoted).
   // Branch values: quoted strings OR raw number/boolean literals (per-variant
   // code-component props — a quoted "false" toggle would be truthy at runtime).
+  // A string branch may carry ESCAPED quotes (`'Let\\'s go'`, `"say \\"hi\\""`) —
+  // the formatter escapes them (a bare `'` inside `'…'` ended the literal and
+  // broke the page), so the parser must read them back or the next write
+  // would rebuild the map from scratch and drop every other variant's value.
   const branchRegex = new RegExp(
-    `^\\s*(?:${PARENT_VARIANT_VARS.join('|')})\\s*===\\s*['"]([^'"]+)['"]\\s*\\?\\s*(?:['"]([^'"]*)['"]|(-?\\d+(?:\\.\\d+)?|true|false))\\s*:\\s*(.+)$`,
+    `^\\s*(?:${PARENT_VARIANT_VARS.join('|')})\\s*===\\s*['"]([^'"]+)['"]\\s*\\?\\s*(?:${STRING_LITERAL_SRC}|(-?\\d+(?:\\.\\d+)?|true|false))\\s*:\\s*(.+)$`,
     's',
   );
 
@@ -57,18 +102,20 @@ export function parseConditionalPropExpression(expr: string): ConditionalPropMap
     const m = remaining.match(branchRegex);
     if (!m) break;
     const variantName = m[1];
-    const value = m[2] !== undefined ? m[2] : m[3];
+    const value = m[2] !== undefined ? unescapeSingle(m[2]) : m[3] !== undefined ? unescapeDouble(m[3]) : m[4];
     map[variantName] = value;
-    remaining = m[4].trim();
+    remaining = m[5].trim();
   }
 
   // Final fallback: a string literal `'...'`/`"..."` or a raw number/boolean.
-  const fallbackMatch = remaining.match(/^(?:['"]([^'"]*)['"]|(-?\d+(?:\.\d+)?|true|false))\s*$/);
+  const fallbackMatch = remaining.match(new RegExp(`^(?:${STRING_LITERAL_SRC}|(-?\\d+(?:\\.\\d+)?|true|false))\\s*$`, 's'));
   if (!fallbackMatch) {
     trace.fn('instance-conditional-prop:parse:fallback-not-string', { expr, remaining });
     return null;
   }
-  map['default'] = fallbackMatch[1] !== undefined ? fallbackMatch[1] : fallbackMatch[2];
+  map['default'] = fallbackMatch[1] !== undefined
+    ? unescapeSingle(fallbackMatch[1])
+    : fallbackMatch[2] !== undefined ? unescapeDouble(fallbackMatch[2]) : fallbackMatch[3];
 
   if (Object.keys(map).length === 0) return null;
   trace.fn('instance-conditional-prop:parsed', { expr, map });
@@ -97,7 +144,7 @@ export function formatConditionalPropExpression(
 
   // Raw number/boolean values stay UNQUOTED (typed props: sliders, toggles —
   // a quoted "false" is truthy at runtime); everything else is quoted.
-  const emit = (v: string) => (/^(-?\d+(?:\.\d+)?|true|false)$/.test(v) ? v : `'${v}'`);
+  const emit = (v: string) => (/^(-?\d+(?:\.\d+)?|true|false)$/.test(v) ? v : quoteLiteral(v));
   // Chain: var === 'v1' ? 'a' : var === 'v2' ? 'b' : 'default'
   const chain = branches
     .map(([variantName, value]) => `${parentVarName} === '${variantName}' ? ${emit(value)}`)

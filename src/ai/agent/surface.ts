@@ -162,7 +162,7 @@ export function describeSurface(
     );
     lines.push(
       `A request here is about THIS component unless they say otherwise. Read it with \`read_source\` (path \`${surface.filePath}\`) ` +
-      `and change it with \`apply_file_edit\` (same path, kind "component") — the write is checked by the code-component oracle and ` +
+      `and change it with \`edit_source\` (anchored old_text → new_text on that path; \`apply_file_edit\` only to replace the whole file) — the write is checked by the code-component oracle and ` +
       'the preview updates when it lands. Leave pages and other files alone unless the user asks for them.',
     );
     if (f && f.controls.length > 0) {

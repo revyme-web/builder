@@ -23,6 +23,7 @@ import type { PresetToken } from '@/shared/types';
 import { parsePresetTokens } from '@/code/generation/preset-gen';
 import { getPresetTokens } from '@/code/project/preset-ops';
 import { listPageFiles as listPagesLive } from '@/code/project/active-file-store';
+import { modifyProjectFile } from '@/code/project/modify-file';
 
 /** True when the run is explicitly bound to a branch (isolation A).
  * Presence, never position: a bound run stays bound even when the human
@@ -182,6 +183,27 @@ export function getToolCode(ctx?: ToolContext, path?: string): string {
   }
   if (path === undefined) return getCurrentCode();
   return projectFS.readFile(path) ?? '';
+}
+
+/**
+ * Rewrite one file through the run's workspace: a branched run writes its
+ * branch map (after flushing its own queued group), an unbranched run goes
+ * through modifyProjectFile (flush → fresh read → write → re-sync). For
+ * tools whose write is a whole-file transform rather than a node mutation.
+ * Returns the written code, or null when the file is missing / refused.
+ */
+export function modifyToolFile(ctx: ToolContext | undefined, path: string, transform: (code: string) => string): string | null {
+  if (ctx?.workspace) {
+    flushTool(ctx);
+    const branchId = ctx.workspace.branchId;
+    const current = projectFS.readBranchFile(branchId, path);
+    if (current == null) return null;
+    const next = transform(current);
+    if (next !== current) projectFS.writeBranchFile(branchId, path, next);
+    trace.action('agent-workspace:modify-branch-file', { branch: branchId, path, changed: next !== current });
+    return next;
+  }
+  return modifyProjectFile(path, transform);
 }
 
 /** Existence probe through the run's workspace (branch map or active map). */

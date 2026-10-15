@@ -20,7 +20,11 @@ import { buildComponentRegistry, STRUCTURAL_PROPS, type ComponentInfo } from '@/
 import { wouldCreateComponentCycle } from '@/code/components/component-cycle';
 import { projectFS, projectVersionAtom } from '@/code/project/project-fs';
 import type { AgentTool, AgentToolResult, ToolContext } from '@/ai/agent';
-import { queueToolMutation, flushTool, getToolNodes, isBranchedRun, branchFsView, resolveToolFile, getToolCode } from '@/ai/agent/workspace';
+import { queueToolMutation, flushTool, getToolNodes, isBranchedRun, branchFsView, resolveToolFile, getToolCode, modifyToolFile } from '@/ai/agent/workspace';
+import { resolveInstancePropWrite, writeInstancePropInCode, readInstancePropAttr, type InstancePropWrite } from './instance-prop-write';
+import { detectPropAsLinkAttr } from '@/editor/tools/ComponentPropsTool/helpers';
+import { parseVariantConfig } from '@/code/variants/variant-config';
+import { findJSXDataIdIndex } from '@/code/generation/generator-utils';
 import { isComponentFilePath } from '@/code/project/file-path-kind';
 import { coerceRecord } from './coerce';
 import { formatNodeNotFound } from '../error-format';
@@ -497,8 +501,23 @@ export const addComponentInstanceTool: AgentTool = {
       return fail(`Cannot place ${name} inside ${targetFile}: the component would render itself (${info.filePath} is, or imports, this master). Place it on a page or in another component instead.`);
     }
     const rawProps = (args.props as Record<string, unknown> | undefined) ?? {};
-    const { attrs, dropped } = filterDeclaredProps(info, rawProps);
+    const { attrs: declaredAttrs, dropped } = filterDeclaredProps(info, rawProps);
     const missing = missingRequiredProps(info, rawProps);
+    // Typed props (number / toggle / list / transition / formatted text) are
+    // written in their declared type after the insert — the same write as
+    // set_component_prop — instead of as string attributes (`count="60"` is a
+    // string, `open="false"` is truthy). A value of the wrong type is refused
+    // per prop and reported, never written as a string.
+    const masterCode = getToolCode(ctx, info.filePath) || null;
+    const attrs: Record<string, string> = {};
+    const typed: Array<{ prop: string; write: InstancePropWrite }> = [];
+    const invalid: Array<{ prop: string; error: string }> = [];
+    for (const [prop, value] of Object.entries(declaredAttrs)) {
+      const resolved = resolveInstancePropWrite({ prop, value, info, linkKind: masterCode ? detectPropAsLinkAttr(prop, masterCode) : null });
+      if (!resolved.ok) invalid.push({ prop, error: resolved.error });
+      else if (resolved.write.expression) typed.push({ prop, write: resolved.write });
+      else attrs[prop] = value;
+    }
     const id = generateNodeId('frame');
     // Every newly-inserted node must carry explicit positioning — the oracle
     // bounces position-less nodes (NODE_MISSING_POSITION) and the editor's
@@ -527,11 +546,18 @@ export const addComponentInstanceTool: AgentTool = {
       ...(typeof args.index === 'number' ? { index: args.index } : {}),
     });
     flushTool(ctx);
+    if (typed.length > 0) {
+      modifyToolFile(ctx, targetFile, (code) => typed.reduce(
+        (c, t) => writeInstancePropInCode(c, { nodeId: id, componentName: name, prop: t.prop }, t.write),
+        code,
+      ));
+    }
     return ok({
       node_id: id,
       component: name,
-      props_applied: Object.keys(attrs),
+      props_applied: [...Object.keys(attrs), ...typed.map((t) => t.prop)],
       dropped_props: dropped,
+      ...(invalid.length > 0 ? { invalid_props: invalid } : {}),
       missing_required: missing,
     });
   },
@@ -540,7 +566,7 @@ export const addComponentInstanceTool: AgentTool = {
 export const setComponentPropTool: AgentTool = {
   name: 'set_component_prop',
   description:
-    "Set one prop of an existing component instance (the prop appears on its JSX tag, e.g. title=\"Hello\"). Pass \"\" as value to REMOVE the prop. Only props DECLARED by the component (read get_component for the signature) can be set; structural props (style, ref, children, className, key) are rejected — use set_styles for styles instead. component_name is the component as shown in the page tree (PascalCase tag). value is always the string literal that appears on the JSX tag (e.g. \"60\", \"true\"). Optional variant (a component variant name from get_component) scopes the write to THAT variant — other variants keep their own value; pass \"\" as value with a variant to remove only that variant's override. Omit variant (or pass 'default') to set the prop on ALL variants (base).",
+    "Set one prop of an existing component instance (the prop on its JSX tag) — the same write as the instance's properties panel: the existing value is replaced IN PLACE whatever its form (string, {expression}, bare boolean), never duplicated. Pass \"\" as value to REMOVE the prop. Only props DECLARED by the component (read get_component for the signature) can be set; structural props (style, ref, children, className, key) are rejected — use set_styles for styles. The value is written in the prop's DECLARED type: a Number prop \"60\" becomes count={60}, a Toggle \"false\" becomes open={false} (never the truthy string \"false\"), a list takes a JSON array, a transition a JSON object, anything else a string. To pass JavaScript — a variable, an array/object literal, a call, a template literal — set expression: true and give the code WITHOUT the outer braces (value \"items.slice(0, 3)\" → items={items.slice(0, 3)}); it is parse-checked first. The reply's `written` shows the exact attribute now in the source. Optional variant applies ONLY when the instance sits INSIDE a component master: it scopes the value to that master's variant (other variants keep theirs; \"\" with a variant removes just that variant's value). Pages have no variants — to choose which variant an instance SHOWS, use show_variant.",
   inputSchema: {
     node_id: z.string().describe(NODE_ID_DESCRIBE),
     component_name: z
@@ -549,11 +575,15 @@ export const setComponentPropTool: AgentTool = {
     prop: z.string().describe('prop name as declared by the component'),
     value: z
       .string()
-      .describe('string literal as it appears on the JSX tag, e.g. "Build", "60", "true"; "" removes the prop (or removes only the given variant\'s override when variant is set)'),
+      .describe('the value: text for a string prop, "60" for a number, "true"/"false" for a toggle, JSON for a list/transition; with expression: true, JavaScript source without the outer braces. "" removes the prop (or only the given variant\'s value when variant is set)'),
+    expression: z
+      .boolean()
+      .optional()
+      .describe('true = value is a JavaScript expression written as prop={value} (e.g. a variable, array, object, call). Omit for literal values — their type is taken from the prop declaration'),
     variant: z
       .string()
       .optional()
-      .describe('component variant name to scope the write to (e.g. "variant-1"); omit or pass "default" for the base value on ALL variants'),
+      .describe('ONLY for an instance inside a component master: the master\'s variant name to scope the value to (e.g. "hover"); omit or pass "default" for the base value on all variants'),
   },
   category: 'semantic',
   async execute(args, ctx) {
@@ -562,33 +592,77 @@ export const setComponentPropTool: AgentTool = {
     const componentName = (args.component_name as string) ?? '';
     const prop = (args.prop as string) ?? '';
     const value = (args.value as string) ?? '';
+    const expression = args.expression === true;
     const variant = (args.variant as string | undefined)?.trim() || undefined;
     if (STRUCTURAL_PROPS.has(prop)) return fail(`"${prop}" is a structural prop and cannot be set as a component prop. Use set_styles for style, or pass children through add_node into the instance.`);
     if (!prop) return fail('Missing prop name.');
-    const info = (isBranchedRun(ctx)
+    const registry = isBranchedRun(ctx)
       ? buildComponentRegistry(branchFsView(ctx.workspace!.branchId))
-      : buildComponentRegistry(projectFS, store.get(projectVersionAtom))).get(componentName);
+      : buildComponentRegistry(projectFS, store.get(projectVersionAtom));
+    const info = registry.get(componentName);
     if (info && !info.props.some((p) => p.name === prop)) {
       const declared = info.props.map((p) => p.name).join(', ') || '(none)';
       return fail(`"${prop}" is not a declared prop of ${componentName}. Declared: ${declared}. NEXT ACTION: call get_component (${componentName}) to read its declared props, then re-issue with one of them.`);
     }
-    trace.action('agent:set-component-prop', {
-      nodeId, componentName, prop, variant: variant ?? null, removed: value === '',
-      registryKnown: !!info,
-    });
-    if (variant && variant !== 'default') {
-      // Variant-scoped attr write — same mutation as the editor's Input tool
-      // on a variant viewport (InputTool.writeAttr: setVariantAttr with
-      // baseValue = current base attr). 'default' is the editor's base axis
-      // and falls through to the plain base write below. The base value is
-      // read from the node snapshot so the variant ternary keeps its fallback.
-      const currentBase = getToolNodes(ctx).get(nodeId)?.attrs?.[prop] ?? '';
-      queueToolMutation(ctx, { type: 'setVariantAttr', nodeId, variant, attr: prop, value, baseValue: currentBase });
-    } else {
-      queueToolMutation(ctx, { type: 'updateHtmlAttrs', nodeId, attrs: { [prop]: value } });
-    }
+    const host = resolveToolFile(ctx);
     flushTool(ctx);
-    return ok({ node_id: nodeId, component: componentName, prop, variant: variant ?? null, removed: value === '' });
+    const hostCode = getToolCode(ctx, host);
+    const target = { nodeId, componentName, prop };
+    // The instance must be addressed by its data-id: the tag-name fallback of
+    // the instance lookup would otherwise pick the FIRST <Name> in the file.
+    if (findJSXDataIdIndex(hostCode, nodeId) === -1) {
+      return fail(formatNodeNotFound(nodeId, getToolNodes(ctx).keys()));
+    }
+
+    // Variant scoping is a per-variant value INSIDE a component master — the
+    // ternary keys on the master's own `initialVariant`. On a page there is no
+    // such variable: the old write produced `initialVariant === 'x' ? …` in a
+    // page, a ReferenceError the moment it rendered.
+    const scoped = variant && variant !== 'default' ? variant : undefined;
+    if (scoped) {
+      const hostVariants = isComponentFilePath(host) ? parseVariantConfig(hostCode).map((v) => v.name) : [];
+      if (!isComponentFilePath(host) || hostVariants.length === 0) {
+        return fail(`variant "${scoped}" cannot apply here: ${host} is ${isComponentFilePath(host) ? 'a component without variants' : 'a page'}, and per-variant values exist only inside a component master with variants. Omit variant to set the value; to choose which variant this instance SHOWS, use show_variant.`);
+      }
+      if (!hostVariants.includes(scoped)) {
+        return fail(`"${scoped}" is not a variant of ${host}. Its variants: ${hostVariants.join(', ')}.`);
+      }
+      if (expression) {
+        return fail('A per-variant value must be a literal (text, number or true/false) — an expression cannot be scoped to one variant. Omit variant to set the expression on every variant.');
+      }
+    }
+
+    let write: InstancePropWrite | null = null;
+    if (value !== '') {
+      const masterCode = info ? (isBranchedRun(ctx) ? projectFS.readBranchFile(ctx.workspace!.branchId, info.filePath) : projectFS.readFile(info.filePath)) : null;
+      const resolved = resolveInstancePropWrite({
+        prop, value, expression, info,
+        linkKind: masterCode ? detectPropAsLinkAttr(prop, masterCode) : null,
+      });
+      if (!resolved.ok) return fail(resolved.error);
+      write = resolved.write;
+    }
+    if (scoped && write?.expression && !/^(-?\d+(?:\.\d+)?|true|false)$/.test(write.value)) {
+      return fail(`"${prop}" takes a ${write.value.startsWith('[') ? 'list' : 'structured'} value, which cannot be scoped to one variant. Omit variant to set it on every variant.`);
+    }
+
+    trace.action('agent:set-component-prop', {
+      nodeId, componentName, prop, variant: scoped ?? null, removed: value === '',
+      expression: write?.expression ?? null, registryKnown: !!info,
+    });
+    const defaultSeed = info?.props.find((p) => p.name === prop)?.defaultValue ?? undefined;
+    const written = modifyToolFile(ctx, host, (code) => writeInstancePropInCode(code, target, write, { parentVariant: scoped, defaultSeed }));
+    if (written === null) return fail(`Could not write ${host} — the editor refused the write (busy or missing file). Retry in a moment.`);
+
+    // Honest reply: read back what the source now holds for this prop.
+    const after = readInstancePropAttr(written, target);
+    if (write && !scoped && after.text === null) {
+      return fail(`The write did not land: no "${prop}" on ${nodeId} in ${host} afterwards. Check node_id (read get_node_tree) and component_name.`);
+    }
+    return ok({
+      node_id: nodeId, component: componentName, prop, variant: scoped ?? null,
+      removed: value === '', written: after.text,
+    });
   },
 };
 

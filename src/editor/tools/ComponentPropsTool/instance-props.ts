@@ -4,11 +4,13 @@
 import { findTagClose } from '@/code/generation/generator-utils';
 import { parseScopedScalarExpr } from '@/code/generation/generator-motion';
 import {
-  parseConditionalPropExpression,
   formatConditionalPropExpression,
   setConditionalPropEntry,
   hasVariantOverrides,
+  currentConditionalMap,
 } from '@/code/components/instance-conditional-prop';
+import { findTagAttrs, formatStringAttr, readTagAttr, writeTagAttr } from '@/code/components/jsx-tag-attrs';
+import { trace } from '@/shared/debug-trace';
 
 // ─── JSX Instance Helpers ────────────────────────────────────────────────────
 
@@ -145,53 +147,22 @@ export function parseInstanceProps(code: string, nodeId: string, componentName: 
   return result;
 }
 
-/** Set or update a prop on a component instance: <Name /> → <Name prop="value" /> or <Name prop={value} /> */
 /**
- * Locate ` propName=<value>` on an instance tag, BRACE/QUOTE/TEMPLATE aware. The
- * leading space means a substring like the `name` inside `data-name` never
- * matches; the `{…}` scan is depth-aware so a template-literal value with nested
- * `${…}` (e.g. `linkHref={`/x/${item.s}`}`) is consumed whole — a naive
- * `\{[^}]*\}` stops at the first inner `}` and leaves a stray `` `} `` behind →
- * corrupt JSX → page crash. Returns the index of the leading space, the prop
- * start (after the space), and the end (after the value). Null if absent.
+ * Locate `propName` on an instance tag through the JSX attribute scanner
+ * (jsx-tag-attrs): a prop after a newline, a single-quoted or BARE (`featured`)
+ * prop, and a `{…}` value holding nested objects or a template literal are all
+ * found whole. A miss here used to make SET append the prop a second time — a
+ * duplicate attribute whose later copy wins at runtime, so the write looked
+ * ignored (agent set_component_prop, 2026-10-15). When a tag already carries
+ * duplicates, the LAST one is reported: it is the one JSX applies.
  */
 function findInstancePropSpan(tagContent: string, propName: string): { spaceStart: number; propStart: number; end: number } | null {
-  const needle = ` ${propName}=`;
-  const spaceStart = tagContent.indexOf(needle);
-  if (spaceStart === -1) return null;
-  const valStart = spaceStart + needle.length;
-  const ch = tagContent[valStart];
-  let end: number;
-  if (ch === '{') {
-    let depth = 0;
-    let i = valStart;
-    for (; i < tagContent.length; i++) {
-      if (tagContent[i] === '{') depth++;
-      else if (tagContent[i] === '}') { depth--; if (depth === 0) { i++; break; } }
-    }
-    end = i;
-  } else if (ch === '"' || ch === "'") {
-    const close = tagContent.indexOf(ch, valStart + 1);
-    if (close === -1) return null;
-    end = close + 1;
-  } else {
-    return null;
-  }
-  return { spaceStart, propStart: spaceStart + 1, end };
+  const hits = findTagAttrs(tagContent, propName);
+  const a = hits[hits.length - 1];
+  return a ? { spaceStart: a.wsStart, propStart: a.start, end: a.end } : null;
 }
 
-
-/** Insert offset right after the ACTUAL tag name at `tagStart`. NEVER derive
- *  this from `componentName` — the registry name can be the component's
- *  internal function name while the JSX uses the import name; a longer
- *  registry name landed the insert INSIDE `data-id="…"`, splitting it into
- *  bare `data-` + `id="…"` (the auto_N silent-no-op corruption,
- *  2026-07-30). */
-function afterTagName(code: string, tagStart: number): number {
-  const m = /^<([A-Za-z][\w.]*)/.exec(code.slice(tagStart, tagStart + 128));
-  return tagStart + (m ? 1 + m[1].length : 1);
-}
-
+/** Set or update a prop on a component instance: <Name /> → <Name prop="value" /> or <Name prop={value} /> */
 export function setInstanceProp(code: string, nodeId: string, componentName: string, propName: string, value: string, useExpression = false): string {
   const tag = findInstanceTag(code, nodeId, componentName);
   if (!tag) return code;
@@ -203,30 +174,21 @@ export function setInstanceProp(code: string, nodeId: string, componentName: str
   // parsing. Switch to single-quoted JSX wrap when the value has `"`. If it
   // also has `'`, fall back to expression form with JSON.stringify so both
   // are escaped via `\"`.
-  let formatted: string;
-  if (useExpression) {
-    formatted = `${propName}={${value}}`;
-  } else if (!value.includes('"')) {
-    formatted = `${propName}="${value}"`;
-  } else if (!value.includes("'")) {
-    formatted = `${propName}='${value}'`;
-  } else {
-    formatted = `${propName}={${JSON.stringify(value)}}`;
-  }
+  const formatted = useExpression ? `${propName}={${value}}` : formatStringAttr(propName, value);
 
-  // Replace an existing prop in place (brace/quote/template aware — a naive
-  // `\{[^}]*\}` clips a template-literal value at the first inner `}` and
-  // corrupts the tag, e.g. switching a slug `linkHref={`…${item.s}`}` to a
-  // plain link left a stray `` `} `` → page crash).
-  const span = findInstancePropSpan(tagContent, propName);
-  if (span) {
-    const newTag = tagContent.slice(0, span.propStart) + formatted + tagContent.slice(span.end);
-    return code.slice(0, tag.tagStart) + newTag + code.slice(tag.tagEnd);
+  // Replace the existing prop in place — every spelling (scanner-located, see
+  // findInstancePropSpan) — and drop any duplicate copies; else insert it
+  // after the ACTUAL tag name, read from the tag itself — NEVER derived from
+  // `componentName`: the registry name can be the component's internal
+  // function name while the JSX uses the import name, and a longer registry
+  // name landed the insert INSIDE `data-id="…"`, splitting it into bare
+  // `data-` + `id="…"` (the auto_N silent-no-op corruption, 2026-07-30).
+  const next = writeTagAttr(tagContent, propName, formatted);
+  if (next === null) {
+    trace.error('instance-props:set-unreadable-tag', { nodeId, componentName, propName });
+    return code;
   }
-
-  // Add new prop — insert after the ACTUAL tag name (see afterTagName).
-  const nameEnd = afterTagName(code, tag.tagStart);
-  return code.slice(0, nameEnd) + ` ${formatted}` + code.slice(nameEnd);
+  return code.slice(0, tag.tagStart) + next + code.slice(tag.tagEnd);
 }
 
 /** Remove a prop from a component instance: <Name prop="value" /> → <Name /> */
@@ -235,13 +197,12 @@ export function removeInstanceProp(code: string, nodeId: string, componentName: 
   if (!tag) return code;
 
   const tagContent = code.slice(tag.tagStart, tag.tagEnd);
-  // Brace/quote/template-aware span (shared with setInstanceProp) — removing the
-  // leading space + the whole value, so a template-literal `linkHref` doesn't
-  // leave a stray `` `} ``.
-  const span = findInstancePropSpan(tagContent, propName);
-  if (!span) return code;
-  const newTag = tagContent.slice(0, span.spaceStart) + tagContent.slice(span.end);
-  return code.slice(0, tag.tagStart) + newTag + code.slice(tag.tagEnd);
+  // Scanner spans (shared with setInstanceProp) — the leading whitespace and
+  // the whole value go, so a template-literal `linkHref` doesn't leave a stray
+  // `` `} ``; every duplicate copy goes too.
+  const next = writeTagAttr(tagContent, propName, null);
+  if (next === null || next === tagContent) return code;
+  return code.slice(0, tag.tagStart) + next + code.slice(tag.tagEnd);
 }
 
 /**
@@ -272,29 +233,17 @@ export function setConditionalInstanceProp(
 
   const tagContent = code.slice(tag.tagStart, tag.tagEnd);
 
-  // Read current value: either `propName="literal"` or `propName={expr}`.
-  // Used as the seed for the conditional map so prior overrides survive.
-  const literalMatch = tagContent.match(new RegExp(`${propName}="([^"]*)"`));
-  const exprMatch = tagContent.match(new RegExp(`${propName}=\\{([^}]+)\\}`));
-  let currentMap: Record<string, string> | null = null;
-  if (exprMatch) {
-    currentMap = parseConditionalPropExpression(exprMatch[1]);
-  }
-  if (!currentMap && literalMatch) {
-    currentMap = { default: literalMatch[1] };
-  }
-  // Expression form that isn't a ternary yet (`prop={18}`, `prop={true}`)
-  // — seed the default branch from the raw literal so the first per-variant
-  // write keeps the base value instead of dropping it.
-  if (!currentMap && exprMatch && /^(-?\d+(?:\.\d+)?|true|false)$/.test(exprMatch[1].trim())) {
-    currentMap = { default: exprMatch[1].trim() };
-  }
-  if (!currentMap && parentVariantName !== 'default' && defaultSeed != null && defaultSeed !== '') {
-    currentMap = { default: defaultSeed };
-  }
+  // Read current value: either `propName="literal"` or `propName={expr}` —
+  // through the attribute scanner, so `data-name` never answers for `name`
+  // and a `{…}` value is read whole. Used as the seed for the conditional map
+  // so prior overrides survive.
+  const currentMap = currentConditionalMap(readTagAttr(tagContent, propName));
+  const seeded = !currentMap && parentVariantName !== 'default' && defaultSeed != null && defaultSeed !== ''
+    ? { default: defaultSeed }
+    : currentMap;
 
   // Apply the update for this parent variant
-  const nextMap = setConditionalPropEntry(currentMap, parentVariantName, value);
+  const nextMap = setConditionalPropEntry(seeded, parentVariantName, value);
 
   // Decide write form:
   //   - All entries collapse to default and default is empty/'default' → remove prop
@@ -316,18 +265,17 @@ export function setConditionalInstanceProp(
   // Mirror of the heuristic at `generator-styles.ts:1096`.
   const parentVarName = code.includes('useState(initialVariant)') ? 'variant' : 'initialVariant';
   const formattedAttr = onlyDefault
-    ? `${propName}="${defaultVal}"`
+    ? formatStringAttr(propName, defaultVal)
     : `${propName}={${formatConditionalPropExpression(nextMap, parentVarName)}}`;
 
-  // Replace existing prop or insert after tag name
-  const existingRegex = new RegExp(`${propName}=(?:"[^"]*"|'[^']*'|\\{[^}]+\\})`);
-  if (existingRegex.test(tagContent)) {
-    const newTag = tagContent.replace(existingRegex, formattedAttr);
-    return code.slice(0, tag.tagStart) + newTag + code.slice(tag.tagEnd);
+  // Replace the existing prop in place (duplicates dropped) or insert it after
+  // the tag name — the scanner span, never a `\{[^}]+\}` guess.
+  const next = writeTagAttr(tagContent, propName, formattedAttr);
+  if (next === null) {
+    trace.error('instance-props:conditional-unreadable-tag', { nodeId, componentName, propName });
+    return code;
   }
-
-  const nameEnd = afterTagName(code, tag.tagStart);
-  return code.slice(0, nameEnd) + ` ${formattedAttr}` + code.slice(nameEnd);
+  return code.slice(0, tag.tagStart) + next + code.slice(tag.tagEnd);
 }
 
 /**

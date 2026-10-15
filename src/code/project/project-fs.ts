@@ -19,6 +19,7 @@ import { healStyleBlockImportant } from '@/shared/media-important';
 import { ensureLayoutFile } from '@/code/generation/metadata-gen';
 import { healSectionOffsets } from '@/code/generation/generator-motion-scroll';
 import { healEventOverlayToggle } from '@/code/generation/event-overlay-heal';
+import { healDuplicateJsxAttributes } from '@/code/generation/duplicate-attr-heal';
 import { formatOverrideSource } from '@/code/generation/format-override-source';
 import { OVERRIDES_DIR } from '@/code/generation/code-override-gen';
 import { ensureSmoothScrollInLayout, SMOOTH_SCROLL_DATA_PATH, SMOOTH_SCROLL_CONTROLLER_PATH } from '@/code/generation/smooth-scroll-layout';
@@ -595,6 +596,19 @@ export class InMemoryProjectFS implements ProjectFS {
       if (healed !== src) {
         this.activeFiles().set(path, healed);
         trace.action('project-fs:migrated-event-overlay-toggle', { path });
+      }
+    }
+    // Duplicate JSX attribute heal: `<Hero layout="a" layout={b} />` renders
+    // `b` (the later key wins) while the regex writers kept editing the dead
+    // first copy — edits that "did nothing". The agent's old
+    // set_component_prop appended such copies (2026-10-15). Keeping only the
+    // LAST copy never changes what renders; parse-gated inside the heal.
+    for (const [path, src] of this.files) {
+      if (!path.endsWith('.tsx') || !(path.startsWith('app/') || path.startsWith('components/'))) continue;
+      const healed = healDuplicateJsxAttributes(src);
+      if (healed !== src) {
+        this.activeFiles().set(path, healed);
+        trace.action('project-fs:migrated-duplicate-attributes', { path });
       }
     }
     // Bundled override files (imported from a site before the import

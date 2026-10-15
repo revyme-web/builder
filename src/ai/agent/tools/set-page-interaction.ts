@@ -64,7 +64,7 @@ export const INTERACTION_TRIGGER_VALUES: readonly InteractionTrigger[] = [
 export const setPageInteractionTool: AgentTool = {
   name: 'set_page_interaction',
   description:
-    "Attach a click/enter/leave handler that sets a page variable on a node. Inputs: node_id (data-id of the target node), trigger (click/mouseEnter/mouseLeave), variable (name of a declared page variable), value (literal value e.g. true/false/0.5). Example: {node_id:faq-title, trigger:click, variable:faqOpen, value:true}. Errors: variable must exist (create with set_page_variable first), value must match variable type. Does NOT write conditional rendering ({open && ...}) - use apply_file_edit for JSX changes.",
+    "Attach a click/enter/leave handler that sets a page variable on a node. Inputs: node_id (data-id of the target node), trigger (click/mouseEnter/mouseLeave), variable (name of a declared page variable), value (literal value e.g. true/false/0.5). Example: {node_id:faq-title, trigger:click, variable:faqOpen, value:true}. Errors: variable must exist (create with set_page_variable first), value must match variable type. Does NOT write conditional rendering ({open && ...}) - use edit_source for JSX changes.",
   inputSchema: {
     node_id: z.string().describe('data-id of the node whose event fires the setter'),
     trigger: z.enum(INTERACTION_TRIGGER_VALUES).describe("trigger event: 'click' | 'mouseEnter' | 'mouseLeave'"),

@@ -7,7 +7,7 @@ import { RICH_ACTION_TOOLS } from './action-layer-rich';
 import { setPageTool } from './set-page';
 import { setPageVariableTool, bindVariableTool } from './set-page-variable';
 import { setPageInteractionTool } from './set-page-interaction';
-import { applyFileEditTool } from './whole-file';
+import { applyFileEditTool, editSourceTool } from './whole-file';
 import { batchTool } from './batch';
 import { chainTool } from './chain';
 import { verifyEffectTool } from './verify-effect';
@@ -36,7 +36,7 @@ import { PLUGIN_TOOLS } from './plugins';
 import { BRANCH_TOOLS } from './branches';
 import { PROJECT_SKILL_TOOLS } from './project-skills';
 
-export { READ_TOOLS, PROPERTY_TOOLS, STRUCTURE_TOOLS, ACTION_TOOLS, RICH_ACTION_TOOLS, setPageTool, setPageVariableTool, setPageInteractionTool, applyFileEditTool, batchTool, chainTool, verifyEffectTool, submitPlanTool, getScreenshotTool, CMS_TOOLS, loadSkillTool, searchImagesTool, setLinkTool, COMPONENT_MORE_TOOLS, TOKEN_TOOLS, LAYOUT_MORE_TOOLS, CMS_MORE_TOOLS, PAGES_MORE_TOOLS, MOTION_MORE_TOOLS, I18N_TOOLS, BUILT_IN_TOOLS, FORMS_TEXT_TOOLS, SITE_MOTION_TOOLS, VIEWPORT_TOOLS, ICON_TOOLS, OVERRIDE_TOOLS, ASSET_TOOLS, SLOT_TOOLS, PLUGIN_TOOLS, BRANCH_TOOLS, PROJECT_SKILL_TOOLS };
+export { READ_TOOLS, PROPERTY_TOOLS, STRUCTURE_TOOLS, ACTION_TOOLS, RICH_ACTION_TOOLS, setPageTool, setPageVariableTool, setPageInteractionTool, applyFileEditTool, editSourceTool, batchTool, chainTool, verifyEffectTool, submitPlanTool, getScreenshotTool, CMS_TOOLS, loadSkillTool, searchImagesTool, setLinkTool, COMPONENT_MORE_TOOLS, TOKEN_TOOLS, LAYOUT_MORE_TOOLS, CMS_MORE_TOOLS, PAGES_MORE_TOOLS, MOTION_MORE_TOOLS, I18N_TOOLS, BUILT_IN_TOOLS, FORMS_TEXT_TOOLS, SITE_MOTION_TOOLS, VIEWPORT_TOOLS, ICON_TOOLS, OVERRIDE_TOOLS, ASSET_TOOLS, SLOT_TOOLS, PLUGIN_TOOLS, BRANCH_TOOLS, PROJECT_SKILL_TOOLS };
 export const ALL_TOOLS: AgentTool[] = [
   ...READ_TOOLS,
   ...PROPERTY_TOOLS,
@@ -48,6 +48,7 @@ export const ALL_TOOLS: AgentTool[] = [
   bindVariableTool,
   setPageInteractionTool,
   applyFileEditTool,
+  editSourceTool,
   batchTool,
   chainTool,
   verifyEffectTool,

@@ -132,6 +132,8 @@ const EFFECTS: Record<string, Effect> = {
   // `search_` is not a read prefix, so unlisted this read as a CHANGE.
   search_images: { kind: 'read', noun: 'image' },
   set_link: { kind: 'write', verb: 'edited', noun: 'link' },
+  // Partial code edits: one line per call, counted by its edits.
+  edit_source: { kind: 'write', verb: 'edited', noun: 'code section' },
 
   // Variants: which one shows, the transitions between them, their names.
   show_variant: { kind: 'write', verb: 'edited', noun: 'variant' },

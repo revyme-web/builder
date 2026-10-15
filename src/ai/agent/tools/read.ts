@@ -60,6 +60,7 @@ import { parsePropMeta } from '@/code/components/prop-meta';
 import { getCollectionSchema, listCollections } from '@/code/project/cms-ops';
 import { agentCheckpointsAtom } from '@/code/stores/agent-checkpoints';
 import { trace } from '@/shared/debug-trace';
+import { findSubtreeRange } from '@/code/generation/generator-utils';
 import {
   MIN_CONTRAST_RATIO,
   RENDERED_STYLE_PROPS,
@@ -1047,9 +1048,17 @@ export const listCollectionsTool: AgentTool = {
 // 'read', zero writes, enforced by the G2 CI-grep exemption (no
 // restoreSnapshot/write in this file).
 
-/** Max lines / chars a single read_source call returns. */
-export const READ_SOURCE_CAP_LINES = 400;
-export const READ_SOURCE_CAP_CHARS = 12000;
+/** Max lines / chars a single read_source call returns. The char cap keeps
+ *  one result inside MCP clients' tool-output limits; cuts land on a line
+ *  boundary so `next_from_line` continues exactly where the slice stopped. */
+export const READ_SOURCE_CAP_LINES = 600;
+export const READ_SOURCE_CAP_CHARS = 24000;
+/** A single line longer than this is clipped (inline data URIs, minified CSS). */
+export const READ_SOURCE_LINE_CLIP = 2000;
+/** Max lines a `query` search reports. */
+export const READ_SOURCE_MAX_MATCHES = 40;
+/** At or above this size a file is edited with edit_source, never rewritten whole. */
+const LARGE_SOURCE_CHARS = 40_000;
 
 /** Project source files only — no secrets, no outside paths. */
 const READABLE_SOURCE_RE = /\.(tsx|ts|css|json)$/;
@@ -1059,12 +1068,78 @@ function clampLine(n: unknown, fallback: number, min: number, max: number): numb
   return Math.min(max, Math.max(min, v));
 }
 
+function lineOfIndex(code: string, index: number): number {
+  let n = 1;
+  for (let i = code.indexOf('\n'); i !== -1 && i < index; i = code.indexOf('\n', i + 1)) n++;
+  return n;
+}
+
+/**
+ * Lines [from, to] of `lines`, cut to the caps on a LINE boundary (never
+ * mid-line, so the next read starts exactly at `to + 1`). A single over-long
+ * line is clipped and flagged instead of blowing the char budget.
+ */
+export function sliceSourceLines(lines: string[], from: number, to: number): {
+  content: string; to: number; truncated: boolean; clipped_lines: number[];
+} {
+  const out: string[] = [];
+  const clipped: number[] = [];
+  let used = 0;
+  let last = from - 1;
+  let truncated = false;
+  for (let n = from; n <= to; n++) {
+    if (n - from + 1 > READ_SOURCE_CAP_LINES) { truncated = true; break; }
+    let line = lines[n - 1] ?? '';
+    if (line.length > READ_SOURCE_LINE_CLIP) {
+      line = `${line.slice(0, READ_SOURCE_LINE_CLIP)} …[line clipped: ${line.length} chars]`;
+      clipped.push(n);
+    }
+    const cost = line.length + 1;
+    if (used + cost > READ_SOURCE_CAP_CHARS && out.length > 0) { truncated = true; break; }
+    out.push(line);
+    used += cost;
+    last = n;
+  }
+  return { content: out.join('\n'), to: Math.max(last, from), truncated, clipped_lines: clipped };
+}
+
+/** Lines matching `query` (case-insensitive text, or a regex), with the line text. */
+export function searchSourceLines(lines: string[], query: string, regex: boolean): {
+  matches: Array<{ line: number; text: string }>; total: number;
+} | { error: string } {
+  let test: (l: string) => number;
+  if (regex) {
+    let re: RegExp;
+    try { re = new RegExp(query, 'i'); } catch (err) { return { error: `Invalid regex: ${(err as Error).message}` }; }
+    test = (l) => { const m = re.exec(l); return m ? m.index : -1; };
+  } else {
+    const q = query.toLowerCase();
+    test = (l) => l.toLowerCase().indexOf(q);
+  }
+  const matches: Array<{ line: number; text: string }> = [];
+  let total = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const at = test(lines[i]);
+    if (at === -1) continue;
+    total++;
+    if (matches.length >= READ_SOURCE_MAX_MATCHES) continue;
+    const l = lines[i];
+    // Long lines: a window around the hit, not the whole line.
+    const text = l.length <= 240 ? l : `${at > 80 ? '…' : ''}${l.slice(Math.max(0, at - 80), at + 160)}${at + 160 < l.length ? '…' : ''}`;
+    matches.push({ line: i + 1, text });
+  }
+  return { matches, total };
+}
+
 export const readSourceTool: AgentTool = {
   name: 'read_source',
   description:
-    'Read bounded raw source of a project file (active file by default) — the exact bytes behind the tree/get_node projections, for precision work they cannot express. Capped at 400 lines / 12000 chars (truncated flag when cut, re-read with from_line/to_line). Project files only (.tsx/.ts/.css/.json); secrets and outside paths are refused.',
+    'Read the raw source of a project file (active file by default) — the exact text to copy into edit_source anchors. Three ways in: (1) node_id — just that element\'s JSX with its line range (the fastest way to the code behind a canvas node); (2) query — the lines matching a text (or regex: true) with their line numbers, to find where something is; (3) from_line/to_line — a line range. One call returns up to 600 lines / 24000 chars, cut on a line boundary: when truncated, continue at next_from_line. Project files only (.tsx/.ts/.css/.json); secrets and outside paths are refused.',
   inputSchema: {
     path: z.string().optional().describe('project file path, e.g. app/page.client.tsx (default: active file)'),
+    node_id: z.string().optional().describe('data-id of an element: returns exactly its JSX (opening tag to closing tag) and its line range'),
+    query: z.string().optional().describe('find lines containing this text (case-insensitive); returns line numbers + the line text'),
+    regex: z.boolean().optional().describe('treat query as a regular expression'),
     from_line: z.number().optional().describe('1-based first line (default 1)'),
     to_line: z.number().optional().describe('1-based last line, inclusive (default: end of file)'),
   },
@@ -1079,20 +1154,46 @@ export const readSourceTool: AgentTool = {
     if (code == null) return fail(`No such project file "${path}".`);
     const lines = code.split('\n');
     const total = lines.length;
-    const from = clampLine(args.from_line, 1, 1, Math.max(1, total));
-    let to = clampLine(args.to_line, total, from, Math.max(from, total));
-    let truncated = false;
-    if (to - from + 1 > READ_SOURCE_CAP_LINES) {
-      to = from + READ_SOURCE_CAP_LINES - 1;
-      truncated = true;
+    // Big files are changed by anchored edits — say so where the model reads them.
+    const large = code.length >= LARGE_SOURCE_CHARS ? { note: `Large file (${total} lines, ${Math.round(code.length / 1024)} KB): change it with edit_source (old_text → new_text), never by rewriting it whole with apply_file_edit.` } : {};
+
+    if (typeof args.query === 'string' && args.query !== '') {
+      const found = searchSourceLines(lines, args.query, args.regex === true);
+      if ('error' in found) return fail(found.error);
+      trace.action('agent-tool:read_source', { path, query: true, total, matches: found.total });
+      return ok({ path, total_lines: total, query: args.query, total_matches: found.total, matches: found.matches, ...(found.total > found.matches.length ? { more: `${found.total - found.matches.length} more matches — narrow the query` } : {}), ...large });
     }
-    let content = lines.slice(from - 1, to).join('\n');
-    if (content.length > READ_SOURCE_CAP_CHARS) {
-      content = content.slice(0, READ_SOURCE_CAP_CHARS);
-      truncated = true;
+
+    let from: number;
+    let to: number;
+    let nodeRange: { from_line: number; to_line: number } | null = null;
+    if (typeof args.node_id === 'string' && args.node_id !== '') {
+      const range = findSubtreeRange(code, args.node_id);
+      if (!range) {
+        return fail(`No element with data-id "${args.node_id}" in ${path}. Find it with get_node_tree, or search with query.`);
+      }
+      // Whole lines around the element, so the slice can be copied as an anchor.
+      nodeRange = { from_line: lineOfIndex(code, range.start), to_line: lineOfIndex(code, Math.max(range.start, range.end - 1)) };
+      from = clampLine(args.from_line, nodeRange.from_line, nodeRange.from_line, nodeRange.to_line);
+      to = nodeRange.to_line;
+    } else {
+      from = clampLine(args.from_line, 1, 1, Math.max(1, total));
+      to = clampLine(args.to_line, total, from, Math.max(from, total));
     }
-    trace.action('agent-tool:read_source', { path, from, to, total, truncated });
-    return ok({ path, from_line: from, to_line: to, total_lines: total, truncated, content });
+    const slice = sliceSourceLines(lines, from, to);
+    trace.action('agent-tool:read_source', { path, from, to: slice.to, total, truncated: slice.truncated, node: nodeRange ? args.node_id : null });
+    return ok({
+      path,
+      ...(nodeRange ? { node_id: args.node_id, node_lines: nodeRange } : {}),
+      from_line: from,
+      to_line: slice.to,
+      total_lines: total,
+      truncated: slice.truncated,
+      ...(slice.truncated ? { next_from_line: slice.to + 1 } : {}),
+      ...(slice.clipped_lines.length > 0 ? { clipped_lines: slice.clipped_lines } : {}),
+      ...large,
+      content: slice.content,
+    });
   },
 };
 

@@ -323,7 +323,7 @@ export const addComponentPropTool: AgentTool = {
   async execute(args, ctx) {
     const master = masterByName(String(args.component));
     if (!master) return fail(`No component named "${args.component}". list_components names them.`);
-    if (isCodeComponentSource(master.code)) return fail(`${args.component} is a CODE component — its props are its @controls (edit the file with apply_file_edit).`);
+    if (isCodeComponentSource(master.code)) return fail(`${args.component} is a CODE component — its props are its @controls (edit the file with edit_source).`);
     const name = String(args.name).trim();
     if (!/^[a-z][A-Za-z0-9]*$/.test(name)) return fail(`"${name}" is not a camelCase identifier (e.g. "title", "accentColor").`);
     if (name === 'initialVariant' || name === 'style' || name === 'children') return fail(`"${name}" is reserved on every master.`);

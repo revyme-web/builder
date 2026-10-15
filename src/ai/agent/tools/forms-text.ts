@@ -465,7 +465,7 @@ export const checkProjectTool: AgentTool = {
     const blocking = report.reduce((n, f) => n + f.violations.filter((v) => v.tier >= 3).length, 0);
     const drift = report.reduce((n, f) => n + f.violations.filter((v) => v.tier < 3).length, 0);
     trace.action('agent-tool:check_project', { checked, files: report.length, blocking, drift });
-    return ok({ checked_files: checked, ready: blocking === 0, blocking, drift, files: report, next: blocking ? 'fix the blocking rows first (apply_file_edit or the semantic tool named in the message), then check_project again' : drift ? 'the site builds; the drift rows are edits no panel can read back — fix what the user will want to edit' : 'nothing to fix' });
+    return ok({ checked_files: checked, ready: blocking === 0, blocking, drift, files: report, next: blocking ? 'fix the blocking rows first (edit_source or the semantic tool named in the message), then check_project again' : drift ? 'the site builds; the drift rows are edits no panel can read back — fix what the user will want to edit' : 'nothing to fix' });
   },
 };
 

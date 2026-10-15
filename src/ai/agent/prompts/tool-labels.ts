@@ -21,6 +21,7 @@ export const TOOL_LABELS: Record<string, string> = {
   reorder_node: 'Reordering element',
   duplicate_node: 'Duplicating element',
   apply_file_edit: 'Rewriting file',
+  edit_source: 'Editing code',
   batch: 'Running batch',
   get_node_tree: 'Reading page',
   get_selection: 'Reading selection',
