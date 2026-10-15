@@ -28,7 +28,7 @@ import { beginViewportWidthScrub, type ViewportWidthScrub } from '@/canvas/resiz
 import { activeLadderIsStartModel, commitBreakpointStart } from '@/canvas/helpers/breakpoint-commit';
 import { startOf } from '@/code/project/breakpoint-ladder';
 import { renderWidth } from '@/shared/types';
-import { canUseFill, isMainAxis, isFillMode, getFillMultiplier, makeFillFlex, parseFlex, formatFlex, crossAxisFillPatch, isCrossAxisStretchFill } from '@/shared/flex-helpers';
+import { canUseFill, isMainAxis, isFillMode, getFillMultiplier, makeFillFlex, parseFlex, formatFlex, crossAxisFillPatch, isCrossAxisFillFor } from '@/shared/flex-helpers';
 import { convertPxToDimUnit, estimatedVpHeight, pickLiveDim, fitSizeRedirectTarget, exitFillFlexPatch, isAutoDim, resolveUnitChangePx } from './size-helpers';
 import { resizeLiveOps } from '@/canvas/resize/resize-live-store';
 import { captureVisualRect } from '@/canvas/visual-rect';
@@ -100,7 +100,7 @@ export function DimensionRow({ label, property, value, onChange, onChangeLive, o
   unitOptions: { value: string; label: string; disabled?: boolean }[];
   /** Override detected unit (e.g. 'fill' when fill mode is active) */
   currentUnit?: DimUnit;
-  /** Fill on the parent's CROSS axis (a stretch, crossAxisFillPatch) — no `fr` multiplier
+  /** Fill on the parent's CROSS axis (crossAxisFillPatch: a 100% width / a stretched height) — no `fr` multiplier
    *  exists there, so the row reads like Fit: the measured size, greyed; typing a number
    *  switches to px. */
   fillCross?: boolean;
@@ -721,19 +721,20 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
   const heightIsMainAxis = isMainAxis(parentFlexDirection, 'height');
 
   // Main-axis fill: flex grow with no width/height → shows multiplier (Nfr)
-  // Cross-axis fill: `alignSelf: 'stretch'` with no size of its own on that axis (what
-  // crossAxisFillPatch writes) → shows the measured px. A legacy `100%` reads as the % it is.
+  // Cross-axis fill: what crossAxisFillPatch writes — `width: 100%` in a column (or the
+  // stretch it wrote 2026-09-29..10-15), `alignSelf: 'stretch'` + no own height in a row —
+  // shows the measured px. A `100%` HEIGHT reads as the % it is (isCrossAxisFillFor).
   // `flexFillOverridden`: the fill flex comes from THIS viewport's override map
   // (replica @media / variant object) — the primary's inline size stays in the
   // base styles, so the size guard inside axisFillActive must be waived AND the
   // row must show the override accent + Reset Override (see axisFillActive).
   const flexFillOverridden = !isPrimary && hasOverride('flex') && isFillMode(flexVal);
   const isWidthFillMain = axisFillActive(flexVal, styles.width, widthCanFill, widthIsMainAxis, flexFillOverridden);
-  const isWidthFillCross = widthCanFill && !widthIsMainAxis && isCrossAxisStretchFill(styles.alignSelf, styles.width);
+  const isWidthFillCross = widthCanFill && !widthIsMainAxis && isCrossAxisFillFor('width', styles.alignSelf, styles.width);
   const isWidthFill = isWidthFillMain || isWidthFillCross;
 
   const isHeightFillMain = axisFillActive(flexVal, styles.height, heightCanFill, heightIsMainAxis, flexFillOverridden);
-  const isHeightFillCross = heightCanFill && !heightIsMainAxis && isCrossAxisStretchFill(styles.alignSelf, styles.height);
+  const isHeightFillCross = heightCanFill && !heightIsMainAxis && isCrossAxisFillFor('height', styles.alignSelf, styles.height);
   const isHeightFill = isHeightFillMain || isHeightFillCross;
 
   const fillMultiplier = getFillMultiplier(flexVal);
@@ -1022,8 +1023,9 @@ export default function SizeTool({ styles: stylesProp, nodeId: nodeIdProp, vpId,
       onUpdate('flex', formatFlex({ ...flex, grow: mult }));
       return;
     }
-    // A size typed on a CROSS-axis fill leaves Fill: drop the stretch with the write.
-    if (isWidthFillCross) onUpdate('alignSelf', '');
+    // A size typed on a CROSS-axis fill leaves Fill: drop a stretch spelling with the write
+    // (a 100% width has none — an authored alignSelf stays).
+    if (isWidthFillCross && styles.alignSelf === 'stretch') onUpdate('alignSelf', '');
     // Aspect ratio locked — keep ratio honest while the user types.
     // Strategy: width is allowed to be the controlling dimension; if the
     // user changes width while height was the controller (height
@@ -1113,8 +1115,8 @@ if (heightIsAuto) {
       trace.action('size:unit-change', { label: 'W', from: fromUnit, to: toUnit, vectorSet: act });
       if (!act.passThrough) return;
     }
-    // Leaving a CROSS-axis fill for any other unit: drop the stretch with the write.
-    if (isWidthFillCross && toUnit !== 'fill') onUpdate('alignSelf', '');
+    // Leaving a CROSS-axis fill for any other unit: drop a stretch spelling with the write.
+    if (isWidthFillCross && toUnit !== 'fill' && styles.alignSelf === 'stretch') onUpdate('alignSelf', '');
     // Switching TO fill
     if (toUnit === 'fill') {
       trace.action('size:width-fill', { nodeId, isMainAxis: widthIsMainAxis });
@@ -1122,9 +1124,10 @@ if (heightIsAuto) {
         // Main axis: use flex grow
         onUpdateMultiple({ width: '', flex: makeFillFlex(1) });
       } else {
-        // Cross axis: 100% — on a replica with a flipped parent, pair the
-        // flex re-base so the base row-fill doesn't collapse the height.
-        onUpdateMultiple(crossAxisFillPatch('width', !isPrimary, flexVal));
+        // Cross axis: 100% (drops a stretch left from the old spelling) — on a
+        // replica with a flipped parent, pair the flex re-base so the base
+        // row-fill doesn't collapse the height.
+        onUpdateMultiple(crossAxisFillPatch('width', !isPrimary, flexVal, styles.alignSelf));
       }
       return;
     }
@@ -1220,7 +1223,7 @@ if (heightIsAuto) {
     }
     onUpdate('width', newVal);
     trace.action('size:unit-change', { label: 'W', from: fromUnit, to: toUnit, currentPx, newVal });
-  }, [widthIsMainAxis, isWidthFillMain, isWidthFillCross, flexVal, nodeId, computed, onUpdate, onUpdateMultiple, maybeInjectLayoutForAuto, freezeChildrenForAuto, activeComponentVariant, isVectorSet, vectorVariantNatural, vectorFitDim, computed.width, computed.height]);
+  }, [widthIsMainAxis, isWidthFillMain, isWidthFillCross, styles.alignSelf, flexVal, nodeId, computed, onUpdate, onUpdateMultiple, maybeInjectLayoutForAuto, freezeChildrenForAuto, activeComponentVariant, isVectorSet, vectorVariantNatural, vectorFitDim, computed.width, computed.height]);
 
   // ─── Height change handler ────────────────────────────────────────────
   const handleHeightChange = useCallback((v: string) => {
@@ -1333,7 +1336,7 @@ if (heightIsAuto) {
       if (heightIsMainAxis) {
         onUpdateMultiple({ height: '', flex: makeFillFlex(1) });
       } else {
-        // Cross axis: 100% — replica-flipped parent pairs the flex re-base
+        // Cross axis: a stretch — replica-flipped parent pairs the flex re-base
         // (see handleWidthUnitChange).
         onUpdateMultiple(crossAxisFillPatch('height', !isPrimary, flexVal));
       }

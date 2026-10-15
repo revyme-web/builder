@@ -99,8 +99,8 @@ export const LAYOUT_MORE_CASES: CapabilityCase[] = [
   },
   {
     id: 'layout/size-fill-cross', domain: 'layout', status: 'supported',
-    // Cross-axis Fill is `alignSelf: 'stretch'` + size 'auto' since 2026-09-29 —
-    // a `100%` collapses to 0 inside a hug (min-content) parent.
+    // A row's cross-axis (height) Fill is `alignSelf: 'stretch'` + height 'auto' since
+    // 2026-09-29 — a `100%` height collapses to 0 inside a hug (min-content) parent.
     feature: 'Fill in the cross axis stretches',
     ask: 'make the first card as tall as the row',
     calls: [{ tool: 'set_size_units', args: { node_id: 'card-1', height: 'fill' } }],
@@ -108,6 +108,23 @@ export const LAYOUT_MORE_CASES: CapabilityCase[] = [
       const s = w.node('card-1').styles;
       must(s.alignSelf === 'stretch', `alignSelf is ${s.alignSelf}`);
       must(s.height !== '100%', 'height is 100% — collapses to 0 in a hug parent');
+    },
+  },
+  {
+    id: 'layout/size-fill-cross-width', domain: 'layout', status: 'supported',
+    // A column's cross-axis (width) Fill is `width: 100%`, NOT a stretch: align-self
+    // overrides the hero's `alignItems: center`, and a stretched child capped by a
+    // maxWidth sits at the left edge (2026-10-15).
+    feature: 'Width Fill in a column keeps the parent\'s alignment',
+    ask: 'make the subtitle full width, at most 640px, centred',
+    calls: [
+      { tool: 'set_size_units', args: { node_id: 'hero-sub', width: 'fill' } },
+      { tool: 'set_styles', args: { node_id: 'hero-sub', styles: { maxWidth: '640px' } } },
+    ],
+    expect: (w) => {
+      const s = w.node('hero-sub').styles;
+      must(s.width === '100%', `width is ${s.width}`);
+      must(s.alignSelf !== 'stretch', 'alignSelf is stretch — a capped child pins to the left');
     },
   },
   {

@@ -530,7 +530,7 @@ describe('rebaseChildrenForDirectionFlip', () => {
 
   it('re-bases the reported child and queues it through the scope router', () => {
     expect(flip()).toBe(1);
-    expect(styleUpdate).toHaveBeenCalledWith('card', { width: 'auto', alignSelf: 'stretch', flex: '0 0 auto' });
+    expect(styleUpdate).toHaveBeenCalledWith('card', { width: '100%', flex: '0 0 auto' });
     // Routed for the TABLET tile → the same band the direction write went to.
     expect(replicaCtxArgs[0]).toEqual({
       vpId: 'tablet', filePath: 'app/page.client.tsx', vpWidths: VP_WIDTHS,
@@ -550,7 +550,7 @@ describe('rebaseChildrenForDirectionFlip', () => {
 
   it('ignores a DIFFERENT viewport band (that tile is not being edited)', () => {
     expect(flip({ card: { 375: { flex: '0 0 auto' } } })).toBe(1);
-    expect(styleUpdate).toHaveBeenCalledWith('card', { width: 'auto', alignSelf: 'stretch', flex: '0 0 auto' });
+    expect(styleUpdate).toHaveBeenCalledWith('card', { width: '100%', flex: '0 0 auto' });
   });
 
   it('on the PRIMARY reads base styles only, ignoring every band', () => {

@@ -73,15 +73,24 @@ export function wrapHidesGapHandles(
   return wrap === 'wrap' || wrap === 'wrap-reverse';
 }
 
-/** Cross-axis Fill write (SizeTool, the agent's set_size_units).
+/** Cross-axis Fill write (SizeTool, the agent's set_size_units). Spelled per AXIS:
  *
- *  Spelled `alignSelf: 'stretch'` + an `auto` size — Framer's spelling — NOT `100%`:
- *  a percentage needs a DEFINITE parent size, so in a parent that hugs its content
- *  on that axis (`height: min-content`, the default for a stack) `100%` resolves to
- *  auto and an empty child collapses to 0 (user report 2026-09-29). Stretch fills
- *  the flex line — the parent's own size when it is fixed, the tallest sibling when
- *  it hugs. The size must be `auto` (min-content blocks the stretch); `auto` rather
- *  than removed so a REPLICA's band overrides a base size too.
+ *  HEIGHT (a row parent) — `alignSelf: 'stretch'` + `height: auto`, Framer's spelling.
+ *  A percentage height needs a DEFINITE parent height, so in a row that hugs
+ *  (`height: min-content`, the default for a stack) `100%` resolves to auto and an
+ *  empty child collapsed to 0 (user report 2026-09-29). Stretch fills the flex line —
+ *  the parent's own height when it is fixed, the tallest sibling when it hugs. The
+ *  size must be `auto` (min-content blocks the stretch); `auto` rather than removed
+ *  so a REPLICA's band overrides a base size too.
+ *
+ *  WIDTH (a column parent) — `width: '100%'`. A percentage width always resolves
+ *  (the parent's width is settled before its children's), so it never had that
+ *  collapse, and it keeps the PARENT's align-items in charge: with a `maxWidth` the
+ *  child centres under `alignItems: center`. A stretch can't — `align-self: stretch`
+ *  overrides the parent's alignment and a capped stretched item sits at the start
+ *  edge (a 1280px header pinned left on a 1412px screen, 2026-10-15). A stretch the
+ *  2026-09-29..10-15 writer left there (`currentAlignSelf`) is dropped with the
+ *  write — `auto` on a replica, so a base stretch is overridden, not just unset.
  *
  *  On a REPLICA whose @media flipped the parent's flex-direction, the node's BASE
  *  grow flex ('1 0 0px') still applies there and governs the OTHER axis — pair the
@@ -92,10 +101,22 @@ export function crossAxisFillPatch(
   axis: 'width' | 'height',
   isReplicaVp: boolean,
   currentFlex: string,
+  currentAlignSelf?: string,
 ): Record<string, string> {
-  const patch: Record<string, string> = { [axis]: 'auto', alignSelf: 'stretch' };
+  const patch: Record<string, string> = axis === 'width'
+    ? { width: '100%' }
+    : { height: 'auto', alignSelf: 'stretch' };
+  if (axis === 'width' && (currentAlignSelf ?? '').trim() === 'stretch') patch.alignSelf = isReplicaVp ? 'auto' : '';
   if (isReplicaVp && isFillMode(currentFlex)) patch.flex = '0 0 auto';
   return patch;
+}
+
+/** Does the Size panel read this axis as a CROSS-axis Fill? Height: the stretch
+ *  crossAxisFillPatch writes (a `100%` height is the % it is — it may be collapsing).
+ *  Width: `100%`, or the stretch spelling written 2026-09-29..10-15. */
+export function isCrossAxisFillFor(axis: 'width' | 'height', alignSelf: string | undefined, size: string | undefined): boolean {
+  if (axis === 'width' && (size ?? '').trim() === '100%') return true;
+  return isCrossAxisStretchFill(alignSelf, size);
 }
 
 /** Is this axis the CROSS-axis Fill crossAxisFillPatch writes — `alignSelf: 'stretch'`
@@ -156,9 +177,10 @@ export function canvasRootFlowReset(
   return out;
 }
 
-/** Is this axis the tool's CROSS-AXIS fill? The stretch spelling crossAxisFillPatch
- *  writes, or the legacy `100%` it wrote before 2026-09-29 (still in existing files).
- *  A px or plain `auto` size is an authored value, not a fill. */
+/** Is this axis the tool's CROSS-AXIS fill? Either spelling crossAxisFillPatch has
+ *  written on either axis: a stretch, or `100%` (width today; height before
+ *  2026-09-29, still in existing files). A px or plain `auto` size is an authored
+ *  value, not a fill. */
 function isCrossAxisFill(size: string | undefined, alignSelf?: string): boolean {
   return (size ?? '').trim() === '100%' || isCrossAxisStretchFill(alignSelf, size);
 }
@@ -203,8 +225,9 @@ export interface DirectionFlipRebase {
  * (crossAxisFillPatch). A flip swaps which is which, so each fill has to change
  * spelling to keep its meaning:
  *
- *   old MAIN fill  (`flex: N 0 0px`) → now the cross axis → `alignSelf: stretch`
- *                                       + `<oldMain>: auto` + `flex: 0 0 auto`
+ *   old MAIN fill  (`flex: N 0 0px`) → now the cross axis → crossAxisFillPatch's
+ *                                       spelling (`width: 100%`, or `height: auto`
+ *                                       + `alignSelf: stretch`) + `flex: 0 0 auto`
  *                                       (stop growing, so an explicit size on the
  *                                       new main axis finally applies)
  *   old CROSS fill (stretch, or a legacy `<oldCross>: 100%`) → now the main axis
@@ -242,14 +265,14 @@ export function planDirectionFlipRebase(
 
     const styles: Record<string, string> = {};
     if (fillsMain) {
-      // The old main axis becomes the CROSS axis, where fill is spelled `100%` —
-      // but only claim it when the child has no size of its own there. Under a
-      // grow flex an old-main size was INERT (basis 0 outranks it), so it may
-      // hold a stale or authored number; the flip makes it live again rather
-      // than overwriting it. That's also what keeps a flip-back non-destructive
-      // to a height the user typed on the stacked tile.
+      // The old main axis becomes the CROSS axis, where fill is spelled by
+      // crossAxisFillPatch — but only claim it when the child has no size of its
+      // own there. Under a grow flex an old-main size was INERT (basis 0 outranks
+      // it), so it may hold a stale or authored number; the flip makes it live
+      // again rather than overwriting it. That's also what keeps a flip-back
+      // non-destructive to a height the user typed on the stacked tile.
       const ownOldMain = (child[oldMain] ?? '').trim();
-      if (!ownOldMain || ownOldMain === 'auto') Object.assign(styles, crossAxisFillPatch(oldMain, false, ''));
+      if (!ownOldMain || ownOldMain === 'auto') Object.assign(styles, crossAxisFillPatch(oldMain, false, '', child.alignSelf));
       styles.flex = '0 0 auto';
     }
     if (fillsCross) {

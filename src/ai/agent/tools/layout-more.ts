@@ -38,8 +38,9 @@ type Axis = 'width' | 'height';
  *
  *   fill   grow to the available space. In the parent's MAIN axis that is a
  *          grow flex with no size (`flex: 1 0 0px`); in the CROSS axis it is
- *          100% (and, on a replica whose base was fill, the flex is pinned
- *          back so the two axes do not fight).
+ *          crossAxisFillPatch's spelling — `width: 100%` in a column, a stretch
+ *          for a row's height (and, on a replica whose base was fill, the flex
+ *          is pinned back so the two axes do not fight).
  *   fit    hug the content (`min-content`).
  *   a value with px / % / vw / vh — as given.
  *   ''     remove the size.
@@ -50,6 +51,7 @@ export function sizeWrite(
   parent: { display?: string; flexDirection?: string } | undefined,
   currentFlex: string,
   isReplica: boolean,
+  currentAlignSelf?: string,
 ): Record<string, string> | { error: string } {
   const v = value.trim();
   if (v === '') return { [axis]: '' };
@@ -60,7 +62,7 @@ export function sizeWrite(
     }
     return isMainAxis(parent.flexDirection ?? 'row', axis)
       ? { [axis]: '', flex: makeFillFlex(1) }
-      : crossAxisFillPatch(axis, isReplica, currentFlex);
+      : crossAxisFillPatch(axis, isReplica, currentFlex, currentAlignSelf);
   }
   if (!SIZE_VALUE_RE.test(v)) return { error: `"${v}" is not a size. Use px, %, vw, vh, "fill", "fit", or "" to remove.` };
   return { [axis]: v };
@@ -70,7 +72,7 @@ export const setSizeUnitsTool: AgentTool = {
   name: 'set_size_units',
   description:
     'Size an element the way the Size panel\'s unit menu does — beyond px: "fill" (grow to the available space in a layout), "fit" (hug the content), a "%", "vw" or "vh" value, or "" to remove. ' +
-    'width / height each take one of those. Fill inside a flex row becomes a grow flex with no width (share the row equally: set every card to width "fill"); in the cross axis it is 100%. ' +
+    'width / height each take one of those. Fill inside a flex row becomes a grow flex with no width (share the row equally: set every card to width "fill"); in a flex column, width "fill" is 100% (it still follows the parent\'s alignment, so with a maxWidth it centres); in a flex row, height "fill" stretches to the row. ' +
     'Optional viewport (px) writes the size for that breakpoint only. For plain px use set_size.',
   inputSchema: {
     node_id: z.string(),
@@ -92,7 +94,7 @@ export const setSizeUnitsTool: AgentTool = {
     for (const axis of ['width', 'height'] as const) {
       const v = args[axis];
       if (v === undefined) continue;
-      const w = sizeWrite(axis, String(v), parent?.styles, String(node.styles.flex ?? ''), isReplica);
+      const w = sizeWrite(axis, String(v), parent?.styles, String(node.styles.flex ?? ''), isReplica, String(node.styles.alignSelf ?? ''));
       if ('error' in w) return fail(w.error);
       Object.assign(styles, w);
     }
