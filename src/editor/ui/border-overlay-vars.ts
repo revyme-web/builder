@@ -57,6 +57,63 @@ export function clearedOverlayVars(): Record<string, string> {
   return { [BORDER_OVERLAY_VAR_WIDTH]: '', [BORDER_OVERLAY_VAR_STYLE]: '', [BORDER_OVERLAY_VAR_COLOR]: '' };
 }
 
+/** NO border, spelled in `state`'s own style and colour: every side 0px. What
+ *  the primary holds while only a variant has a border — it paints nothing, and
+ *  motion still eases the WIDTH to the variant's (a missing variable can't be
+ *  animated from, and wouldn't animate back). Before 2026-10-15 the first
+ *  border written on a hover tile seeded the primary with the HOVER's own
+ *  values, so the primary showed the border too. */
+export function zeroWidthOverlayVars(state: BorderState): Record<string, string> {
+  const zero = (side: BorderState['top']) => ({ ...side, width: 0 });
+  return borderStateToOverlayVars({
+    top: zero(state.top), right: zero(state.right), bottom: zero(state.bottom), left: zero(state.left),
+    isUniform: state.isUniform,
+  });
+}
+
+/** Does a `--rvb-bw` value (one width or the 4-side shorthand) paint anything? */
+export function overlayWidthVisible(width: string | null | undefined): boolean {
+  return !!width && width.trim().split(/\s+/).some((w) => parseFloat(w) > 0);
+}
+
+/** The design component's primary variant — its variants entry mirrors the
+ *  inline base (the animate-back seed), so it never states a border of its own. */
+const PRIMARY_VARIANT = 'default';
+
+export type OverlayVarRemoval =
+  /** A variant tile: drop this entry's values so it inherits the primary. */
+  | { kind: 'inherit' }
+  /** The primary while another variant still has a border: zero the primary's
+   *  width, KEEP the shared `::after` rule — removing it erased every variant's. */
+  | { kind: 'zero-primary' }
+  /** No visible border is left anywhere: the rule goes, and with it every
+   *  variable — inline and in each listed variants entry. */
+  | { kind: 'remove-all'; clearVariants: string[] };
+
+/** What removing a VAR-BACKED overlay border does, from the tile it's removed on.
+ *  `variants` is the node's parsed variants object, `baseWidth` its inline
+ *  `--rvb-bw`, `tileVariant` the variant tile (null = the primary). */
+export function planOverlayVarRemoval(opts: {
+  variants: Record<string, Record<string, string>> | null | undefined;
+  baseWidth: string | undefined;
+  tileVariant: string | null;
+}): OverlayVarRemoval {
+  const entries = opts.variants ?? {};
+  const otherVariantHasBorder = Object.entries(entries).some(([name, st]) =>
+    name !== PRIMARY_VARIANT && name !== opts.tileVariant && overlayWidthVisible(st?.[BORDER_OVERLAY_VAR_WIDTH]));
+  if (opts.tileVariant) {
+    return otherVariantHasBorder || overlayWidthVisible(opts.baseWidth) ? { kind: 'inherit' } : removeAll(entries);
+  }
+  return otherVariantHasBorder ? { kind: 'zero-primary' } : removeAll(entries);
+}
+
+function removeAll(entries: Record<string, Record<string, string>>): OverlayVarRemoval {
+  return {
+    kind: 'remove-all',
+    clearVariants: Object.keys(entries).filter((n) => BORDER_OVERLAY_VARS.some((v) => v in (entries[n] ?? {}))),
+  };
+}
+
 export function isVarBackedBorderAfterBody(body: string | null | undefined): boolean {
   return !!body && body.includes(`var(${BORDER_OVERLAY_VAR_WIDTH}`);
 }

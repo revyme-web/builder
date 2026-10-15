@@ -146,23 +146,35 @@ export function updateNodeInCode(
   return syncTemplate(astResult);
 }
 
-/** Index of a TOP-LEVEL `key:` property in a style-object body, or -1.
+/** Index of a TOP-LEVEL `key:` property in a style-object body, or -1 — the
+ *  start of the key TOKEN, its opening quote included for a quoted key.
  *  A plain indexOf matches inside a LONGER property name — `order:` sits at
  *  the tail of `border:` — which made every `order` write on an element with
  *  a bare `border` prop clobber the border's VALUE and never write the order
  *  at all (the Figma-import section-reorder bug: Footer kept snapping back
  *  to the top). A real key starts the body or follows `{`, `,` or
- *  whitespace. */
+ *  whitespace.
+ *  QUOTED keys count too: a CSS custom property is only ever written quoted
+ *  (`'--rvb-bw': '1px'`, styleKeyLiteral). Matching the bare spelling alone
+ *  made a delete of one a silent no-op and an update APPEND a second copy —
+ *  the X on a component's overlay border left its variables behind
+ *  (2026-10-15). Callers find the colon by searching forward from the index. */
 function findStyleKeyIndex(content: string, key: string): number {
-  const needle = `${key}:`;
-  let from = 0;
-  for (;;) {
-    const idx = content.indexOf(needle, from);
-    if (idx === -1) return -1;
-    const prev = idx === 0 ? '' : content[idx - 1];
-    if (prev === '' || prev === ',' || prev === '{' || /\s/.test(prev)) return idx;
-    from = idx + 1;
+  let best = -1;
+  for (const needle of [`${key}:`, `'${key}':`, `"${key}":`]) {
+    let from = 0;
+    for (;;) {
+      const idx = content.indexOf(needle, from);
+      if (idx === -1) break;
+      const prev = idx === 0 ? '' : content[idx - 1];
+      if (prev === '' || prev === ',' || prev === '{' || /\s/.test(prev)) {
+        if (best === -1 || idx < best) best = idx;
+        break;
+      }
+      from = idx + 1;
+    }
   }
+  return best;
 }
 
 /** Read ONE top-level string value out of a node's inline `style={{…}}`
@@ -184,7 +196,7 @@ function readInlineStyleValue(code: string, nodeId: string, key: string): string
   const body = code.substring(objStart, objEnd === -1 ? code.length - 1 : objEnd);
   const k = findStyleKeyIndex(body, key);
   if (k === -1) return null;
-  const m = body.slice(k + key.length).match(/^\s*:\s*(?:'([^']*)'|"([^"]*)")/);
+  const m = body.slice(body.indexOf(':', k + key.length)).match(/^:\s*(?:'([^']*)'|"([^"]*)")/);
   return m ? (m[1] ?? m[2] ?? '') : null;
 }
 

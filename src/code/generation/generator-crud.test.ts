@@ -218,3 +218,22 @@ export default withResponsiveProps(A);`;
     expect(child).toContain("left: '10px'");
   });
 });
+
+// A CSS custom property is only ever written QUOTED (`'--rvb-bw': '1px'`). The
+// fast path matched the bare spelling alone, so deleting one was a silent no-op
+// and updating one appended a second copy — the overlay border's × left the
+// primary's variables behind (user report 2026-10-15).
+describe('updateNodeInCode — quoted custom-property keys', () => {
+  const code = `<div data-id="a" style={{ position: 'relative', '--rvb-bw': '1px', '--rvb-bs': 'solid', ...style}}></div>`;
+  it('deletes a quoted key', () => {
+    const out = updateNodeInCode(code, 'a', { '--rvb-bw': '', '--rvb-bs': '' });
+    expect(out).not.toContain('--rvb-');
+    expect(out).toContain("position: 'relative'");
+    expect(out).toContain('...style');
+  });
+  it('updates a quoted key in place — never a second copy', () => {
+    const out = updateNodeInCode(code, 'a', { '--rvb-bw': '11px' });
+    expect(out.match(/'--rvb-bw'/g)).toHaveLength(1);
+    expect(out).toContain("'--rvb-bw': '11px'");
+  });
+});

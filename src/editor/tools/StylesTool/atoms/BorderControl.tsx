@@ -20,7 +20,7 @@ import { parseGradient as gradientParseGradient, formatGradient as gradientForma
 import { parseBorderState, formatBorderUniform, formatBorderIndividual, formatBorderAfterCSS, parseBorderAfterCSS, extractBorderAfterRuleBody, extractVariantBorderAfterRuleBody, BORDER_INLINE_KEYS, formatGradientBorderAfterCSS, parseGradientBorderAfterCSS, isGradientBorder, type BorderSide, type BorderState } from '../../../ui/border-utils';
 import { groupBorderTokens, detectActiveBorderPreset, buildBorderClearStyles, getBorderTokenValue } from '../../../ui/border-preset-utils';
 import EditBorderPresetPanel from '../../../ui/EditBorderPresetPanel';
-import { stableCodeAtom as codeAtom, isComponentFileAtom } from '@/code/stores/store';
+import { stableCodeAtom as codeAtom, isComponentFileAtom, getNodesSnapshot } from '@/code/stores/store';
 import { interactingViewportIdAtom } from '@/code/stores/viewport-store';
 import { isPrimaryViewport } from '@/canvas/node-ops';
 import { borderOverlaySelector } from '@/code/generation/generator-styles';
@@ -42,7 +42,36 @@ import { presetTokensAtom } from '@/code/stores/preset-store';
 import { trace } from '@/shared/debug-trace';
 import { resolvePresetColor } from '@/shared/css-utils';
 import { expediteStableAtomSync } from '@/canvas/hooks/useStableAtomSync';
-import { formatBorderAfterCSSVars, borderStateToOverlayVars, clearedOverlayVars, isVarBackedBorderAfterBody, resolveBorderAfterBodyVars } from '../../../ui/border-overlay-vars';
+import { formatBorderAfterCSSVars, borderStateToOverlayVars, clearedOverlayVars, isVarBackedBorderAfterBody, resolveBorderAfterBodyVars, zeroWidthOverlayVars, planOverlayVarRemoval, BORDER_OVERLAY_VAR_WIDTH } from '../../../ui/border-overlay-vars';
+
+/** The VAR-BACKED half of the × (component masters), shared by the row and the
+ *  popup panel — see planOverlayVarRemoval. The `::after` rule is ONE rule for
+ *  every variant, so the primary's × used to delete it outright and the hover's
+ *  own border went with it (2026-10-15). */
+function removeVarBackedOverlay(
+  nodeId: string,
+  overlayVariant: string | null,
+  current: BorderState,
+  onChangeMultiple: (styles: Record<string, string>) => void,
+): void {
+  const node = getNodesSnapshot().get(nodeId);
+  const plan = planOverlayVarRemoval({
+    variants: node?.motionVariants, baseWidth: node?.styles?.[BORDER_OVERLAY_VAR_WIDTH], tileVariant: overlayVariant,
+  });
+  trace.action('border:remove-overlay-vars', { nodeId, variant: overlayVariant, plan: plan.kind });
+  if (plan.kind === 'inherit') { onChangeMultiple(clearedOverlayVars()); return; } // variant → inherit base
+  if (plan.kind === 'zero-primary') { onChangeMultiple(zeroWidthOverlayVars(current)); return; }
+  forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'removeBorderOverlay', nodeId: tid }));
+  // The tile's own write below lands in a variant entry on a variant tile — the
+  // inline base needs its own clear then.
+  if (overlayVariant) forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'updateStyles', nodeId: tid, styles: clearedOverlayVars() }));
+  onChangeMultiple(clearedOverlayVars());
+  for (const v of plan.clearVariants) {
+    if (v === overlayVariant) continue;
+    forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'updateVariantStyle', nodeId: tid, variantName: v, styles: clearedOverlayVars() }));
+  }
+  forSelectionTargets(nodeId, (tid) => removeCanvasCSS(borderOverlaySelector(tid)));
+}
 
 const BORDER_STYLE_OPTIONS = [
   { value: 'none',   label: 'None'   },
@@ -103,11 +132,12 @@ function BorderEditorPanel({ styles: s, nodeId, onChangeMultiple, onChangeMultip
     if (!isVarBackedBorderAfterBody(afterBodyRaw)) {
       // First var-backed write: the ::after reads var() from now on. Converting a
       // LITERAL base while on a variant tile keeps the base look in the inline
-      // vars and drops the variant-scoped literal rule (pre-vars form).
+      // vars and drops the variant-scoped literal rule (pre-vars form). With NO
+      // base border the primary gets a zero-width one — never this variant's.
       forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'updateBorderOverlay', nodeId: tid, afterCSS: formatBorderAfterCSSVars() }));
       if (overlayVariant) {
         const baseState = afterBodyRaw ? parseBorderAfterCSS(afterBodyRaw) : null;
-        forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'updateStyles', nodeId: tid, styles: borderStateToOverlayVars(baseState ?? state) }));
+        forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'updateStyles', nodeId: tid, styles: baseState ? borderStateToOverlayVars(baseState) : zeroWidthOverlayVars(state) }));
         forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'removeBorderOverlay', nodeId: tid, variant: overlayVariant }));
       }
     }
@@ -130,10 +160,7 @@ function BorderEditorPanel({ styles: s, nodeId, onChangeMultiple, onChangeMultip
       forSelectionTargets(nodeId, (tid) => removeCanvasCSS(borderOverlaySelector(tid, overlayVariant)));
       return;
     }
-    if (overlayVariant) { onChangeMultiple(clearedOverlayVars()); return; } // variant → inherit base
-    forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'removeBorderOverlay', nodeId: tid }));
-    onChangeMultiple(clearedOverlayVars());
-    forSelectionTargets(nodeId, (tid) => removeCanvasCSS(borderOverlaySelector(tid)));
+    removeVarBackedOverlay(nodeId, overlayVariant, borderState, onChangeMultiple);
   };
   const overlayStateFromCode = afterBody ? parseBorderAfterCSS(afterBody) : null;
   const inlineState = parseBorderState(s);
@@ -551,11 +578,12 @@ function BorderAtom() {
     if (!isVarBackedBorderAfterBody(afterBodyRaw)) {
       // First var-backed write: the ::after reads var() from now on. Converting a
       // LITERAL base while on a variant tile keeps the base look in the inline
-      // vars and drops the variant-scoped literal rule (pre-vars form).
+      // vars and drops the variant-scoped literal rule (pre-vars form). With NO
+      // base border the primary gets a zero-width one — never this variant's.
       forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'updateBorderOverlay', nodeId: tid, afterCSS: formatBorderAfterCSSVars() }));
       if (overlayVariant) {
         const baseState = afterBodyRaw ? parseBorderAfterCSS(afterBodyRaw) : null;
-        forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'updateStyles', nodeId: tid, styles: borderStateToOverlayVars(baseState ?? state) }));
+        forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'updateStyles', nodeId: tid, styles: baseState ? borderStateToOverlayVars(baseState) : zeroWidthOverlayVars(state) }));
         forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'removeBorderOverlay', nodeId: tid, variant: overlayVariant }));
       }
     }
@@ -578,10 +606,7 @@ function BorderAtom() {
       forSelectionTargets(nodeId, (tid) => removeCanvasCSS(borderOverlaySelector(tid, overlayVariant)));
       return;
     }
-    if (overlayVariant) { onChangeMultiple(clearedOverlayVars()); return; } // variant → inherit base
-    forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'removeBorderOverlay', nodeId: tid }));
-    onChangeMultiple(clearedOverlayVars());
-    forSelectionTargets(nodeId, (tid) => removeCanvasCSS(borderOverlaySelector(tid)));
+    removeVarBackedOverlay(nodeId, overlayVariant, borderState, onChangeMultiple);
   };
   const overlayStateFromCode = afterBody ? parseBorderAfterCSS(afterBody) : null;
   const inlineState = parseBorderState(s);
