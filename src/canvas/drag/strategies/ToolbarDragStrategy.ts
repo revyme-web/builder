@@ -492,7 +492,7 @@ export class ToolbarDragStrategy implements DragStrategy {
     }
 
     // Generate children if the item has a children factory (e.g. row/column with default frames)
-    const children = this.item.children?.();
+    const children = this.item.children?.(nodeId);
 
     // ORACLE CONFORMANCE — the built-in Insert catalogue goes through the SAME
     // normaliser as plugin-supplied trees (`toolbar-drag-bridge`). It was only

@@ -24,8 +24,10 @@ export interface ToolbarItem {
   defaultAttrs?: Record<string, string>;
   /** Text content inside the element (e.g. 'Button', 'Heading') */
   textContent?: string;
-  /** Child elements to create inside this element */
-  children?: () => NewNodeDescriptor[];
+  /** Child elements to create inside this element. Called once per drop with
+   *  the new root's data-id, so generated child ids can derive from it (an SVG
+   *  drop's nested groups: `<root>-s<i>`). */
+  children?: (rootId?: string) => NewNodeDescriptor[];
   /** Ghost overlay dimensions during drag (px) */
   ghostSize: { width: number; height: number };
   /** When set, this drag inserts a CDN-linked component. The strategy

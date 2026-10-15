@@ -26,6 +26,7 @@ import { type ToolbarItem } from '@/canvas/drag/toolbar-item-config';
 import { ConfirmModal } from '@/editor/overlays/settings-shared';
 import { MULTI_SELECT_OUTLINE } from './LibraryPanel/shared/section-utils';
 import { deriveUploadKey, keysInSweep, sweepAutoScrollStep, deleteConfirmMessage, type TileRect } from './media-gallery-utils';
+import { isSvgMediaUrl, prefetchSvgMarkup, getPrefetchedSvgMarkup, seedSvgMarkup, buildSvgMediaDragItem } from './media-svg-drop';
 
 const TAB_OPTIONS = [
   { value: 'images', label: 'Images' },
@@ -105,11 +106,25 @@ function useMediaDrag(url: string, kind: 'image' | 'video') {
       defaultAttrs: { src: url, controls: '' },
       ghostSize: { width: ghostW, height: ghostH },
     };
+    // An SVG drops as a native VECTOR (nested groups + editable paths), not as
+    // a background picture — see media-svg-drop.ts. Its markup is normally
+    // prefetched with the gallery; fetch now in case it isn't.
+    const isSvg = kind === 'image' && isSvgMediaUrl(url);
+    if (isSvg) void prefetchSvgMarkup(url);
+    const dragItem = (): ToolbarItem => {
+      const markup = isSvg ? getPrefetchedSvgMarkup(url) : null;
+      return (markup && buildSvgMediaDragItem(url, markup, { width: ghostW, height: ghostH })) || item;
+    };
     let dragStarted = false;
+    let released = false;
     const cleanup = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
+    };
+    const start = () => {
+      trace.action('media-panel:drag-start', { kind, url, svg: isSvg });
+      startToolbarDrag(dragItem(), startEvent);
     };
     const onMove = (moveEvent: PointerEvent) => {
       if (dragStarted) return;
@@ -117,11 +132,17 @@ function useMediaDrag(url: string, kind: 'image' | 'video') {
       const dy = moveEvent.clientY - startY;
       if (dx * dx + dy * dy < MEDIA_DRAG_THRESHOLD_PX * MEDIA_DRAG_THRESHOLD_PX) return;
       dragStarted = true;
+      // SVG markup still in flight: start the drag the moment it lands (if the
+      // pointer is still down) instead of falling back to the picture drop.
+      if (isSvg && getPrefetchedSvgMarkup(url) === undefined) {
+        window.removeEventListener('pointermove', onMove);
+        void prefetchSvgMarkup(url).then(() => { if (!released) { cleanup(); start(); } });
+        return;
+      }
       cleanup();
-      trace.action('media-panel:drag-start', { kind, url });
-      startToolbarDrag(item, startEvent);
+      start();
     };
-    const onUp = () => { cleanup(); };
+    const onUp = () => { released = true; cleanup(); };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
@@ -250,6 +271,8 @@ export default function MediaGalleryPanel() {
       if (uploadsRes.ok) {
         const data = await uploadsRes.json();
         setUploads(data.uploads || []);
+        // SVG tiles drop as vectors — have their markup ready before a drag.
+        for (const u of (data.uploads || []) as UploadedFile[]) if (isSvgMediaUrl(u.url)) void prefetchSvgMarkup(u.url);
         trace.action('media:fetched', { type: tab, count: data.uploads?.length ?? 0 });
       }
       if (storageRes.ok) {
@@ -307,6 +330,7 @@ export default function MediaGalleryPanel() {
     trace.action('media:upload-start', { name: file.name, size: file.size });
     try {
       const url = await backend.uploadAsset(projectId, file);
+      if (isSvgMediaUrl(url)) seedSvgMarkup(url, await file.text());
       setUploads(prev => [{ url, size: file.size }, ...prev]);
       trace.action('media:upload-success', { url });
       // Re-fetch storage so the usage chip updates immediately.

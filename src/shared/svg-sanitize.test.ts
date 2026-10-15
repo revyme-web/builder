@@ -1,5 +1,5 @@
-import { describe, test, expect } from 'vitest';
-import { sanitizeSvgMarkupForJsx } from './svg-sanitize';
+import { describe, test, it, expect } from 'vitest';
+import { sanitizeSvgMarkupForJsx, stripActiveSvgContent } from './svg-sanitize';
 
 // The Inkscape-export shape that killed a dragged wordmark's add-mutation
 // (2026-07-28): an XML comment + a <style> block whose CSS braces start a JSX
@@ -64,5 +64,23 @@ describe('normalizeSvgGeometryToBox', () => {
   test('null for gradient/defs/transform markup', () => {
     expect(normalizeSvgGeometryToBox('0 0 10 10', '<g transform="scale(2)"><path d="M0 0"/></g>', 20, 20)).toBeNull();
     expect(normalizeSvgGeometryToBox('0 0 10 10', '<defs><linearGradient id="g"/></defs>', 20, 20)).toBeNull();
+  });
+});
+
+// Uploaded SVGs land inline in the user's page, which ships as server-rendered
+// HTML — active content must not survive (Media panel SVG drop, 2026-10-15).
+describe('stripActiveSvgContent', () => {
+  it('drops scripts, foreignObject, on* handlers and javascript: links; keeps the drawing', () => {
+    const svg = '<g onclick="steal()"><script type="text/javascript">alert(1)</script><script src="x.js"/>'
+      + '<foreignObject width="10" height="10"><iframe src="https://evil"></iframe></foreignObject>'
+      + '<a href="javascript:alert(2)"><path d="M0 0L1 1" fill="#000" onmouseover=\'x()\'/></a>'
+      + '<a href="https://ok.example"><rect width="1" height="1"/></a></g>';
+    const out = stripActiveSvgContent(svg);
+    expect(out).not.toMatch(/script|foreignObject|iframe|onclick|onmouseover|javascript:/i);
+    expect(out).toContain('<path d="M0 0L1 1" fill="#000"');
+    expect(out).toContain('href="https://ok.example"');
+  });
+  it('runs as part of the JSX sanitizer every inline embed uses', () => {
+    expect(sanitizeSvgMarkupForJsx('<path d="M0 0" onload="x()"/><script>y()</script>')).toBe('<path d="M0 0"/>');
   });
 });

@@ -42,6 +42,7 @@
 import { parseSvgPath, elementToD } from '@/shared/svg-path/svg-path-parser';
 import type { Affine6 } from '@/shared/svg-geometry';
 import { r3 } from './group-resize-bake';
+import type { NewNodeDescriptor } from '@/shared/types';
 import { trace } from '@/shared/debug-trace';
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -665,21 +666,25 @@ function escapeAttr(v: string): string {
   return v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
-function paintAttrs(p: Presentation): string {
-  // Match ShapeCreator's conventions: always emit fill + stroke + stroke-width
-  // (stroke-width 0 when strokeless) so the right-panel controls have concrete
-  // values to read.
+/** A leaf's paint as attributes, in emit order. Match ShapeCreator's
+ *  conventions: always fill + stroke + stroke-width (stroke-width 0 when
+ *  strokeless) so the right-panel controls have concrete values to read. */
+function paintAttrRecord(p: Presentation): Record<string, string> {
   const stroke = p.stroke ?? '#000000';
   const strokeWidth = p.stroke ? r3(p.strokeWidth) : 0;
-  let attrs = ` fill="${escapeAttr(p.fill)}" stroke="${escapeAttr(stroke)}" stroke-width="${strokeWidth}"`;
-  if (p.fillRule) attrs += ` fill-rule="${escapeAttr(p.fillRule)}"`;
-  if (p.fillOpacity) attrs += ` fill-opacity="${escapeAttr(p.fillOpacity)}"`;
-  if (p.strokeOpacity) attrs += ` stroke-opacity="${escapeAttr(p.strokeOpacity)}"`;
-  if (p.strokeLinecap) attrs += ` stroke-linecap="${escapeAttr(p.strokeLinecap)}"`;
-  if (p.strokeLinejoin) attrs += ` stroke-linejoin="${escapeAttr(p.strokeLinejoin)}"`;
-  if (p.strokeDasharray) attrs += ` stroke-dasharray="${escapeAttr(p.strokeDasharray)}"`;
-  if (p.opacity !== 1) attrs += ` opacity="${r3(p.opacity)}"`;
+  const attrs: Record<string, string> = { fill: p.fill, stroke, 'stroke-width': String(strokeWidth) };
+  if (p.fillRule) attrs['fill-rule'] = p.fillRule;
+  if (p.fillOpacity) attrs['fill-opacity'] = p.fillOpacity;
+  if (p.strokeOpacity) attrs['stroke-opacity'] = p.strokeOpacity;
+  if (p.strokeLinecap) attrs['stroke-linecap'] = p.strokeLinecap;
+  if (p.strokeLinejoin) attrs['stroke-linejoin'] = p.strokeLinejoin;
+  if (p.strokeDasharray) attrs['stroke-dasharray'] = p.strokeDasharray;
+  if (p.opacity !== 1) attrs.opacity = String(r3(p.opacity));
   return attrs;
+}
+
+function paintAttrs(p: Presentation): string {
+  return Object.entries(paintAttrRecord(p)).map(([k, v]) => ` ${k}="${escapeAttr(v)}"`).join('');
 }
 
 /** Integer-rounded box with a minimum 1px extent (open strokes have
@@ -715,6 +720,33 @@ function emitTopLevel(item: ImportedItem, ids: IdGen): string {
   return `<svg data-id="${id}" data-name="${escapeAttr(item.name)}" viewBox="0 0 ${b.w} ${b.h}" preserveAspectRatio="none" style={{ position: "absolute", left: "${b.x}px", top: "${b.y}px", width: "${b.w}px", height: "${b.h}px", overflow: "visible" }}>${inner}</svg>`;
 }
 
+/** The same tree as `itemInner`, as add-node DESCRIPTORS for a canvas drop —
+ *  identical geometry and nested-group markup, with data-ids derived from the
+ *  parent's (`<parent>-s<i>` per child, `<shape>-g0` for its path — the drop
+ *  decomposer's convention, see svg-drop-shapes.ts). */
+function itemDescriptors(item: ImportedItem, origin: { x: number; y: number }, parentId: string): NewNodeDescriptor[] {
+  if (item.kind === 'shape') {
+    const d = serializeCmds(item.cmds, -origin.x, -origin.y);
+    return [{ tag: 'path', id: `${parentId}-g0`, styles: {}, attrs: { d, ...paintAttrRecord(item.paint) } }];
+  }
+  return item.children.map((child, i) => {
+    const cb = intBox(child.bbox);
+    const id = `${parentId}-s${i}`;
+    return {
+      tag: 'svg',
+      id,
+      name: child.name,
+      styles: {},
+      attrs: {
+        x: String(cb.x - origin.x), y: String(cb.y - origin.y),
+        width: String(cb.w), height: String(cb.h),
+        viewBox: `0 0 ${cb.w} ${cb.h}`, preserveAspectRatio: 'none', overflow: 'visible',
+      },
+      children: itemDescriptors(child, { x: cb.x, y: cb.y }, id),
+    };
+  });
+}
+
 function countItems(items: ImportedItem[]): { shapes: number; groups: number } {
   let shapes = 0, groups = 0;
   for (const item of items) {
@@ -734,12 +766,22 @@ function countItems(items: ImportedItem[]): { shapes: number; groups: number } {
  *  layers panel. Past this, the graphic fallback is the better trade. */
 export const MAX_IMPORT_SHAPES = 60;
 
-export function convertSvgToEditableShapes(rawSvg: string, opts: SvgImportOptions): SvgImportResult | null {
+interface ImportedSvg { top: ImportedItem; shapes: number; groups: number }
+
+/** Card box the source maps into — fixed, or picked from the source's own
+ *  coordinate box (`vbW`×`vbH`). */
+type CardBox = { cardW: number; cardH: number } | ((vbW: number, vbH: number) => { cardW: number; cardH: number });
+
+/** Parse + resolve a foreign SVG into the import tree — transforms baked,
+ *  primitives/arcs normalized, paint resolved per leaf, `<g>` structure kept
+ *  as groups — mapped into the card box. Null = outside the native model (the
+ *  caller's graphic fallback). Shared by the icon-card JSX and the canvas drop. */
+function importSvgTree(rawSvg: string, traceId: string, displayName: string, card: CardBox): ImportedSvg | null {
   if (typeof DOMParser === 'undefined') return null;
   try {
     const doc = new DOMParser().parseFromString(rawSvg, 'image/svg+xml');
     if (doc.querySelector('parsererror')) {
-      trace.action('svg-import:parse-error', { iconId: opts.iconId });
+      trace.action('svg-import:parse-error', { iconId: traceId });
       return null;
     }
     const root = doc.documentElement;
@@ -755,16 +797,17 @@ export function convertSvgToEditableShapes(rawSvg: string, opts: SvgImportOption
       vbH = parseFloat(root.getAttribute('height') || '0');
     }
     if (!(vbW > 0) || !(vbH > 0)) return null;
+    const { cardW, cardH } = typeof card === 'function' ? card(vbW, vbH) : card;
 
     applyStyleElements(root, doc);
 
     // Root affine: source viewBox space → card px space, uniform scale,
     // centered (letterboxes when the card aspect was clamped).
-    const s = Math.min(opts.cardW / vbW, opts.cardH / vbH);
+    const s = Math.min(cardW / vbW, cardH / vbH);
     const rootM: Affine6 = [
       s, 0, 0, s,
-      (opts.cardW - vbW * s) / 2 - vbX * s,
-      (opts.cardH - vbH * s) / 2 - vbY * s,
+      (cardW - vbW * s) / 2 - vbX * s,
+      (cardH - vbH * s) / 2 - vbY * s,
     ];
 
     const items: ImportedItem[] = [];
@@ -777,30 +820,80 @@ export function convertSvgToEditableShapes(rawSvg: string, opts: SvgImportOption
     const { shapes, groups } = countItems(items);
     if (shapes === 0) return null;
     if (shapes > MAX_IMPORT_SHAPES) {
-      trace.action('svg-import:too-many-shapes', { iconId: opts.iconId, shapes });
+      trace.action('svg-import:too-many-shapes', { iconId: traceId, shapes });
       return null;
     }
-
-    let counter = 0;
-    const ids: IdGen = { next: (prefix) => `${prefix}-${opts.iconId}-${++counter}` };
 
     // ONE top item → it IS the icon (positioned at its bbox in the card).
     // Several → wrap in a root group named after the icon so the card holds
     // a single selectable vector.
     const top: ImportedItem = items.length === 1
       ? items[0]
-      : { kind: 'group', name: opts.displayName, children: items, bbox: unionBox(items.map(i => i.bbox)) };
-    if (top.kind === 'group') top.name = opts.displayName;
-
-    const jsx = emitTopLevel(top, ids);
-    trace.action('svg-import:converted', { iconId: opts.iconId, shapes, groups });
-    return { jsx, shapeCount: shapes, groupCount: groups };
+      : { kind: 'group', name: displayName, children: items, bbox: unionBox(items.map(i => i.bbox)) };
+    if (top.kind === 'group') top.name = displayName;
+    return { top, shapes, groups };
   } catch (err) {
     if (err instanceof UnsupportedSvgError) {
-      trace.action('svg-import:fallback-to-graphic', { iconId: opts.iconId, reason: err.message });
+      trace.action('svg-import:fallback-to-graphic', { iconId: traceId, reason: err.message });
       return null;
     }
-    trace.error('svg-import:failed', { iconId: opts.iconId, error: err instanceof Error ? err.message : String(err) });
+    trace.error('svg-import:failed', { iconId: traceId, error: err instanceof Error ? err.message : String(err) });
     return null;
   }
+}
+
+export function convertSvgToEditableShapes(rawSvg: string, opts: SvgImportOptions): SvgImportResult | null {
+  const imported = importSvgTree(rawSvg, opts.iconId, opts.displayName, { cardW: opts.cardW, cardH: opts.cardH });
+  if (!imported) return null;
+  let counter = 0;
+  const ids: IdGen = { next: (prefix) => `${prefix}-${opts.iconId}-${++counter}` };
+  const jsx = emitTopLevel(imported.top, ids);
+  trace.action('svg-import:converted', { iconId: opts.iconId, shapes: imported.shapes, groups: imported.groups });
+  return { jsx, shapeCount: imported.shapes, groupCount: imported.groups };
+}
+
+// ─── Canvas drop ───────────────────────────────────────────────────────────
+
+/** Longest side a dropped SVG lands at: its own size, clamped into this range
+ *  (a 24px icon still arrives grabbable, a 3000px illustration fits the view). */
+export const SVG_DROP_MIN_SIDE = 48;
+export const SVG_DROP_MAX_SIDE = 400;
+
+export interface SvgDropVector {
+  /** Root `<svg>` attrs — viewBox 1:1 with the shrink-wrapped px box. */
+  attrs: Record<string, string>;
+  /** The painted box in px: the root's width/height. */
+  box: { w: number; h: number };
+  shapeCount: number;
+  groupCount: number;
+  /** The root's children for root data-id `rootId` — call once per drop. */
+  children(rootId: string): NewNodeDescriptor[];
+}
+
+/**
+ * An SVG FILE dropped on the canvas (the Media panel) → the native vector
+ * model through this module's full pass: every transform baked, primitives and
+ * arcs normalized, paint resolved per leaf, and the source's `<g>` structure
+ * kept as NESTED GROUPS — the same tree the icon-card import emits, so the
+ * shape editor drills into it group by group. The root is shrink-wrapped to
+ * the painted geometry. Null = a feature outside the shape model (masks,
+ * gradients, text, <use>, too many shapes) — the caller falls back.
+ */
+export function convertSvgToDropVector(rawSvg: string, name: string): SvgDropVector | null {
+  const imported = importSvgTree(rawSvg, 'drop', name, (vbW, vbH) => {
+    const longest = Math.max(vbW, vbH);
+    const scale = Math.min(SVG_DROP_MAX_SIDE, Math.max(SVG_DROP_MIN_SIDE, longest)) / longest;
+    return { cardW: vbW * scale, cardH: vbH * scale };
+  });
+  if (!imported) return null;
+  const { top, shapes, groups } = imported;
+  const b = intBox(top.bbox);
+  trace.action('svg-import:drop-vector', { name, shapes, groups, w: b.w, h: b.h });
+  return {
+    attrs: { viewBox: `0 0 ${b.w} ${b.h}`, preserveAspectRatio: 'none' },
+    box: { w: b.w, h: b.h },
+    shapeCount: shapes,
+    groupCount: groups,
+    children: (rootId) => itemDescriptors(top, { x: b.x, y: b.y }, rootId),
+  };
 }
