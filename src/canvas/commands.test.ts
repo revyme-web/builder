@@ -544,6 +544,27 @@ describe('wrap frame — clips overflow only when wrapping text', () => {
     wrapInLayout(['t1', 'd1'], map, dummyEl);
     expect(framedStyles()?.overflow).toBe('visible');
   });
+
+  // A written `rgba(0, 0, 0, 0)` made Fill → Add open the picker at 0% alpha, so
+  // every colour picked stayed invisible (user report 2026-10-15). No fill at all.
+  it('the wrapper carries NO backgroundColor — Shift+A, Shift+Alt+A, flow and absolute', () => {
+    const absMap = () => buildMap([makeNode('page', null, ['t1', 'd1']), absText('t1'), absDiv('d1')]);
+    for (const wrap of [
+      () => wrapInLayout(['t1'], absMap(), dummyEl),
+      () => wrapInFrame(['t1'], absMap(), dummyEl),
+      () => wrapInLayout(['t1', 'd1'], absMap(), dummyEl),
+      () => wrapInFrame(['t1', 'd1'], absMap(), dummyEl),
+      () => wrapInLayout(['f1'], buildMap([
+        makeNode('page', null, ['f1'], { display: 'flex', flexDirection: 'column' }),
+        makeNode('f1', 'page', [], { position: 'relative', width: '100px', height: '40px' }),
+      ]), dummyEl),
+    ]) {
+      q.mockClear();
+      wrap();
+      expect(framedStyles()).toBeDefined();
+      expect(framedStyles()).not.toHaveProperty('backgroundColor');
+    }
+  });
 });
 
 // A flow child (relative, in a flex parent) must hand its PLACEMENT to the
