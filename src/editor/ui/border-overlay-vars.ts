@@ -81,7 +81,14 @@ export function overlayWidthVisible(width: string | null | undefined): boolean {
 const PRIMARY_VARIANT = 'default';
 
 export type OverlayVarRemoval =
-  /** A variant tile: drop this entry's values so it inherits the primary. */
+  /** A variant tile the primary's border would show through: override it with
+   *  NO border in this entry — the purple override, Reset Override restores it.
+   *  Dropping the entry's values instead let the primary's border show again,
+   *  and on a variant with no values of its own the × did nothing at all
+   *  (2026-10-15). */
+  | { kind: 'zero-variant' }
+  /** A variant tile while the primary has no visible border: drop this entry's
+   *  values so it inherits the primary's none. */
   | { kind: 'inherit' }
   /** The primary while another variant still has a border: zero the primary's
    *  width, KEEP the shared `::after` rule — removing it erased every variant's. */
@@ -91,6 +98,8 @@ export type OverlayVarRemoval =
   | { kind: 'remove-all'; clearVariants: string[] };
 
 /** What removing a VAR-BACKED overlay border does, from the tile it's removed on.
+ *  The × always means "no border HERE": the primary's × leaves every variant's
+ *  own border alone, a variant's × leaves the primary's alone.
  *  `variants` is the node's parsed variants object, `baseWidth` its inline
  *  `--rvb-bw`, `tileVariant` the variant tile (null = the primary). */
 export function planOverlayVarRemoval(opts: {
@@ -102,7 +111,8 @@ export function planOverlayVarRemoval(opts: {
   const otherVariantHasBorder = Object.entries(entries).some(([name, st]) =>
     name !== PRIMARY_VARIANT && name !== opts.tileVariant && overlayWidthVisible(st?.[BORDER_OVERLAY_VAR_WIDTH]));
   if (opts.tileVariant) {
-    return otherVariantHasBorder || overlayWidthVisible(opts.baseWidth) ? { kind: 'inherit' } : removeAll(entries);
+    if (overlayWidthVisible(opts.baseWidth)) return { kind: 'zero-variant' };
+    return otherVariantHasBorder ? { kind: 'inherit' } : removeAll(entries);
   }
   return otherVariantHasBorder ? { kind: 'zero-primary' } : removeAll(entries);
 }

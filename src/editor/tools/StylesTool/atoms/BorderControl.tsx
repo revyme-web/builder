@@ -47,7 +47,8 @@ import { formatBorderAfterCSSVars, borderStateToOverlayVars, clearedOverlayVars,
 /** The VAR-BACKED half of the × (component masters), shared by the row and the
  *  popup panel — see planOverlayVarRemoval. The `::after` rule is ONE rule for
  *  every variant, so the primary's × used to delete it outright and the hover's
- *  own border went with it (2026-10-15). */
+ *  own border went with it; a variant's × only dropped its own values, so the
+ *  primary's border kept showing on it (2026-10-15). */
 function removeVarBackedOverlay(
   nodeId: string,
   overlayVariant: string | null,
@@ -59,8 +60,10 @@ function removeVarBackedOverlay(
     variants: node?.motionVariants, baseWidth: node?.styles?.[BORDER_OVERLAY_VAR_WIDTH], tileVariant: overlayVariant,
   });
   trace.action('border:remove-overlay-vars', { nodeId, variant: overlayVariant, plan: plan.kind });
-  if (plan.kind === 'inherit') { onChangeMultiple(clearedOverlayVars()); return; } // variant → inherit base
-  if (plan.kind === 'zero-primary') { onChangeMultiple(zeroWidthOverlayVars(current)); return; }
+  if (plan.kind === 'inherit') { onChangeMultiple(clearedOverlayVars()); return; } // variant → inherit the base's none
+  // Zero width in THIS tile's channel — the inline base on the primary, the
+  // variant's own entry on a variant tile (onChangeMultiple routes per tile).
+  if (plan.kind === 'zero-primary' || plan.kind === 'zero-variant') { onChangeMultiple(zeroWidthOverlayVars(current)); return; }
   forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'removeBorderOverlay', nodeId: tid }));
   // The tile's own write below lands in a variant entry on a variant tile — the
   // inline base needs its own clear then.

@@ -68,8 +68,18 @@ describe('a border on ONE variant only (user report 2026-10-15)', () => {
       });
       expect(plan).toEqual({ kind: 'remove-all', clearVariants: ['default'] });
     });
-    it('× on the hover while the primary has a border: the hover inherits it', () => {
-      expect(planOverlayVarRemoval({ variants: hoverOnly, baseWidth: '2px', tileVariant: 'default-hover' })).toEqual({ kind: 'inherit' });
+    it('× on a variant the primary\'s border shows through: a zero-width override on that variant', () => {
+      // The reported file: primary 24px, hover its own 16px, `variant-2` no entry at all.
+      const reported = {
+        default: { '--rvb-bw': '24px', '--rvb-bs': 'solid', '--rvb-bc': '#000000' },
+        'default-hover': { '--rvb-bw': '16px', '--rvb-bs': 'solid', '--rvb-bc': '#000000' },
+      };
+      expect(planOverlayVarRemoval({ variants: reported, baseWidth: '24px', tileVariant: 'variant-2' })).toEqual({ kind: 'zero-variant' });
+      expect(planOverlayVarRemoval({ variants: reported, baseWidth: '24px', tileVariant: 'default-hover' })).toEqual({ kind: 'zero-variant' });
+    });
+    it('× on a variant while the primary has none but another variant has one: inherit the primary\'s none', () => {
+      const two = { ...hoverOnly, 'variant-2': { '--rvb-bw': '4px', '--rvb-bs': 'solid', '--rvb-bc': '#000000' } };
+      expect(planOverlayVarRemoval({ variants: two, baseWidth: '0px', tileVariant: 'default-hover' })).toEqual({ kind: 'inherit' });
     });
     it('× on the hover when it held the only border: nothing visible is left → remove everything', () => {
       expect(planOverlayVarRemoval({ variants: hoverOnly, baseWidth: '0px', tileVariant: 'default-hover' }))
@@ -133,4 +143,53 @@ export default function MaKaRo({ style }: { style?: React.CSSProperties }) {
     expect(n.motionVariants?.['default-hover']?.['--rvb-bw']).toBe('11px');
     expect(extractBorderAfterRuleBody(extractStyleCSS(code), 'frame')).toContain('var(--rvb-bw)');   // the shared rule survives
   });
+
+  // The reported file (2026-10-15): primary 24px, hover its own 16px, a second
+  // top-level variant with no entry at all. × on that variant did nothing.
+  const ZAZARE = `'use client';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+const variantConfig = [
+  { name: 'default', label: 'Frame', x: 0, y: 0, isPrimary: true },
+  { name: 'default-hover', label: 'Frame - Hover', x: 0, y: 191, interactionType: 'hover', parentVariant: 'default' },
+  { name: 'variant-2', label: 'Frame', x: 183, y: 0 },
+];
+const frameVariants = {
+  default: { '--rvb-bw': '24px', '--rvb-bs': 'solid', '--rvb-bc': '#000000', padding: '0px',},
+  'default-hover': { '--rvb-bw': '16px', '--rvb-bs': 'solid', '--rvb-bc': '#000000', display: 'flex', padding: '21px',},
+};
+export default function ZaZaRe({ style }: { style?: React.CSSProperties }) {
+  const [variant] = useState('default');
+  return (
+    <motion.div data-id="frame" variants={frameVariants} style={{
+          position: 'absolute',
+          width: '122px',
+          backgroundColor: '#97cffc',
+          overflow: 'hidden'
+        , '--rvb-bw': '24px', '--rvb-bs': 'solid', '--rvb-bc': '#000000', ...style}} initial={['default', variant]} animate={['default', variant]}>
+  <style>{\`
+    [data-id="frame"]::after {
+${formatBorderAfterCSSVars()}
+    }
+  \`}</style></motion.div>
+  );
+}
+`;
+
+  it('× on a variant with no entry overrides it with no border; Reset Override brings the primary\'s back', () => {
+    const black24: BorderState = { top: side(24, '#000000'), right: side(24, '#000000'), bottom: side(24, '#000000'), left: side(24, '#000000'), isUniform: true };
+    let n = node(ZAZARE);
+    const plan = planOverlayVarRemoval({ variants: n.motionVariants, baseWidth: n.styles['--rvb-bw'], tileVariant: 'variant-2' });
+    expect(plan.kind).toBe('zero-variant');
+    let code = updateVariantStyleInCode(ZAZARE, 'frame', 'variant-2', zeroWidthOverlayVars(black24));
+    n = node(code);
+    expect(n.motionVariants?.['variant-2']?.['--rvb-bw']).toBe('0px');   // its own entry → the purple override
+    expect(n.styles['--rvb-bw']).toBe('24px');                            // primary untouched
+    expect(n.motionVariants?.['default-hover']?.['--rvb-bw']).toBe('16px');
+    expect(extractBorderAfterRuleBody(extractStyleCSS(code), 'frame')).toContain('var(--rvb-bw)');
+    // Reset Override: the generic reset clears the border alias keys (--rvb-* included) in the entry.
+    code = updateVariantStyleInCode(code, 'frame', 'variant-2', clearedOverlayVars());
+    expect(node(code).motionVariants?.['variant-2']?.['--rvb-bw']).toBeUndefined();
+  });
 });
+
