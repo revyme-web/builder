@@ -38,6 +38,7 @@ import { useNode, useLiveNode, useNodesComputed } from '@/code/stores/node-famil
 import { isReplicaViewportAtom, interactingViewportWidthAtom, interactingViewportRenderWidthAtom, interactingViewportIdAtom, isComponentVariantViewportAtom, activeComponentVariantAtom } from '@/code/stores/viewport-store';
 import { resolveParentVariantStyle } from './parent-variant-style';
 import { containerOverridesAtom, getOverrideBreakpoints, hasOverrideAtWidth, getOverridesAtWidth, clearShorthandSupersededLonghands, overrideAliasKeys } from '@/code/stores/container-query-store';
+import { renderCodeComponentStyleLive } from '@/canvas/CodeComponentHost';
 import { isDefaultLocaleAtom, localeOverridesAtom } from '@/code/stores/locale-store';
 import { queueMutation, flushNow } from '@/code/mutation/mutation-queue';
 import { removeComponentPropProjectWide } from '@/code/features/remove-component-prop';
@@ -476,6 +477,11 @@ export function ControlProvider({ children }: { children: ReactNode }) {
       // 60fps. (Primary/base edits below commit to INLINE styles — no !important
       // needed there.)
       for (const id of selectedIds) bridge.patchStyles(id, prefix, styles, true);
+      // A code component paints these on its own root, over the wrapper — see
+      // renderCodeComponentStyleLive. Page replicas are left to the commit.
+      if (isComponentVariantViewport && activeComponentVariant) {
+        for (const id of selectedIds) renderCodeComponentStyleLive(id, styles, activeComponentVariant);
+      }
       return;
     }
 
@@ -518,8 +524,11 @@ export function ControlProvider({ children }: { children: ReactNode }) {
         }
         bridge.patchStyles(id, prefix, styles, important);
       }
+      // A code component paints forwarded styles on its own root, over the
+      // wrapper just patched — re-render it with them (no-op for other nodes).
+      renderCodeComponentStyleLive(id, styles);
     }
-  }, [selectedIds, isComponentVariantViewport, isReplica, vpId, isComponentFile]);
+  }, [selectedIds, isComponentVariantViewport, isReplica, vpId, isComponentFile, activeComponentVariant]);
 
   // Backward compat alias — tools that call updateMultipleStyles still work
   const updateMultipleStyles = updateStyle as (styles: Record<string, string>) => void;

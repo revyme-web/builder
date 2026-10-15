@@ -168,6 +168,62 @@ function getCanvasViewportWidth(el: HTMLElement): number | undefined {
 let _codeComponentRoots: Map<string, { root: Root; component: string; propsHash: string }> | null = null;
 let _codeComponentNodes: Map<string, CanvasNode> | null = null;
 
+/** The connected SLOT children each instance was last mounted with. The mount
+ *  serializes them from the slot connections (not from the node), so a direct
+ *  re-render that rebuilds props from the node alone shipped none — and a
+ *  Marquee dropped to its empty "Connect Content" state for the whole of a
+ *  Fill or slider drag, until the commit re-mounted it (user report
+ *  2026-10-15). renderCodeComponentDirect carries these along. */
+const _mountedSlotChildren = new Map<string, ReturnType<typeof serializeSlotChildren>>();
+
+/** Record (or clear, when empty) what the sync last mounted `nodeId` with. */
+export function rememberMountedSlotChildren(nodeId: string, kids: ReturnType<typeof serializeSlotChildren>): void {
+  if (kids.length > 0) _mountedSlotChildren.set(nodeId, kids);
+  else _mountedSlotChildren.delete(nodeId);
+}
+
+/**
+ * LIVE (drag-time) style preview for a code-component instance — the twin of
+ * the prop-slider path below. ControlProvider.updateStyleLive patches the
+ * instance's outer WRAPPER, but a code component paints its forwarded styles
+ * (fill, radius, …) on its OWN root through `...props.style`, which sits on top
+ * of the wrapper — so a Fill drag on a Marquee changed nothing until mouse-up
+ * re-rendered it from the committed source (user report 2026-10-15). Re-render
+ * it in place with the patched forward: the flat `style` for a base edit, the
+ * `__variantStyles` branch for a component-master variant tile (the sandbox
+ * resolves that per tile, so other variants keep their own value).
+ * Returns false and does nothing for any node that is not a code component, or
+ * when every key stays on the wrapper.
+ */
+export function renderCodeComponentStyleLive(
+  nodeId: string,
+  styles: Record<string, string>,
+  variant?: string | null,
+): boolean {
+  const node = _codeComponentNodes?.get(nodeId);
+  if (!node?.isCodeComponent || !node.componentFile) return false;
+  const forwardable = Object.entries(styles).filter(([k]) => !WRAPPER_ONLY_STYLE_PROPS.has(k) && k !== 'display');
+  if (forwardable.length === 0) return false;
+  const vs: Record<string, Record<string, string>> = { ...(node.conditionalStyles ?? {}) };
+  if (variant && variant !== 'default') {
+    for (const [k, v] of forwardable) vs[k] = { ...(vs[k] ?? {}), [variant]: v };
+    renderCodeComponentDirect(nodeId, { __variantStyles: vs });
+  } else {
+    const style = extractCodeComponentProps({ ...node, styles: { ...(node.styles ?? {}), ...Object.fromEntries(forwardable) } }).style;
+    // A key with per-variant branches resolves from its `default` branch on the
+    // base tile, ahead of the flat style — move that branch too.
+    for (const [k, v] of forwardable) if (vs[k]) vs[k] = { ...vs[k], default: v };
+    renderCodeComponentDirect(nodeId, Object.keys(vs).length > 0 ? { style, __variantStyles: vs } : { style });
+  }
+  trace.action('code-component-style-live', { nodeId, keys: forwardable.map(([k]) => k), variant: variant ?? null });
+  return true;
+}
+
+/** Test-only: seed the node map the host keeps in sync while it is mounted. */
+export function setCodeComponentNodesForTest(nodes: Map<string, CanvasNode> | null): void {
+  _codeComponentNodes = nodes;
+}
+
 /**
  * Directly re-render Code component instances by data-id with updated props.
  * Called from ComponentPropsTool during drag for instant visual feedback.
@@ -211,6 +267,8 @@ export function renderCodeComponentDirect(
   if (node.attrConditional && Object.keys(node.attrConditional).length > 0) {
     baseProps.__variantProps = node.attrConditional;
   }
+  const slotKids = _mountedSlotChildren.get(codeComponentId);
+  if (slotKids) baseProps.__slotChildren = slotKids;
   let mergedProps: Record<string, any>;
   if (targetVariant && targetVariant !== 'default') {
     const vp: Record<string, Record<string, string>> = { ...((baseProps.__variantProps as Record<string, Record<string, string>>) ?? {}) };
@@ -549,6 +607,7 @@ export default function CodeComponentHost() {
           const slotSource = tplNodes ? new Map([...tplNodes, ...nodes]) : nodes;
           const slotKids = serializeSlotChildren(connectedIds, slotSource, slotConnectionsRef.current);
           if (slotKids.length > 0) props.__slotChildren = slotKids;
+          rememberMountedSlotChildren(node.id, slotKids);
           const vpWidths = getViewportWidths();
           const vpWidth = vpWidths['desktop'] || 1440;
           seenIds.add(node.id);
