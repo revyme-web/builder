@@ -20,9 +20,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { atom } from 'jotai';
 import { z } from 'zod';
 import { queueMutation, flushNow } from '@/code/mutation/mutation-queue';
-import { getNodesSnapshot, selectedIdsAtom } from '@/code/stores/store';
+import { selectedIdsAtom } from '@/code/stores/store';
 import { projectFS, resetProjectFS } from '@/code/project/project-fs';
-import type { CanvasNode } from '@/code/parsing/parser';
 import type { AgentTool, ToolContext } from '@/ai/agent';
 import {
   setLayoutTool,
@@ -363,82 +362,11 @@ describe('action layer — anti-permissivity', () => {
 
 // ─── set_component_prop variant axis ───────────────────────────────────────
 
-describe('set_component_prop — variant axis', () => {
-  const HERO_PROPS = {
-    name: 'Hero',
-    filePath: 'components/Hero.tsx',
-    props: [
-      { name: 'title', defaultValue: 'Build', varType: 'text', description: 'Main heading' },
-      { name: 'variant', defaultValue: 'primary', varType: 'option' },
-      { name: 'count', defaultValue: null, varType: 'number' },
-      { name: 'eyebrow', defaultValue: null },
-    ],
-    contentHash: 'h1',
-    controlsMeta: null,
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(buildComponentRegistry).mockReturnValue(new Map([['Hero', HERO_PROPS]]) as never);
-    vi.mocked(getNodesSnapshot).mockReturnValue(new Map<string, CanvasNode>([
-      ['n1', { id: 'n1', type: 'Hero', attrs: { title: 'Build' }, styles: {} } as unknown as CanvasNode],
-    ]));
-  });
-
-  it('with variant queues setVariantAttr (editor Input-tool variant axis) preserving the base value', async () => {
-    const ctx = makeCtx();
-    const result = await setComponentPropTool.execute(
-      { node_id: 'n1', component_name: 'Hero', prop: 'title', value: 'Ship', variant: 'variant-1' },
-      ctx,
-    );
-    expect(ctx.ensureCheckpoint).toHaveBeenCalledTimes(1);
-    expect(queueMutation).toHaveBeenCalledTimes(1);
-    expect(queueMutation).toHaveBeenCalledWith({
-      type: 'setVariantAttr',
-      nodeId: 'n1',
-      variant: 'variant-1',
-      attr: 'title',
-      value: 'Ship',
-      baseValue: 'Build',
-    }, expect.anything());
-    expect(flushNow).toHaveBeenCalledTimes(1);
-    const data = JSON.parse((result.content[0] as any).text);
-    expect(data).toMatchObject({ node_id: 'n1', prop: 'title', variant: 'variant-1', removed: false });
-    expect(result.isError).toBeUndefined();
-  });
-
-  it('with variant + "" value removes only that variant override (base untouched)', async () => {
-    const ctx = makeCtx();
-    const result = await setComponentPropTool.execute(
-      { node_id: 'n1', component_name: 'Hero', prop: 'title', value: '', variant: 'variant-1' },
-      ctx,
-    );
-    expect(queueMutation).toHaveBeenCalledTimes(1);
-    expect(queueMutation).toHaveBeenCalledWith({
-      type: 'setVariantAttr', nodeId: 'n1', variant: 'variant-1', attr: 'title', value: '', baseValue: 'Build',
-    }, expect.anything());
-    expect(JSON.parse((result.content[0] as any).text).removed).toBe(true);
-  });
-
-  it('variant "default" and no variant both write the base via updateHtmlAttrs (unchanged)', async () => {
-    const ctx = makeCtx();
-    await setComponentPropTool.execute(
-      { node_id: 'n1', component_name: 'Hero', prop: 'title', value: 'Ship', variant: 'default' },
-      ctx,
-    );
-    expect(queueMutation).toHaveBeenCalledWith({
-      type: 'updateHtmlAttrs', nodeId: 'n1', attrs: { title: 'Ship' },
-    }, expect.anything());
-
-    vi.clearAllMocks();
-    await setComponentPropTool.execute(
-      { node_id: 'n1', component_name: 'Hero', prop: 'title', value: 'Ship' }, ctx,
-    );
-    expect(queueMutation).toHaveBeenCalledWith({
-      type: 'updateHtmlAttrs', nodeId: 'n1', attrs: { title: 'Ship' },
-    }, expect.anything());
-  });
-});
+// set_component_prop's variant axis is a per-variant value INSIDE a component
+// master (the master's own initialVariant); on a page instance it is refused —
+// the old setVariantAttr write put `initialVariant === …` into page code, a
+// ReferenceError at render. Covered against real source in
+// set-component-prop.test.ts (scope, removal, typed literal, refusal).
 
 // ─── REGISTRATION ──────────────────────────────────────────────────────────
 

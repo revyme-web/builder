@@ -3,7 +3,10 @@
 // GOLDEN FILES for the component-instance tools (add_component_instance,
 // set_component_prop). The unit contract lives in semantic-structure.test.ts
 // (mutation shape, prop filtering, required-prop reporting, error paths).
-// THIS suite proves what the produced MUTATIONS become in the project:
+// set_component_prop writes the file directly through the props panel's own
+// instance writer (modifyProjectFile, 2026-10-15) — its cases read the REAL
+// written file back. For add_component_instance this suite proves what the
+// produced MUTATIONS become in the project:
 //
 //   tool.execute()             (REAL — ./semantic-structure)
 //     → captured Mutation     (queue entry points are mocked + spied)
@@ -30,7 +33,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { atom } from 'jotai';
-import { resetProjectFS } from '@/code/project/project-fs';
+import { projectFS, resetProjectFS } from '@/code/project/project-fs';
 import { gateTurnFiles, formatBounce } from '@/code/oracle/gate';
 import { queueMutation, flushNow, syncImports, type Mutation } from '@/code/mutation/mutation-queue';
 import { addNodeInCode, removeNodeInCode } from '@/code/generation/generator-crud';
@@ -57,7 +60,6 @@ vi.mock('@/code/stores/store', () => ({
 }));
 
 type AddNodeMutation = Extract<Mutation, { type: 'addNode' }>;
-type UpdateAttrsMutation = Extract<Mutation, { type: 'updateHtmlAttrs' }>;
 
 const CANVAS = `/** @canvas { "viewports": [{ "id": "desktop", "label": "Desktop", "width": 1440, "isPrimary": true, "order": 0 }], "positions": { "desktop": { "x": 0, "y": 0 } } } */`;
 
@@ -258,11 +260,11 @@ describe('component golden — set_component_prop through the REAL write path', 
       { node_id: 'hero-1', component_name: 'Hero', prop: 'title', value: 'Hello again' },
       makeCtx(),
     );
-    expect(flushNow).toHaveBeenCalledTimes(1);
-    const m = lastMutation() as UpdateAttrsMutation;
-    expect(m).toEqual({ type: 'updateHtmlAttrs', nodeId: 'hero-1', attrs: { title: 'Hello again' } });
+    // Written in place by the instance writer — never the generic attr mutation.
+    expect(queueMutation).not.toHaveBeenCalled();
+    expect(JSON.parse((result.content[0] as any).text).written).toBe('title="Hello again"');
 
-    const after = applyMutation(instancePage(), m);
+    const after = projectFS.readFile(HOME_PATH)!;
     expect(after).toContain('title="Hello again"');
     expect(after).not.toContain(`title="Build"`);
 
@@ -284,10 +286,7 @@ describe('component golden — set_component_prop through the REAL write path', 
       { node_id: 'hero-1', component_name: 'Hero', prop: 'title', value: '' },
       makeCtx(),
     );
-    const m = lastMutation() as UpdateAttrsMutation;
-    expect(m).toEqual({ type: 'updateHtmlAttrs', nodeId: 'hero-1', attrs: { title: '' } });
-
-    const after = applyMutation(instancePage(), m);
+    const after = projectFS.readFile(HOME_PATH)!;
     expect(after).not.toContain('title=');
     expect(after).toContain('data-id="hero-1"');
     // Component falls back to its internal default at runtime; the file stays
@@ -318,8 +317,7 @@ describe('component golden — set_component_prop through the REAL write path', 
       { node_id: 'hero-1', component_name: 'Hero', prop: 'variant', value: 'dark' },
       makeCtx(),
     );
-    const m = lastMutation() as UpdateAttrsMutation;
-    const after = applyMutation(instancePage(), m);
+    const after = projectFS.readFile(HOME_PATH)!;
 
     // The canvas's own read-side contract: parse the evolved file back into
     // nodes and find the instance with its prop.

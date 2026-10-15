@@ -56,8 +56,10 @@ describe('tool contract guidance', () => {
     expect(duplicateNodeTool.description).toContain('fresh auto-generated');
   });
 
-  it('set_component_prop enseigne le value en string littéral', () => {
-    expect(setComponentPropTool.description).toContain('string literal');
+  it('set_component_prop enseigne le type déclaré et le mode expression', () => {
+    expect(setComponentPropTool.description).toContain("DECLARED type");
+    expect(setComponentPropTool.description).toContain('expression: true');
+    expect(setComponentPropTool.description).toContain('IN PLACE');
   });
 
   it('add_node.id donne un exemple de data-id et son charset', () => {
