@@ -28,6 +28,10 @@ function MarginAtom() {
       onChangeAll={(val) => onChangeMultiple({
         margin: val, marginTop: '', marginRight: '', marginBottom: '', marginLeft: '',
       })}
+      // X / Y step — both sides of an axis in ONE write (see PaddingControl).
+      onChangeSides={(s) => onChangeMultiple({
+        margin: '', marginTop: s[0], marginRight: s[1], marginBottom: s[2], marginLeft: s[3],
+      })}
       // Live patch sets ONLY the `margin` shorthand (resets all 4 sides in one
       // CSSOM write). Empty longhand clears would run after the shorthand as
       // separate patches and strip the sides it just set. Clears are for the

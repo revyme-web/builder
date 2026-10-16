@@ -299,6 +299,7 @@ export function EditPopupContent({ token, onUpdate, onDelete, onClose }: EditPop
                 handleValueChange(formatShorthand(next));
               }}
               onChangeAll={handleValueChange}
+              onChangeSides={(next) => handleValueChange(formatShorthand(next))}
             />
           );
         })()

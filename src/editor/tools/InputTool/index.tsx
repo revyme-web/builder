@@ -292,6 +292,15 @@ export default function InputTool() {
     commitNow();
     trace.action('input-tool:padding-side', { nodeId, index, val });
   };
+  /** X / Y step of the padding control — all four sides in one write. */
+  const commitPaddingSides = (sides: [string, string, string, string]) => {
+    if (!nodeId) return;
+    queueMutation({ type: 'updateStyles', nodeId, styles: {
+      padding: '', paddingTop: sides[0], paddingRight: sides[1], paddingBottom: sides[2], paddingLeft: sides[3],
+    } });
+    commitNow();
+    trace.action('input-tool:padding-sides', { nodeId, sides });
+  };
   const commitPaddingAll = (val: string) => {
     if (!nodeId) return;
     queueMutation({ type: 'updateStyles', nodeId, styles: {
@@ -516,6 +525,7 @@ export default function InputTool() {
             labels={['T', 'R', 'B', 'L']}
             onChange={commitPaddingSide}
             onChangeAll={commitPaddingAll}
+            onChangeSides={commitPaddingSides}
           />
         </ToolRow>
       </ToolSection>
@@ -606,6 +616,7 @@ export default function InputTool() {
           labels={['T', 'R', 'B', 'L']}
           onChange={commitPaddingSide}
           onChangeAll={commitPaddingAll}
+            onChangeSides={commitPaddingSides}
         />
       </ToolRow>
 

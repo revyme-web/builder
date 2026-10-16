@@ -161,6 +161,7 @@ function PresetValueEditor({ category, value, onChange }: {
           onChange(formatShorthand(next));
         }}
         onChangeAll={onChange}
+        onChangeSides={(next) => onChange(formatShorthand(next))}
       />
     );
   }

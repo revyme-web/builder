@@ -28,6 +28,11 @@ function PaddingAtom() {
       onChangeAll={(val) => onChangeMultiple({
         padding: val, paddingTop: '', paddingRight: '', paddingBottom: '', paddingLeft: '',
       })}
+      // X / Y step — both sides of an axis in ONE write (per-side onChange
+      // rebuilds from `sides`, so two calls would drop the first).
+      onChangeSides={(s) => onChangeMultiple({
+        padding: '', paddingTop: s[0], paddingRight: s[1], paddingBottom: s[2], paddingLeft: s[3],
+      })}
       // Live patch sets ONLY the `padding` shorthand (resets all 4 sides in one
       // CSSOM write). Sending empty longhand clears here would, as separate
       // per-key patches, run after the shorthand and strip the sides it just
