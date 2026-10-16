@@ -1,6 +1,8 @@
 // PaddingHandles.tsx — Blue handles on padded sides of auto/fit-sized elements.
 // Ported from old builder: auto/fit visibility logic, child content bounds,
 // bidirectional drag, hover overlays, scale-aware sizing.
+// Shift while dragging = UNIFORM: the dragged axis's value goes to all four
+// sides, written like the panel's all-sides field (`padding` shorthand).
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useAtomValue } from 'jotai';
@@ -80,6 +82,8 @@ export default function PaddingHandles({ nodeId, vpId, onInteracting }: Props) {
   const viewportConfigs = useAtomValue(viewportsConfigAtom);
   const isComponentFile = useAtomValue(isComponentFileAtom);
   const [hoveredHandle, setHoveredHandle] = useState<Side | null>(null);
+  // Shift held mid-drag: every padding band lights up, not just the dragged one.
+  const [uniformDrag, setUniformDrag] = useState(false);
   // Bumped on every RAF tick during a padding drag to force a re-
   // render so the handles re-read fresh `frameRect` / child bounds
   // from the bridge rectCache. Without this, `domOnly: true` patches
@@ -155,8 +159,12 @@ export default function PaddingHandles({ nodeId, vpId, onInteracting }: Props) {
     // it grows/shrinks instead of staying pinned at mousedown coords.
     startRafTick();
 
-    // Track last committed value for onUp
+    // What onUp commits — the axis longhands, or (Shift) the uniform shorthand.
     let lastStyles: Record<string, string> = {};
+    // Shift was held at some point: on releasing it mid-drag the OTHER axis
+    // must be put back — the uniform live patch moved it too.
+    let otherAxisTouched = false;
+    let uniformShown = false;
 
     styleHelperOps.show({
       type: 'padding',
@@ -170,24 +178,40 @@ export default function PaddingHandles({ nodeId, vpId, onInteracting }: Props) {
       const deltaX = (me.clientX - startX) / scale;
       const deltaY = (me.clientY - startY) / scale;
 
-      let newValue: number;
-      const styles: Record<string, string> = {};
+      const axisDelta = isVertical
+        ? (side === 'top' ? -deltaY : deltaY)
+        : (side === 'left' ? -deltaX : deltaX);
+      const newValue = Math.max(0, Math.round(currentValue + axisDelta));
+      const v = `${newValue}px`;
+      const uniform = me.shiftKey;
+      let live: Record<string, string>;
 
-      if (isVertical) {
-        const vertDelta = side === 'top' ? -deltaY : deltaY;
-        newValue = Math.max(0, Math.round(currentValue + vertDelta));
-        styles.paddingTop = `${newValue}px`;
-        styles.paddingBottom = `${newValue}px`;
+      if (uniform) {
+        // All four sides take the dragged value. Live: the shorthand alone (one
+        // CSSOM write resets every side — empty longhand clears sent as
+        // separate patches would strip the sides it just set). Commit: exactly
+        // the panel's all-sides write (PaddingControl onChangeAll).
+        otherAxisTouched = true;
+        live = { padding: v };
+        lastStyles = { padding: v, paddingTop: '', paddingRight: '', paddingBottom: '', paddingLeft: '' };
       } else {
-        const horizDelta = side === 'left' ? -deltaX : deltaX;
-        newValue = Math.max(0, Math.round(currentValue + horizDelta));
-        styles.paddingLeft = `${newValue}px`;
-        styles.paddingRight = `${newValue}px`;
+        lastStyles = isVertical
+          ? { paddingTop: v, paddingBottom: v }
+          : { paddingLeft: v, paddingRight: v };
+        live = { ...lastStyles };
+        if (otherAxisTouched) {
+          // Shift released: the other axis back to where it started (live
+          // only — its code was never written).
+          // Raw effective values, so a % / rem side isn't flattened to px.
+          const orig = (raw: string) => raw || '0px';
+          if (isVertical) { live.paddingLeft = orig(effSides[3]); live.paddingRight = orig(effSides[1]); }
+          else { live.paddingTop = orig(effSides[0]); live.paddingBottom = orig(effSides[2]); }
+        }
       }
+      if (uniform !== uniformShown) { uniformShown = uniform; setUniformDrag(uniform); }
 
       // Imperative DOM update via bridge — sync to all variant copies
-      lastStyles = styles;
-      updateNodeStyles({ id: nodeId, styles, contentEl, domOnly: true });
+      updateNodeStyles({ id: nodeId, styles: live, contentEl, domOnly: true });
 
       styleHelperOps.show({
         type: 'padding',
@@ -212,8 +236,9 @@ export default function PaddingHandles({ nodeId, vpId, onInteracting }: Props) {
         updateNodeStyles({ id: nodeId, styles: lastStyles, contentEl });
       }
       styleHelperOps.hide();
+      setUniformDrag(false);
       onInteracting(false);
-      trace.action('padding-handle:end', { nodeId });
+      trace.action('padding-handle:end', { nodeId, uniform: 'padding' in lastStyles });
     };
 
     window.addEventListener('pointermove', onMove);
@@ -301,7 +326,7 @@ export default function PaddingHandles({ nodeId, vpId, onInteracting }: Props) {
           position: 'fixed',
           ...bgStyle,
           backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          opacity: hoveredHandle === side ? 1 : 0,
+          opacity: hoveredHandle === side || uniformDrag ? 1 : 0,
           transition: 'opacity 150ms',
           pointerEvents: 'none',
           zIndex: 3,
@@ -331,6 +356,7 @@ export default function PaddingHandles({ nodeId, vpId, onInteracting }: Props) {
     elements.push(
       <div
         key={`pad-handle-${side}`}
+        data-padding-handle={side}
         onPointerDown={startAdjustingPadding(side)}
         onPointerEnter={() => setHoveredHandle(side)}
         onPointerLeave={() => setHoveredHandle(null)}

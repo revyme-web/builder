@@ -881,6 +881,29 @@ REPLICA_AUTO_HEIGHT.files['i18n/config.json'] = JSON.stringify({
 REPLICA_AUTO_HEIGHT.files['messages/en.json'] = '{}';
 REPLICA_AUTO_HEIGHT.files['messages/fr.json'] = '{}';
 
+// PADDED_HUG_FRAME — a flex frame that HUGS its content (Fit width + height,
+// so all four padding handles show) with different vertical / horizontal
+// padding. Shift + drag a padding handle = all four sides take the dragged
+// value (user request 2026-10-16).
+export const PADDED_HUG_FRAME = project(`
+/** @canvas { "viewports": [{"id":"desktop","width":1440}] } */
+'use client';
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Page" style={{
+      position: 'relative', width: '100%', minHeight: '600px', background: '#ffffff',
+    }}>
+      <div data-id="box" data-name="Box" style={{
+        position: 'absolute', left: '200px', top: '120px', width: 'min-content', height: 'min-content',
+        display: 'flex', flexDirection: 'column', padding: '10px 30px', background: '#475569',
+      }}>
+        <div data-id="inner" data-name="Inner" style={{ position: 'relative', width: '200px', height: '120px', flex: '0 0 auto', background: '#a3cbf7' }}></div>
+      </div>
+    </div>
+  );
+}
+`);
+
 // RTL_TEXT — a nav ROW plus an Arabic and an English line, with Arabic
 // configured. Picking Arabic used to mirror the whole site (user report
 // 2026-10-16); now only the text flips and the layout never changes. Arabic
@@ -5120,6 +5143,7 @@ export const SEEDS = {
   REPLICA_ABS_DRAG,
   LOCALE_TEXT,
   RTL_TEXT,
+  PADDED_HUG_FRAME,
   COMPONENT_MASTER,
   REPLICA_ABSOLUTE_EXIT,
   ROTATED_FLEX_FRAME,
