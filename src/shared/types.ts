@@ -309,6 +309,8 @@ export interface I18nConfig {
 export interface LocaleConfig {
   code: string;
   label: string;
+  /** Legacy, IGNORED: the layout never mirrors for any language. An RTL
+   *  language's TEXT reads right to left on its own (shared/rtl-text.ts). */
   direction?: 'ltr' | 'rtl';
   fallback?: string;
 }

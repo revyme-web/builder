@@ -2,6 +2,7 @@
 // locale resolution ships in the template.
 import { describe, it, expect } from 'vitest';
 import { buildProvidersSource, looksGeneratedProviders, PROVIDERS_MARKER } from './providers-gen';
+import { RTL_TEXT_CSS } from '@/shared/rtl-text';
 
 const CFG = {
   defaultLocale: 'en',
@@ -39,6 +40,36 @@ describe('buildProvidersSource', () => {
       locales: [{ code: 'en', label: 'E' }, { code: "x'; alert(1); '", label: 'evil' }],
     });
     expect(src).not.toContain('alert(1)');
+  });
+});
+
+// RTL (2026-10-16): v3 set <html dir="rtl"> for every RTL locale — the whole
+// site mirrored, half-broken, and only after hydration. Now the text flips
+// through one rule and the layout NEVER mirrors.
+describe('buildProvidersSource — right-to-left', () => {
+  const AR = { defaultLocale: 'en', locales: [{ code: 'en', label: 'English' }, { code: 'ar', label: 'Arabic' }] };
+
+  it('an RTL language never sets dir — not on <html>, not on the wrapper', () => {
+    const src = buildProvidersSource(AR);
+    expect(src).not.toMatch(/\.dir\s*=|dir=\{|setAttribute\('dir'/);
+    expect(src).not.toMatch(/\['ar', 'he'/);   // the old hardcoded page-flip list
+    expect(src).toContain("<div lang={locale} style={{ display: 'contents' }}>");
+  });
+
+  it('even a legacy `direction: \'rtl\'` in the config does not mirror the layout', () => {
+    const legacy = { ...AR, locales: [AR.locales[0], { code: 'ar', label: 'Arabic', direction: 'rtl' as const }] };
+    expect(buildProvidersSource(legacy)).toBe(buildProvidersSource(AR));
+  });
+
+  it('ships the text-only rule in the server-rendered wrapper', () => {
+    const src = buildProvidersSource(AR);
+    expect(src).toContain(`const RTL_TEXT_CSS = ${JSON.stringify(RTL_TEXT_CSS)};`);
+    expect(src).toContain('<style dangerouslySetInnerHTML={{ __html: RTL_TEXT_CSS }} />');
+  });
+
+  it('an older generated provider is still recognised, so it upgrades on load', () => {
+    const v3 = buildProvidersSource(AR).replace(PROVIDERS_MARKER, '@revyme-providers v3');
+    expect(looksGeneratedProviders(v3)).toBe(true);
   });
 });
 

@@ -34,6 +34,7 @@ import { applyStrokeAlignment, setElStyle, clearElStyle, applyInstanceWrapperCli
 import { initCanvasImagePreview, isPreviewAppliedSrc } from './renderer/canvas-image-preview';
 import { applyNodeCmsBindings, applyBindingDataToTree, applyLocaleOverrides, clearLocaleStyleResidue } from './renderer/bindings';
 import { extractCanvasGlobals, canvasThemeMode } from './canvas-theme';
+import { isRtlLocale, RTL_TEXT_CSS } from '@/shared/rtl-text';
 import { scopeSvgMarkupIds, elementSvgScope } from '../shared/svg-id-scope';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -624,9 +625,6 @@ function resolveConditionalText(
  * Root elements get `data-viewport` + `container-type: inline-size` directly (no wrapper).
  * Replica viewports are clones with prefixed IDs.
  */
-/** Locales whose script is right-to-left — drives the canvas `dir` attr
- *  (mirrored by the live site's Providers). Keyed by primary subtag. */
-const RTL_LOCALES = new Set(['ar', 'he', 'fa', 'ur', 'ps', 'sd', 'ku', 'dv', 'yi']);
 
 // ─── Subtree patch-skip signatures ──────────────────────────────────────────
 // Incremental subtree patching: every node gets a content signature that
@@ -1205,19 +1203,32 @@ export function renderNodes(
     }
   }
 
-  // ─── Locale: set lang (+ dir for RTL scripts) on content root ─────────
+  // ─── Locale: set lang on content root; RTL scripts flip TEXT only ─────
+  // Never `dir="rtl"` here: on the content root it mirrored every flex row,
+  // grid and default alignment while absolute nodes kept their physical
+  // `left` — a half-mirrored page (user report 2026-10-16) whose drag/reorder
+  // math (left-to-right visual order) no longer matched what it painted. The
+  // layout never mirrors; the text rule (shared/rtl-text.ts) keys off `lang`,
+  // so an RTL DEFAULT locale gets the attribute too.
   _activeRenderLocale = activeLocale ?? '';
   const isNonDefaultLocale = activeLocale && defaultLocale && activeLocale !== defaultLocale;
-  if (isNonDefaultLocale) {
-    container.setAttribute('lang', activeLocale);
-    // RTL by locale code (closed set — avoids threading the i18n config
-    // through the sandbox bridge; matches the live Providers' rule).
-    if (RTL_LOCALES.has(activeLocale.split('-')[0])) container.setAttribute('dir', 'rtl');
-    else container.removeAttribute('dir');
-    trace.action('renderer:set-lang', { locale: activeLocale, rtl: RTL_LOCALES.has(activeLocale.split('-')[0]) });
+  const shownLocale = isNonDefaultLocale ? activeLocale : (isRtlLocale(defaultLocale) ? defaultLocale : '');
+  if (shownLocale) {
+    container.setAttribute('lang', shownLocale);
+    trace.action('renderer:set-lang', { locale: shownLocale, rtlText: isRtlLocale(shownLocale) });
   } else {
     container.removeAttribute('lang');
-    container.removeAttribute('dir');
+  }
+  // Pre-fix canvases carried the attribute on the live content root.
+  container.removeAttribute('dir');
+  {
+    let rtlEl = container.querySelector(':scope > [data-canvas-rtl-text]') as HTMLStyleElement | null;
+    if (!rtlEl) {
+      rtlEl = document.createElement('style');
+      rtlEl.setAttribute('data-canvas-rtl-text', 'true');
+      rtlEl.textContent = RTL_TEXT_CSS;
+      container.prepend(rtlEl);
+    }
   }
 
   // ─── Viewports: root IS the viewport frame (no wrapper) ───────────────

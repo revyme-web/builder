@@ -881,6 +881,67 @@ REPLICA_AUTO_HEIGHT.files['i18n/config.json'] = JSON.stringify({
 REPLICA_AUTO_HEIGHT.files['messages/en.json'] = '{}';
 REPLICA_AUTO_HEIGHT.files['messages/fr.json'] = '{}';
 
+// RTL_TEXT — a nav ROW plus an Arabic and an English line, with Arabic
+// configured. Picking Arabic used to mirror the whole site (user report
+// 2026-10-16); now only the text flips and the layout never changes. Arabic
+// carries a legacy `direction: 'rtl'` on purpose — it must be ignored. The
+// editor regenerates app/providers.tsx from i18n/config.json at load, so this
+// exercises the REAL generated providers.
+function rtlProject(): ProjectData {
+  const p = project(`
+/** @canvas {
+  "viewports": [
+    { "id": "desktop", "label": "Desktop", "width": 1440, "isPrimary": true, "order": 0 }
+  ],
+  "positions": { "desktop": { "x": 0, "y": 0 } }
+} */
+'use client';
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Page" style={{
+      display: 'flex', flexDirection: 'column', gap: '16px',
+      width: '100%', minHeight: '500px', position: 'relative', background: '#ffffff', padding: '40px',
+    }}>
+      <div data-id="nav" data-name="Nav" style={{
+        position: 'relative', display: 'flex', flexDirection: 'row', gap: '24px', width: '800px', height: '40px',
+      }}>
+        <p data-id="logo" data-name="Logo" style={{ position: 'relative', fontSize: '20px' }}>bachuki</p>
+        <p data-id="link" data-name="Link" style={{ position: 'relative', fontSize: '16px' }}>Atelier</p>
+        <p data-id="contact" data-name="Contact" style={{ position: 'relative', fontSize: '16px' }}>Contact</p>
+      </div>
+      <p data-id="arabic" data-name="Arabic" style={{ position: 'relative', width: '600px', fontSize: '20px', background: '#eeeeee' }}>مرحبا يا صديقي؟</p>
+      <p data-id="english" data-name="English" style={{ position: 'relative', width: '600px', fontSize: '20px', background: '#eeeeee' }}>hello my friend?</p>
+    </div>
+  );
+}
+`);
+  p.files['i18n/config.json'] = JSON.stringify({
+    defaultLocale: 'en',
+    locales: [
+      { code: 'en', label: 'English' },
+      { code: 'ar', label: 'Arabic', direction: 'rtl' },
+    ],
+  }, null, 2);
+  p.files['messages/en.json'] = '{}';
+  p.files['messages/ar.json'] = '{}';
+  p.files['i18n/ar.json'] = JSON.stringify({ pages: {}, collections: {} });
+  // Seeds carry no root layout; Preview only mounts the providers through one.
+  p.files['app/layout.tsx'] = `import { Providers } from './providers';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  );
+}
+`;
+  return p;
+}
+export const RTL_TEXT = rtlProject();
+
 // 3-viewport variant for locale-band scoping specs (tablet between
 // desktop and mobile — the ranged-band + descending-insertion cases).
 export const LOCALE_3VP: ProjectData = {
@@ -5058,6 +5119,7 @@ export const SEEDS = {
   LOCALE_3VP,
   REPLICA_ABS_DRAG,
   LOCALE_TEXT,
+  RTL_TEXT,
   COMPONENT_MASTER,
   REPLICA_ABSOLUTE_EXIT,
   ROTATED_FLEX_FRAME,
