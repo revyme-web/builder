@@ -1,19 +1,33 @@
 // GradientOverlay.tsx — Canvas overlay for visual gradient editing.
 // Shows draggable handles on the selected element when gradient fill is active.
-// Linear: two endpoint circles + connecting line for angle/direction.
+// Linear: the stops on a line spanning first → last stop; rotate zones just
+//   beyond the outermost stops (the gradient's version of the frame's corner
+//   rotate zones — invisible, rotate cursor turned to the axis).
 // Radial: center circle + ellipse outline + radius handle.
 // Conic: center circle + angle arc line.
-// Positioned in screen space (like SelectionBorder), transform-aware.
+// All geometry is laid out in the element's OWN box and mapped through its
+// transformed quad (gradient-geometry.ts), so a rotated / skewed / flipped
+// frame gets handles that follow it and drags that move the right way.
 
 import { useCallback, useRef } from 'react';
 import type { ScreenCorners } from '@/canvas/resize/geometry-utils';
 import type { GradientStop } from '@/shared/gradient-utils';
-import { pctToScreen, screenToPct, clamp } from '@/canvas/canvas-math';
+import type { Point } from '@/shared/types';
+import { screenToPct, clamp } from '@/canvas/canvas-math';
+import { getRotateCursorAt } from '@/canvas/resize/cursor-utils';
 import { trace } from '@/shared/debug-trace';
 import { maskStopFill } from '@/shared/mask-utils';
+import {
+  elementFrame, localToScreen, screenToLocal, cssAngleOf, cssAngleVector, normalizeDeg,
+  linearGradientLine, alongLine, linearRotateZones, rotatedGradientAngle, localEllipsePath,
+  type ElementFrame,
+} from './gradient-geometry';
 
 interface GradientOverlayProps {
   corners: ScreenCorners;
+  /** The element's own CSS width/height (untransformed). The gradient is laid
+   *  out in this box; without it the quad's edge lengths stand in. */
+  localSize?: { w: number; h: number } | null;
   gradientType: 'linear' | 'radial' | 'conic';
   /** Gradient color stops */
   stops: GradientStop[];
@@ -46,21 +60,6 @@ interface GradientOverlayProps {
   isMask?: boolean;
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-// lerp, pctToScreen imported from canvas-math.ts
-
-const getPointOnElement = pctToScreen; // alias for backward compat within this file
-
-function getElementCenter(corners: ScreenCorners) {
-  return {
-    x: (corners.TL.x + corners.TR.x + corners.BR.x + corners.BL.x) / 4,
-    y: (corners.TL.y + corners.TR.y + corners.BR.y + corners.BL.y) / 4,
-  };
-}
-
-function degToRad(deg: number) { return (deg * Math.PI) / 180; }
-function radToDeg(rad: number) { return (rad * 180) / Math.PI; }
-
 // ─── Handle circle ──────────────────────────────────────────────────────────
 
 const HANDLE_R = 6;
@@ -80,132 +79,119 @@ function Handle({ x, y, color = '#ffffff', onPointerDown }: {
   );
 }
 
+/** Pointer-captured drag on an SVG handle: `onMove` per frame, `onEnd` once. */
+function captureDrag(e: React.PointerEvent, onMove: (me: PointerEvent) => void, onEnd: () => void): void {
+  e.stopPropagation();
+  e.preventDefault();
+  const el = e.currentTarget as SVGElement;
+  el.setPointerCapture(e.pointerId);
+  const up = () => {
+    el.releasePointerCapture(e.pointerId);
+    el.removeEventListener('pointermove', onMove);
+    el.removeEventListener('pointerup', up);
+    onEnd();
+  };
+  el.addEventListener('pointermove', onMove);
+  el.addEventListener('pointerup', up);
+}
+
+function StopCircle({ point, stop, selected, isMask, onPointerDown }: {
+  point: Point; stop: GradientStop; selected: boolean; isMask?: boolean;
+  onPointerDown: (e: React.PointerEvent) => void;
+}) {
+  return (
+    <circle
+      cx={point.x} cy={point.y}
+      r={selected ? 7 : 5}
+      fill={isMask ? maskStopFill(stop.color) : stop.color}
+      stroke="white"
+      strokeWidth={selected ? 2.5 : 1.5}
+      style={{ cursor: 'grab', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}
+      onPointerDown={onPointerDown}
+    />
+  );
+}
+
 // ─── Linear Gradient Overlay ────────────────────────────────────────────────
 
-function LinearOverlay({ corners, direction, stops, selectedStopId, onDirectionChange, onStopPositionChange, onSelectStop, onCommit, isMask }: {
-  corners: ScreenCorners; direction: number; stops: GradientStop[]; selectedStopId: string | null;
+/** Rotate zone: centre this far past the end stop's centre, this radius —
+ *  i.e. it spans 11–29px beyond the stop, clear of the stop's own grab area
+ *  (≤ 8.25px with its stroke). Invisible, like the frame's corner zones. */
+const ROTATE_ZONE_GAP = 20;
+const ROTATE_ZONE_R = 9;
+
+function LinearOverlay({ frame, direction, stops, selectedStopId, onDirectionChange, onStopPositionChange, onSelectStop, onCommit, isMask }: {
+  frame: ElementFrame; direction: number; stops: GradientStop[]; selectedStopId: string | null;
   onDirectionChange?: (deg: number) => void;
   onStopPositionChange?: (id: string, position: number) => void;
   onSelectStop?: (id: string) => void;
   onCommit?: () => void;
   isMask?: boolean;
 }) {
-  const center = getElementCenter(corners);
-  // Element dimensions in screen space
-  const width = Math.hypot(corners.TR.x - corners.TL.x, corners.TR.y - corners.TL.y);
-  const height = Math.hypot(corners.BL.x - corners.TL.x, corners.BL.y - corners.TL.y);
+  // The 0% → 100% gradient line (where stop positions live) — not drawn
+  // whole: the visible line spans only the first → last stop.
+  const { start, end } = linearGradientLine(frame, direction);
+  const positions = stops.map(s => s.position);
+  const firstPct = positions.length ? Math.min(...positions) : 0;
+  const lastPct = positions.length ? Math.max(...positions) : 100;
+  const lineFrom = alongLine(start, end, firstPct);
+  const lineTo = alongLine(start, end, lastPct);
+  const zones = linearRotateZones(start, end, firstPct, lastPct, ROTATE_ZONE_GAP);
 
-  // Gradient line length: use the projection of the element rect onto the gradient axis.
-  // This keeps the line endpoints within (or near) the element bounds, like the reference.
-  const rad = degToRad(direction - 90); // CSS gradient 0deg = bottom-to-top
-  const cosA = Math.abs(Math.cos(rad));
-  const sinA = Math.abs(Math.sin(rad));
-  const radius = (width * cosA + height * sinA) / 2;
-
-  // Endpoint positions based on angle
-  const startX = center.x - Math.cos(rad) * radius;
-  const startY = center.y - Math.sin(rad) * radius;
-  const endX = center.x + Math.cos(rad) * radius;
-  const endY = center.y + Math.sin(rad) * radius;
-
-  const handleDrag = useCallback((e: React.PointerEvent, isEnd: boolean) => {
+  const handleRotate = useCallback((e: React.PointerEvent) => {
     if (!onDirectionChange) return;
-    e.stopPropagation();
-    e.preventDefault();
-    const el = e.currentTarget as SVGElement;
-    el.setPointerCapture(e.pointerId);
+    const grab = { x: e.clientX, y: e.clientY };
+    const startDeg = direction;
+    trace.action('gradient-overlay:linear-rotate-start', { direction });
+    captureDrag(e,
+      (me) => onDirectionChange(rotatedGradientAngle(frame, startDeg, grab, { x: me.clientX, y: me.clientY }, me.shiftKey)),
+      () => { onCommit?.(); trace.action('gradient-overlay:linear-rotate-end', {}); },
+    );
+  }, [frame, direction, onDirectionChange, onCommit]);
 
-    const onMove = (me: PointerEvent) => {
-      const dx = me.clientX - center.x;
-      const dy = me.clientY - center.y;
-      let deg = radToDeg(Math.atan2(dy, dx)) + 90; // convert back to CSS degrees
-      if (!isEnd) deg = (deg + 180) % 360;
-      if (deg < 0) deg += 360;
-      onDirectionChange(Math.round(deg));
-    };
-
-    const onUp = () => {
-      el.releasePointerCapture(e.pointerId);
-      el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerup', onUp);
-      onCommit?.();
-      trace.action('gradient-overlay:linear-drag-end', { direction });
-    };
-
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerup', onUp);
-    trace.action('gradient-overlay:linear-drag-start', {});
-  }, [center, onDirectionChange, direction, onCommit]);
-
-  // Stop dragging along the gradient line
+  // Stop dragging along the gradient line (projection onto the 0–100% axis —
+  // a ratio along a line survives any affine transform).
   const handleStopDrag = useCallback((e: React.PointerEvent, stopId: string) => {
     if (!onStopPositionChange) return;
-    e.stopPropagation();
-    e.preventDefault();
     if (onSelectStop) onSelectStop(stopId);
-    const el = e.currentTarget as SVGElement;
-    el.setPointerCapture(e.pointerId);
-
-    const onMove = (me: PointerEvent) => {
-      // Project mouse position onto the gradient line to get 0-100%
-      const dx = endX - startX;
-      const dy = endY - startY;
-      const len = Math.hypot(dx, dy);
-      if (len < 1) return;
-      const t = ((me.clientX - startX) * dx + (me.clientY - startY) * dy) / (len * len);
-      const pos = clamp(Math.round(t * 100), 0, 100);
-      onStopPositionChange(stopId, pos);
-    };
-
-    const onUp = () => {
-      el.releasePointerCapture(e.pointerId);
-      el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerup', onUp);
-      onCommit?.();
-    };
-
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerup', onUp);
-  }, [startX, startY, endX, endY, onStopPositionChange, onSelectStop, onCommit]);
+    const dx = end.x - start.x, dy = end.y - start.y;
+    const len2 = dx * dx + dy * dy;
+    captureDrag(e, (me) => {
+      if (len2 < 1) return;
+      const t = ((me.clientX - start.x) * dx + (me.clientY - start.y) * dy) / len2;
+      onStopPositionChange(stopId, clamp(Math.round(t * 100), 0, 100));
+    }, () => onCommit?.());
+  }, [start, end, onStopPositionChange, onSelectStop, onCommit]);
 
   return (
     <>
-      {/* Gradient line */}
-      <line x1={startX} y1={startY} x2={endX} y2={endY}
+      {/* Rotate zones beyond the outermost stops — below the stops in paint order */}
+      {zones && onDirectionChange && ([['before', zones.before], ['after', zones.after]] as const).map(([key, z]) => (
+        <circle
+          key={key}
+          data-gradient-rotate-zone={key}
+          cx={z.x} cy={z.y} r={ROTATE_ZONE_R}
+          fill="transparent"
+          style={{ pointerEvents: 'all', cursor: getRotateCursorAt(z.outwardDeg) }}
+          onPointerDown={handleRotate}
+        />
+      ))}
+      {/* Gradient line — first stop to last stop */}
+      <line x1={lineFrom.x} y1={lineFrom.y} x2={lineTo.x} y2={lineTo.y}
         stroke="white" strokeWidth={1.5} opacity={0.7} />
-      {/* Endpoint handles (rotation) */}
-      <Handle x={startX} y={startY} color="#ff6b6b"
-        onPointerDown={(e) => handleDrag(e, false)} />
-      <Handle x={endX} y={endY} color="#ff6b6b"
-        onPointerDown={(e) => handleDrag(e, true)} />
-      {/* Stop circles along the line — rendered AFTER handles so they appear on top */}
-      {stops.map(stop => {
-        const t = stop.position / 100;
-        const sx = startX + (endX - startX) * t;
-        const sy = startY + (endY - startY) * t;
-        const isSelected = stop.id === selectedStopId;
-        const fill = isMask ? maskStopFill(stop.color) : stop.color;
-        return (
-          <circle
-            key={stop.id}
-            cx={sx} cy={sy}
-            r={isSelected ? 7 : 5}
-            fill={fill}
-            stroke="white"
-            strokeWidth={isSelected ? 2.5 : 1.5}
-            style={{ cursor: 'grab', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}
-            onPointerDown={(e) => handleStopDrag(e, stop.id)}
-          />
-        );
-      })}
+      {stops.map(stop => (
+        <StopCircle key={stop.id} point={alongLine(start, end, stop.position)} stop={stop}
+          selected={stop.id === selectedStopId} isMask={isMask}
+          onPointerDown={(e) => handleStopDrag(e, stop.id)} />
+      ))}
     </>
   );
 }
 
 // ─── Radial Gradient Overlay ────────────────────────────────────────────────
 
-function RadialOverlay({ corners, centerX, centerY, radiusX, radiusY, radialShape, radialSize, stops, selectedStopId, onCenterChange, onRadiusChange, onStopPositionChange, onSelectStop, onCommit, isMask }: {
-  corners: ScreenCorners; centerX: number; centerY: number;
+function RadialOverlay({ frame, centerX, centerY, radiusX, radiusY, radialShape, radialSize, stops, selectedStopId, onCenterChange, onRadiusChange, onStopPositionChange, onSelectStop, onCommit, isMask }: {
+  frame: ElementFrame; centerX: number; centerY: number;
   radiusX: number; radiusY: number;
   radialShape: string; radialSize: string;
   stops: GradientStop[]; selectedStopId: string | null;
@@ -216,45 +202,44 @@ function RadialOverlay({ corners, centerX, centerY, radiusX, radiusY, radialShap
   onCommit?: () => void;
   isMask?: boolean;
 }) {
-  const centerPt = getPointOnElement(corners, centerX, centerY);
-  const elWidth = Math.hypot(corners.TR.x - corners.TL.x, corners.TR.y - corners.TL.y);
-  const elHeight = Math.hypot(corners.BL.x - corners.TL.x, corners.BL.y - corners.TL.y);
+  // Everything below is LOCAL px (the element's own box), mapped to screen.
+  const { w: elWidth, h: elHeight } = frame;
+  const cxL = (centerX / 100) * elWidth;
+  const cyL = (centerY / 100) * elHeight;
+  const centerPt = localToScreen(frame, cxL, cyL);
   const isCircle = radialShape === 'circle';
   const isCustomSize = radialSize === 'custom';
 
-  // Calculate screen-space radii based on shape and size mode
   let rx: number;
   let ry: number;
 
   if (!isCustomSize) {
-    // Size keyword mode — approximate the radius from element dimensions
-    const cxPx = (centerX / 100) * elWidth;
-    const cyPx = (centerY / 100) * elHeight;
+    // Size keyword mode — the radius from the element's box
     switch (radialSize) {
       case 'closest-side':
-        rx = Math.min(cxPx, elWidth - cxPx);
-        ry = isCircle ? rx : Math.min(cyPx, elHeight - cyPx);
+        rx = Math.min(cxL, elWidth - cxL);
+        ry = isCircle ? rx : Math.min(cyL, elHeight - cyL);
         break;
       case 'farthest-side':
-        rx = Math.max(cxPx, elWidth - cxPx);
-        ry = isCircle ? rx : Math.max(cyPx, elHeight - cyPx);
+        rx = Math.max(cxL, elWidth - cxL);
+        ry = isCircle ? rx : Math.max(cyL, elHeight - cyL);
         break;
       case 'closest-corner': {
         const d = Math.min(
-          Math.hypot(cxPx, cyPx),
-          Math.hypot(elWidth - cxPx, cyPx),
-          Math.hypot(cxPx, elHeight - cyPx),
-          Math.hypot(elWidth - cxPx, elHeight - cyPx)
+          Math.hypot(cxL, cyL),
+          Math.hypot(elWidth - cxL, cyL),
+          Math.hypot(cxL, elHeight - cyL),
+          Math.hypot(elWidth - cxL, elHeight - cyL)
         );
         rx = d; ry = isCircle ? d : d * (elHeight / elWidth);
         break;
       }
       default: { // farthest-corner
         const d = Math.max(
-          Math.hypot(cxPx, cyPx),
-          Math.hypot(elWidth - cxPx, cyPx),
-          Math.hypot(cxPx, elHeight - cyPx),
-          Math.hypot(elWidth - cxPx, elHeight - cyPx)
+          Math.hypot(cxL, cyL),
+          Math.hypot(elWidth - cxL, cyL),
+          Math.hypot(cxL, elHeight - cyL),
+          Math.hypot(elWidth - cxL, elHeight - cyL)
         );
         rx = d; ry = isCircle ? d : d * (elHeight / elWidth);
         break;
@@ -272,128 +257,55 @@ function RadialOverlay({ corners, centerX, centerY, radiusX, radiusY, radialShap
 
   const handleDrag = useCallback((e: React.PointerEvent) => {
     if (!onCenterChange) return;
-    e.stopPropagation();
-    e.preventDefault();
-    const el = e.currentTarget as SVGElement;
-    el.setPointerCapture(e.pointerId);
     trace.action('gradient-overlay:radial-center-drag-start', {});
+    captureDrag(e, (me) => {
+      // Inverse quad mapping (shared screenToPct from canvas-math)
+      const [xRaw, yRaw] = screenToPct(frame.corners, me.clientX, me.clientY);
+      onCenterChange(clamp(Math.round(xRaw), 0, 100), clamp(Math.round(yRaw), 0, 100));
+    }, () => { onCommit?.(); trace.action('gradient-overlay:radial-center-drag-end', {}); });
+  }, [frame, onCenterChange, onCommit]);
 
-    const onMove = (me: PointerEvent) => {
-      // Convert screen position to element percentage (inverse bilinear
-      // across the quad — shared screenToPct from canvas-math)
-      const [xRaw, yRaw] = screenToPct(corners, me.clientX, me.clientY);
-      const xPct = Math.round(xRaw);
-      const yPct = Math.round(yRaw);
-
-      onCenterChange(
-        clamp(xPct, 0, 100),
-        clamp(yPct, 0, 100)
-      );
-    };
-
-    const onUp = () => {
-      el.releasePointerCapture(e.pointerId);
-      el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerup', onUp);
-      onCommit?.();
-      trace.action('gradient-overlay:radial-center-drag-end', {});
-    };
-
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerup', onUp);
-  }, [corners, onCenterChange, onCommit]);
-
-  // Stop dragging along the horizontal radius
+  // Stop dragging along the radius (the element's local +x axis)
   const handleStopDrag = useCallback((e: React.PointerEvent, stopId: string) => {
     if (!onStopPositionChange) return;
-    e.stopPropagation();
-    e.preventDefault();
     if (onSelectStop) onSelectStop(stopId);
-    const el = e.currentTarget as SVGElement;
-    el.setPointerCapture(e.pointerId);
     trace.action('gradient-overlay:radial-stop-drag-start', { stopId });
+    captureDrag(e, (me) => {
+      if (rx < 1) return;
+      const p = screenToLocal(frame, me.clientX, me.clientY);
+      onStopPositionChange(stopId, clamp(Math.round(((p.x - cxL) / rx) * 100), 0, 100));
+    }, () => { onCommit?.(); trace.action('gradient-overlay:radial-stop-drag-end', { stopId }); });
+  }, [frame, cxL, rx, onStopPositionChange, onSelectStop, onCommit]);
 
-    const onMove = (me: PointerEvent) => {
-      const dist = Math.hypot(me.clientX - centerPt.x, me.clientY - centerPt.y);
-      const maxR = Math.max(rx, ry);
-      const pos = clamp(Math.round((dist / maxR) * 100), 0, 100);
-      onStopPositionChange(stopId, pos);
-    };
+  const radiusDrag = useCallback((e: React.PointerEvent, axis: 'x' | 'y') => {
+    if (!onRadiusChange) return;
+    captureDrag(e, (me) => {
+      const p = screenToLocal(frame, me.clientX, me.clientY);
+      if (axis === 'y') onRadiusChange(radiusX, Math.max(5, Math.round((Math.abs(p.y - cyL) / elHeight) * 100)));
+      else onRadiusChange(Math.max(5, Math.round((Math.abs(p.x - cxL) / elWidth) * 100)), radiusY);
+    }, () => onCommit?.());
+  }, [frame, cxL, cyL, elWidth, elHeight, radiusX, radiusY, onRadiusChange, onCommit]);
 
-    const onUp = () => {
-      el.releasePointerCapture(e.pointerId);
-      el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerup', onUp);
-      onCommit?.();
-      trace.action('gradient-overlay:radial-stop-drag-end', { stopId });
-    };
-
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerup', onUp);
-  }, [centerPt, rx, ry, onStopPositionChange, onSelectStop, onCommit]);
+  const radiusEnd = localToScreen(frame, cxL + rx, cyL);
+  const radiusTop = localToScreen(frame, cxL, cyL - ry);
 
   return (
     <>
-      <ellipse cx={centerPt.x} cy={centerPt.y} rx={rx} ry={ry}
+      <path d={localEllipsePath(frame, cxL, cyL, rx, ry)}
         fill="none" stroke="white" strokeWidth={1} strokeDasharray="4 4" opacity={0.5} />
-      {/* Horizontal line from center to right edge for stop placement */}
-      <line x1={centerPt.x} y1={centerPt.y} x2={centerPt.x + rx} y2={centerPt.y}
+      {/* Line from center along the radius for stop placement */}
+      <line x1={centerPt.x} y1={centerPt.y} x2={radiusEnd.x} y2={radiusEnd.y}
         stroke="white" strokeWidth={1.5} opacity={0.7} />
-      {/* Stop circles along the radius */}
-      {stops.map(stop => {
-        const t = stop.position / 100;
-        const sx = centerPt.x + rx * t;
-        const sy = centerPt.y;
-        const isSelected = stop.id === selectedStopId;
-        const fill = isMask ? maskStopFill(stop.color) : stop.color;
-        return (
-          <circle
-            key={stop.id}
-            cx={sx} cy={sy}
-            r={isSelected ? 7 : 5}
-            fill={fill}
-            stroke="white"
-            strokeWidth={isSelected ? 2.5 : 1.5}
-            style={{ cursor: 'grab', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}
-            onPointerDown={(e) => handleStopDrag(e, stop.id)}
-          />
-        );
-      })}
+      {stops.map(stop => (
+        <StopCircle key={stop.id} point={localToScreen(frame, cxL + rx * (stop.position / 100), cyL)} stop={stop}
+          selected={stop.id === selectedStopId} isMask={isMask}
+          onPointerDown={(e) => handleStopDrag(e, stop.id)} />
+      ))}
       {/* Radius handles — only for custom size mode (not size keywords) */}
       {isCustomSize && !isCircle && (
         <>
-          {/* Top handle — drag to resize vertical radius (ellipse only) */}
-          <Handle x={centerPt.x} y={centerPt.y - ry} color="#ffffff"
-            onPointerDown={(e) => {
-              if (!onRadiusChange) return;
-              e.stopPropagation(); e.preventDefault();
-              const el = e.currentTarget as SVGElement;
-              el.setPointerCapture(e.pointerId);
-              const onMove = (me: PointerEvent) => {
-                const dist = Math.abs(me.clientY - centerPt.y);
-                const newRY = Math.max(5, Math.round((dist / elHeight) * 100));
-                onRadiusChange(radiusX, newRY);
-              };
-              const onUp = () => { el.releasePointerCapture(e.pointerId); el.removeEventListener('pointermove', onMove); el.removeEventListener('pointerup', onUp); onCommit?.(); };
-              el.addEventListener('pointermove', onMove); el.addEventListener('pointerup', onUp);
-            }}
-          />
-          {/* Right handle — drag to resize horizontal radius (ellipse only) */}
-          <Handle x={centerPt.x + rx} y={centerPt.y} color="#ffffff"
-            onPointerDown={(e) => {
-              if (!onRadiusChange) return;
-              e.stopPropagation(); e.preventDefault();
-              const el = e.currentTarget as SVGElement;
-              el.setPointerCapture(e.pointerId);
-              const onMove = (me: PointerEvent) => {
-                const dist = Math.abs(me.clientX - centerPt.x);
-                const newRX = Math.max(5, Math.round((dist / elWidth) * 100));
-                onRadiusChange(newRX, radiusY);
-              };
-          const onUp = () => { el.releasePointerCapture(e.pointerId); el.removeEventListener('pointermove', onMove); el.removeEventListener('pointerup', onUp); onCommit?.(); };
-          el.addEventListener('pointermove', onMove); el.addEventListener('pointerup', onUp);
-        }}
-      />
+          <Handle x={radiusTop.x} y={radiusTop.y} color="#ffffff" onPointerDown={(e) => radiusDrag(e, 'y')} />
+          <Handle x={radiusEnd.x} y={radiusEnd.y} color="#ffffff" onPointerDown={(e) => radiusDrag(e, 'x')} />
         </>
       )}
       {/* Center handle */}
@@ -405,8 +317,8 @@ function RadialOverlay({ corners, centerX, centerY, radiusX, radiusY, radialShap
 
 // ─── Conic Gradient Overlay ─────────────────────────────────────────────────
 
-function ConicOverlay({ corners, centerX, centerY, angle, stops, selectedStopId, onCenterChange, onAngleChange, onStopPositionChange, onSelectStop, onCommit, isMask }: {
-  corners: ScreenCorners; centerX: number; centerY: number; angle: number;
+function ConicOverlay({ frame, centerX, centerY, angle, stops, selectedStopId, onCenterChange, onAngleChange, onStopPositionChange, onSelectStop, onCommit, isMask }: {
+  frame: ElementFrame; centerX: number; centerY: number; angle: number;
   stops: GradientStop[]; selectedStopId: string | null;
   onCenterChange?: (x: number, y: number) => void;
   onAngleChange?: (deg: number) => void;
@@ -415,133 +327,70 @@ function ConicOverlay({ corners, centerX, centerY, angle, stops, selectedStopId,
   onCommit?: () => void;
   isMask?: boolean;
 }) {
-  const centerPt = getPointOnElement(corners, centerX, centerY);
-  const width = Math.hypot(corners.TR.x - corners.TL.x, corners.TR.y - corners.TL.y);
-  const height = Math.hypot(corners.BL.x - corners.TL.x, corners.BL.y - corners.TL.y);
-  const radius = Math.min(width, height) / 2;
-
-  // Angle handle position
-  const rad = degToRad(angle - 90);
-  const handleX = centerPt.x + Math.cos(rad) * radius;
-  const handleY = centerPt.y + Math.sin(rad) * radius;
+  const cxL = (centerX / 100) * frame.w;
+  const cyL = (centerY / 100) * frame.h;
+  const centerPt = localToScreen(frame, cxL, cyL);
+  const radius = Math.min(frame.w, frame.h) / 2;
+  /** Local point on the circle at a CSS angle. */
+  const onCircle = (deg: number): Point => {
+    const v = cssAngleVector(deg);
+    return localToScreen(frame, cxL + v.x * radius, cyL + v.y * radius);
+  };
+  const handlePt = onCircle(angle);
+  /** CSS angle of a pointer around the centre, in the element's own space. */
+  const pointerAngle = (me: PointerEvent) => {
+    const p = screenToLocal(frame, me.clientX, me.clientY);
+    return cssAngleOf(p.x - cxL, p.y - cyL);
+  };
 
   const handleAngleDrag = useCallback((e: React.PointerEvent) => {
     if (!onAngleChange) return;
-    e.stopPropagation();
-    e.preventDefault();
-    const el = e.currentTarget as SVGElement;
-    el.setPointerCapture(e.pointerId);
     trace.action('gradient-overlay:conic-angle-drag-start', { angle });
-
-    const onMove = (me: PointerEvent) => {
-      const dx = me.clientX - centerPt.x;
-      const dy = me.clientY - centerPt.y;
-      let deg = radToDeg(Math.atan2(dy, dx)) + 90;
-      if (deg < 0) deg += 360;
-      onAngleChange(Math.round(deg));
-    };
-
-    const onUp = () => {
-      el.releasePointerCapture(e.pointerId);
-      el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerup', onUp);
-      onCommit?.();
-      trace.action('gradient-overlay:conic-angle-drag-end', {});
-    };
-
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerup', onUp);
-  }, [centerPt, onAngleChange, angle, onCommit]);
+    captureDrag(e, (me) => {
+      let deg = pointerAngle(me);
+      if (me.shiftKey) deg = Math.round(deg / 15) * 15;
+      onAngleChange(normalizeDeg(Math.round(deg)));
+    }, () => { onCommit?.(); trace.action('gradient-overlay:conic-angle-drag-end', {}); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frame, cxL, cyL, onAngleChange, angle, onCommit]);
 
   // Center drag — same as radial
   const handleCenterDrag = useCallback((e: React.PointerEvent) => {
     if (!onCenterChange) return;
-    e.stopPropagation();
-    e.preventDefault();
-    const el = e.currentTarget as SVGElement;
-    el.setPointerCapture(e.pointerId);
     trace.action('gradient-overlay:conic-center-drag-start', {});
-
-    const onMove = (me: PointerEvent) => {
-      const [xRaw, yRaw] = screenToPct(corners, me.clientX, me.clientY);
-      const xPct = clamp(Math.round(xRaw), 0, 100);
-      const yPct = clamp(Math.round(yRaw), 0, 100);
-      onCenterChange(xPct, yPct);
-    };
-
-    const onUp = () => {
-      el.releasePointerCapture(e.pointerId);
-      el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerup', onUp);
-      onCommit?.();
-      trace.action('gradient-overlay:conic-center-drag-end', {});
-    };
-
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerup', onUp);
-  }, [corners, onCenterChange, onCommit]);
+    captureDrag(e, (me) => {
+      const [xRaw, yRaw] = screenToPct(frame.corners, me.clientX, me.clientY);
+      onCenterChange(clamp(Math.round(xRaw), 0, 100), clamp(Math.round(yRaw), 0, 100));
+    }, () => { onCommit?.(); trace.action('gradient-overlay:conic-center-drag-end', {}); });
+  }, [frame, onCenterChange, onCommit]);
 
   // Stop dragging along the circle
   const handleStopDrag = useCallback((e: React.PointerEvent, stopId: string) => {
     if (!onStopPositionChange) return;
-    e.stopPropagation();
-    e.preventDefault();
     if (onSelectStop) onSelectStop(stopId);
-    const el = e.currentTarget as SVGElement;
-    el.setPointerCapture(e.pointerId);
     trace.action('gradient-overlay:conic-stop-drag-start', { stopId });
-
-    const onMove = (me: PointerEvent) => {
-      const dx = me.clientX - centerPt.x;
-      const dy = me.clientY - centerPt.y;
-      let stopAngle = radToDeg(Math.atan2(dy, dx)) + 90 - angle; // relative to start angle
-      if (stopAngle < 0) stopAngle += 360;
-      const pos = clamp(Math.round((stopAngle / 360) * 100), 0, 100);
-      onStopPositionChange(stopId, pos);
-    };
-
-    const onUp = () => {
-      el.releasePointerCapture(e.pointerId);
-      el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerup', onUp);
-      onCommit?.();
-      trace.action('gradient-overlay:conic-stop-drag-end', { stopId });
-    };
-
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerup', onUp);
-  }, [centerPt, angle, onStopPositionChange, onSelectStop, onCommit]);
+    captureDrag(e, (me) => {
+      const rel = normalizeDeg(pointerAngle(me) - angle); // relative to start angle
+      onStopPositionChange(stopId, clamp(Math.round((rel / 360) * 100), 0, 100));
+    }, () => { onCommit?.(); trace.action('gradient-overlay:conic-stop-drag-end', { stopId }); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frame, cxL, cyL, angle, onStopPositionChange, onSelectStop, onCommit]);
 
   return (
     <>
       {/* Angle line from center to handle */}
-      <line x1={centerPt.x} y1={centerPt.y} x2={handleX} y2={handleY}
+      <line x1={centerPt.x} y1={centerPt.y} x2={handlePt.x} y2={handlePt.y}
         stroke="white" strokeWidth={1.5} opacity={0.7} />
       {/* Circle outline */}
-      <circle cx={centerPt.x} cy={centerPt.y} r={radius}
+      <path d={localEllipsePath(frame, cxL, cyL, radius, radius)}
         fill="none" stroke="white" strokeWidth={1} strokeDasharray="4 4" opacity={0.3} />
-      {/* Stop circles along the circumference */}
-      {stops.map(stop => {
-        const stopRad = degToRad(angle - 90 + (stop.position / 100) * 360);
-        const sx = centerPt.x + Math.cos(stopRad) * radius;
-        const sy = centerPt.y + Math.sin(stopRad) * radius;
-        const isSelected = stop.id === selectedStopId;
-        const fill = isMask ? maskStopFill(stop.color) : stop.color;
-        return (
-          <circle
-            key={stop.id}
-            cx={sx} cy={sy}
-            r={isSelected ? 7 : 5}
-            fill={fill}
-            stroke="white"
-            strokeWidth={isSelected ? 2.5 : 1.5}
-            style={{ cursor: 'grab', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}
-            onPointerDown={(e) => handleStopDrag(e, stop.id)}
-          />
-        );
-      })}
+      {stops.map(stop => (
+        <StopCircle key={stop.id} point={onCircle(angle + (stop.position / 100) * 360)} stop={stop}
+          selected={stop.id === selectedStopId} isMask={isMask}
+          onPointerDown={(e) => handleStopDrag(e, stop.id)} />
+      ))}
       {/* Angle handle */}
-      <Handle x={handleX} y={handleY} color="#4dabf7"
+      <Handle x={handlePt.x} y={handlePt.y} color="#4dabf7"
         onPointerDown={handleAngleDrag} />
       {/* Center handle */}
       <Handle x={centerPt.x} y={centerPt.y} color="#ffffff"
@@ -553,7 +402,7 @@ function ConicOverlay({ corners, centerX, centerY, angle, stops, selectedStopId,
 // ─── Main GradientOverlay ───────────────────────────────────────────────────
 
 export default function GradientOverlay(props: GradientOverlayProps) {
-  const { corners, gradientType, direction, centerX, centerY, radiusX, radiusY, radialShape, radialSize, angle, stops, selectedStopId,
+  const { corners, localSize, gradientType, direction, centerX, centerY, radiusX, radiusY, radialShape, radialSize, angle, stops, selectedStopId,
     onDirectionChange, onCenterChange, onRadiusChange, onAngleChange, onStopPositionChange, onSelectStop, onCommit, isMask } = props;
 
   // Stable commit fn (latest via ref) so the sub-overlays' drag useCallbacks
@@ -562,8 +411,11 @@ export default function GradientOverlay(props: GradientOverlayProps) {
   onCommitRef.current = onCommit;
   const commit = useCallback(() => onCommitRef.current?.(), []);
 
+  const frame = elementFrame(corners, localSize);
+
   return (
     <svg
+      data-gradient-overlay
       style={{
         position: 'fixed', left: 0, top: 0,
         width: '100vw', height: '100vh',
@@ -572,14 +424,14 @@ export default function GradientOverlay(props: GradientOverlayProps) {
     >
       <g style={{ pointerEvents: 'auto' }}>
         {gradientType === 'linear' && (
-          <LinearOverlay corners={corners} direction={direction}
+          <LinearOverlay frame={frame} direction={direction}
             stops={stops} selectedStopId={selectedStopId}
             onDirectionChange={onDirectionChange}
             onStopPositionChange={onStopPositionChange}
             onSelectStop={onSelectStop} onCommit={commit} isMask={isMask} />
         )}
         {gradientType === 'radial' && (
-          <RadialOverlay corners={corners} centerX={centerX} centerY={centerY}
+          <RadialOverlay frame={frame} centerX={centerX} centerY={centerY}
             radiusX={radiusX} radiusY={radiusY}
             radialShape={radialShape} radialSize={radialSize}
             stops={stops} selectedStopId={selectedStopId}
@@ -589,7 +441,7 @@ export default function GradientOverlay(props: GradientOverlayProps) {
             onSelectStop={onSelectStop} onCommit={commit} isMask={isMask} />
         )}
         {gradientType === 'conic' && (
-          <ConicOverlay corners={corners} centerX={centerX} centerY={centerY}
+          <ConicOverlay frame={frame} centerX={centerX} centerY={centerY}
             angle={angle} stops={stops} selectedStopId={selectedStopId}
             onCenterChange={onCenterChange} onAngleChange={onAngleChange}
             onStopPositionChange={onStopPositionChange}

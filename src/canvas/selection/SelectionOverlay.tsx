@@ -943,6 +943,14 @@ export default function SelectionOverlay({ onGripDragStart, onSnapGuidesChange }
           {activeGradient && (
             <GradientOverlay
               corners={corners}
+              localSize={(() => {
+                // The gradient is laid out in the element's OWN box — its CSS
+                // size, not the transformed quad's edges (gradient-geometry.ts).
+                if (!selectedId) return null;
+                const c = findNodeComputedStyles(selectedId, vpId, ['width', 'height']);
+                const w = parseFloat(c.width), h = parseFloat(c.height);
+                return Number.isFinite(w) && Number.isFinite(h) ? { w, h } : null;
+              })()}
               gradientType={activeGradient.type}
               direction={activeGradient.direction}
               centerX={activeGradient.centerX}

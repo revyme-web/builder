@@ -26,4 +26,9 @@ describe('ColorSwatch', () => {
     const shell = container.firstElementChild as HTMLElement;
     expect(shell.querySelector('.cut-border')).toBeTruthy();
   });
+  test('the fill is rounded to the shell\'s inner radius (border-radius does not clip children)', () => {
+    const { container } = render(<ColorSwatch style={{ backgroundColor: '#e43225' }} />);
+    const fill = container.querySelector('[style]') as HTMLElement;
+    expect(fill.className).toContain('rounded-[calc(var(--cut-round)_-_1px)]');
+  });
 });

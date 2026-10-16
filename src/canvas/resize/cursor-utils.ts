@@ -59,6 +59,16 @@ export function getRotateCursor(corner: string = 'TR', rotationDeg: number = 0):
   return makeRotateCursor(totalRotation);
 }
 
+/**
+ * A rotation cursor for a zone whose outward direction (away from what it
+ * rotates) points at `outwardDeg` — screen atan2 degrees, y down. The corner
+ * zones' base angles are exactly that direction, so a gradient's end-of-axis
+ * zone gets the same glyph, turned the same way.
+ */
+export function getRotateCursorAt(outwardDeg: number): string {
+  return makeRotateCursor(outwardDeg);
+}
+
 /** Double-headed arrow: shaft with a triangular head at each end. */
 const RESIZE_ARROW = 'M4 12 L8.5 7.5 V10.25 H15.5 V7.5 L20 12 L15.5 16.5 V13.75 H8.5 V16.5 Z';
 

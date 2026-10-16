@@ -226,7 +226,13 @@ export class CanvasRenderer {
     // that would otherwise actually run. An INTENTIONAL render that bails
     // here still invalidates the dedup baseline, so the next render can't
     // be dup-skipped into keeping a diverged DOM.
-    if (this.textEditing || this.gradientActive || this.interacting) {
+    // The gradient-editor gate spares INTENTIONAL renders: an undo/redo while
+    // the Gradient tab is open restored the code, but the restore render died
+    // here, so the canvas kept the undone gradient (user report 2026-10-16:
+    // Image → Gradient → Cmd+Z left the gradient painted). Nothing re-renders
+    // when the editor closes, so the skip was permanent. The overlay lives in
+    // the parent frame; patching the iframe under it is harmless.
+    if (this.textEditing || this.interacting || (this.gradientActive && !opts?.intentional)) {
       if (opts?.intentional) this.lastForwarded = null;
       return;
     }

@@ -25,8 +25,12 @@ export function ColorSwatch({ style, size = 'sm', className, children }: {
       {/* LAYER 1 — the fill, on its own element (never on the shell): a
         * background shorthand on the shell replaced .cut-border's gradient
         * stack and inherited its no-repeat, collapsing the checkerboard to one
-        * tile (2026-09-08). */}
-      {style && <span aria-hidden className="absolute inset-0 pointer-events-none" style={style} />}
+        * tile (2026-09-08). It carries its OWN rounding — the shell's inner
+        * radius (`--cut-round` minus the 1px border): a border-radius does
+        * not clip children the way the old clip-path did, so once the chrome
+        * went rounded the square fill painted over the shell's corners and
+        * every swatch read as a sharp square (user report 2026-10-16). */}
+      {style && <span aria-hidden className="absolute inset-0 pointer-events-none rounded-[calc(var(--cut-round)_-_1px)]" style={style} />}
       {/* LAYER 2 — the diagonal corner strokes the clip removes (.cut-border),
         * painted ABOVE the fill. On the shell they are a background image, and
         * a fill layer covers a background — the cut corners lost their hairline

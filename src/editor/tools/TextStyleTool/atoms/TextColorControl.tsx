@@ -29,6 +29,7 @@ import { trace } from '@/shared/debug-trace';
 import { rowSwatchBackground } from '../text-helpers';
 import LocaleBoundPill, { useLocaleStyleOverrides } from '@/editor/controls/LocaleBoundPill';
 import { parseVarRef } from '@/shared/css-utils';
+import { parseGradient, formatGradient, createDefaultGradient } from '@/shared/gradient-utils';
 
 type ColorTab = 'solid' | 'gradient';
 
@@ -146,7 +147,7 @@ const GRADIENT_CLEAR: Record<string, string> = {
 };
 
 /** Popup content: Solid/Gradient tabs + picker with color presets */
-function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit, onGradientChange, onGradientLiveChange, onClearGradient, currentValue, initialTab, gradientContext, gradientCSS: gradientCSSProp }: {
+export function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit, onGradientChange, onGradientLiveChange, onClearGradient, currentValue, initialTab, gradientContext, gradientCSS: gradientCSSProp }: {
   styles: Record<string, string>;
   isEditing: boolean;
   /** Tab seeded from the live SELECTION state (edit mode: a gradient mark on
@@ -205,6 +206,12 @@ function TextColorPopupContent({ styles, isEditing, onColorChange, onColorCommit
     trace.action('text-color:tab-change', { from: tab, to: t });
     if (t === 'solid' && tab === 'gradient') {
       onClearGradient();
+    }
+    // APPLY the gradient the editor shows: with nothing to parse it displays a
+    // default black→white for display only, so the text stayed solid until a
+    // stop was touched (user report 2026-10-16, same as the Fill popup).
+    if (t === 'gradient' && tab !== 'gradient' && !parseGradient(gradientValue)) {
+      onGradientChange(formatGradient(createDefaultGradient()));
     }
     setTab(t);
   };

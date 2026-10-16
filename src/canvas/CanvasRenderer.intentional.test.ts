@@ -52,6 +52,15 @@ describe('CanvasRenderer intentional-render invariants', () => {
     expect(renders.length).toBe(2);
   });
 
+  it('an undo while the gradient editor is open still reaches the canvas', () => {
+    const { r, renders } = makeRenderer();
+    r.setGradientActive(true);
+    r.render(input('B'));                    // ordinary render — still held off while editing
+    expect(renders.length).toBe(0);
+    r.render(input('A'), { intentional: true });
+    expect(renders.length).toBe(1);          // (old bug: the restore died to the gate)
+  });
+
   it('normal renders still dedup identical input', () => {
     const { r, renders } = makeRenderer();
     const stateA = input('A');

@@ -302,6 +302,13 @@ function detectFillTab(styles: Record<string, string>, node?: CanvasNode | null)
   return 'color';
 }
 
+/** The tab of a fill the node actually HAS — null when it has none. */
+function filledFillTab(styles: Record<string, string>, node?: CanvasNode | null): FillTab | null {
+  const tab = detectFillTab(styles, node);
+  if (tab !== 'color') return tab;
+  return styles.backgroundColor ? 'color' : null;
+}
+
 /** Transparent-checker pattern for the empty poster swatch — matches the
  *  alpha-checker visual the rest of the editor uses for "no value yet". */
 const ALPHA_CHECKER_STYLE: React.CSSProperties = {
@@ -544,7 +551,7 @@ function VideoFillTab({ node }: { node: CanvasNode | null }) {
   );
 }
 
-function SingleModeFillContent({ styles, onUpdate, onLivePreview, solidOnly }: { styles: Record<string, string>; onUpdate: (k: string, v: string) => void; onLivePreview?: (color: string | null) => void; solidOnly?: boolean }) {
+export function SingleModeFillContent({ styles, onUpdate, onLivePreview, solidOnly }: { styles: Record<string, string>; onUpdate: (k: string, v: string) => void; onLivePreview?: (color: string | null) => void; solidOnly?: boolean }) {
   const ctx = useControlContextOptional();
   // Legacy control ctx exposes `updateStyleLive` — the fast canvas-only DOM
   // patch used for smooth drags (commit via onUpdate on release).
@@ -563,11 +570,33 @@ function SingleModeFillContent({ styles, onUpdate, onLivePreview, solidOnly }: {
     trace.action('fill-control:create-preset-panel', { color });
   }, [pushPanel, popPanel]);
 
+  // The Gradient tab's one commit path — shared by the editor and the tab
+  // switch. Clear conflicting props FIRST: `background: ''` wipes every
+  // background-* longhand from the inline DOM (CSSOM shorthand semantics), so
+  // it must precede the backgroundImage write.
+  const commitGradient = (css: string) => {
+    if (styles.background) onUpdate('background', '');
+    if (styles.backgroundColor) onUpdate('backgroundColor', '');
+    onUpdate('backgroundImage', css);
+  };
+
   // Re-detect tab ONLY when selected node changes (not during editing)
   useEffect(() => {
     setTab(solidOnly ? 'color' : detectFillTab(styles, node));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeId, solidOnly]);
+
+  // …and when the node's fill turns into a DIFFERENT kind from outside the
+  // popup — undo/redo, the agent, a collaborator. Image → Gradient → Cmd+Z
+  // put the image back while the popup stayed on Gradient (user report
+  // 2026-10-16). Only a REAL fill moves the tab: an empty one (Image/Video
+  // tab before anything is picked) is the user choosing, and detectFillTab's
+  // 'color' fallback would bounce them out of it.
+  const filledTab = filledFillTab(styles, node);
+  useEffect(() => {
+    if (!solidOnly && filledTab && filledTab !== tab) setTab(filledTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filledTab]);
 
   return (
     <>
@@ -588,6 +617,17 @@ function SingleModeFillContent({ styles, onUpdate, onLivePreview, solidOnly }: {
             if (tab === 'video' && nodeId) {
               forSelectionTargets(nodeId, (tid) => queueMutation({ type: 'removeVideoFill', nodeId: tid }));
             }
+            // APPLY what the new tab shows. Its editor falls back to a default
+            // for DISPLAY only (black→white gradient, #000000 picker) and
+            // writes nothing until a stop/picker is touched — so the old fill
+            // was cleared above and the frame went transparent while the
+            // popup showed a gradient (user report 2026-10-16). Image/Video
+            // show an empty picker, so there is nothing to apply.
+            if (newTab === 'gradient') {
+              const current = [styles.backgroundImage, styles.background].find(v => v && /gradient\(/.test(v));
+              if (!current) commitGradient(formatGradient(createDefaultGradient()));
+            }
+            if (newTab === 'color' && !styles.backgroundColor) onUpdate('backgroundColor', '#000000');
           }
           setTab(newTab);
         }}
@@ -662,14 +702,7 @@ function SingleModeFillContent({ styles, onUpdate, onLivePreview, solidOnly }: {
       {tab === 'gradient' && (
         <GradientEditor
           value={styles.backgroundImage || styles.background || ''}
-          onChange={(css) => {
-            // Clear conflicting props FIRST — `background: ''` wipes every
-            // background-* longhand from the inline DOM (CSSOM shorthand
-            // semantics), so it must precede the backgroundImage write.
-            if (styles.background) onUpdate('background', '');
-            if (styles.backgroundColor) onUpdate('backgroundColor', '');
-            onUpdate('backgroundImage', css);
-          }}
+          onChange={commitGradient}
           // Smooth drag: patch the canvas DOM directly every frame (no code
           // re-parse); GradientEditor fires onChange once on release to commit.
           onLiveChange={legacyCtl ? (css) => legacyCtl.updateStyleLive('backgroundImage', css) : undefined}
