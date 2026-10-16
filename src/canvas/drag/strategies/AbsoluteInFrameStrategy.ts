@@ -39,7 +39,7 @@ import { projectFS } from '@/code/project/project-fs';
 import { getReplicaContext } from '../replica-context';
 import { getConsolidationClone, clearConsolidationClone } from '../consolidation-clone-store';
 import { registerPendingReplicaExtraction, getPendingReplicaExtraction, clearPendingReplicaExtraction } from '../pending-replica-extraction-store';
-import { exitSize } from '../exit-size';
+import { exitSize, isTextExitNode } from '../exit-size';
 import { commitExitToCanvas } from '../exit-commit';
 import { getInsetState, mergeVariantPinStyles } from '@/shared/pin-utils';
 import { parentHighlightOps } from '@/canvas/selection/parent-highlight-store';
@@ -1910,7 +1910,7 @@ export class AbsoluteInFrameStrategy implements DragStrategy {
               const exitTransform = stripTranslateFunctions(orig);
               // Content-sized stays content-sized — see exit-size.ts.
               const keepAuto = (prop: 'width' | 'height', px: string): string =>
-                exitSize(nd?.styles, prop, px);
+                exitSize(nd?.styles, prop, px, isTextExitNode(nd));
               const ms: Record<string, string> = {
                 position: 'absolute',
                 left: `${cssLeft}px`,

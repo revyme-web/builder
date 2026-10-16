@@ -42,7 +42,7 @@ import { calculateLayoutInsertIndexById, computeReorderAssignments } from '../re
 import { rankToOrder, pickPlaceholderOrder, normalizeFlowSpans } from './order-positioning';
 import { commitOrderAssignments, computeLayoutBrackets } from './order-commit';
 import { queueMutation, flushNow, getCurrentCode, hasPendingDeferredFanOut } from '@/code/mutation/mutation-queue';
-import { exitSizes } from '../exit-size';
+import { exitSizes, isTextExitNode } from '../exit-size';
 import { commitExitToCanvas, flushExitToCanvas } from '../exit-commit';
 import { registerDragEndRestore } from '../drag-end-restores';
 import { computeExitCanvasPosition } from '../transform-reparent';
@@ -1517,8 +1517,16 @@ export class LayoutLiftedStrategy implements DragStrategy {
               top: `${Math.round(canvasTop)}px`,
             };
             if (lifted) {
-              ms.width = `${Math.round(lifted.width)}px`;
-              ms.height = `${Math.round(lifted.height)}px`;
+              // Same size rule as the drop-on-canvas branch — an auto text
+              // passing through the canvas into another frame stays auto.
+              const sizes = exitSizes(
+                context.nodes.get(node.id)?.styles,
+                `${Math.round(lifted.width)}px`,
+                `${Math.round(lifted.height)}px`,
+                isTextExitNode(context.nodes.get(node.id)),
+              );
+              ms.width = sizes.width;
+              ms.height = sizes.height;
             }
 
             // REPLICA SPLIT — the mid-drag half of the drop path's rule (its
@@ -2620,14 +2628,17 @@ export class LayoutLiftedStrategy implements DragStrategy {
         // fill inside its parent, so committing it as px turns an auto-width
         // text into a frozen 123px box — the Dimensions panel then reads
         // "123" where it read "auto" a moment earlier, and editing the text
-        // no longer resizes it (user report 2026-10-05). Only `auto` is
-        // carried over: a percentage or stretch was resolved AGAINST THE
-        // PARENT, which the node no longer has, so for those the measured px
-        // really is the honest preservation of what the user saw.
+        // no longer resizes it (user report 2026-10-05). Content sizes carry
+        // over, and a text with no width of its own counts as auto — it
+        // lands as `max-content` (see exit-size.ts; 2026-10-16). A percentage
+        // or stretch was resolved AGAINST THE PARENT, which the node no
+        // longer has, so for those the measured px really is the honest
+        // preservation of what the user saw.
         const { width: currentWidth, height: currentHeight } = exitSizes(
           context.nodes.get(node.id)?.styles,
           lifted ? `${Math.round(lifted.width)}px` : '',
           lifted ? `${Math.round(lifted.height)}px` : '',
+          isTextExitNode(context.nodes.get(node.id)),
         );
 
         // Replica drag-out: two sub-paths, mirroring AbsoluteInFrameStrategy's

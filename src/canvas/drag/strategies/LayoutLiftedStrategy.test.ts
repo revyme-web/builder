@@ -956,6 +956,35 @@ describe('LayoutLiftedStrategy', () => {
       expect(moveCall.styles).toHaveProperty('position', 'absolute');
     });
 
+    // User report 2026-10-16: a bare `<p>` (no width/height — auto/auto in the
+    // Dimensions panel) dragged out of a centred column landed as 95px × 19px.
+    test('an auto-size TEXT dropped outside its parent stays auto — not the measured px', () => {
+      setupNodeCache('parent-1', ['text-0'], { display: 'flex', flexDirection: 'column', alignItems: 'center' });
+      const text = { ...nodeCache.get('text-0')!, tag: 'p', type: 'p', styles: { fontSize: '16px', position: 'relative', flex: '0 0 auto' } };
+      nodeCache.set('text-0', text);
+      setupNodeRects({
+        'parent-1': { x: 100, y: 100, width: 160, height: 78 },
+        'text-0': { x: 132, y: 129, width: 95.19, height: 19.2 },
+      });
+      const ctx = makeContext({
+        draggedNodes: [makeDraggedNode({ id: 'text-0', startParentId: 'parent-1', width: 95.19, height: 19.2 })],
+        nodes: new Map([['parent-1', nodeCache.get('parent-1')!], ['text-0', text]]) as DragContext['nodes'],
+      });
+
+      strategy.onStart(ctx);
+      vi.mocked(isInsideRect).mockReturnValue(true);
+      strategy.onMove(ctx, { x: 510, y: 310 });
+      vi.mocked(isInsideRect).mockReturnValue(false);
+      strategy.onMove(ctx, { x: 900, y: 900 });
+      strategy.onEnd(ctx);
+
+      const moveCall = mockQueueMutation.mock.calls
+        .map((c: any[]) => c[0])
+        .find((m: any) => m.type === 'move' && m.nodeId === 'text-0');
+      expect(moveCall?.canvasNode).toBe(true);
+      expect(moveCall.styles).toMatchObject({ position: 'absolute', width: 'max-content', height: 'auto' });
+    });
+
     // Ghost rows are DOM-only clones of the template row, and the Renderer's
     // patch fast-path can only re-sync them when the row's DOM STRUCTURE or its
     // CMS BINDINGS changed. Reordering INSIDE the row changes neither (it

@@ -45,6 +45,7 @@ import { dropLineOps } from '@/canvas/selection/drop-line-store';
 import { trace } from '@/shared/debug-trace';
 import { parseGridInfo, type GridInfo } from './grid-cell-resolver';
 import { isReplicaOnlyOnViewport } from '../replica-exit';
+import { exitSizes, isTextExitNode } from '../exit-size';
 import { getReplicaContext } from '../replica-context';
 import { buildCanvasCloneForLayoutDrop } from './LayoutLiftedStrategy';
 import { getViewportWidths } from '@/code/stores/viewport-store';
@@ -1176,12 +1177,21 @@ export class GridDragStrategy implements DragStrategy {
       canvasTop = aabbTop + (aabbH - this.liftHeight) / 2;
     }
 
+    // Content sizes survive the exit (an auto text stays auto — exit-size.ts);
+    // a `100%` / stretch cell size becomes the px it measured, per above.
+    const exitNode = context.nodes.get(this.liftedNodeId);
+    const exitSize = exitSizes(
+      exitNode?.styles,
+      `${Math.round(this.liftWidth)}px`,
+      `${Math.round(this.liftHeight)}px`,
+      isTextExitNode(exitNode),
+    );
     const exitStyles: Record<string, string> = {
       position: 'absolute',
       left: `${Math.round(canvasLeft)}px`,
       top: `${Math.round(canvasTop)}px`,
-      width: `${Math.round(this.liftWidth)}px`,
-      height: `${Math.round(this.liftHeight)}px`,
+      width: exitSize.width,
+      height: exitSize.height,
       // Strip grid-cell placement so source doesn't re-pin the element
       // into the old cell on the next render.
       gridColumn: '',

@@ -710,6 +710,37 @@ const canvasNodes = (<>
 `);
 
 // ─────────────────────────────────────────────────────────────────────────
+// TEXT_IN_CENTERED_COLUMN — a bare `<p>` (no width/height of its own: auto /
+// auto in the Dimensions panel) inside a centred column, the shape of the
+// 2026-10-16 report. Dragged out onto the canvas it must stay auto — not the
+// measured px, and not a word-per-line `auto` against the 0-wide canvas root.
+// ─────────────────────────────────────────────────────────────────────────
+export const TEXT_IN_CENTERED_COLUMN = project(`
+/** @canvas { "viewports": [{"id":"desktop","width":1440}] } */
+'use client';
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Page" style={{
+      display: 'flex', flexDirection: 'column', gap: '0px',
+      position: 'relative', width: '100%', minHeight: '400px', background: '#ffffff',
+    }}>
+      <div data-id="col" data-name="Column" style={{
+        position: 'relative', width: '400px', height: '160px', background: '#97cffc',
+        flex: '0 0 auto', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <p data-id="label" data-name="Text" style={{
+          fontSize: '16px', color: '#000000', fontFamily: 'Inter, sans-serif',
+          fontWeight: '400', lineHeight: '1.2', overflowWrap: 'break-word',
+          position: 'relative', flex: '0 0 auto',
+        }}>Hello brave new world</p>
+      </div>
+    </div>
+  );
+}
+`);
+
+// ─────────────────────────────────────────────────────────────────────────
 // REPLICA_AUTO_HEIGHT — two viewports; the card is fixed-size at base but
 // its mobile @media band overrides height to `auto !important`. Used for:
 // resize-handle visibility must follow the REPLICA-effective size (the
@@ -5022,6 +5053,7 @@ export const SEEDS = {
   SVG_GROUP_LETTERS,
   OSS_SMOKE,
   CANVAS_ENTRY,
+  TEXT_IN_CENTERED_COLUMN,
   REPLICA_AUTO_HEIGHT,
   LOCALE_3VP,
   REPLICA_ABS_DRAG,
