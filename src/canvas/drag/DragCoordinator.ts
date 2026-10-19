@@ -27,6 +27,7 @@ import { AbsoluteInFrameStrategy } from './strategies/AbsoluteInFrameStrategy';
 import { ToolbarDragStrategy } from './strategies/ToolbarDragStrategy';
 import type { ToolbarItem } from './toolbar-item-config';
 import { dragStateOps } from './drag-state-store';
+import { refusedByCollaboratorLock, beginLocalInteraction } from '../collab/collab-locks';
 import { resetSnapHysteresis } from './handlers/snap-handler';
 import { findNodeRect, vpIdFromPrefix, findNodeComputedStyles } from '@/canvas/node-ops';
 import { getIframeOffset } from './helpers/coords';
@@ -1005,6 +1006,12 @@ export class DragCoordinator {
 
     if (draggedNodes.length === 0) return;
 
+    // COLLABORATOR LOCK (collab-locks.ts): someone else is dragging / resizing
+    // one of these nodes right now. Two gestures on one node each commit their
+    // own geometry (user report 2026-10-19), so this one never starts — same
+    // un-started bail as the fixed-overlay block below.
+    if (refusedByCollaboratorLock(draggedNodes.map(n => n.id), 'drag')) return;
+
     // Phase D: Improved offset calculation for rotated/skewed elements.
     // Use bridge corners cache for visual center (works in iframe mode).
     for (const node of draggedNodes) {
@@ -1100,6 +1107,8 @@ export class DragCoordinator {
     beginOverlayFollow(this.context.nodes, draggedNodes.map(n => n.id), this.contentEl);
     this.isDragStarted = true;
     dragStateOps.set(true);
+    // Collaborators lock these nodes until release (no-op without a room).
+    beginLocalInteraction(draggedNodes.map(n => n.id));
     this.callbacks.onDragStateChange(true, this.activeStrategy.name);
     this.installAltDuplicateKeyListeners();
     // If ALT was already held when the drag started (user pressed ALT

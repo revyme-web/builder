@@ -15,6 +15,7 @@ import { syncQueueCode, queueMutation, flushNow } from '@/code/mutation/mutation
 import { bakeStylesForTile, tileContextFor } from '@/canvas/replica-bake';
 import { getViewportWidths } from '@/code/stores/viewport-store';
 import { dragStateOps } from '@/canvas/drag/drag-state-store';
+import { refusedByCollaboratorLock, beginLocalInteraction } from '@/canvas/collab/collab-locks';
 import { getActiveFilePath, findNodeRect, findNodeComputedStyles, patchNodeStyles, getViewportPrefix, updateNodeStyles, findSvgShapeChild, getSvgGroupAncestorChain, isPrimaryViewport, forceCanvasRender, isFitTextSvgWrapper } from '@/canvas/node-ops';
 import { viewportBandPinOps } from './viewport-band-pin-store';
 import { normalizeGroupOnResize, refitGroupChain } from '@/code/svg/refit-group';
@@ -1353,6 +1354,11 @@ export function startResize(
       } catch { /* skip */ }
     }
   }
+
+  // A collaborator is dragging / resizing this node right now (collab-locks.ts).
+  // Before any resize state is installed, like the fixed-overlay bail above.
+  if (refusedByCollaboratorLock([nodeId], 'resize')) return;
+  beginLocalInteraction([nodeId]);
 
   // SHAPE CANONICAL POSITION MODEL (reference parity, 2026-09-05). A top-level
   // vector shape resizes stably ONLY in px left/top with no centering translate

@@ -25,6 +25,7 @@ import { isComponentFilePath } from '@/code/project/active-file-store';
 import { bakeStylesForTile, tileContextFor } from './replica-bake';
 import { resolveOverlayConfig } from '@/code/parsing/overlay-parser';
 import type { OverlayConfig } from '@/shared/types';
+import { refusedByCollaboratorLock } from './collab/collab-locks';
 
 export type NudgeDirection = 'up' | 'down' | 'left' | 'right';
 
@@ -299,6 +300,8 @@ export function computeOverlayNudge(
 export function nudgeSelection(direction: NudgeDirection, step: number, ctx: NudgeContext): void {
   const { selectedIds, nodes, contentEl, vpId } = ctx;
   if (selectedIds.length === 0) return;
+  // A collaborator is dragging / resizing one of these right now.
+  if (refusedByCollaboratorLock(selectedIds, 'nudge')) return;
   trace.action('arrow-nudge:start', { direction, step, count: selectedIds.length, vpId });
 
   // Single OVERLAY selection → offset nudge (config write, not left/top).

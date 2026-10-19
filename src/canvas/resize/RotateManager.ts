@@ -12,6 +12,7 @@
 
 import { updateNodeStyles, patchNodeStyles, findNodeRect, findNodeComputedStyle, findNodeComputedStyles, findSvgShapeChild, getViewportPrefix, getActiveFilePath, getSvgGroupAncestorChain, isPrimaryViewport } from '@/canvas/node-ops';
 import { isComponentFilePath } from '@/code/project/active-file-store';
+import { refusedByCollaboratorLock, beginLocalInteraction } from '@/canvas/collab/collab-locks';
 import { getScreenCornersById } from '@/canvas/resize/geometry-utils';
 import { styleHelperOps } from '@/canvas/selection/style-helper-store';
 import { trace } from '@/shared/debug-trace';
@@ -50,6 +51,10 @@ export function startRotate(
   callbacks: RotateCallbacks,
 ): void {
   if (cleanup) { cleanup(); cleanup = null; }
+
+  // A collaborator is dragging / resizing this node right now (collab-locks.ts).
+  if (refusedByCollaboratorLock([nodeId], 'rotate')) return;
+  beginLocalInteraction([nodeId]);
 
   const { contentEl, onInteracting } = callbacks;
   const vpPrefix = getViewportPrefix(vpId);

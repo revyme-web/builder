@@ -16,6 +16,7 @@ import { removeIconFromSet } from '@/code/icons/icon-set-ops';
 import { projectFS } from '@/code/project/project-fs';
 import { getViewportWidths } from '@/code/stores/viewport-store';
 import { isViewerMode } from '@/code/stores/viewer-mode-store';
+import { refusedByCollaboratorLock } from './collab/collab-locks';
 import { parseCanvasConfig, updateCanvasConfigInCode } from '@/code/project/canvas-config';
 import { clearContainerStylesForWidth, removeResponsiveBreakpoint } from '@/code/generation/generator-styles';
 import { isStartModelLadder } from '@/code/project/breakpoint-ladder';
@@ -204,6 +205,9 @@ export function deleteNode(nodeIdOrIds: string | string[], contentEl: HTMLElemen
   // Filter out layout nodes and placeholder — they can't be deleted from page context
   const filteredIds = ids.filter(id => !id.startsWith('layout::') && id !== 'children-slot');
   if (filteredIds.length === 0) return;
+  // A collaborator is dragging / resizing one of these right now — deleting it
+  // under them throws their gesture away (collab-locks.ts).
+  if (refusedByCollaboratorLock(filteredIds, 'delete')) return;
 
   trace.action('commands:delete', { nodeIds: filteredIds, vpId, isPrimary });
 

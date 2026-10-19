@@ -930,6 +930,14 @@ export function syncQueueCode(code: string): void {
   }
 }
 
+/** True between a flush computing its code and writing it (the async path's
+ *  idle-callback gap). An outside write landing then is ignored by
+ *  `syncQueueCode` and overwritten by the flush — live collaboration holds
+ *  remote writes back until this clears. */
+export function isMutationQueueProcessing(): boolean {
+  return isProcessing;
+}
+
 /**
  * Queue a mutation. The mutation is applied to the code string asynchronously.
  * The caller should have already updated the DOM for instant visual feedback.

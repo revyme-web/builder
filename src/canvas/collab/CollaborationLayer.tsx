@@ -6,9 +6,15 @@
 import { useCollaborationCursor } from './useCollaborationCursor';
 import { useCollaborationSelection } from './useCollaborationSelection';
 import CollaboratorCursors from './CollaboratorCursors';
+import CollaboratorSelections from './CollaboratorSelections';
 
 export default function CollaborationLayer() {
   useCollaborationCursor();
   useCollaborationSelection();
-  return <CollaboratorCursors />;
+  return (
+    <>
+      <CollaboratorSelections />
+      <CollaboratorCursors />
+    </>
+  );
 }
