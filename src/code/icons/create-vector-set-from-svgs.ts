@@ -18,6 +18,8 @@ import { buildIconSetFile, generateIconSetName, ICON_CARD_W, ICON_CARD_H, ICON_C
 import { clearIconSetCache } from './icon-set-registry';
 import { convertSvgToEditableShapes } from '../svg/svg-import';
 import { trace } from '@/shared/debug-trace';
+import { isHtmlOnlySvg } from '@/shared/svg-sanitize';
+import { vectorizeHtmlSvg, describeVectorizeFailure } from './vectorize-html-svg';
 
 export interface CreateVectorSetResult {
   iconSetFilePath: string;
@@ -307,6 +309,18 @@ export async function preflightSvgFiles(files: File[]): Promise<SvgPreflightResu
       const text = await readFileAsText(file);
       if (!looksLikeSvg(text)) {
         skipped.push({ name: file.name, reason: 'not valid SVG' });
+        continue;
+      }
+      // An HTML snapshot (one <foreignObject> — what "Export as SVG" used to
+      // write) sanitizes to an EMPTY vector. Unwrap the vectors inside it
+      // instead; if it holds something with no vector form, say what.
+      if (isHtmlOnlySvg(text)) {
+        const v = await vectorizeHtmlSvg(text);
+        if ('reason' in v) {
+          skipped.push({ name: file.name, reason: `HTML inside the SVG — ${describeVectorizeFailure(v.reason)}` });
+          continue;
+        }
+        valid.push({ label: basenameToLabel(file.name), text: v.svg });
         continue;
       }
       valid.push({ label: basenameToLabel(file.name), text });

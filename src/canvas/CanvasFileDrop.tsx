@@ -257,7 +257,12 @@ export default function CanvasFileDrop() {
         const pre = await preflightSvgFiles(svgFiles);
         if (pre.valid.length === 0) {
           // every "SVG" was junk — say so, and still honor any images
-          toast.error(`No valid SVG files in the drop (${pre.skipped.length} skipped).`);
+          const [first] = pre.skipped;
+          toast.error(
+            pre.skipped.length === 1 && first
+              ? `Couldn't import ${first.name}: ${first.reason}.`
+              : `No valid SVG files in the drop (${pre.skipped.length} skipped${first ? ` — ${first.name}: ${first.reason}` : ''}).`,
+          );
           if (imageFiles.length > 0) await handleImageFileDrops(imageFiles, canvasX, canvasY, setSelectedIds);
           return;
         }

@@ -8,6 +8,7 @@ import { toKebab } from '@/shared/css-utils';
 import { findElByNodeId } from '../sandbox-dom-utils';
 import { contentRoot } from './sandbox-state';
 import { trace } from '@/shared/debug-trace';
+import { exportVectorSvg } from '@/shared/vector-svg-export';
 
 export function getRect(nodeId: string, vpPrefix: string): (RectLike & { culled?: boolean }) | null {
     if (!contentRoot) return null;
@@ -168,6 +169,19 @@ export async function captureElement(
       return null;
     }
     try {
+      // SVG: real vector art when the subtree has a vector form (svg graphics
+      // + plain boxes). html-to-image's toSvg is a <foreignObject> picture of
+      // the HTML — every importer strips that, so the file came back EMPTY when
+      // dropped into Revyme (2026-10-19). It stays the fallback for text,
+      // images, shadows… which it is the only faithful rendering of.
+      if (opts.format === 'svg') {
+        const vector = exportVectorSvg(el);
+        if ('svg' in vector) {
+          trace.action('canvas-sandbox:captureElement:svg-vector', { nodeId, size: vector.svg.length });
+          return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(vector.svg);
+        }
+        trace.action('canvas-sandbox:captureElement:svg-html-fallback', { nodeId, reason: vector.reason });
+      }
       const htmlToImage = await import('html-to-image');
       // `html-to-image` clones the node and renders the clone standalone,
       // so the canvas pan/zoom transform on `contentRoot` does NOT scale

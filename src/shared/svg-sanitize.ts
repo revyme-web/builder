@@ -40,6 +40,23 @@ export function stripActiveSvgContent(markup: string): string {
     .replace(/\s+(?:xlink:)?href\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*')/gi, '');
 }
 
+const DRAWABLE_SVG_RE = /<(?:path|rect|circle|ellipse|line|polyline|polygon|text|image|use)\b/i;
+
+/** Is anything left to DRAW once the active content is stripped? An
+ *  html-to-image style export — one <foreignObject> holding HTML, which is how
+ *  "Export as SVG" used to write every selection — has nothing, and importing
+ *  it as vectors produced an empty <svg> (2026-10-19). */
+export function svgHasDrawableContent(markup: string): boolean {
+  return DRAWABLE_SVG_RE.test(stripActiveSvgContent(markup));
+}
+
+/** An SVG whose only content is embedded HTML (<foreignObject>) — an
+ *  html-to-image snapshot. Importers must unwrap it (vectorize-html-svg.ts),
+ *  never sanitize it straight to an empty <svg>. */
+export function isHtmlOnlySvg(markup: string): boolean {
+  return /<foreignObject\b/i.test(markup) && !svgHasDrawableContent(markup);
+}
+
 export function sanitizeSvgMarkupForJsx(markup: string): string {
   let s = stripActiveSvgContent(markup);
 

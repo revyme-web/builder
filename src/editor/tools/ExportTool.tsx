@@ -13,6 +13,7 @@ import { exportSectionOpenAtom } from '@/code/stores/editor-store';
 import { getViewportPrefix } from '@/canvas/node-ops';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { trace } from '@/shared/debug-trace';
+import { toast } from 'sonner';
 
 /** `captureElement` lives on PostMessageBridge but isn't in the base
  *  `CanvasBridge` interface — same pattern as the shape-edit RPC methods.
@@ -141,6 +142,17 @@ export default function ExportTool() {
       link.download = `${nodeName}@${scale}x.${format}`;
       link.href = dataUrl;
       link.click();
+
+      // Vector export only covers svg graphics + plain boxes; text, images,
+      // shadows… come out as an HTML snapshot inside the SVG. It looks right in
+      // a browser but isn't vector art — say so before someone tries to edit
+      // or re-import it as vectors.
+      if (format === 'svg' && dataUrl.includes('foreignObject')) {
+        toast('Exported as an HTML snapshot inside the SVG', {
+          id: 'export-svg-snapshot',
+          description: 'This selection has text, images or effects with no vector form. It displays correctly, but it isn’t editable vector art.',
+        });
+      }
 
       trace.action('export-tool:success', { nodeId, format, scale, nodeName });
     } catch (err) {
