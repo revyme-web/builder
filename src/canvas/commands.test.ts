@@ -1083,6 +1083,98 @@ describe('wrapInFrame / wrapInLayout — bbox falls back to live rects', () => {
 // in a px-sized frame with the text still absolute at 0,0 → the master root
 // (hug → max-content/min-content + overflow hidden) measured 0×0 and the text
 // was invisible. The wrapper must hug and the text must become a flow child.
+// ─── Create Layout follows the selection's axis (user report 2026-10-19) ────
+// Shift+A on two canvas frames sitting side by side stacked them into a column.
+// A free-positioned selection already has a direction on screen: side by side
+// → row, stacked → column, and the children enter in visual order on that axis.
+describe('wrapInLayout — free-positioned selection keeps its direction', () => {
+  const dummyEl = {} as unknown as HTMLElement;
+  let q: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    const mutQueue = await import('@/code/mutation/mutation-queue');
+    q = mutQueue.queueMutation as ReturnType<typeof vi.fn>;
+    q.mockClear();
+    mockCanvasRects.clear();
+  });
+
+  const calls = () => q.mock.calls.map(c => c[0]);
+  const framed = () => calls().find(m => m.type === 'addNode' || m.type === 'addCanvasNode')?.node?.styles as Record<string, string> | undefined;
+  const moveOrder = () => calls().filter(m => m.type === 'move').map(m => m.nodeId);
+  const canvasNode = (id: string, styles: Record<string, string>, children: string[] = []) =>
+    ({ ...makeNode(id, null, children, { position: 'absolute', ...styles }), isCanvasNode: true } as unknown as CanvasNode);
+  const absChild = (id: string, styles: Record<string, string>) =>
+    makeNode(id, 'sec', [], { position: 'absolute', ...styles });
+
+  /** The reported pair: two canvas frames, same top, a gap between them. */
+  const sideBySide = () => buildMap([
+    canvasNode('blue', { left: '0px', top: '0px', width: '174px', height: '93px' }),
+    canvasNode('pink', { left: '220px', top: '0px', width: '230px', height: '93px' }),
+  ]);
+
+  it('two canvas frames side by side → flex ROW', () => {
+    wrapInLayout(['blue', 'pink'], sideBySide(), dummyEl);
+    expect(framed()).toMatchObject({ display: 'flex', flexDirection: 'row' });
+  });
+
+  it('absolute siblings stacked vertically → flex column (unchanged)', () => {
+    const map = buildMap([
+      makeNode('sec', null, ['a', 'b'], { position: 'relative' }),
+      absChild('a', { left: '0px', top: '0px', width: '200px', height: '50px' }),
+      absChild('b', { left: '10px', top: '80px', width: '200px', height: '50px' }),
+    ]);
+    wrapInLayout(['a', 'b'], map, dummyEl);
+    expect(framed()).toMatchObject({ flexDirection: 'column' });
+  });
+
+  it('a tall box top-aligned beside a short one is still a row', () => {
+    // Centers are 180px apart vertically, only 150px horizontally — a center
+    // comparison calls this a column. Neither box sits below the other.
+    const map = buildMap([
+      makeNode('sec', null, ['tall', 'short'], { position: 'relative' }),
+      absChild('tall', { left: '0px', top: '0px', width: '100px', height: '400px' }),
+      absChild('short', { left: '150px', top: '0px', width: '100px', height: '40px' }),
+    ]);
+    wrapInLayout(['tall', 'short'], map, dummyEl);
+    expect(framed()).toMatchObject({ flexDirection: 'row' });
+  });
+
+  it('children enter left-to-right in a row, whatever the selection order', () => {
+    wrapInLayout(['pink', 'blue'], sideBySide(), dummyEl);
+    expect(moveOrder()).toEqual(['blue', 'pink']);
+  });
+
+  it('children enter top-to-bottom in a column, whatever the selection order', () => {
+    const map = buildMap([
+      makeNode('sec', null, ['a', 'b', 'c'], { position: 'relative' }),
+      absChild('a', { left: '0px', top: '200px', width: '100px', height: '40px' }),
+      absChild('b', { left: '0px', top: '0px', width: '100px', height: '40px' }),
+      absChild('c', { left: '0px', top: '100px', width: '100px', height: '40px' }),
+    ]);
+    wrapInLayout(['a', 'b', 'c'], map, dummyEl);
+    expect(moveOrder()).toEqual(['b', 'c', 'a']);
+  });
+
+  it('measured boxes (a hugging frame) infer the direction too', () => {
+    mockCanvasRects.set('left', { left: 0, top: 0, width: 150, height: 80 });
+    mockCanvasRects.set('right', { left: 200, top: 0, width: 150, height: 120 });
+    const map = buildMap([
+      canvasNode('left', { left: '0px', top: '0px', width: '150px', height: '80px' }),
+      canvasNode('right', { left: '200px', top: '0px', width: '150px', height: 'auto' }, ['k']),
+      makeNode('k', 'right', []),
+    ]);
+    wrapInLayout(['right', 'left'], map, dummyEl);
+    expect(framed()).toMatchObject({ flexDirection: 'row' });
+    expect(moveOrder()).toEqual(['left', 'right']);
+  });
+
+  it('Create Frame (no layout) keeps selection order — paint order is not a stack', () => {
+    wrapInFrame(['pink', 'blue'], sideBySide(), dummyEl);
+    expect(framed()!.flexDirection).toBeUndefined();
+    expect(moveOrder()).toEqual(['pink', 'blue']);
+  });
+});
+
 describe('wrapInFrame — keepFlowChildren on a single ABSOLUTE text', () => {
   const dummyEl = {} as unknown as HTMLElement;
   it('hugging wrapper + relative child', async () => {

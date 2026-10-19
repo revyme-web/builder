@@ -201,7 +201,7 @@ export const reorderOnBreakpointTool: AgentTool = {
 export const wrapInLayoutTool: AgentTool = {
   name: 'wrap_in_layout',
   description:
-    'Group elements inside a NEW flex layout frame — the Create Layout action: the selection\'s siblings become a centred column (direction changeable afterwards with set_layout). node_ids must share one parent and be its flow children. Returns the new frame\'s id.',
+    'Group elements inside a NEW flex layout frame — the Create Layout action: the selection\'s siblings become a centred stack — a column for flow children; absolutely positioned ones keep their on-canvas axis (side by side → row, stacked → column). Direction is changeable afterwards with set_layout. node_ids must share one parent and be its flow children. Returns the new frame\'s id.',
   inputSchema: {
     node_ids: z.array(z.string()).min(1),
     name: z.string().optional().describe('display name for the new frame'),

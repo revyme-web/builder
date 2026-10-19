@@ -496,11 +496,12 @@ export function wrapInFrame(
 }
 
 /**
- * Like `wrapInFrame` but the new frame is a flex column with center
- * alignment. Children move into the frame as flow items (their inline
- * `position`/`left`/`top` are cleared) so the layout engine takes over —
- * matches the user expectation that "Create Layout" reorganizes the
- * selection into a stack.
+ * Like `wrapInFrame` but the new frame is a centered flex stack. Children move
+ * into the frame as flow items (their inline `position`/`left`/`top` are
+ * cleared) so the layout engine takes over — matches the user expectation that
+ * "Create Layout" reorganizes the selection into a stack. A free-positioned
+ * selection (canvas / absolute) stacks along its own axis — side by side →
+ * row, stacked → column; everything else is a column.
  */
 export function wrapInLayout(
   nodeIds: string[],
@@ -634,6 +635,23 @@ function unionBoxes(boxes: BoundingBox[]): BoundingBox | null {
 }
 
 /**
+ * Stack axis for Create Layout on a free-positioned selection: how far the
+ * selection reaches past its biggest box on each axis. Side-by-side boxes
+ * extend the union sideways and barely at all vertically → `row`; stacked
+ * boxes the other way round → `column`. Measured against the biggest box, not
+ * box centers, so a tall box top-aligned next to a short one still reads as
+ * side by side (their centers are further apart vertically than horizontally).
+ * Ties keep the old default, `column`.
+ */
+function inferStackDirection(boxes: BoundingBox[]): 'row' | 'column' {
+  const union = unionBoxes(boxes);
+  if (!union || boxes.length < 2) return 'column';
+  const reachX = union.width - Math.max(...boxes.map((b) => b.width));
+  const reachY = union.height - Math.max(...boxes.map((b) => b.height));
+  return reachX > reachY ? 'row' : 'column';
+}
+
+/**
  * Shared body for `wrapInFrame` and `wrapInLayout`. Builds the bounding
  * box, validates that all selected nodes share the same encapsulation
  * context (all canvas OR all same-parent absolute), then queues the
@@ -728,13 +746,18 @@ function wrapInternal(
   // flow children already uses. All-or-nothing so the union stays in one space.
   let bbox: BoundingBox | null = null;
   let measuredBoxes: Map<string, BoundingBox> | null = null;
+  // Every selected node's box from whichever source built the bbox — the same
+  // space, so Create Layout can read the selection's direction off it.
+  let nodeBoxes: Map<string, BoundingBox> | null = null;
   if ((allCanvas || allSameParentAbsolute) && !singleAbsChild) {
     const inline = nodes.map(readNodeBox);
     if (inline.every((b): b is BoundingBox => !!b)) {
       bbox = unionBoxes(inline as BoundingBox[]);
+      nodeBoxes = new Map(nodes.map((n, i) => [n.id, inline[i]!]));
     } else {
       measuredBoxes = measureAbsoluteBoxes(nodeIds, allCanvas ? null : sharedParentId!);
       bbox = measuredBoxes ? unionBoxes([...measuredBoxes.values()]) : null;
+      nodeBoxes = measuredBoxes;
       trace.action('commands:wrap-in-frame:bbox-measured', {
         ids: nodeIds,
         unreadable: nodes.filter((n, i) => !inline[i]).map((n) => n.id),
@@ -746,6 +769,23 @@ function wrapInternal(
       return null;
     }
   }
+
+  // CREATE LAYOUT FOLLOWS THE CANVAS. Free-positioned boxes (canvas nodes,
+  // absolute siblings) already have a direction on screen; a fixed column
+  // stacked two frames sitting side by side on top of each other (user report
+  // 2026-10-19). The children also enter in visual order along that axis, not
+  // selection order — otherwise picking right-to-left would swap them.
+  const stackBoxes = layout ? nodeBoxes : null;
+  const stackDirection = stackBoxes ? inferStackDirection([...stackBoxes.values()]) : 'column';
+  const moveOrder = stackBoxes
+    ? [...nodes].sort((a, b) => {
+        const ba = stackBoxes.get(a.id)!;
+        const bb = stackBoxes.get(b.id)!;
+        return stackDirection === 'row'
+          ? ba.left - bb.left || ba.top - bb.top
+          : ba.top - bb.top || ba.left - bb.left;
+      })
+    : nodes;
 
   const frameId = generateNodeId();
   // A frame that wraps TEXT must CLIP its overflow. Text with `line-height < 1`
@@ -885,18 +925,19 @@ function wrapInternal(
           overflow: wrapOverflow,
         };
   } else if (layout) {
-    // Layout container at bounding box: hug the content. Children flow
-    // vertically and center; the wrapper sizes to whatever the flex column
-    // resolves to. Matches Figma's "Create Auto Layout" gesture.
+    // Layout container at bounding box: hug the content. Children flow along
+    // the selection's own axis (`stackDirection`) and center; the wrapper sizes
+    // to whatever the flex stack resolves to. Matches Figma's "Create Auto
+    // Layout" gesture.
     baseFrameStyles = {
       position: 'absolute',
       left: `${Math.round(bbox!.left)}px`,
       top: `${Math.round(bbox!.top)}px`,
-      // Fit = min-content so the flex column hugs its content (auto won't shrink).
+      // Fit = min-content so the flex stack hugs its content (auto won't shrink).
       width: FIT_SIZE,
       height: FIT_SIZE,
       display: 'flex',
-      flexDirection: 'column',
+      flexDirection: stackDirection,
       alignItems: 'center',
       justifyContent: 'center',
       overflow: wrapOverflow,
@@ -917,7 +958,7 @@ function wrapInternal(
 
   trace.action('commands:wrap-in-frame:plan', {
     frameId, childIds: nodeIds, layout, allCanvas, parentId: sharedParentId,
-    bbox,
+    bbox, ...(stackBoxes ? { stackDirection } : {}),
   });
 
   // Queue create + moves. The mutation queue applies them in order against
@@ -953,7 +994,7 @@ function wrapInternal(
   //     takes over (Create Layout on absolute selection).
   //   • Plain frame at bbox: rewrite left/top frame-relative (Create Frame
   //     on absolute or canvas selection).
-  for (const node of nodes) {
+  for (const node of moveOrder) {
     let styles: Record<string, string> | undefined;
     if (flowToAbsolute) {
       // Flow → absolute inside the new frame. Position is the child's measured
