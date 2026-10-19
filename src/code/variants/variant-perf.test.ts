@@ -5,7 +5,7 @@
 // on the root confines the damage to the component's own layer.
 
 import { describe, it, expect } from 'vitest';
-import { variantsAnimateHeavyProps, ensureRootPerfIsolation, isHeavyAnimatedProp } from './variant-perf';
+import { variantsAnimateHeavyProps, ensureRootPerfIsolation, isHeavyAnimatedProp, hasPerfIsolationPair } from './variant-perf';
 
 const HEAVY = `
 const pillVariants = {
@@ -41,9 +41,9 @@ describe('variantsAnimateHeavyProps', () => {
 });
 
 describe('ensureRootPerfIsolation', () => {
-  it('stamps contain + willChange on the root when variants are heavy', () => {
+  it('stamps contain + willChange on the root when variants are heavy (overflow unset = visible → layout only)', () => {
     const out = ensureRootPerfIsolation(HEAVY);
-    expect(out).toContain("contain: 'layout paint', willChange: 'transform',");
+    expect(out).toContain("contain: 'layout', willChange: 'transform',");
     // injected at the START of the root's style object
     expect(out.indexOf('contain:')).toBeLessThan(out.indexOf("position: 'absolute'"));
   });
@@ -94,7 +94,7 @@ function C() {
 }
 `;
     const promoted = ensureRootPerfIsolation(heavy);
-    expect(promoted).toContain("contain: 'layout paint'");
+    expect(promoted).toContain("contain: 'layout', willChange");
     // user re-authors the variants to composite-safe x
     const retuned = promoted.replace("default: { left: '8px' }", 'default: { x: 0 }')
                             .replace("'variant-1': { left: '171px' }", "'variant-1': { x: 163 }");
@@ -110,6 +110,120 @@ function C() {
   it('removal is idempotent', () => {
     const once = ensureRootPerfIsolation(LIGHT_WITH_OUR_SNIPPET);
     expect(ensureRootPerfIsolation(once)).toBe(once);
+  });
+});
+
+// ─── Root-only + overflow-aware mode (user report 2026-10-19) ───────────────
+// A "Dropdown" master: hover handlers on the root (their `=>` stopped the old
+// `[^>]*` regex, so it stamped the first CHILD), root overflow visible, and the
+// pair already scattered over root / Frame / Text — reprinted across lines on
+// two of them, inline on the third. The Frame's copy clipped an icon whose
+// caps hang past its box, and Overflow: Visible on that Frame did nothing.
+const DROPDOWN = `
+const divVariants = {
+  default: { paddingTop: '23.5px', backgroundColor: '#ffffff' },
+  'default-hover': { paddingTop: '23.5px', backgroundColor: '#ffffff' },
+};
+const frameVariants = {
+  default: { overflow: 'hidden' },
+};
+function NuZaTa({ style, initialVariant = 'default', ...rest }) {
+  const [variant, setVariant] = useState(initialVariant);
+  return <LayoutGroup>
+    <motion.div onHoverEnd={() => {
+      const _n = variant === 'default-hover' ? 'default' : null;
+      if (_n) setVariant(_n);
+    }} layout={true} data-id="root-1" {...rest} data-mroot="root-1" variants={divVariants} style={{
+      contain: 'layout paint',
+      willChange: 'transform',
+      display: 'flex',
+      overflow: 'visible',
+      position: 'absolute',
+      ...style
+    }} animate={['default', variant]}>
+    <motion.div layout={true} data-id="frame-1" variants={frameVariants} data-name="Frame" style={{ contain: 'layout paint', willChange: 'transform',
+        display: 'flex',
+        overflow: 'hidden'
+      }}>
+      <motion.svg data-id="svg-1" viewBox="0 0 22.94 12.74" style={{ width: '11px', height: '5px', overflow: 'visible' }} />
+    </motion.div><motion.p layout={true} data-id="text-1" data-name="Text" style={{
+        contain: 'layout paint',
+        willChange: 'transform',
+        fontSize: '1.2rem'
+      }}>{content}</motion.p>
+  </motion.div>
+  </LayoutGroup>;
+}
+`;
+
+describe('ensureRootPerfIsolation — root only, mode follows the root overflow', () => {
+  it('strips the stray pairs from children (inline AND reprinted) and leaves them otherwise intact', () => {
+    const out = ensureRootPerfIsolation(DROPDOWN);
+    const frameTag = out.slice(out.indexOf('data-id="frame-1"'), out.indexOf('data-id="svg-1"'));
+    const textTag = out.slice(out.indexOf('data-id="text-1"'), out.indexOf('{content}'));
+    expect(frameTag).not.toContain('contain');
+    expect(frameTag).not.toContain('willChange');
+    expect(frameTag).toContain("style={{ display: 'flex',");
+    expect(textTag).not.toContain('contain');
+    expect(textTag).toContain("fontSize: '1.2rem'");
+  });
+
+  it('a root with overflow VISIBLE keeps layout containment only — nothing hanging outside gets clipped', () => {
+    const out = ensureRootPerfIsolation(DROPDOWN);
+    const rootTag = out.slice(out.indexOf('<motion.div onHoverEnd'), out.indexOf('data-id="frame-1"'));
+    expect(rootTag).toContain("contain: 'layout', willChange: 'transform',");
+    expect(rootTag).not.toContain('layout paint');
+    expect(out.match(/contain:/g)).toHaveLength(1);
+  });
+
+  it('is idempotent on the healed file', () => {
+    const once = ensureRootPerfIsolation(DROPDOWN);
+    expect(ensureRootPerfIsolation(once)).toBe(once);
+  });
+
+  it('injects on the ROOT even when its handlers contain `=>` (never the first child)', () => {
+    const fresh = DROPDOWN.replace(/contain: 'layout paint',\s*willChange: 'transform',\s*/g, '');
+    const out = ensureRootPerfIsolation(fresh);
+    const rootTag = out.slice(out.indexOf('<motion.div onHoverEnd'), out.indexOf('data-id="frame-1"'));
+    expect(rootTag).toContain("contain: 'layout'");
+    expect(out.match(/contain:/g)).toHaveLength(1);
+  });
+
+  it('a root that already clips gets paint containment too, and flips back when it turns visible', () => {
+    const hidden = DROPDOWN.replace("overflow: 'visible',\n      position", "overflow: 'hidden',\n      position");
+    const clipped = ensureRootPerfIsolation(hidden);
+    // Already the right mode on the root → its (reprinted) form is left as is.
+    expect(clipped).toMatch(/onHoverEnd[\s\S]*style=\{\{\s*contain: 'layout paint',\s*willChange: 'transform',[\s\S]*data-id="frame-1"/);
+    expect(clipped.match(/contain:/g)).toHaveLength(1);
+    const reopened = ensureRootPerfIsolation(clipped.replace("overflow: 'hidden',\n      position", "overflow: 'visible',\n      position"));
+    expect(reopened).toContain("contain: 'layout', willChange: 'transform',");
+    expect(reopened).not.toContain('layout paint');
+  });
+
+  it('a variant state that makes the root visible rules out paint containment', () => {
+    const code = `
+const rootVariants = {
+  default: { width: '100px', overflow: 'hidden' },
+  open: { width: '300px', overflow: 'visible' },
+};
+function C() {
+  return <motion.div data-id="root" variants={rootVariants} style={{ overflow: 'hidden', width: '100px' }} />;
+}
+`;
+    expect(ensureRootPerfIsolation(code)).toContain("contain: 'layout', willChange");
+  });
+
+  it('a hand-authored contain on a child is not ours and stays', () => {
+    const code = DROPDOWN.replace("style={{ contain: 'layout paint', willChange: 'transform',", "style={{ contain: 'paint',");
+    expect(code).toContain("style={{ contain: 'paint',");
+    const out = ensureRootPerfIsolation(code);
+    expect(out).toContain("style={{ contain: 'paint',");
+  });
+
+  it('hasPerfIsolationPair spots the pair in either form', () => {
+    expect(hasPerfIsolationPair(DROPDOWN)).toBe(true);
+    expect(hasPerfIsolationPair("style={{ contain: 'layout', willChange: 'transform', x: 1 }}")).toBe(true);
+    expect(hasPerfIsolationPair("style={{ contain: 'paint', x: 1 }}")).toBe(false);
   });
 });
 

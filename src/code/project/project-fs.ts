@@ -14,6 +14,7 @@ import { buildProvidersSource } from './providers-gen';
 import { trace } from '@/shared/debug-trace';
 import { parseJSX } from '@/code/parsing/ast-utils';
 import { findVariantRootId, insertAtRootRestSpread, stampRootDataVariantAttr } from '@/shared/variant-root';
+import { ensureRootPerfIsolation, hasPerfIsolationPair } from '@/code/variants/variant-perf';
 import { nodeIdToVarName } from '@/shared/id-utils';
 import { healStyleBlockImportant } from '@/shared/media-important';
 import { ensureLayoutFile } from '@/code/generation/metadata-gen';
@@ -571,6 +572,22 @@ export class InMemoryProjectFS implements ProjectFS {
       if (healed !== src) {
         this.activeFiles().set(path, healed);
         trace.action('project-fs:migrated-root-data-variant', { path });
+      }
+    }
+    // Variant perf-isolation heal: the old injector could not cross a root
+    // handler's `=>` and stamped `contain:'layout paint'` + willChange onto
+    // CHILDREN — clipping them (Overflow: Visible did nothing) and promoting a
+    // GPU layer each — and always used `paint`, which cuts off whatever hangs
+    // outside a root with overflow visible (user report 2026-10-19). Re-run
+    // the fixed maintenance on masters that carry our pair anywhere: strays
+    // come off, the root gets the right mode. Idempotent.
+    for (const [path, src] of this.files) {
+      if (!path.startsWith('components/') || !path.endsWith('.tsx')) continue;
+      if (!hasPerfIsolationPair(src)) continue;
+      const healed = ensureRootPerfIsolation(src);
+      if (healed !== src) {
+        this.activeFiles().set(path, healed);
+        trace.action('project-fs:migrated-perf-isolation', { path });
       }
     }
     // Section-driven scroll transform heal: files written before 2026-09-16
