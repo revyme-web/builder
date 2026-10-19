@@ -24,3 +24,8 @@ export const contextMenuAtom = atom<ContextMenuState>({
 
 /** Set to a nodeId to activate inline rename in the layers panel */
 export const renamingNodeIdAtom = atom<string | null>(null);
+
+/** Set to a nodeId to open the Make Component name modal for it (Ctrl+Alt+K).
+ *  The modal and its confirm flow live in ContextMenu, which takes the request
+ *  and clears it. */
+export const makeComponentRequestAtom = atom<string | null>(null);

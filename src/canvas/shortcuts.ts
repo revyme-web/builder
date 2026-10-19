@@ -42,7 +42,7 @@ import { buildGroupSvgsOpts } from './svg-group-helper';
 import { activeFilePathAtom, activeCodeAtom, isIconSetFilePath, isDesignComponentFile } from '../code/project/active-file-store';
 import { detachInstance } from '../code/components/component-ops';
 import { isReplicaViewportAtom, isComponentVariantViewportAtom } from '../code/stores/viewport-store';
-import { renamingNodeIdAtom } from '../code/stores/context-menu-store';
+import { renamingNodeIdAtom, makeComponentRequestAtom } from '../code/stores/context-menu-store';
 import { createAndOpenProject } from '../editor/header/menu-builders';
 import { nudgeSelection, flushPendingNudge, type NudgeDirection } from './arrow-nudge';
 import { selectAllPageNodeIds } from './selection/select-all';
@@ -445,6 +445,27 @@ export function registerShortcuts(refs: ShortcutRefs): () => void {
     store.set(activeCodeAtom, newCode);
     syncQueueCode(newCode);
     setSelectedIds(out.rootId ? [out.rootId] : []);
+  }}));
+
+  // ─── Make Component (Ctrl+Alt+K) ─────────────────────────────────
+  // Matches the context menu's "Make Component · Ctrl+Alt+K" — advertised, but
+  // nothing ever registered it (user report 2026-10-19), same as Detach above.
+  // Opens the menu's own name modal via makeComponentRequestAtom (ContextMenu
+  // owns the modal and the confirm flow) behind the menu item's gates: ONE
+  // node, not an instance or an svg, and a primary artboard only — a replica
+  // viewport / non-default variant can't host a brand-new component.
+  cleanups.push(keyboard.register({ key: 'k', ctrl: true, alt: true, label: 'Make Component', category: 'structure', handler: () => {
+    const sel = selectedIdRef.current;
+    if (!sel || selectedIdsRef.current.length > 1) return;
+    const store = getDefaultStore();
+    if (store.get(isReplicaViewportAtom) || store.get(isComponentVariantViewportAtom)) {
+      trace.action('shortcut:make-component-skipped-non-primary', { nodeId: sel });
+      return;
+    }
+    const node = nodesRef.current.get(sel);
+    if (!node || node.componentFile || node.type === 'svg') return;
+    trace.action('shortcut:make-component', { nodeId: sel });
+    store.set(makeComponentRequestAtom, sel);
   }}));
 
   // ─── Copy/Paste/Cut/Duplicate ────────────────────────────────────

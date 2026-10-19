@@ -5,7 +5,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { CDN_HOST_BARE } from '@/shared/hosts';
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { createPortal } from 'react-dom';
-import { contextMenuAtom, renamingNodeIdAtom } from '@/code/stores/context-menu-store';
+import { contextMenuAtom, renamingNodeIdAtom, makeComponentRequestAtom } from '@/code/stores/context-menu-store';
 import { codeAtom, nodesAtom, selectedNodeAtom, selectedIdsAtom, updatingFromCanvasAtom, getNodesSnapshot } from '@/code/stores/store';
 import { useNode, useNodesComputed } from '@/code/stores/node-family';
 import type { CanvasNode } from '@/code/parsing/parser';
@@ -164,6 +164,19 @@ export default function ContextMenu() {
   // entry doesn't bleed across modals if the user changes their mind.
   const [makeIconSetModal, setMakeIconSetModal] = useState<{ nodeIds: string[] } | null>(null);
   const [makeIconSetName, setMakeIconSetName] = useState('');
+
+  // Ctrl+Alt+K (shortcuts.ts) asks for the same modal the menu item opens. The
+  // shortcut already applied the item's gates; this only seeds the name and opens.
+  const [makeCompRequest, setMakeCompRequest] = useAtom(makeComponentRequestAtom);
+  useEffect(() => {
+    if (!makeCompRequest) return;
+    setMakeCompRequest(null);
+    const target = getNodesSnapshot().get(makeCompRequest);
+    if (!target) return;
+    trace.action('context-menu:make-component-from-shortcut', { nodeId: makeCompRequest });
+    setMakeCompName(target.name || target.type || '');
+    setMakeCompModal({ nodeId: makeCompRequest });
+  }, [makeCompRequest, setMakeCompRequest]);
 
   // Adjust position to stay on screen
   useEffect(() => {
