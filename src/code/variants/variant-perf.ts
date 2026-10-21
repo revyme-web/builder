@@ -68,12 +68,42 @@ export function variantsAnimateHeavyProps(code: string): boolean {
     }
     if (close < 0) continue;
     const body = code.slice(open + 1, close);
-    // keys inside the variant entries
-    for (const keyMatch of body.matchAll(/(?:^|[{,])\s*'?([A-Za-z][\w]*)'?\s*:/g)) {
-      if (isHeavyAnimatedProp(keyMatch[1])) return true;
+    for (const entry of splitTopLevelEntries(body)) {
+      // The default entry mirrors the base style, so a heavy prop there alone
+      // never tweens. Scanning it isolated a Header whose link variants were
+      // default-only `{ left: '0px', top: '0px' }`, and the isolation clipped
+      // its fixed dropdown at the header's bottom edge (user report 2026-10-20).
+      if (entry.key === 'default') continue;
+      for (const keyMatch of entry.value.matchAll(/(?:^|[{,])\s*'?([A-Za-z][\w]*)'?\s*:/g)) {
+        if (isHeavyAnimatedProp(keyMatch[1])) return true;
+      }
     }
   }
   return false;
+}
+
+/** Split a variants object body into its top-level `key: value` entries —
+ *  brace/bracket/paren-balanced and string-aware, so a nested object or a
+ *  quoted value containing `,` / `:` never splits an entry. */
+function splitTopLevelEntries(body: string): { key: string; value: string }[] {
+  const entries: { key: string; value: string }[] = [];
+  const push = (raw: string) => {
+    const colon = raw.indexOf(':');
+    if (colon < 0) return;
+    const key = raw.slice(0, colon).trim().replace(/^(['"])(.*)\1$/, '$2');
+    entries.push({ key, value: raw.slice(colon + 1) });
+  };
+  let depth = 0, inStr = '', start = 0;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (inStr) { if (ch === '\\') i++; else if (ch === inStr) inStr = ''; continue; }
+    if (ch === "'" || ch === '"' || ch === '`') inStr = ch;
+    else if (ch === '{' || ch === '[' || ch === '(') depth++;
+    else if (ch === '}' || ch === ']' || ch === ')') depth--;
+    else if (ch === ',' && depth === 0) { push(body.slice(start, i)); start = i + 1; }
+  }
+  push(body.slice(start));
+  return entries;
 }
 
 export type IsolationMode = 'layout' | 'layout paint';

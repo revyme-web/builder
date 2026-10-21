@@ -599,9 +599,18 @@ export function clearNodeScrollFx(code: string, nodeId: string): string {
 // Same carve-out precedent as `<cn>Variants` in removeScrollFxConst.
 const TEXT_ANIM_TAIL = 'T[ea](?:\\d|SP\\b|Ref\\b)';
 
-/** `<cn><Uppercase>` matcher that skips the text-anim hook family. */
+// An overlay's open state is `<cn>Open` (overlay-gen `stateVarName`) — overlay-gen
+// owns it, never scroll-fx. X-ing the Appear on an overlay ran the sweeps below,
+// which deleted `const [<cn>Open, set<Cn>Open] = useState(false)` while the
+// overlay's effect, trigger onClick and `{<cn>Open && …}` gate kept using it →
+// "References undefined identifiers: …Open — would crash" blocked the removal
+// (user report 2026-10-21). Same carve-out as overlayStateRe in the node path.
+const OVERLAY_STATE_TAIL = 'Open\\b';
+
+/** `<cn><Uppercase>` matcher that skips the text-anim hook family and the
+ *  overlay's open state. */
 function scrollFxVarRe(e: string): RegExp {
-  return new RegExp(`${e}(?!${TEXT_ANIM_TAIL})[A-Z]`);
+  return new RegExp(`${e}(?!${TEXT_ANIM_TAIL}|${OVERLAY_STATE_TAIL})[A-Z]`);
 }
 
 /** True when the node's TEXT-ANIM hooks read the node's `<cn>Ref` as their

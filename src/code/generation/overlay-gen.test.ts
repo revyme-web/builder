@@ -108,8 +108,12 @@ describe('createOverlayInCode', () => {
     expect(result).toContain('[data-id="dropdown1"]');
     expect(result).toContain('[dropdown1Open]');
     expect(result).toContain('getBoundingClientRect');
-    expect(result).toContain("addEventListener('resize'");
-    expect(result).toContain("addEventListener('scroll'");
+    // Follows the trigger every frame (scroll, resize, an ancestor sliding
+    // away) and lifts the open overlay into the top layer.
+    expect(result).toContain('requestAnimationFrame(function follow()');
+    expect(result).toContain('cancelAnimationFrame(raf)');
+    expect(result).toContain("setAttribute('popover', 'manual')");
+    expect(result).toContain('showPopover()');
   });
 
   test('adds data-overlay-trigger attr to trigger element', () => {
@@ -1779,7 +1783,7 @@ describe('healMissingOverlayEffectsInCode — restores a dropped positioner', ()
     const healed = healMissingOverlayEffectsInCode(corrupted);
     expectParses(healed);
     expect(healed).toContain(', [ov1Open]);');             // positioner restored
-    expect(healed).toContain('overlay.style.top = top');   // it's the real positioner
+    expect(healed).toContain('overlay.style.top = t;');   // it's the real positioner
   });
 
   test('no-op when every overlay already has its effect', () => {

@@ -27,6 +27,40 @@ function C() {
 }
 `;
 
+describe('variantsAnimateHeavyProps — the default entry never counts', () => {
+  // Live find 2026-10-20: a Header whose link variants were default-only
+  // `{ left: '0px', top: '0px' }` got `contain: 'layout paint'` + willChange,
+  // which clipped its fixed dropdown at the header's 112px bottom edge.
+  it('a default-only heavy entry does not tween → no isolation', () => {
+    expect(variantsAnimateHeavyProps(`const linkNavBlogVariants = {\n  default: { left: '0px', top: '0px' },\n};`)).toBe(false);
+  });
+  it('a quoted default key is skipped too', () => {
+    expect(variantsAnimateHeavyProps(`const aVariants = { 'default': { width: '10px' }, hover: { opacity: 0.5 } };`)).toBe(false);
+  });
+  it('a heavy prop in any non-default entry still triggers', () => {
+    expect(variantsAnimateHeavyProps(`const aVariants = { default: { left: '0px' }, 'mobile-open': { left: '20px' } };`)).toBe(true);
+  });
+  it('commas and colons inside values never split an entry', () => {
+    expect(variantsAnimateHeavyProps(`const aVariants = {\n  default: { boxShadow: '0 0 4px rgba(0,0,0,0.2)', transition: { ease: [0.4, 0, 0.2, 1] } },\n  hover: { backgroundColor: 'rgba(0, 0, 0, 0.1)', backgroundImage: 'url("a:b,c")' },\n};`)).toBe(true);
+    expect(variantsAnimateHeavyProps(`const aVariants = {\n  default: { boxShadow: '0 0 4px rgba(0,0,0,0.2)' },\n  hover: { backgroundColor: 'rgba(0, 0, 0, 0.1)', x: 4 },\n};`)).toBe(false);
+  });
+  it('the reported Header heals: the isolation pair comes off the root', () => {
+    const header = `
+const frameVariants = { default: { rotate: 0 }, 'mobile': { rotate: 0 } };
+const linkNavBlogVariants = {
+  default: { left: '0px', top: '0px' },
+};
+function H() {
+  return <motion.div data-id="frame" variants={frameVariants} style={{ contain: 'layout paint', willChange: 'transform',  display: 'flex', overflow: 'hidden' }} />;
+}
+`;
+    const out = ensureRootPerfIsolation(header);
+    expect(out).not.toContain('contain:');
+    expect(out).not.toContain('willChange');
+    expect(out).toContain("display: 'flex', overflow: 'hidden'");
+  });
+});
+
 describe('variantsAnimateHeavyProps', () => {
   it('detects layout props (left/top) in variant objects', () => {
     expect(variantsAnimateHeavyProps(HEAVY)).toBe(true);
@@ -35,8 +69,8 @@ describe('variantsAnimateHeavyProps', () => {
     expect(variantsAnimateHeavyProps(LIGHT)).toBe(false);
   });
   it('paint-heavy props trigger', () => {
-    expect(variantsAnimateHeavyProps("const vVariants = { default: { boxShadow: '0 0 4px red' } };")).toBe(true);
-    expect(variantsAnimateHeavyProps("const vVariants = { default: { filter: 'blur(10px)' } };")).toBe(true);
+    expect(variantsAnimateHeavyProps("const vVariants = { default: { boxShadow: 'none' }, hover: { boxShadow: '0 0 4px red' } };")).toBe(true);
+    expect(variantsAnimateHeavyProps("const vVariants = { default: { filter: 'none' }, hover: { filter: 'blur(10px)' } };")).toBe(true);
   });
 });
 

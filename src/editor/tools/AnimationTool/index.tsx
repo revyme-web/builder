@@ -190,7 +190,8 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
   const { node, vpWidth } = useControl();
   // Overlay nodes only support Appear (the panel mounts/unmounts with its
   // trigger) — the Add dropdown greys everything else out.
-  const isOverlayNode = useAtomValue(overlayCallsAtom).some((c) => c.overlayId === node?.id);
+  const overlayCall = useAtomValue(overlayCallsAtom).find((c) => c.overlayId === node?.id);
+  const isOverlayNode = !!overlayCall;
   // Scope context — which tile/variant is being viewed, so per-breakpoint /
   // per-variant animations only show on the tile they belong to (+ a Reset).
   const activeVariant = useAtomValue(activeComponentVariantAtom);
@@ -708,6 +709,18 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
         setActivePopup('tap'); break;
       case 'appear':
         if (isInstance) { addInstanceFx('appear', { appear: { from: { opacity: 0, y: 30 } } }); setActivePopup('appear'); break; }
+        if (overlayCall) {
+          // Overlay: restore the form overlay-gen bakes in on create (enter
+          // `initial → animate` + a matching `exit`) — it mounts inside
+          // <AnimatePresence>, so an in-view reveal would have no exit.
+          const from: Record<string, string> = overlayCall.config.type === 'fixed'
+            ? { opacity: '0' } : { opacity: '0', y: '20' };
+          queueMutation({ type: 'updateMotionProp', nodeId, propName: 'initial', props: from, scope });
+          queueMutation({ type: 'updateMotionProp', nodeId, propName: 'animate',
+            props: appearReveal(Object.keys(from), getNodeFromCache(nodeId)?.styles) });
+          queueMutation({ type: 'updateMotionProp', nodeId, propName: 'exit', props: from });
+          setActivePopup('appear'); break;
+        }
         // the reference model: only an ENTER (From) state — the element animates TO its
         // resting state automatically. `initial` is the (scoped) enter; `whileInView`
         // is the DERIVED reveal (non-scoped — resting is the same on every viewport).
@@ -851,7 +864,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
         break;
       }
     }
-  }, [nodeId, onUpdate, setKeyframeSheet, bumpKeyframes, s.transition, isInstance, writeInstanceFx, addInstanceFx, allTextAnims]);
+  }, [nodeId, onUpdate, setKeyframeSheet, bumpKeyframes, s.transition, isInstance, writeInstanceFx, addInstanceFx, allTextAnims, overlayCall]);
 
   const handleRemove = useCallback((type: AnimEntryType, entry?: DetectedEntry) => {
     trace.action('animation:remove', { nodeId, type });
@@ -877,6 +890,16 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
         });
         return;
       }
+    }
+    // Overlay Appear is NOT a scroll-fx effect: it is the overlay's own
+    // `initial → animate` + `exit` (+ enter `transition`) inside <AnimatePresence>.
+    // Remove exactly those props. The scroll-fx clear left `exit` behind (the
+    // overlay still animated out on close) and never belonged on this node.
+    if (type === 'appear' && (entry?.data as any)?.isOverlay) {
+      for (const propName of ['initial', 'animate', 'exit', 'transition']) {
+        queueMutation({ type: 'removeMotionProp', nodeId, propName });
+      }
+      return;
     }
     // Normal-node (motion.*) effects are spec-driven: drop the one key from the
     // ScrollFxSpec and regenerate the whole block (robust to reformatting — no

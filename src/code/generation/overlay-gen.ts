@@ -11,7 +11,16 @@ import { parseOverlayCalls, parseOverlayTriggerCalls, resolveOverlayConfig } fro
 import { findCanvasNodesFragmentClose, findExportDefaultEndIdx } from './generator-crud';
 import { splitStyleProps } from '@/shared/css-utils';
 import { escapeRegExp } from '@/shared/regex-utils';
-import { nodeIdToVarName } from '@/shared/id-utils';
+import {
+  stateVarName, findJs, findLitJs, buildFixedOverlayRuntimeEffect, buildRelativeOverlayPosEffect,
+} from './overlay-runtime-effects';
+
+// The runtime effects + their top-layer heal live in a leaf module (project-fs
+// imports the heal); re-exported so existing importers keep one entry point.
+export {
+  stateVarName, buildFixedOverlayRuntimeEffect, buildRelativeOverlayPosEffect,
+  healOverlayTopLayerInCode, OVERLAY_TOP_LAYER_CSS, OVERLAY_TOP_LAYER_STYLE_ID,
+} from './overlay-runtime-effects';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -152,10 +161,6 @@ function removeOverlayConditionalBlock(code: string, overlayId: string, varName:
   if (!span) return code;
   trace.action('overlay-gen:remove:block', { overlayId, start: span.start, end: span.end });
   return code.slice(0, span.start) + code.slice(span.end);
-}
-
-export function stateVarName(overlayId: string): string {
-  return `${nodeIdToVarName(overlayId)}Open`;
 }
 
 // Default appear transitions for a fixed overlay (mirrors OverlayTool's defaults).
@@ -405,16 +410,6 @@ export function isMasterCode(code: string): boolean {
   return code.includes('{...rest}');
 }
 
-/** JS expression that resolves the element for `idExpr` (a JS expression). */
-function findJs(idExpr: string, scoped: boolean): string {
-  return scoped
-    ? `ovFind(${idExpr})`
-    : `document.querySelector('[data-id="' + ${idExpr} + '"]')`;
-}
-/** Same for a LITERAL id — the page form keeps the historical single string. */
-function findLitJs(id: string, scoped: boolean): string {
-  return scoped ? `ovFind('${id}')` : `document.querySelector('[data-id="${id}"]')`;
-}
 
 const MASTER_SCOPE_DECL = `  const ovRootRef = useRef(null);
   const ovGrace = useRef({});
@@ -490,110 +485,6 @@ function buildOverlayHoverMirrorAttr(triggerConfig: OverlayTriggerConfig, overla
   // — entering the overlay cancels the trigger's pending close, and leaving
   // it back across the gap toward the trigger must not insta-close either.
   return ` onMouseEnter={() => { ${graceCancelJs(overlayId, scoped)} ${setVarName}(true); }} onMouseLeave={(e) => { const tr = ${findLitJs(triggerId, scoped)}; if (tr && e.relatedTarget && tr.contains(e.relatedTarget)) return; ${graceArmJs(overlayId, setVarName, scoped)} }}`;
-}
-
-/** The useEffect that powers a FIXED overlay (modal) at runtime. Reads its
- *  CONFIG from `data-overlay` (so panel edits to dismissible/pageScroll propagate
- *  without rewriting this effect) and: (a) closes on backdrop press when
- *  `dismissible !== false`, (b) locks body scroll while open unless
- *  `pageScroll === 'auto'`. Backdrop = a press whose target is the overlay
- *  element itself (not its content). fill/zIndex live in the element style
- *  (config-baked at create; the editor Renderer also applies them live). */
-export function buildFixedOverlayRuntimeEffect(overlayId: string, scoped = false): string {
-  const varName = stateVarName(overlayId);
-  const setVarName = `set${varName.charAt(0).toUpperCase() + varName.slice(1)}`;
-  const esc = escapeRegExp(overlayId);
-  void esc;
-  return `  useEffect(() => {
-    if (!${varName}) return;
-    const overlay = ${findLitJs(overlayId, scoped)};
-    if (!overlay) return;
-    const cfg = JSON.parse(overlay.getAttribute('data-overlay') || '{}');
-    if (cfg.fill) overlay.style.backgroundColor = cfg.fill;
-    if (cfg.zIndex != null) overlay.style.zIndex = String(cfg.zIndex);
-    const onBackdrop = (e) => { if (e.target === overlay && cfg.dismissible !== false) ${setVarName}(false); };
-    overlay.addEventListener('mousedown', onBackdrop);
-    const prevOverflow = document.body.style.overflow;
-    if (cfg.pageScroll !== 'auto') document.body.style.overflow = 'hidden';
-    return () => {
-      overlay.removeEventListener('mousedown', onBackdrop);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [${varName}]);
-`;
-}
-
-/** The useLayoutEffect that positions a RELATIVE overlay from its trigger at
- *  runtime (responsive-aware). Shared by create (fresh) and rehydrate (trigger
- *  dragged back into a viewport) so both emit byte-identical runtime. */
-/* The emitted dismiss handler carries NO comments on purpose: prose comments in
- * a page bounce the oracle's NO_COMMENTS_IN_GENERATED_CODE (the fast-path
- * generators splice JSX by character position, so an unexpected comment shifts
- * every offset). Documenting the behaviour HERE keeps the explanation without
- * shipping it into the user's file — a live page carried 3 of these
- * (user report 2026-07-26).
- *
- * What it does: pressing anywhere on the page closes the overlay, not only the
- * source. Trigger presses are ignored (the trigger's own handler toggles);
- * presses inside the overlay keep it open. */
-export function buildRelativeOverlayPosEffect(overlayId: string, scoped = false): string {
-  const varName = stateVarName(overlayId);
-  const setter = `set${varName.charAt(0).toUpperCase() + varName.slice(1)}`;
-  return `  useLayoutEffect(() => {
-    if (!${varName}) return;
-    const position = () => {
-      const overlay = ${findLitJs(overlayId, scoped)};
-      if (!overlay) return;
-      const raw = JSON.parse(overlay.getAttribute('data-overlay') || '{}');
-      let cfg = raw;
-      if (raw.responsive) {
-        const ww = window.innerWidth;
-        const bps = raw.responsiveBp;
-        const owning = (bps && bps.length)
-          ? bps.filter(b => ww <= b).sort((a, b) => a - b)[0]
-          : Object.keys(raw.responsive).map(Number).filter(n => ww <= n).sort((a, b) => a - b)[0];
-        if (owning !== undefined && raw.responsive[owning]) cfg = { ...raw, ...raw.responsive[owning] };
-      }
-      const trigger = ${findJs('cfg.triggerId', scoped)};
-      if (!trigger) return;
-      const r = trigger.getBoundingClientRect();
-      const w = overlay.offsetWidth, h = overlay.offsetHeight;
-      const g = 8, ox = cfg.offsetX || 0, oy = cfg.offsetY || 0;
-      let top, left;
-      switch (cfg.side || 'bottom') {
-        case 'top': top = r.top - h - g + oy; break;
-        case 'left': top = r.top + oy; left = r.left - w - g + ox; break;
-        case 'right': top = r.top + oy; left = r.right + g + ox; break;
-        default: top = r.bottom + g + oy;
-      }
-      if (left === undefined) {
-        if (cfg.align === 'center') left = r.left + r.width / 2 - w / 2 + ox;
-        else if (cfg.align === 'end') left = r.right - w + ox;
-        else left = r.left + ox;
-      } else if (cfg.align === 'center') top = r.top + r.height / 2 - h / 2 + oy;
-      else if (cfg.align === 'end') top = r.bottom - h + oy;
-      if (cfg.collision !== 'none') {
-        const pad = cfg.collisionPadding ?? 20;
-        left = Math.min(Math.max(left, pad), window.innerWidth - w - pad);
-        top = Math.min(Math.max(top, pad), window.innerHeight - h - pad);
-      }
-      overlay.style.top = top + 'px';
-      overlay.style.left = left + 'px';
-    };
-    const onOutside = (e) => {
-      const ov = ${findLitJs(overlayId, scoped)};
-      if (ov && ov.contains(e.target)) return;
-      const tid = ov ? (JSON.parse(ov.getAttribute('data-overlay') || '{}').triggerId) : null;
-      const tr = tid ? ${findJs('tid', scoped)} : null;
-      if (tr && tr.contains(e.target)) return;
-      ${setter}(false);
-    };
-    position();
-    window.addEventListener('resize', position);
-    window.addEventListener('scroll', position, true);
-    document.addEventListener('mousedown', onOutside);
-    return () => { window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true); document.removeEventListener('mousedown', onOutside); };
-  }, [${varName}]);\n`;
 }
 
 /** Insert an overlay's conditional JSX block as the LAST child of the page root
