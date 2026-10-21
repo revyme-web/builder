@@ -8,10 +8,13 @@ import {
   applyTemplate,
   createTemplate,
   renameTemplate,
+  renamedTemplatePath,
   deleteTemplate,
   validateTemplateName,
 } from './template-ops';
 import { projectFS, resetProjectFS } from './project-fs';
+import { createTemplateFolder, moveTemplateToFolder, listTemplateFolders, getTemplateRootOrder } from './template-folder-ops';
+import { listPageFolders, PAGE_FOLDERS_FILE_PATH } from './page-folders';
 
 beforeEach(() => {
   resetProjectFS();
@@ -244,7 +247,7 @@ describe('renameTemplate', () => {
   test('moves every file under the group folder', () => {
     createTemplate('marketing');
     assignTemplate('app/about/page.tsx', 'marketing');
-    expect(renameTemplate('marketing', 'main')).toBe(true);
+    expect(renameTemplate('marketing', 'main')).toBe('main');
     expect(projectFS.exists('app/(marketing)/LayoutClient.tsx')).toBe(false);
     expect(projectFS.exists('app/(main)/LayoutClient.tsx')).toBe(true);
     expect(projectFS.exists('app/(main)/about/page.tsx')).toBe(true);
@@ -253,7 +256,7 @@ describe('renameTemplate', () => {
   test('blocks rename when destination already exists', () => {
     createTemplate('marketing');
     createTemplate('blog');
-    expect(renameTemplate('marketing', 'blog')).toBe(false);
+    expect(renameTemplate('marketing', 'blog')).toBeNull();
     // Originals untouched
     expect(projectFS.exists('app/(marketing)/LayoutClient.tsx')).toBe(true);
     expect(projectFS.exists('app/(blog)/LayoutClient.tsx')).toBe(true);
@@ -261,13 +264,77 @@ describe('renameTemplate', () => {
 
   test('rejects invalid names', () => {
     createTemplate('marketing');
-    expect(renameTemplate('marketing', 'with spaces')).toBe(false);
+    expect(renameTemplate('marketing', 'with spaces')).toBeNull();
   });
 
   test('renaming to the same name is a no-op success', () => {
     createTemplate('marketing');
-    expect(renameTemplate('marketing', 'marketing')).toBe(true);
+    expect(renameTemplate('marketing', 'marketing')).toBe('marketing');
     expect(projectFS.exists('app/(marketing)/LayoutClient.tsx')).toBe(true);
+  });
+});
+
+// User report 2026-10-21: renaming a template moved its files but left every
+// path that NAMES them pointing at the old group — the editor stayed on a page
+// path that no longer existed (blank canvas), and the locale routes still
+// re-exported `@/app/(Body)/page` (a failed publish build).
+describe('renameTemplate — everything that names a path follows the group', () => {
+  test('renamedTemplatePath maps paths inside the group only', () => {
+    expect(renamedTemplatePath('app/(Body)/page.client.tsx', 'Body', 'poon')).toBe('app/(poon)/page.client.tsx');
+    expect(renamedTemplatePath('app/(Body)/about/page.client.tsx', 'Body', 'poon')).toBe('app/(poon)/about/page.client.tsx');
+    expect(renamedTemplatePath('app/(Body)/LayoutClient.tsx', 'Body', 'poon')).toBe('app/(poon)/LayoutClient.tsx');
+    expect(renamedTemplatePath('app/(Bodyx)/page.client.tsx', 'Body', 'poon')).toBe('app/(Bodyx)/page.client.tsx');
+    expect(renamedTemplatePath('components/Header.tsx', 'Body', 'poon')).toBe('components/Header.tsx');
+  });
+
+  test('locale routes are regenerated to import from the new group', () => {
+    projectFS.writeFile('i18n/config.json', JSON.stringify({
+      defaultLocale: 'en', locales: [{ code: 'en', label: 'English' }, { code: 'fr', label: 'Français' }],
+    }));
+    createTemplate('Body');
+    assignTemplate('app/about/page.tsx', 'Body');
+    // a page move syncs locale routes, so the wrapper exists under the group
+    expect(projectFS.readFile('app/(Body)/fr/about/page.tsx')).toContain("from '@/app/(Body)/about/page'");
+
+    expect(renameTemplate('Body', 'poon')).toBe('poon');
+    expect(projectFS.exists('app/(Body)/fr/about/page.tsx')).toBe(false);
+    const wrapper = projectFS.readFile('app/(poon)/fr/about/page.tsx') ?? '';
+    expect(wrapper).toContain("export { default } from '@/app/(poon)/about/page';");
+    expect(wrapper).not.toContain('(Body)');
+    // no file anywhere still points into the old group
+    for (const f of projectFS.listFiles('app/')) {
+      expect(projectFS.readFile(f) ?? '').not.toContain('@/app/(Body)/');
+    }
+  });
+
+  test('comments on pages inside the group stay attached', () => {
+    createTemplate('Body');
+    assignTemplate('app/about/page.tsx', 'Body');
+    projectFS.writeFile('_meta/comments.json', JSON.stringify([
+      { id: 'c1', x: 10, y: 20, filePath: 'app/(Body)/about/page.client.tsx' },
+      { id: 'c2', x: 1, y: 2, filePath: 'app/page.client.tsx' },
+    ]));
+    renameTemplate('Body', 'poon');
+    const comments = JSON.parse(projectFS.readFile('_meta/comments.json') ?? '[]');
+    expect(comments.map((c: { filePath: string }) => c.filePath))
+      .toEqual(['app/(poon)/about/page.client.tsx', 'app/page.client.tsx']);
+  });
+
+  test('the template keeps its Library folder and position', () => {
+    createTemplate('Body');
+    const folder = createTemplateFolder('Layouts');
+    moveTemplateToFolder('app/(Body)/LayoutClient.tsx', folder);
+    renameTemplate('Body', 'poon');
+    const f = listTemplateFolders().find((x) => x.id === folder);
+    expect(f?.children).toEqual(['app/(poon)/LayoutClient.tsx']);
+    expect(getTemplateRootOrder()).not.toContain('app/(Body)/LayoutClient.tsx');
+  });
+
+  test('an empty Pages-panel folder inside the group moves with it', () => {
+    createTemplate('Body');
+    projectFS.writeFile(PAGE_FOLDERS_FILE_PATH, JSON.stringify(['app/(Body)/blog', 'app/(Body)/blog/news', 'app/(Bodyx)/x', 'app/docs']));
+    renameTemplate('Body', 'poon');
+    expect(listPageFolders().sort()).toEqual(['app/(Bodyx)/x', 'app/(poon)/blog', 'app/(poon)/blog/news', 'app/docs']);
   });
 });
 

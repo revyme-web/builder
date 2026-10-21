@@ -969,7 +969,7 @@ function pruneCommentsForFilePath(filePath: string): void {
 
 /** Rewrite `filePath` on every comment matching `oldPath` so threads
  *  follow the page through a rename / move. */
-function retargetCommentsForFilePath(oldPath: string, newPath: string): void {
+export function retargetCommentsForFilePath(oldPath: string, newPath: string): void {
   const json = projectFS.readFile(COMMENTS_FILE_PATH);
   if (!json) return;
   const before = parseComments(json);

@@ -26,7 +26,12 @@ import {
   getRouteGroup,
   getPageServerPath,
   movePageFile,
+  retargetCommentsForFilePath,
 } from './active-file-store';
+import { syncLocaleRoutes } from './locale-route-ops';
+import { getI18nConfig } from './locale-ops';
+import { renameTemplateItem } from './template-folder-ops';
+import { retargetPageFolders } from './page-folders';
 import { trace } from '@/shared/debug-trace';
 
 export interface Template {
@@ -197,18 +202,31 @@ export function applyTemplate(
  * path under it — there's no `renameDir` on ProjectFS, so we list+move
  * one file at a time.
  *
- * Blocked when the destination name already exists.
+ * A raw move is not enough on its own. Everything that NAMES a path inside
+ * the group has to follow it (user report 2026-10-21: renaming a template
+ * left the editor on the old page path, which no longer existed, so the
+ * canvas went blank):
+ *   - the locale routes (`app/(g)/fr/page.tsx`) re-export
+ *     `@/app/(<old>)/page` → regenerated, else the published build fails;
+ *   - comments keep their `filePath` → retargeted;
+ *   - the Templates folder tree keys a template by its LayoutClient path;
+ *   - empty Pages-panel folders inside the group are stored by path.
+ * The ACTIVE file is the caller's to move (it owns the atom + history):
+ * map it through `renamedTemplatePath`.
+ *
+ * Returns the sanitized new name, or null when blocked (invalid name or the
+ * destination already exists).
  */
-export function renameTemplate(oldName: string, newName: string): boolean {
+export function renameTemplate(oldName: string, newName: string): string | null {
   const clean = sanitizeTemplateName(newName);
   if (!clean) {
     trace.error('template-ops:rename-invalid-name', { oldName, newName });
-    return false;
+    return null;
   }
-  if (clean === oldName) return true;
+  if (clean === oldName) return clean;
   if (templateExists(clean)) {
     trace.error('template-ops:rename-conflict', { oldName, newName: clean });
-    return false;
+    return null;
   }
   const oldDir = `app/(${oldName})/`;
   const newDir = `app/(${clean})/`;
@@ -216,9 +234,20 @@ export function renameTemplate(oldName: string, newName: string): boolean {
   for (const file of files) {
     const dest = newDir + file.slice(oldDir.length);
     projectFS.moveFile(file, dest);
+    retargetCommentsForFilePath(file, dest);
   }
+  syncLocaleRoutes(getI18nConfig());
+  renameTemplateItem(`${oldDir}LayoutClient.tsx`, `${newDir}LayoutClient.tsx`);
+  retargetPageFolders(oldDir.slice(0, -1), newDir.slice(0, -1));
   trace.action('template-ops:rename', { oldName, newName: clean, fileCount: files.length });
-  return true;
+  return clean;
+}
+
+/** Where `filePath` lives after renaming template `oldName` → `newName`:
+ *  unchanged unless it is inside the old route group. */
+export function renamedTemplatePath(filePath: string, oldName: string, newName: string): string {
+  const oldDir = `app/(${oldName})/`;
+  return filePath.startsWith(oldDir) ? `app/(${newName})/${filePath.slice(oldDir.length)}` : filePath;
 }
 
 /**

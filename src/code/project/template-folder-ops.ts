@@ -21,3 +21,4 @@ export const renameTemplateFolder = ops.renameFolder;
 export const deleteTemplateFolder = ops.deleteFolder;
 export const moveTemplateToFolder = ops.moveItemToFolder;
 export const moveTemplateItem = ops.moveItem;
+export const renameTemplateItem = ops.renameItem;

@@ -40,6 +40,16 @@ function save(dirs: string[]): void {
   projectFS.writeFile(PAGE_FOLDERS_FILE_PATH, `${JSON.stringify([...new Set(dirs)].sort(), null, 2)}\n`);
 }
 
+/** A directory moved (a template rename moves its whole route group) — move
+ *  every declared folder at or under `oldDir` with it. Without this an EMPTY
+ *  folder inside the group vanished on rename: nothing derives it any more. */
+export function retargetPageFolders(oldDir: string, newDir: string): void {
+  const dirs = listPageFolders();
+  const next = dirs.map((d) => (d === oldDir || d.startsWith(`${oldDir}/`) ? newDir + d.slice(oldDir.length) : d));
+  if (next.every((d, i) => d === dirs[i])) return;
+  save(next);
+}
+
 /** Slug a folder name the same way a page route is slugged. */
 function slugify(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'folder';

@@ -5,7 +5,7 @@
 // FolderTree node; the unfiled templates render at the root.
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { useAtom } from 'jotai';
+import { useAtom, useSetAtom } from 'jotai';
 import NameInputModal from '@/editor/ui/NameInputModal';
 import ConfirmDialog from '@/design-system/ConfirmDialog';
 import { type DropdownMenuEntry } from '@/design-system/DropdownMenu';
@@ -15,7 +15,8 @@ import {
 } from '@/design-system/FolderTree';
 import SidebarRow from '@/design-system/SidebarRow';
 import { projectVersionAtom } from '@/code/project/project-fs';
-import { listTemplates, createTemplate, renameTemplate, deleteTemplate, validateTemplateName } from '@/code/project/template-ops';
+import { listTemplates, createTemplate, renameTemplate, renamedTemplatePath, deleteTemplate, validateTemplateName } from '@/code/project/template-ops';
+import { activeFilePathAtom, componentBreadcrumbAtom } from '@/code/project/active-file-store';
 import { toast } from 'sonner';
 import { sealPendingHistory, pushHistoryFileOp } from '@/code/mutation/history';
 import {
@@ -79,6 +80,8 @@ export function TemplatesSection({
   // captured so we can bump the version after every write below;
   // `projectFS` itself doesn't bump the React atom, callers have to.
   const [version, setVersion] = useAtom(projectVersionAtom);
+  const setActiveFile = useSetAtom(activeFilePathAtom);
+  const setBreadcrumb = useSetAtom(componentBreadcrumbAtom);
   // Viewers may click a template to navigate into its layout file for
   // inspection/comment, but the per-row context menu (rename/delete) is
   // an edit affordance — hidden for viewers.
@@ -132,13 +135,29 @@ export function TemplatesSection({
     if (!renameTarget) return;
     flushNow();
     sealPendingHistory();
-    renameTemplate(renameTarget, newName);
-    setVersion(v => v + 1);
+    const renamed = renameTemplate(renameTarget, newName);
     setRenameTarget(null);
-    // The rename moves every file in the group — the pre-op active path is
-    // the one that exists in the restored state.
+    if (!renamed) {
+      toast.error(validateTemplateName(newName) ?? `Couldn't rename the template to "${newName}"`);
+      return;
+    }
+    setVersion(v => v + 1);
+    // The rename moves every file in the group. An editor left on the OLD
+    // path rendered a file that no longer exists — a blank canvas (user
+    // report 2026-10-21) — so follow the active file to its new path, the
+    // way the Pages panel does when it moves a page. Set BEFORE the history
+    // push so redo lands on the new path; the pre-op path is the one that
+    // exists in the restored state.
+    // The breadcrumb trail can hold the page the user entered a component
+    // from — map it too, or the "back to page" crumb points nowhere.
+    const target = renameTarget;
+    const nextActive = renamedTemplatePath(activeFile, target, renamed);
+    if (nextActive !== activeFile) setActiveFile(nextActive);
+    setBreadcrumb(trail => trail.some(p => renamedTemplatePath(p, target, renamed) !== p)
+      ? trail.map(p => renamedTemplatePath(p, target, renamed))
+      : trail);
     pushHistoryFileOp(activeFile);
-  }, [renameTarget, setVersion, activeFile]);
+  }, [renameTarget, setVersion, activeFile, setActiveFile, setBreadcrumb]);
 
   const handleDelete = useCallback(() => {
     if (!confirmDelete) return;

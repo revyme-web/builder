@@ -93,6 +93,10 @@ export interface FolderOps {
    *  empty/short persisted array, and on next render the drift
    *  fallback re-shuffles everything into default positions. */
   moveItem: (itemId: string, newParentId: string | null, insertIndex: number, expectedRootOrder?: string[]) => void;
+  /** An item's id changed (its file moved, e.g. a template rename moves its
+   *  LayoutClient) — swap the id in place, keeping its folder and position.
+   *  No-op when the old id isn't persisted anywhere. */
+  renameItem: (oldId: string, newId: string) => void;
 }
 
 /** Factory — instantiate a kind-specific folder ops handle. Stateless
@@ -283,6 +287,22 @@ export function createFolderOps(config: FolderOpsConfig): FolderOps {
       attachItem(parsed, itemId, newParentId, insertIndex);
       writeParsed(parsed);
       trace.action(`${traceNamespace}:move-item`, { itemId, newParentId, insertIndex });
+    },
+
+    renameItem(oldId, newId) {
+      if (oldId === newId) return;
+      const parsed = readParsed();
+      const swap = (ids: string[]) => {
+        const i = ids.indexOf(oldId);
+        if (i < 0) return false;
+        ids[i] = newId;
+        return true;
+      };
+      let changed = swap(parsed.rootOrder);
+      for (const f of parsed.folders) changed = swap(f.children) || changed;
+      if (!changed) return;
+      writeParsed(parsed);
+      trace.action(`${traceNamespace}:rename-item`, { oldId, newId });
     },
   };
 }

@@ -39,6 +39,7 @@ import { migrateBoundImageSizing } from '@/code/generation/cms-image-size-migrat
 import { migrateOutOfFlowSiblingOrders } from '@/canvas/drag/out-of-flow-order-migrate';
 import { migrateFormSubmitDisplayTransitions } from '@/code/generation/form-submit-gen';
 import { getI18nConfig } from '@/code/project/locale-ops';
+import { syncLocaleRoutes } from '@/code/project/locale-route-ops';
 import { openPluginIdAtom } from '@/plugins/registry';
 
 export default function ProjectLoader() {
@@ -326,6 +327,11 @@ export default function ProjectLoader() {
         // renumbered ≥ 1 paint BEHIND them (Flexbox §4.1) — give them their DOM order.
         try { migrateOutOfFlowSiblingOrders(); } catch (err) { trace.error('out-of-flow-order-migration-failed', err); }
         try { ensureIntlScaffold(); } catch (err) { trace.error('intl-scaffold-failed', err); }
+        // Locale routes re-export their page by path (`@/app/(group)/page`). A
+        // template rename before 2026-10-21 moved the pages without regenerating
+        // them, leaving wrappers that point at a group that no longer exists —
+        // the published build fails. The sync is idempotent (no-op when in line).
+        try { syncLocaleRoutes(getI18nConfig()); } catch (err) { trace.error('locale-routes-sync-failed', err); }
 
       // 4c. Restore each file's saved camera (pan/zoom) from `_meta/page-camera.json`
       // into the in-memory cameraStash, and apply the active file's camera on the
