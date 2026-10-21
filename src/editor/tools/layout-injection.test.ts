@@ -373,6 +373,11 @@ describe('shouldInjectLayoutOnAuto', () => {
     expect(shouldInjectLayoutOnAuto(makeNode('a', ['b']), '  flex  ')).toBe(false);
   });
 
+  it('returns false for a vector — its <path> children are geometry, not layout', () => {
+    const vec = { ...makeNode('vec', ['vec-g0']), type: 'svg' } as CanvasNode;
+    expect(shouldInjectLayoutOnAuto(vec, '')).toBe(false);
+  });
+
   it.each(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'li', 'label', 'blockquote'])(
     'returns false for text-like tag <%s>',
     (tag) => {

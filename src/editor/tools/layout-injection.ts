@@ -49,6 +49,16 @@ const TEXT_LIKE_TAGS = new Set([
   'span', 'a', 'li', 'label', 'blockquote',
 ]);
 
+/** A vector (`<svg>`, `motion.svg` parses to the same tag): its children are
+ *  GEOMETRY (`<path>`, nested group svgs), never layout children, and its
+ *  Fit size comes from its own viewBox ratio. Switching it to auto must not
+ *  inject a flex layout INTO the svg or re-position its paths (Bug #17,
+ *  2026-10-12 — invisible on paint, but it left `display:flex` on the vector
+ *  and `position:relative` on its path in the source). */
+export function isVectorNode(node: CanvasNode | undefined): boolean {
+  return (node?.type ?? '').toLowerCase() === 'svg';
+}
+
 /**
  * Decide whether a frame should be auto-converted to flex when the
  * user switches its W or H to `auto`. Skip when:
@@ -60,6 +70,7 @@ const TEXT_LIKE_TAGS = new Set([
  *   • The frame's tag is text-like (auto on `<p>` is meaningful — its
  *     own intrinsic content sets the size — and adding flex would
  *     break inline text flow).
+ *   • The node is a vector (`<svg>`) — see isVectorNode.
  *
  * The matching `injectFlexLayoutOnFrame` call should follow.
  */
@@ -69,6 +80,7 @@ export function shouldInjectLayoutOnAuto(
 ): boolean {
   if (!node) return false;
   if (node.children.length === 0) return false;
+  if (isVectorNode(node)) return false;
   // Component instances own their layout in the MASTER file. The instance
   // wrapper carries none of the master root's display/flex-direction, so
   // injecting `display:flex; flex-direction:column; align-items/justify:center`
@@ -185,6 +197,7 @@ export function freezeParentRelativeChildrenForAuto(
   const contentEl = getContentRoot();
   const node = nodes.get(nodeId);
   if (!contentEl || !node) return [];
+  if (isVectorNode(node)) return [];
   const patches = planChildAutoFreeze({
     axis,
     frameFlexDirection: node.styles?.flexDirection ?? 'row',

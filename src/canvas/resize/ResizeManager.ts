@@ -582,12 +582,36 @@ export function applyVectorAspectLock(
 }
 
 /**
+ * Aspect lock for the CUSTOM SVG resize loops (shape geometry bake / rotated
+ * group), which bypass startResize's shared lock. `forced` = a vector with the
+ * Dimensions lock on (isLockedVector): proportional from ANY handle, exactly
+ * like the main path's vector-set lock. Otherwise only Shift on a corner.
+ */
+/**
  * Shift-on-corner aspect lock for the CUSTOM SVG resize loops (rotated shape /
  * rotated group), which bypass startResize's shared `applyAspectRatioLock`.
  * Width drives height — identical semantics to the shared helper; the loops'
  * opposite-corner pin re-anchors left/top from the locked dims, so only the
  * height needs deriving. Returns the (possibly locked) height.
  */
+export function lockedLoopSize(
+  width: number, height: number,
+  shiftHeld: boolean,
+  forced: boolean,
+  xHandle: 'left' | 'right' | null,
+  yHandle: 'top' | 'bottom' | null,
+  ratio: number,
+): { width: number; height: number } {
+  if (forced && ratio > 0) {
+    // A vertical edge lets height drive; a corner or horizontal edge, width —
+    // applyVectorAspectLock's convention. The loops' opposite-point pin (an
+    // edge pins the opposite edge's MIDPOINT) re-anchors from these dims.
+    if (yHandle && !xHandle) return { width: Math.max(MIN_SIZE, height * ratio), height };
+    return { width, height: Math.max(MIN_SIZE, width / ratio) };
+  }
+  return { width, height: lockedShiftHeight(width, height, shiftHeld, xHandle, yHandle, ratio) };
+}
+
 export function lockedShiftHeight(
   width: number, height: number,
   shiftHeld: boolean,
@@ -736,6 +760,9 @@ interface RotatedSvgResizeArgs {
   shapeChild: NonNullable<ReturnType<typeof findSvgShapeChild>>;
   svgRotate: { angle: number; cx: number; cy: number };
   viewBoxAttr: string;
+  /** The Dimensions aspect lock is on (isLockedVector) — every handle keeps
+   *  the ratio, not just Shift on a corner. */
+  aspectLocked: boolean;
   /** The PARENT group's CSS rotation (deg). The shape's VISUAL rotation on
    *  screen is `svgRotate.angle + groupAngleDeg` — the screen delta must be
    *  un-rotated by that TOTAL so a resize handle follows the mouse inside a
@@ -927,12 +954,12 @@ function startRotatedSvgShapeResize(args: RotatedSvgResizeArgs): void {
       }
     }
 
-    const W = Math.max(MIN_SIZE, w);
-    // Shift — aspect-ratio lock on a corner drag (frame parity). Width drives
-    // height, mirroring the shared `applyAspectRatioLock`. The opposite-corner
-    // pin below re-anchors left/top FROM the locked dims, so no extra top
-    // compensation is needed here.
-    const H = lockedShiftHeight(W, Math.max(MIN_SIZE, h), e.shiftKey, curXHandle, curYHandle, shiftRatio);
+    // Aspect lock — the Dimensions lock (any handle) or Shift on a corner
+    // (frame parity). The opposite-corner pin below re-anchors left/top FROM
+    // the locked dims, so no extra compensation is needed here.
+    const { width: W, height: H } = lockedLoopSize(
+      Math.max(MIN_SIZE, w), Math.max(MIN_SIZE, h), e.shiftKey, args.aspectLocked, curXHandle, curYHandle, shiftRatio,
+    );
 
     // Geometry scale: original viewBox space → the new W×H box. viewBox is
     // set to "0 0 W H" so viewBoxToBox is uniform 1:1 → no skew.
@@ -1193,6 +1220,8 @@ function cumulativeSvgAncestorRotation(nodeId: string): number {
 
 interface RotatedGroupResizeArgs {
   nodeId: string; vpId: string; vpPrefix: string; direction: Direction;
+  /** See RotatedSvgResizeArgs.aspectLocked. */
+  aspectLocked: boolean;
   startEvent: PointerEvent; contentEl: HTMLElement;
   onInteracting: (active: boolean) => void;
   startWidth: number; startHeight: number; startLeft: number; startTop: number;
@@ -1266,10 +1295,11 @@ function startRotatedSvgGroupResize(args: RotatedGroupResizeArgs): void {
         curDirection = updateDirectionAfterCrossing(curXHandle ?? zc.xHandle, curYHandle ?? zc.yHandle, curDirection);
       }
     }
-    const W = Math.max(MIN_SIZE, w);
-    // Shift — corner aspect lock, width drives height (frame parity). The
-    // centre-pivot pin below re-anchors from the locked dims.
-    const H = lockedShiftHeight(W, Math.max(MIN_SIZE, h), e.shiftKey, curXHandle, curYHandle, shiftRatio);
+    // Aspect lock — the Dimensions lock (any handle) or Shift on a corner
+    // (frame parity). The centre-pivot pin below re-anchors from the locked dims.
+    const { width: W, height: H } = lockedLoopSize(
+      Math.max(MIN_SIZE, w), Math.max(MIN_SIZE, h), e.shiftKey, args.aspectLocked, curXHandle, curYHandle, shiftRatio,
+    );
 
     // Pin the opposite corner about the box CENTRE (the group rotates about its
     // centre). Identical math to the rotated-shape pin, pivot fraction = 0.5.
@@ -1418,6 +1448,13 @@ export function startResize(
   // startLeft/startTop reading x/y).
   const parentForDims = nodeData?.parentId ? getNodeFromCache(nodeData.parentId) : null;
   const isNestedSvgForDims = nodeData?.type === 'svg' && parentForDims?.type === 'svg';
+  // A plain VECTOR with the Dimensions lock on (`aspectRatio` stored — its
+  // W/H are both px, so CSS ignores the ratio) resizes like a vector set:
+  // proportional from ANY handle, both axes committed (reference shape
+  // parity, Bug #17). Same scope as the panel's isPlainVector.
+  const isLockedVector = !isVectorSet && nodeData?.type === 'svg' && !isNestedSvgForDims
+    && !!nodeStyles.aspectRatio && nodeStyles.aspectRatio !== 'auto';
+  const isAspectForced = isVectorSet || isLockedVector;
   const attrW = parseFloat(nodeData?.attrs?.width ?? '');
   const attrH = parseFloat(nodeData?.attrs?.height ?? '');
   // VARIANT painting of a group child: the baseline is the PAINTED box, not
@@ -1648,6 +1685,7 @@ export function startResize(
       svgRotate: effectiveRotate,
       viewBoxAttr: vbAttr,
       groupAngleDeg,
+      aspectLocked: isLockedVector,
     });
     return;
   }
@@ -1667,6 +1705,7 @@ export function startResize(
         nodeId, vpId, vpPrefix, direction, startEvent, contentEl, onInteracting,
         startWidth, startHeight, startLeft, startTop,
         xHandle, yHandle, canvasScale, ownAngleDeg, ancestorAngleDeg,
+        aspectLocked: isLockedVector,
       });
       return;
     }
@@ -2217,10 +2256,11 @@ export function startResize(
     );
 
     // Aspect ratio lock. A VECTOR SET is ALWAYS locked (any handle, intrinsic
-    // ratio) — the reference behaviour. Otherwise Shift on a corner locks to the current
+    // ratio) — the reference behaviour — and so is a plain vector with the
+    // Dimensions lock on (isLockedVector). Otherwise Shift on a corner locks to the current
     // ratio. `aspectRatio` == startWidth/startHeight (the vector's intrinsic ratio
     // when undistorted), so the lock keeps it proportional on every resize.
-    if (isVectorSet) {
+    if (isAspectForced) {
       const locked = applyVectorAspectLock(newWidth, newHeight, curWidth, curHeight, curLeft, curTop, aspectRatio, xHandle, yHandle, isInLayout);
       newWidth = locked.width;
       newHeight = locked.height;
@@ -2402,10 +2442,10 @@ export function startResize(
     const prevH = parseFloat(liveStyles.height) || startHeight;
     // Preserve original unit during resize (% stays as %, px stays as px).
     // In inset mode, don't set width/height — CSS derives size from insets.
-    // A vector set is aspect-locked, so BOTH axes change on any handle — patch
+    // A vector set (or a locked vector) is aspect-locked, so BOTH axes change on any handle — patch
     // both live (not just the handle's own axis) so it doesn't distort during the
     // drag then snap proportional on mouseup.
-    if ((handleAffectsX || isVectorSet) && !inset.horizontalInset) {
+    if ((handleAffectsX || isAspectForced) && !inset.horizontalInset) {
       const w = formatResizeDimension(newWidth, origWidthUnit, widthPxPerUnit, parentCssWidth, posPx);
       // Baked group: the sandbox sets the group width atomically with viewBox +
       // children (below), so skip the standalone DOM patch (avoids a 1-frame
@@ -2457,7 +2497,7 @@ export function startResize(
         liveStyles.left = leftVal;
       }
     }
-    if ((handleAffectsY || isVectorSet) && !inset.verticalInset) {
+    if ((handleAffectsY || isAspectForced) && !inset.verticalInset) {
       const h = formatResizeDimension(newHeight, origHeightUnit, heightPxPerUnit, parentCssHeight, posPx);
       if (!isBakedGroup) patchNodeStyles(contentEl, nodeId, vpPrefix, { height: h });
       liveStyles.height = h;
@@ -2753,13 +2793,15 @@ export function startResize(
           wrotePctTop,
         );
 
-    // A VECTOR SET stays aspect-locked, so even an EDGE drag changed BOTH width
-    // and height (`applyVectorAspectLock`). `getResizeCommitProperties` only keeps
+    // A VECTOR SET (or a locked vector) stays aspect-locked, so even an EDGE
+    // drag changed BOTH width and height (`applyVectorAspectLock`). `getResizeCommitProperties` only keeps
     // the handle's own axis, so force-commit the OTHER dimension too — else the
     // locked dimension snaps back on mouseup.
-    if (isVectorSet) {
+    if (isAspectForced) {
       if (liveStyles.width) finalStyles.width = liveStyles.width;
       if (liveStyles.height) finalStyles.height = liveStyles.height;
+    }
+    if (isVectorSet) {
       // "Both rows on Fit" means the variant's NATURAL size — a hand resize just
       // left it, so the panel would go on showing auto / auto over a size that
       // is no longer automatic. A single Fit row survives: the handles keep the

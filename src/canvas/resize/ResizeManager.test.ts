@@ -10,6 +10,7 @@ import {
   formatResizeDimension,
   quantizeResizeDimension,
   lockedShiftHeight,
+  lockedLoopSize,
 } from './ResizeManager';
 
 // ─── parseDimUnit ────────────────────────────────────────────────────────────
@@ -513,6 +514,32 @@ describe('lockedShiftHeight (SVG Shift aspect lock)', () => {
   test('locked height clamps to MIN_SIZE', () => {
     // Tiny width against a huge ratio → derived height would be ~0.001.
     expect(lockedShiftHeight(1, 80, true, 'left', 'top', 1000)).toBe(1);
+  });
+});
+
+// ─── lockedLoopSize — the Dimensions lock in the custom SVG resize loops ─────
+// An ABSOLUTE vector on the primary resizes through the geometry-bake loop, not
+// startResize — so the Dimensions lock (W×H px + ratio) was ignored on handle
+// drags there while the panel inputs honoured it (Bug #17 follow-up).
+
+describe('lockedLoopSize (Dimensions lock in the SVG loops)', () => {
+  test('locked: a corner or horizontal edge lets width drive', () => {
+    expect(lockedLoopSize(300, 999, false, true, 'right', 'bottom', 2)).toEqual({ width: 300, height: 150 });
+    expect(lockedLoopSize(300, 80, false, true, 'right', null, 2)).toEqual({ width: 300, height: 150 });
+  });
+
+  test('locked: a vertical edge lets height drive', () => {
+    expect(lockedLoopSize(100, 200, false, true, null, 'bottom', 2)).toEqual({ width: 400, height: 200 });
+  });
+
+  test('unlocked: only Shift on a corner locks (lockedShiftHeight)', () => {
+    expect(lockedLoopSize(300, 80, false, false, 'right', 'bottom', 2)).toEqual({ width: 300, height: 80 });
+    expect(lockedLoopSize(300, 80, true, false, 'right', 'bottom', 2)).toEqual({ width: 300, height: 150 });
+    expect(lockedLoopSize(300, 80, true, false, 'right', null, 2)).toEqual({ width: 300, height: 80 });
+  });
+
+  test('a degenerate ratio passes through even when locked', () => {
+    expect(lockedLoopSize(300, 80, false, true, 'right', 'bottom', 0)).toEqual({ width: 300, height: 80 });
   });
 });
 
