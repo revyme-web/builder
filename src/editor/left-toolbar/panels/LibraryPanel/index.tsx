@@ -65,6 +65,7 @@ import {
   CategorySection,
   DisplayCategorySection,
 } from './presets/CategorySection';
+import { usePresetActions } from '@/editor/hooks/usePresetActions';
 import { TemplatesSection } from './sections/TemplatesSection';
 import { CodeOverridesSection } from './sections/CodeOverridesSection';
 import { VectorsSection } from './sections/VectorsSection';
@@ -468,27 +469,42 @@ export default function LibraryPanel({ mode = 'all' }: { mode?: 'all' | 'library
 
   // Direct rename start — the row menus call this straight (the legacy
   // context-menu indirection is gone; deletes go via deletePresetById).
-  const startRename = useCallback((name: string) => {
-    trace.action('library-panel:rename-start', { name });
-    setRenamingName(name);
-    setRenameValue(name);
-  }, []);
+  // Ids follow the editingName scheme, so a typography / border GROUP row
+  // renames through `typo-group:<name>` / `border-group:<name>`.
+  const startRename = useCallback((id: string) => {
+    trace.action('library-panel:rename-start', { id });
+    setRenamingName(id);
+    // The display name ("Brand Light"), not the variable — the rename keeps
+    // the category prefix itself (see presetRenameTarget).
+    setRenameValue(presetDisplayName(id));
+  }, [presetDisplayName]);
 
-  const handleRenameSubmit = useCallback(() => {
-    if (!renamingName || !renameValue.trim()) return;
-    const sanitized = sanitizeName(renameValue);
-    if (sanitized && sanitized !== renamingName) {
-      trace.action('library-panel:rename-submit', { from: renamingName, to: sanitized });
-      const token = tokens.find(t => t.name === renamingName);
-      if (token) {
-        queueMutation({ type: 'removePresetToken', name: renamingName });
-        queueMutation({ type: 'addPresetToken', token: { name: sanitized, value: token.value, category: token.category } });
-        refreshTokens();
-      }
-    }
+  // Shared with the inline pickers' row menus. The old remove + re-add left
+  // every element still pointing at the old `var(--name)` with no value
+  // ("apply it, rename it, and it breaks instantly" — 2026-10-21); the shared
+  // rename moves the token AND every reference to it, as one undo step.
+  const { renamePreset, renamePresetGroup } = usePresetActions();
+  const commitRename = useCallback((id: string, input: string) => {
     setRenamingName(null);
     setRenameValue('');
-  }, [renamingName, renameValue, tokens, refreshTokens]);
+    if (!input.trim()) return;
+    trace.action('library-panel:rename-submit', { from: id, input });
+    let nextId: string | null = null;
+    if (id.startsWith('typo-group:')) {
+      const to = renamePresetGroup('typography', id.slice('typo-group:'.length), input);
+      if (to) nextId = `typo-group:${to}`;
+    } else if (id.startsWith('border-group:')) {
+      const to = renamePresetGroup('border', id.slice('border-group:'.length), input);
+      if (to) nextId = `border-group:${to}`;
+    } else {
+      nextId = renamePreset(id, input);
+    }
+    // An edit popup open on the renamed preset stays open on its new name.
+    if (nextId) setEditingName(prev => (prev === id ? nextId : prev));
+  }, [renamePreset, renamePresetGroup]);
+  const handleRenameSubmit = useCallback(() => {
+    if (renamingName) commitRename(renamingName, renameValue);
+  }, [renamingName, renameValue, commitRename]);
 
   // Inline creation handlers
   const handleStartCreate = useCallback((categoryKey: string) => {
@@ -657,6 +673,7 @@ export default function LibraryPanel({ mode = 'all' }: { mode?: 'all' | 'library
                 onRenameCancel={() => { setRenamingName(null); setRenameValue(''); }}
                 onEdit={handleEdit}
                 onStartRename={startRename}
+                onRenameCommit={commitRename}
                 onDeletePreset={deletePresetById}
                 creating={creatingCategory === config.key}
                 onStartCreate={() => handleStartCreate(config.key)}

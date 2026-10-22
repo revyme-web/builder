@@ -10,8 +10,18 @@
 //   cursor moves between parent item and submenu so the user can navigate
 //   without closing accidentally.
 
-import { useRef, useEffect, useLayoutEffect, useState, useMemo, type ReactNode } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState, useMemo, createContext, useContext, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+
+/** Stacking base of a menu: its click-catcher sits here, the panel at +1 and
+ *  submenus at +2. The default keeps menus under editor popups (ToolPopup is
+ *  ~100001); a menu opened FROM a popup passes `zIndexBase` so it paints above
+ *  it (a right-click menu on a preset row inside the colour picker). Carried by
+ *  context so the panel + every cascading submenu read the same base. */
+const DEFAULT_MENU_Z_BASE = 99997;
+/** Base for menus opened from inside a ToolPopup (incl. nested / in-modal). */
+export const MENU_Z_ABOVE_POPUPS = 100100;
+const MenuZBaseContext = createContext(DEFAULT_MENU_Z_BASE);
 
 export interface DropdownMenuItem {
   id: string;
@@ -95,6 +105,9 @@ interface DropdownMenuProps {
    *  narrow panel: one long chat name made the menu spill out of the panel it
    *  belongs to. Opt-in — every other menu keeps sizing to content. */
   matchAnchorWidth?: boolean;
+  /** Stacking base — see DEFAULT_MENU_Z_BASE. Pass MENU_Z_ABOVE_POPUPS for a
+   *  menu opened from inside a ToolPopup. */
+  zIndexBase?: number;
   /** Hover style: 'accent' (blue highlight, like context menu) or 'subtle' (gray) */
   hoverStyle?: 'accent' | 'subtle';
   /** Render a "Type to search…" row at the top of the ROOT menu. Typing
@@ -189,6 +202,7 @@ interface MenuPanelProps {
 const SEARCH_SUB_ID = '__search__';
 
 function MenuPanel({ items, hoverStyle, minWidth, width, onClose, style, rootRef, searchable }: MenuPanelProps) {
+  const zBase = useContext(MenuZBaseContext);
   // Track which item's submenu is currently shown (one at a time). Set
   // on hover-enter, cleared when hovering a sibling item that has no
   // submenu. Submenu portal manages its own outside-click via this same
@@ -227,7 +241,7 @@ function MenuPanel({ items, hoverStyle, minWidth, width, onClose, style, rootRef
         // the anchor again, which is the overflow this exists to stop.
         ...(width ? { width, minWidth: 0 } : { minWidth }),
         whiteSpace: 'nowrap',
-        zIndex: 99998,
+        zIndex: zBase + 1,
         display: 'flex',
         flexDirection: 'column',
         rowGap: 2,
@@ -403,6 +417,7 @@ interface CascadingSubmenuProps {
 }
 
 function CascadingSubmenu({ parentEl, items, hoverStyle, onClose, onMouseLeavePanel }: CascadingSubmenuProps) {
+  const zBase = useContext(MenuZBaseContext);
   const parentRect = parentEl?.getBoundingClientRect();
   if (!parentRect) return null;
   const SUB_WIDTH = 200;
@@ -420,7 +435,7 @@ function CascadingSubmenu({ parentEl, items, hoverStyle, onClose, onMouseLeavePa
     <div
       data-cascading-menu
       onMouseLeave={onMouseLeavePanel}
-      style={{ position: 'fixed', left, top, zIndex: 99999 }}
+      style={{ position: 'fixed', left, top, zIndex: zBase + 2 }}
     >
       <div
         aria-hidden="true"
@@ -455,7 +470,7 @@ function CascadingSubmenu({ parentEl, items, hoverStyle, onClose, onMouseLeavePa
 export default function DropdownMenu({
   isOpen, onClose, items, anchorRef, anchorPoint,
   position = 'bottom-right', minWidth, matchAnchorWidth,
-  hoverStyle = 'accent', searchable,
+  hoverStyle = 'accent', searchable, zIndexBase = DEFAULT_MENU_Z_BASE,
 }: DropdownMenuProps) {
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -571,6 +586,7 @@ export default function DropdownMenu({
     : { left: -9999, top: -9999 };
 
   return createPortal(
+    <MenuZBaseContext.Provider value={zIndexBase}>
     <div ref={rootRef} data-cascading-menu>
       {/* Invisible full-screen click-catcher → context-menu behavior: a click
           anywhere outside the panel ONLY closes the menu, it does NOT also
@@ -582,7 +598,7 @@ export default function DropdownMenu({
           on the COMPLETED click / contextmenu — the entire down→up→click
           sequence lands on the backdrop, so nothing below ever receives it. */}
       <div
-        style={{ position: 'fixed', inset: 0, zIndex: 99997 }}
+        style={{ position: 'fixed', inset: 0, zIndex: zIndexBase }}
         onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
         onMouseUp={(e) => { e.stopPropagation(); }}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
@@ -598,7 +614,8 @@ export default function DropdownMenu({
         rootRef={measureRef}
         searchable={searchable}
       />
-    </div>,
+    </div>
+    </MenuZBaseContext.Provider>,
     document.body,
   );
 }

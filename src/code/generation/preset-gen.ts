@@ -302,8 +302,11 @@ export function removePresetTokenFromCSS(css: string, name: string): string {
   trace.fn('preset-gen:removePresetTokenFromCSS', { name });
 
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // Remove the full line including leading whitespace and trailing newline
-  const regex = new RegExp(`^[ \t]*--${escaped}\\s*:[^;]*;[ \t]*\n?`, 'm');
+  // Remove the full line including leading whitespace and trailing newline —
+  // EVERY declaration of it: the token's `:root.dark` value too. Removing only
+  // the first left the dark value behind, so a deleted preset kept resolving
+  // in dark mode (found 2026-10-21 deleting from the colour picker menu).
+  const regex = new RegExp(`^[ \t]*--${escaped}\\s*:[^;]*;[ \t]*\n?`, 'gm');
   const match = css.match(regex);
 
   if (!match) {

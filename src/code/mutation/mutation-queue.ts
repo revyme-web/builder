@@ -172,7 +172,7 @@ import { dormantizeTranslationBinding, rehydrateTranslationBinding } from '../ge
 import { localizeCollectionListsInCode } from '../generation/cms-locale-gen';
 import { readTranslationText } from '../project/translation-ops';
 import { getI18nConfig } from '../project/locale-ops';
-import { filePathToSlug } from '../project/active-file-store';
+import { filePathToSlug, activeFilePathAtom } from '../project/active-file-store';
 import { connectSlotInCode, disconnectSlotInCode, reorderSlotInCode, getAllSlotConnections } from '../generation/slot-ops';
 import {
   createCollectionListInCode, bindFieldInCode, unbindFieldInCode,
@@ -198,7 +198,7 @@ const isDesignInstanceNode = (nodeId: string): boolean => {
   return !!n && n.componentFile != null && !n.isCodeComponent;
 };
 import { updateMetadataInCode, updateSiteConfigInCode, ensureLayoutFile, ensureCustomCodeRenderInCode, healLayoutFile } from '../generation/metadata-gen';
-import { addPresetToken, updatePresetToken, removePresetToken, setDarkTokenValue } from '../project/preset-ops';
+import { addPresetToken, updatePresetToken, removePresetToken, setDarkTokenValue, detachPresetUsages } from '../project/preset-ops';
 import { updateKeyframeInTokensCSS, removeKeyframeFromTokensCSS } from '../project/keyframe-ops';
 import { addTextAnimInCode, updateTextAnimInCode, removeTextAnimFromCode, nodeHasTextAnim, readTextAnimConfig } from '../generation/text-anim-gen';
 import { setTextOverrideInCode, removeTextOverrideInCode } from '../generation/text-override-gen';
@@ -3813,9 +3813,14 @@ function applyMutationCore(code: string, mutation: Mutation): string {
       case 'updatePresetToken':
         updatePresetToken(mutation.name, mutation.value);
         return code;
-      case 'removePresetToken':
+      case 'removePresetToken': {
+        // Detach first: elements using the preset keep its value instead of a
+        // dangling `var(--name)` (see detachPresetUsages). Every delete path —
+        // panel, pickers, border/asset editors, agent, MCP — goes through here.
+        const detached = detachPresetUsages(mutation.name, getDefaultStore().get(activeFilePathAtom), code);
         removePresetToken(mutation.name);
-        return code;
+        return detached;
+      }
       case 'setDarkTokenValue':
         setDarkTokenValue(mutation.tokenName, mutation.darkValue);
         return code;

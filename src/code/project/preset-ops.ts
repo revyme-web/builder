@@ -11,6 +11,7 @@ import {
   addPresetTokenToCSS,
   removePresetTokenFromCSS,
 } from '../generation/preset-gen';
+import { bakePresetRefsInSource } from '../generation/preset-refs-gen';
 import type { PresetToken } from '@/shared/types';
 import { trace } from '@/shared/debug-trace';
 import { parseVarRef } from '@/shared/css-utils';
@@ -57,6 +58,37 @@ export function addPresetToken(token: PresetToken): void {
   const updated = addPresetTokenToCSS(css, token);
   projectFS.writeFile(TOKENS_PATH, updated);
   trace.action('preset-ops:addPresetToken:done', { name: token.name });
+}
+
+/**
+ * Detach preset `name` before it is deleted: every `var(--name …)` reference in
+ * the project becomes the token's own value, so each element keeps exactly
+ * what it showed. Deleting used to leave `var(--color-surface)` pointing at
+ * nothing — the field showed the raw `var(--color…)` text and the element lost
+ * its colour (user report 2026-10-21). Runs INSIDE the `removePresetToken`
+ * mutation, so the active page is transformed through `activeCode` (the
+ * queue's base — a direct write would be overwritten by the flush) and every
+ * other file is written directly; history diffs the whole project, so the
+ * delete stays ONE undo step. Returns the (possibly) detached active code.
+ */
+export function detachPresetUsages(name: string, activeFilePath: string | null, activeCode: string): string {
+  const token = parsePresetTokens(projectFS.readFile(TOKENS_PATH) ?? '').find((t) => t.name === name);
+  // An empty value has nothing to keep — and '' means "delete this property".
+  if (!token || !token.value.trim()) return activeCode;
+  let out = activeCode;
+  const touched: string[] = [];
+  for (const path of projectFS.listFiles()) {
+    const isActive = path === activeFilePath;
+    const src = isActive ? activeCode : projectFS.readFile(path);
+    if (!src) continue;
+    const baked = bakePresetRefsInSource(src, path, name, token.value);
+    if (baked === src) continue;
+    if (isActive) out = baked;
+    else projectFS.writeFile(path, baked);
+    touched.push(path);
+  }
+  if (touched.length) trace.action('preset-ops:detach-usages', { name, value: token.value, files: touched });
+  return out;
 }
 
 /**

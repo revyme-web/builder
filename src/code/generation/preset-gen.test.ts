@@ -296,6 +296,14 @@ describe('addPresetTokenToCSS — duplicate prevention', () => {
 // ─── removePresetTokenFromCSS ───────────────────────────────────────────────
 
 describe('removePresetTokenFromCSS', () => {
+  test('removes the dark-mode value too, and never a longer namesake', () => {
+    const css = `:root {\n  --color-surface: #ffffff;\n  --color-surface-dark: #0f0f1a;\n}\n\n:root.dark {\n  --color-surface: #0f0f1a;\n  --color-surface-dark: #ffffff;\n}\n`;
+    const updated = removePresetTokenFromCSS(css, 'color-surface');
+    expect(updated).not.toMatch(/--color-surface\s*:/);
+    expect(updated).toContain('--color-surface-dark: #0f0f1a;');
+    expect(updated).toContain('--color-surface-dark: #ffffff;');
+  });
+
   test('removes existing token', () => {
     const updated = removePresetTokenFromCSS(FULL_CSS, 'color-brand-light');
     expect(updated).not.toContain('--color-brand-light');

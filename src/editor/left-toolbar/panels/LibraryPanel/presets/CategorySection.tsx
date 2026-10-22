@@ -65,8 +65,12 @@ interface CategorySectionProps {
   onRenameSubmit: () => void;
   onRenameCancel: () => void;
   onEdit: (name: string) => void;
-  /** Start the inline rename for a simple token row. */
-  onStartRename: (name: string) => void;
+  /** Start the inline rename — a token name, or `typo-group:x` /
+   *  `border-group:x` for a compound group row. */
+  onStartRename: (id: string) => void;
+  /** Finish a group row's inline rename with the typed name (group rows use
+   *  SidebarRow's own rename input, which hands the value back directly). */
+  onRenameCommit: (id: string, input: string) => void;
   /** Delete by multi-select id (token name / `typo-group:x` / `border-group:x`)
    *  — the section's deletePresetById expands compound groups. */
   onDeletePreset: (id: string) => void;
@@ -89,7 +93,7 @@ interface CategorySectionProps {
 export function CategorySection({
   config, tokens, typoGroups, editingName, renamingName, renameValue,
   onRenameChange, onRenameSubmit, onRenameCancel,
-  onEdit, onStartRename, onDeletePreset,
+  onEdit, onStartRename, onRenameCommit, onDeletePreset,
   creating, onStartCreate, onCancelCreate, onSubmitCreate,
   collapsed, onToggleCollapse, usageMap, multiSelect,
 }: CategorySectionProps) {
@@ -248,6 +252,9 @@ export function CategorySection({
         <TypographyGroupRow
           group={group}
           isEditing={editingName === `typo-group:${group.name}`}
+          isRenaming={renamingName === `typo-group:${group.name}`}
+          onStartRename={() => onStartRename(`typo-group:${group.name}`)}
+          onRenameCommit={(input) => onRenameCommit(`typo-group:${group.name}`, input)}
           onEdit={() => editClearingSelection(`typo-group:${group.name}`)}
           onDelete={() => onDeletePreset(`typo-group:${group.name}`)}
           usages={groupUsages}
@@ -274,6 +281,9 @@ export function CategorySection({
         <BorderGroupRow
           group={group}
           isEditing={editingName === `border-group:${group.name}`}
+          isRenaming={renamingName === `border-group:${group.name}`}
+          onStartRename={() => onStartRename(`border-group:${group.name}`)}
+          onRenameCommit={(input) => onRenameCommit(`border-group:${group.name}`, input)}
           onEdit={() => editClearingSelection(`border-group:${group.name}`)}
           onDelete={() => onDeletePreset(`border-group:${group.name}`)}
           usages={groupUsages}
@@ -308,7 +318,7 @@ export function CategorySection({
     typoGroupByName, borderGroupByName, tokenByName,
     editingName, renamingName, renameValue,
     onRenameChange, onRenameSubmit, onRenameCancel,
-    editClearingSelection, onStartRename, onDeletePreset, usageMap,
+    editClearingSelection, onStartRename, onRenameCommit, onDeletePreset, usageMap,
     multiSelect, inBulk, bulkItems,
   ]);
 
@@ -396,6 +406,11 @@ export function CategorySection({
 interface BorderGroupRowProps {
   group: BorderGroup;
   isEditing: boolean;
+  /** The row shows SidebarRow's inline rename input. */
+  isRenaming: boolean;
+  onStartRename: () => void;
+  /** Renames the WHOLE group (every constituent token + its references). */
+  onRenameCommit: (input: string) => void;
   onEdit: () => void;
   /** Deletes the WHOLE group (every constituent token). The old context-menu
    *  path passed only tokens[0] and deleted a single facet. */
@@ -415,7 +430,7 @@ interface BorderGroupRowProps {
 /** One row per compound border preset group. Same shape as TypographyGroupRow,
  *  with a swatch that previews the resolved border (longhand styles applied
  *  inline so the parent UI doesn't need the canvas iframe's CSS variables). */
-export function BorderGroupRow({ group, isEditing, onEdit, onDelete, usages, onShiftClick, isMultiSelected, menuOverride }: BorderGroupRowProps) {
+export function BorderGroupRow({ group, isEditing, isRenaming, onStartRename, onRenameCommit, onEdit, onDelete, usages, onShiftClick, isMultiSelected, menuOverride }: BorderGroupRowProps) {
   const widthPx = parseInt(group.tokens.find(t => t.name.endsWith('-width'))?.value || '1') || 1;
   const previewWidth = `${Math.min(widthPx, 3)}px`;
   const styleVal = group.tokens.find(t => t.name.endsWith('-style'))?.value || 'solid';
@@ -429,6 +444,7 @@ export function BorderGroupRow({ group, isEditing, onEdit, onDelete, usages, onS
 
   const menuItems: DropdownMenuEntry[] = menuOverride ?? [
     { id: 'edit', label: 'Edit', onClick: onEdit },
+    { id: 'rename', label: 'Rename', onClick: onStartRename },
     { type: 'separator' },
     { id: 'delete', label: 'Delete', onClick: onDelete },
   ];
@@ -436,9 +452,11 @@ export function BorderGroupRow({ group, isEditing, onEdit, onDelete, usages, onS
   return (
     <SidebarRow
       label={group.label}
+      inlineEdit={isRenaming ? { initialValue: group.label, onCommit: onRenameCommit } : undefined}
       icon={<span className="w-3.5 h-3.5 cut-corners cut-sm bg-transparent block" style={previewStyle} />}
       isActive={isEditing}
       onClick={(e: React.MouseEvent) => {
+        if (isRenaming) return;
         // Shift+click → toggle in the shared multi-select set instead of edit.
         if (e.shiftKey && onShiftClick) {
           e.preventDefault();
