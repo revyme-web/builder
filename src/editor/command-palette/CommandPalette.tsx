@@ -21,6 +21,7 @@ import { SearchResults } from './SearchResults';
 import { useMegaSearch } from './useMegaSearch';
 import { parsePluginUrl } from './marketplace-client';
 import { trace } from '@/shared/debug-trace';
+import { isShortcutKey } from '@/shared/shortcut-key';
 
 export function CommandPalette() {
   const [isOpen, setIsOpen] = useAtom(paletteOpenAtom);
@@ -59,7 +60,7 @@ export function CommandPalette() {
   // component editor uses elsewhere; we don't grab Alt-combos here.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k' && !e.altKey) {
+      if ((e.metaKey || e.ctrlKey) && isShortcutKey(e, 'k') && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
         setIsOpen((v) => !v);

@@ -8,6 +8,7 @@
 
 import { trace } from '@/shared/debug-trace';
 import { isViewerMode } from '@/code/stores/viewer-mode-store';
+import { isShortcutKey, physicalShortcutKey } from '@/shared/shortcut-key';
 
 /** Shortcut categories that stay live in view-only mode. Everything
  *  else (tools, edit, selection, general) is a write/edit action and
@@ -120,8 +121,7 @@ function allowsAppUndo(eventTarget?: EventTarget | null): boolean {
 /** Cmd/Ctrl+Z, Cmd+Shift+Z, Cmd+Y. */
 function isUndoRedoCombo(e: KeyboardEvent): boolean {
   if (!e.metaKey && !e.ctrlKey) return false;
-  const k = e.key.toLowerCase();
-  return k === 'z' || k === 'y';
+  return isShortcutKey(e, 'z') || isShortcutKey(e, 'y');
 }
 
 // ─── Manager ────────────────────────────────────────────────────────────────
@@ -183,21 +183,14 @@ class KeyboardManager {
     const ctrl = e.ctrlKey || e.metaKey;
     const shift = e.shiftKey;
     const alt = e.altKey;
-    // macOS composes Option/Alt+letter into a symbol (Option+R → "®", Shift+
-    // Option+A → "Å"), so a pure-Alt shortcut's e.key never matches its letter.
-    // When Alt is held, fall back to the PHYSICAL key from e.code ("KeyR" → "r",
-    // "Digit1" → "1") so Alt-letter shortcuts (Rename Alt+R, Create Frame
-    // Shift+Alt+A) fire on Mac. Only computed under Alt, so normal (non-Alt)
-    // shortcuts keep their exact e.key matching on every layout.
-    const altCodeKey = !alt ? null
-      : /^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLowerCase()
-      : /^Digit\d$/.test(e.code) ? e.code.slice(5)
-      : null;
+    // The physical key, where e.key can't be the shortcut's letter (Option
+    // compose on Mac, non-Latin layouts, IME) — see shortcut-key.ts.
+    const physicalKey = physicalShortcutKey(e);
 
     for (const spec of this.shortcuts) {
-      // Match key (e.key, or the Alt physical-key fallback for macOS)
+      // Match key (e.key, or the physical key)
       const keys = Array.isArray(spec.key) ? spec.key : [spec.key];
-      if (!keys.some(k => { const kl = k.toLowerCase(); return kl === keyLower || (altCodeKey !== null && kl === altCodeKey); })) continue;
+      if (!keys.some(k => { const kl = k.toLowerCase(); return kl === keyLower || (physicalKey !== null && kl === physicalKey); })) continue;
 
       // Match modifiers (undefined = must NOT be pressed)
       if ((spec.ctrl ?? false) !== ctrl) continue;

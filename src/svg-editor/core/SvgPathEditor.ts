@@ -11,6 +11,7 @@ import type { ShapeEntry } from './SvgDocument';
 import { PenTool } from './PenTool';
 import { hitTestMultiShape, screenToSvg } from './HitTester';
 import { pointOnCubic, pointOnLine } from './SegmentMath';
+import { isShortcutKey } from '@/shared/shortcut-key';
 import type {
   Anchor, Point, PathSelection, AnchorRef, HandleMode,
   SvgEditorConfig, SvgEditorAdapter, EditorTool, AnchorInfo, AnchorView,
@@ -1247,7 +1248,7 @@ export class SvgPathEditor {
       else { this.selection = emptySelection(); this._emitSelection(); this.render(); }
       return;
     }
-    if (e.key === 'p' || e.key === 'P') { this.setTool(this._tool === 'pen' ? 'select' : 'pen'); return; }
+    if (isShortcutKey(e, 'p')) { this.setTool(this._tool === 'pen' ? 'select' : 'pen'); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && this.selection.anchorRefs.length > 0) {
       e.preventDefault(); this.deleteSelected(); return;
     }
@@ -1256,7 +1257,7 @@ export class SvgPathEditor {
     if (e.key === '3') this.setHandleMode('disconnected');
 
     // Ctrl+A / Cmd+A: select all anchors in active shape
-    if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+    if (isShortcutKey(e, 'a') && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       this._selectWholeShape(this.selection.activeShapeIndex);
       this._emitSelection();

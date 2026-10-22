@@ -48,6 +48,7 @@ import { useActiveBranchId } from './code/stores/agent-run-lock-store';
 import { MAIN_BRANCH_ID } from './code/project/project-fs';
 import { suspendBuilderTheme, resumeBuilderTheme } from '@/editor/builder-theme';
 import SaveProblemBanner from './editor/SaveProblemBanner';
+import { isShortcutKey } from '@/shared/shortcut-key';
 // Sketch draw animations intentionally do NOT auto-play on the canvas —
 // it's an editing surface, and auto-playback on every preview exit /
 // page open is distracting noise. The animation runs in PREVIEW (and at
@@ -112,7 +113,7 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       if (e.altKey || e.shiftKey) return;
-      if (e.key.toLowerCase() !== 'p') return;
+      if (!isShortcutKey(e, 'p')) return;
       const target = e.target as HTMLElement | null;
       if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) return;
       e.preventDefault();

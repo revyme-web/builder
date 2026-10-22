@@ -28,6 +28,7 @@ import Breadcrumb from '@/design-system/Breadcrumb';
 import { PageHomeIcon, PageDocumentIcon } from '@/shared/icons';
 import { DesignComponentIcon } from '@/editor/left-toolbar/panels/LibraryPanel/items/ComponentRow';
 import { trace } from '@/shared/debug-trace';
+import { isShortcutKey } from '@/shared/shortcut-key';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -450,7 +451,7 @@ function TranslationRow({ row, target, onSaved }: { row: Row; target: string; on
             // (React's stopPropagation calls through to the native event, so
             // stopping here severed Cmd+Z entirely). KeyboardManager lets it
             // past its text-field guard via this overlay's `data-app-undo`.
-            if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) return;
+            if ((e.metaKey || e.ctrlKey) && (isShortcutKey(e, 'z') || isShortcutKey(e, 'y'))) return;
             e.stopPropagation();
           }}
           className="w-full px-2.5 py-2 text-sm bg-[var(--grid-line)] border border-[var(--control-border)] [--cut-border-color:var(--control-border)] hover:border-[var(--control-border-hover)] focus:border-[var(--border-focus)] cut-corners cut-border hover:[--cut-border-color:var(--control-border-hover)] focus:[--cut-border-color:var(--border-focus)] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none transition-colors resize-none leading-relaxed"
