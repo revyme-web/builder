@@ -97,6 +97,10 @@ export interface FolderOps {
    *  LayoutClient) — swap the id in place, keeping its folder and position.
    *  No-op when the old id isn't persisted anywhere. */
   renameItem: (oldId: string, newId: string) => void;
+  /** File `newId` right after `afterId`, in the same folder (or the root).
+   *  No-op when `afterId` isn't filed anywhere — the drift fallback lists an
+   *  unfiled item in its natural order. */
+  insertItemAfter: (newId: string, afterId: string) => void;
 }
 
 /** Factory — instantiate a kind-specific folder ops handle. Stateless
@@ -303,6 +307,16 @@ export function createFolderOps(config: FolderOpsConfig): FolderOps {
       if (!changed) return;
       writeParsed(parsed);
       trace.action(`${traceNamespace}:rename-item`, { oldId, newId });
+    },
+
+    insertItemAfter(newId, afterId) {
+      const parsed = readParsed();
+      const lists = [parsed.rootOrder, ...parsed.folders.map((f) => f.children)];
+      const list = lists.find((ids) => ids.includes(afterId));
+      if (!list || lists.some((ids) => ids.includes(newId))) return;
+      list.splice(list.indexOf(afterId) + 1, 0, newId);
+      writeParsed(parsed);
+      trace.action(`${traceNamespace}:insert-item-after`, { newId, afterId });
     },
   };
 }

@@ -6,19 +6,22 @@
 import { atom } from 'jotai';
 import { projectFS, projectVersionAtom } from '../project/project-fs';
 import { parsePresetTokens } from '../generation/preset-gen';
+import { orderPresetTokens } from '../project/preset-order';
 import { parseJSXToNodes } from '../parsing/parser';
 import { trace } from '@/shared/debug-trace';
 import type { PresetToken } from '@/shared/types';
 
 const TOKENS_PATH = 'app/globals.css';
 
-/** All preset tokens parsed from app/globals.css — derived from ProjectFS, auto-updates on version bump */
+/** All preset tokens parsed from app/globals.css — derived from ProjectFS, auto-updates on version bump.
+ *  Each category comes in the Presets panel's order (its folder file), so every picker that lists
+ *  presets — colour, typography, image / video, the controls' Presets submenus — matches the panel. */
 export const presetTokensAtom = atom<PresetToken[]>((get) => {
-  // Subscribe to version so we re-read when files change (mutations, undo/redo, etc.)
+  // Subscribe to version so we re-read when files change (mutations, undo/redo, a panel reorder, etc.)
   get(projectVersionAtom);
   const css = projectFS.readFile(TOKENS_PATH);
   if (!css) return [];
-  return parsePresetTokens(css);
+  return orderPresetTokens(parsePresetTokens(css));
 });
 
 /** Live (uncommitted) override of a single preset token's value — shown by the

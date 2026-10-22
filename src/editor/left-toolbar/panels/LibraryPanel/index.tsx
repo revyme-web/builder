@@ -483,7 +483,7 @@ export default function LibraryPanel({ mode = 'all' }: { mode?: 'all' | 'library
   // every element still pointing at the old `var(--name)` with no value
   // ("apply it, rename it, and it breaks instantly" — 2026-10-21); the shared
   // rename moves the token AND every reference to it, as one undo step.
-  const { renamePreset, renamePresetGroup } = usePresetActions();
+  const { renamePreset, renamePresetGroup, duplicatePreset, duplicatePresetGroup } = usePresetActions();
   const commitRename = useCallback((id: string, input: string) => {
     setRenamingName(null);
     setRenameValue('');
@@ -502,6 +502,13 @@ export default function LibraryPanel({ mode = 'all' }: { mode?: 'all' | 'library
     // An edit popup open on the renamed preset stays open on its new name.
     if (nextId) setEditingName(prev => (prev === id ? nextId : prev));
   }, [renamePreset, renamePresetGroup]);
+  // Duplicate by the same id scheme — the copy lands right below the original.
+  const duplicatePresetById = useCallback((id: string) => {
+    trace.action('library-panel:duplicate-preset', { id });
+    if (id.startsWith('typo-group:')) duplicatePresetGroup('typography', id.slice('typo-group:'.length));
+    else if (id.startsWith('border-group:')) duplicatePresetGroup('border', id.slice('border-group:'.length));
+    else duplicatePreset(id);
+  }, [duplicatePreset, duplicatePresetGroup]);
   const handleRenameSubmit = useCallback(() => {
     if (renamingName) commitRename(renamingName, renameValue);
   }, [renamingName, renameValue, commitRename]);
@@ -675,6 +682,7 @@ export default function LibraryPanel({ mode = 'all' }: { mode?: 'all' | 'library
                 onStartRename={startRename}
                 onRenameCommit={commitRename}
                 onDeletePreset={deletePresetById}
+                onDuplicatePreset={duplicatePresetById}
                 creating={creatingCategory === config.key}
                 onStartCreate={() => handleStartCreate(config.key)}
                 onCancelCreate={handleCancelCreate}

@@ -1,8 +1,8 @@
-// usePresetActions — the preset Delete / Rename actions, shared by the
-// Library's Presets panel and every inline picker (typography preset list,
-// colour picker preset list) so a right-click there does exactly what the
-// panel's menu does (Discord report 2026-10-21: no way to delete or rename a
-// preset from the picker popups).
+// usePresetActions — the preset Delete / Rename / Duplicate actions, shared by
+// the Library's Presets panel and every inline picker (typography preset list,
+// colour picker preset list, image / video preset lists) so a right-click there
+// does exactly what the panel's menu does (Discord report 2026-10-21: no way to
+// delete or rename a preset from the picker popups; 2026-10-22: no Duplicate).
 
 import { useCallback } from 'react';
 import { getDefaultStore, useSetAtom } from 'jotai';
@@ -13,8 +13,9 @@ import { queueMutation, flushNow } from '@/code/mutation/mutation-queue';
 import { sealPendingHistory, pushHistoryFileOp } from '@/code/mutation/history';
 import {
   renamePresetToken, presetRenameTarget, renamePresetGroup as renameGroup, presetGroupRenameTarget,
-  type PresetGroupKind, type PresetRenameResult,
+  presetGroupTokenNames, type PresetGroupKind, type PresetRenameResult,
 } from '@/code/project/preset-rename';
+import { duplicatePresetToken, duplicatePresetGroup as duplicateGroup } from '@/code/project/preset-duplicate';
 import { refreshCanvasTokens } from '@/canvas/node-ops';
 import { trace } from '@/shared/debug-trace';
 
@@ -38,6 +39,39 @@ export function usePresetActions() {
     for (const name of names) queueMutation({ type: 'removePresetToken', name });
     refresh();
   }, [refresh]);
+
+  /** Delete a compound preset (typography / border GROUP name) — every token
+   *  of the group. */
+  const deletePresetGroup = useCallback((kind: PresetGroupKind, group: string) => {
+    deletePresets(presetGroupTokenNames(kind, group));
+  }, [deletePresets]);
+
+  /** A direct file op (globals.css + the folder tree) as ONE undo step. */
+  const runFileOp = useCallback(<T,>(run: () => T): T => {
+    sealPendingHistory();
+    const out = run();
+    if (out !== null) {
+      pushHistoryFileOp(getDefaultStore().get(activeFilePathAtom));
+      refresh();
+    }
+    return out;
+  }, [refresh]);
+
+  /** Duplicate preset `name` (full token name): `color-brand` → `color-brand-copy`
+   *  ("Brand Copy"), listed right below the original. Returns the copy's name. */
+  const duplicatePreset = useCallback((name: string): string | null => {
+    const to = runFileOp(() => duplicatePresetToken(name));
+    trace.action('preset-actions:duplicate', { name, to });
+    return to;
+  }, [runFileOp]);
+
+  /** Duplicate a compound preset (typography / border GROUP name) — every
+   *  token of the group. Returns the new group name. */
+  const duplicatePresetGroup = useCallback((kind: PresetGroupKind, group: string): string | null => {
+    const to = runFileOp(() => duplicateGroup(kind, group));
+    trace.action('preset-actions:duplicate-group', { kind, group, to });
+    return to;
+  }, [runFileOp]);
 
   /** Seal → run → one undo step → refresh; a clash is toasted. 'missing' /
    *  'unchanged' are silent: an inline rename input also submits on blur, and
@@ -77,5 +111,5 @@ export function usePresetActions() {
     return out;
   }, [runRename]);
 
-  return { deletePresets, renamePreset, renamePresetGroup, refresh };
+  return { deletePresets, deletePresetGroup, renamePreset, renamePresetGroup, duplicatePreset, duplicatePresetGroup, refresh };
 }

@@ -18,6 +18,7 @@ import {
   getPresetFolderOps,
   isPresetFolderId,
 } from '@/code/project/preset-folder-ops';
+import { effectivePresetRootOrder } from '@/code/project/preset-order';
 import { type PresetUsage } from '@/code/stores/preset-store';
 import { groupBorderTokens, type BorderGroup } from '@/editor/ui/border-preset-utils';
 import type { PresetToken } from '@/shared/types';
@@ -74,6 +75,8 @@ interface CategorySectionProps {
   /** Delete by multi-select id (token name / `typo-group:x` / `border-group:x`)
    *  — the section's deletePresetById expands compound groups. */
   onDeletePreset: (id: string) => void;
+  /** Duplicate by the same id scheme — a group duplicates every token. */
+  onDuplicatePreset: (id: string) => void;
   creating: boolean;
   onStartCreate: () => void;
   onCancelCreate: () => void;
@@ -93,7 +96,7 @@ interface CategorySectionProps {
 export function CategorySection({
   config, tokens, typoGroups, editingName, renamingName, renameValue,
   onRenameChange, onRenameSubmit, onRenameCancel,
-  onEdit, onStartRename, onRenameCommit, onDeletePreset,
+  onEdit, onStartRename, onRenameCommit, onDeletePreset, onDuplicatePreset,
   creating, onStartCreate, onCancelCreate, onSubmitCreate,
   collapsed, onToggleCollapse, usageMap, multiSelect,
 }: CategorySectionProps) {
@@ -124,21 +127,15 @@ export function CategorySection({
     if (isBorder) return borderGroups.map(g => g.name);
     return tokens.map(t => t.name);
   }, [isTypography, isBorder, typoGroups, tokens, borderGroups]);
-  const allItemIds = useMemo(() => new Set(itemIds), [itemIds]);
 
+  // Drift fallback — any item / folder not referenced anywhere is appended at
+  // the root tail. Shared with presetTokensAtom's ordering (preset-order), so
+  // every picker lists presets exactly as this panel does.
   const persistedRootOrder = useMemo(() => folderOps.getRootOrder(), [folderOps, version]);
-  const effectiveRootOrder = useMemo(() => {
-    const out = persistedRootOrder.filter(id => folderById.has(id) || allItemIds.has(id));
-    const referenced = new Set<string>([...out]);
-    for (const f of userFolders) for (const c of f.children) referenced.add(c);
-    // Drift fallback — any item / folder not referenced anywhere
-    // gets appended at the root tail.
-    for (const id of itemIds) if (!referenced.has(id)) out.push(id);
-    for (const f of userFolders) {
-      if (!referenced.has(f.id) && f.parentId === null) out.push(f.id);
-    }
-    return out;
-  }, [persistedRootOrder, folderById, userFolders, itemIds, allItemIds]);
+  const effectiveRootOrder = useMemo(
+    () => effectivePresetRootOrder(persistedRootOrder, userFolders, itemIds),
+    [persistedRootOrder, userFolders, itemIds],
+  );
 
   // Folder rename / pending-creation state — same UX as Templates.
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
@@ -257,6 +254,7 @@ export function CategorySection({
           onRenameCommit={(input) => onRenameCommit(`typo-group:${group.name}`, input)}
           onEdit={() => editClearingSelection(`typo-group:${group.name}`)}
           onDelete={() => onDeletePreset(`typo-group:${group.name}`)}
+          onDuplicate={() => onDuplicatePreset(`typo-group:${group.name}`)}
           usages={groupUsages}
           onShiftClick={multiSelect.togglePath}
           isMultiSelected={multiSelect.isMultiSelected(`typo-group:${group.name}`)}
@@ -286,6 +284,7 @@ export function CategorySection({
           onRenameCommit={(input) => onRenameCommit(`border-group:${group.name}`, input)}
           onEdit={() => editClearingSelection(`border-group:${group.name}`)}
           onDelete={() => onDeletePreset(`border-group:${group.name}`)}
+          onDuplicate={() => onDuplicatePreset(`border-group:${group.name}`)}
           usages={groupUsages}
           onShiftClick={multiSelect.togglePath}
           isMultiSelected={multiSelect.isMultiSelected(`border-group:${group.name}`)}
@@ -307,6 +306,7 @@ export function CategorySection({
         onEdit={editClearingSelection}
         onStartRename={onStartRename}
         onDelete={onDeletePreset}
+        onDuplicate={onDuplicatePreset}
         usages={usageMap.get(token.name) ?? []}
         onShiftClick={multiSelect.togglePath}
         isMultiSelected={multiSelect.isMultiSelected(token.name)}
@@ -318,7 +318,7 @@ export function CategorySection({
     typoGroupByName, borderGroupByName, tokenByName,
     editingName, renamingName, renameValue,
     onRenameChange, onRenameSubmit, onRenameCancel,
-    editClearingSelection, onStartRename, onRenameCommit, onDeletePreset, usageMap,
+    editClearingSelection, onStartRename, onRenameCommit, onDeletePreset, onDuplicatePreset, usageMap,
     multiSelect, inBulk, bulkItems,
   ]);
 
@@ -415,6 +415,8 @@ interface BorderGroupRowProps {
   /** Deletes the WHOLE group (every constituent token). The old context-menu
    *  path passed only tokens[0] and deleted a single facet. */
   onDelete: () => void;
+  /** Duplicates the WHOLE group under `<name>-copy`. */
+  onDuplicate: () => void;
   /** Aggregated consumers across every constituent token in the group
    *  (deduped by node id), since border presets are compound. */
   usages: PresetUsage[];
@@ -430,7 +432,7 @@ interface BorderGroupRowProps {
 /** One row per compound border preset group. Same shape as TypographyGroupRow,
  *  with a swatch that previews the resolved border (longhand styles applied
  *  inline so the parent UI doesn't need the canvas iframe's CSS variables). */
-export function BorderGroupRow({ group, isEditing, isRenaming, onStartRename, onRenameCommit, onEdit, onDelete, usages, onShiftClick, isMultiSelected, menuOverride }: BorderGroupRowProps) {
+export function BorderGroupRow({ group, isEditing, isRenaming, onStartRename, onRenameCommit, onEdit, onDelete, onDuplicate, usages, onShiftClick, isMultiSelected, menuOverride }: BorderGroupRowProps) {
   const widthPx = parseInt(group.tokens.find(t => t.name.endsWith('-width'))?.value || '1') || 1;
   const previewWidth = `${Math.min(widthPx, 3)}px`;
   const styleVal = group.tokens.find(t => t.name.endsWith('-style'))?.value || 'solid';
@@ -445,6 +447,7 @@ export function BorderGroupRow({ group, isEditing, isRenaming, onStartRename, on
   const menuItems: DropdownMenuEntry[] = menuOverride ?? [
     { id: 'edit', label: 'Edit', onClick: onEdit },
     { id: 'rename', label: 'Rename', onClick: onStartRename },
+    { id: 'duplicate', label: 'Duplicate', onClick: onDuplicate },
     { type: 'separator' },
     { id: 'delete', label: 'Delete', onClick: onDelete },
   ];

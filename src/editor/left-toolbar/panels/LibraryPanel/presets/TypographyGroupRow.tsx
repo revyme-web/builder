@@ -28,6 +28,8 @@ interface TypographyGroupRowProps {
   /** Deletes the WHOLE group (every constituent token) — wired to the
    *  section's deletePresetById(`typo-group:<name>`). */
   onDelete: () => void;
+  /** Duplicates the WHOLE group under `<name>-copy`. */
+  onDuplicate: () => void;
   /** Aggregated consumers across every constituent token in the group
    *  (deduped by node id), since typography presets are compound. */
   usages: PresetUsage[];
@@ -41,10 +43,11 @@ interface TypographyGroupRowProps {
   menuOverride?: DropdownMenuEntry[];
 }
 
-export function TypographyGroupRow({ group, isEditing, isRenaming, onStartRename, onRenameCommit, onEdit, onDelete, usages, onShiftClick, isMultiSelected, menuOverride }: TypographyGroupRowProps) {
+export function TypographyGroupRow({ group, isEditing, isRenaming, onStartRename, onRenameCommit, onEdit, onDelete, onDuplicate, usages, onShiftClick, isMultiSelected, menuOverride }: TypographyGroupRowProps) {
   const menuItems: DropdownMenuEntry[] = menuOverride ?? [
     { id: 'edit', label: 'Edit', onClick: onEdit },
     { id: 'rename', label: 'Rename', onClick: onStartRename },
+    { id: 'duplicate', label: 'Duplicate', onClick: onDuplicate },
     { type: 'separator' },
     { id: 'delete', label: 'Delete', onClick: onDelete },
   ];

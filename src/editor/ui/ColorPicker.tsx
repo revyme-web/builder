@@ -4,9 +4,8 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
-import DropdownMenu, { MENU_Z_ABOVE_POPUPS, type DropdownMenuEntry } from '@/design-system/DropdownMenu';
 import { presetTokensAtom } from '@/code/stores/preset-store';
-import { usePresetActions } from '@/editor/hooks/usePresetActions';
+import { usePresetRowMenu } from '@/editor/hooks/usePresetRowMenu';
 import type { PresetToken } from '@/shared/types';
 import { useScrubInteracting } from '@/editor/hooks/useScrubInteracting';
 import { colorPickerOpenAtom } from '@/code/stores/editor-store';
@@ -634,8 +633,9 @@ function presetDisplayName(preset: { name: string; label?: string }): string {
  *  caller passes the colour tokens of presetTokensAtom anyway, but a picker
  *  pushed into a ToolPopup panel is not re-rendered by its caller when only
  *  globals.css changes, so a delete / rename from the row menu would leave a
- *  stale list. Right-click = the Presets panel's row menu (Edit / Rename /
- *  Delete) through the same shared actions. */
+ *  stale list. The store lists them in the Presets panel's order. Right-click
+ *  = the Presets panel's row menu (Edit / Rename / Duplicate / Delete) through
+ *  the shared usePresetRowMenu. */
 function ColorPresetList({ activePresetName, onApply, onEditPreset }: {
   activePresetName?: string;
   onApply: (preset: PresetToken) => void;
@@ -643,52 +643,22 @@ function ColorPresetList({ activePresetName, onApply, onEditPreset }: {
 }) {
   const tokens = useAtomValue(presetTokensAtom);
   const presets = useMemo(() => tokens.filter(t => t.category === 'color'), [tokens]);
-  const { deletePresets, renamePreset } = usePresetActions();
-  const [menu, setMenu] = useState<{ name: string; x: number; y: number } | null>(null);
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  // The open rename, cleared the moment it is submitted or cancelled: the
-  // input also submits on blur, and a blur arriving as it unmounts (after
-  // Enter / Escape) must not rename twice or undo the cancel.
-  const renamingRef = useRef<string | null>(null);
-
-  const menuPreset = menu ? presets.find(p => p.name === menu.name) : undefined;
-  const menuItems: DropdownMenuEntry[] = menuPreset ? [
-    ...(onEditPreset ? [{ id: 'edit', label: 'Edit', onClick: () => onEditPreset(menuPreset.name) }] : []),
-    { id: 'rename', label: 'Rename', onClick: () => { renamingRef.current = menuPreset.name; setRenaming(menuPreset.name); setRenameValue(presetDisplayName(menuPreset)); } },
-    { type: 'separator' },
-    { id: 'delete', label: 'Delete', onClick: () => deletePresets([menuPreset.name]) },
-  ] : [];
-
-  const endRename = (commit: boolean) => {
-    const from = renamingRef.current;
-    renamingRef.current = null;
-    setRenaming(null);
-    if (commit && from) renamePreset(from, renameValue);
-  };
+  const rowMenu = usePresetRowMenu({
+    kind: 'token',
+    labelFor: (name) => presetDisplayName(presets.find(p => p.name === name) ?? { name }),
+    onEdit: onEditPreset,
+    traceTag: 'color-picker:preset',
+  });
 
   if (presets.length === 0) return null;
   return (
     <div className="flex flex-col max-h-[200px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
       {presets.map(preset => {
         const isActive = activePresetName === preset.name;
-        if (renaming === preset.name) {
+        if (rowMenu.renamingId === preset.name) {
           return (
             <div key={preset.name} className="flex items-center gap-2 px-1 py-1.5 cut-corners bg-[var(--bg-hover)]">
-              <input
-                autoFocus
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                onFocus={(e) => e.target.select()}
-                onBlur={() => endRename(true)}
-                onKeyDown={(e) => {
-                  // The popup closes on Escape too — keep these keys in the input.
-                  e.stopPropagation();
-                  if (e.key === 'Enter') endRename(true);
-                  if (e.key === 'Escape') endRename(false);
-                }}
-                className="flex-1 min-w-0 bg-transparent text-xs font-medium text-[var(--text-primary)] outline-none border-b border-[var(--accent)]"
-              />
+              {rowMenu.renameInput('flex-1 min-w-0 bg-transparent text-xs font-medium text-[var(--text-primary)] outline-none border-b border-[var(--accent)]')}
               <ColorSwatch style={{ backgroundColor: preset.value }} />
             </div>
           );
@@ -697,15 +667,10 @@ function ColorPresetList({ activePresetName, onApply, onEditPreset }: {
           <div
             key={preset.name}
             className={`group flex items-center gap-2 px-1 py-1.5 cut-corners cursor-pointer transition-colors ${
-              isActive || menu?.name === preset.name ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
+              isActive || rowMenu.menuId === preset.name ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
             }`}
             onClick={() => onApply(preset)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setMenu({ name: preset.name, x: e.clientX, y: e.clientY });
-              trace.action('color-picker:preset-menu', { name: preset.name });
-            }}
+            onContextMenu={(e) => rowMenu.openMenu(preset.name, e)}
           >
             <span className={`flex-1 text-xs font-medium truncate ${isActive ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>{presetDisplayName(preset)}</span>
             {onEditPreset && (
@@ -725,14 +690,7 @@ function ColorPresetList({ activePresetName, onApply, onEditPreset }: {
           </div>
         );
       })}
-      <DropdownMenu
-        isOpen={!!menuPreset}
-        onClose={() => setMenu(null)}
-        items={menuItems}
-        anchorPoint={menu ? { x: menu.x, y: menu.y } : null}
-        position="bottom-left"
-        zIndexBase={MENU_Z_ABOVE_POPUPS}
-      />
+      {rowMenu.menuElement}
     </div>
   );
 }

@@ -2,11 +2,13 @@
 // Identical row layout to the color preset list inside ColorPicker.tsx —
 // "Create new ..." row at top, then one row per preset with: name on the
 // left (flex-1), Edit button hover-revealed in the middle, small thumbnail
-// (w-5 h-5) on the right, active state = bg-hover.
+// (w-5 h-5) on the right, active state = bg-hover. Right-click = the Presets
+// panel's row menu (Edit / Rename / Duplicate / Delete), same as the colour list.
 
 import type { PresetToken } from '@/shared/types';
 import { trace } from '@/shared/debug-trace';
 import { ColorSwatch } from '@/editor/controls/ColorSwatch';
+import { usePresetRowMenu } from '@/editor/hooks/usePresetRowMenu';
 
 interface Props {
   /** Preset tokens to render. Caller filters by category before passing. */
@@ -32,6 +34,12 @@ export default function AssetPresetGrid({
   activePresetName,
 }: Props) {
   trace.fn('AssetPresetGrid:render', { type, count: presets.length, activePresetName });
+  const rowMenu = usePresetRowMenu({
+    kind: 'token',
+    labelFor: (name) => formatName(presets.find(p => p.name === name) ?? { name, value: '', category: type }, type),
+    onEdit: onEditPreset,
+    traceTag: `asset-preset-grid:${type}`,
+  });
 
   const hasContent = presets.length > 0 || !!onCreatePreset;
   if (!hasContent) return null;
@@ -60,16 +68,24 @@ export default function AssetPresetGrid({
             const displayName = formatName(preset, type);
             const url = extractUrl(preset.value);
             const isActive = activePresetName === preset.name;
+            if (rowMenu.renamingId === preset.name) {
+              return (
+                <div key={preset.name} className="flex items-center gap-2 px-1 py-1.5 cut-corners bg-[var(--bg-hover)]">
+                  {rowMenu.renameInput('flex-1 min-w-0 bg-transparent text-xs font-medium text-[var(--text-primary)] outline-none border-b border-[var(--accent)]')}
+                </div>
+              );
+            }
             return (
               <div
                 key={preset.name}
                 className={`group flex items-center gap-2 px-1 py-1.5 cut-corners cursor-pointer transition-colors ${
-                  isActive ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
+                  isActive || rowMenu.menuId === preset.name ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
                 }`}
                 onClick={() => {
                   trace.action('asset-preset-grid:apply', { type, name: preset.name });
                   onApplyPreset(`var(--${preset.name})`);
                 }}
+                onContextMenu={(e) => rowMenu.openMenu(preset.name, e)}
               >
                 <span className={`flex-1 text-xs font-medium truncate ${
                   isActive ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'
@@ -108,6 +124,7 @@ export default function AssetPresetGrid({
           })}
         </div>
       )}
+      {rowMenu.menuElement}
     </div>
   );
 }

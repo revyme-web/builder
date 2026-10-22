@@ -293,6 +293,38 @@ export function addPresetTokenToCSS(css: string, token: PresetToken): string {
   }
 }
 
+// ─── Duplicate ──────────────────────────────────────────────────────────────
+
+/**
+ * Copy declarations: for each `[from, to]`, every block that declares
+ * `--from` (`:root` AND `:root.dark`, so a colour keeps its dark value) gets a
+ * `--to` line with the same value. A block's copies go together, in pair
+ * order, right after the LAST line of the block that declared one of the
+ * `from`s — a duplicated preset lands just below its original, and a
+ * duplicated typography group stays one run of lines.
+ */
+export function duplicatePresetTokensInCSS(css: string, pairs: [string, string][]): string {
+  trace.fn('preset-gen:duplicatePresetTokensInCSS', { pairs: pairs.length });
+  const decl = (name: string) => new RegExp(`^([ \\t]*)--${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*([^;]*);`);
+  return css.replace(/(:root[^{]*\{)([^}]*)(\})/g, (_m, open: string, body: string, close: string) => {
+    const lines = body.split('\n');
+    const copies: string[] = [];
+    let last = -1;
+    for (const [from, to] of pairs) {
+      const re = decl(from);
+      lines.forEach((line, i) => {
+        const m = line.match(re);
+        if (!m) return;
+        copies.push(`${m[1]}--${to}: ${m[2]};`);
+        last = Math.max(last, i);
+      });
+    }
+    if (last < 0) return open + body + close;
+    lines.splice(last + 1, 0, ...copies);
+    return open + lines.join('\n') + close;
+  });
+}
+
 // ─── Remove ─────────────────────────────────────────────────────────────────
 
 /**

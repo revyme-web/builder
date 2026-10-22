@@ -18,8 +18,7 @@ import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { queueMutation, setForceRender, flushNow } from '@/code/mutation/mutation-queue';
 import { projectVersionAtom } from '@/code/project/project-fs';
 import { trace } from '@/shared/debug-trace';
-import DropdownMenu, { MENU_Z_ABOVE_POPUPS, type DropdownMenuEntry } from '@/design-system/DropdownMenu';
-import { usePresetActions } from '@/editor/hooks/usePresetActions';
+import { usePresetRowMenu } from '@/editor/hooks/usePresetRowMenu';
 import {
   RESPONSIVE_PROPS,
   presetApplyStyles,
@@ -62,33 +61,16 @@ function TypoPresetListPanel({ activeGroupName, onApply, onEdit, onCreate }: {
   // row menu only changes globals.css, which never re-renders the caller that pushed it.
   const tokens = useAtomValue(presetTokensAtom);
   const groups = useMemo(() => groupTypoTokens(tokens), [tokens]);
-  // Right-click = the Presets panel's typography row menu (Edit / Rename / Delete), through the same
-  // shared actions. Rename moves every `typo-<name>-*` token of the group and every reference to one.
-  const { deletePresets, renamePresetGroup } = usePresetActions();
-  const [menu, setMenu] = useState<{ name: string; x: number; y: number } | null>(null);
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  // The open rename, cleared the moment it is submitted or cancelled: the input also submits on blur,
-  // and a blur arriving as it unmounts (after Enter / Escape) must not rename twice or undo the cancel.
-  const renamingRef = useRef<string | null>(null);
-  const endRename = (commit: boolean) => {
-    const from = renamingRef.current;
-    renamingRef.current = null;
-    setRenaming(null);
-    if (!commit || !from) return;
-    const to = renamePresetGroup('typography', from, renameValue);
-    if (to && selected === from) setSelected(to);
-  };
-  const menuGroup = menu ? groups.find(g => g.name === menu.name) : undefined;
-  const menuItems: DropdownMenuEntry[] = menuGroup ? [
-    { id: 'edit', label: 'Edit', onClick: () => onEdit(menuGroup) },
-    { id: 'rename', label: 'Rename', onClick: () => { renamingRef.current = menuGroup.name; setRenaming(menuGroup.name); setRenameValue(menuGroup.label); } },
-    { type: 'separator' },
-    { id: 'delete', label: 'Delete', onClick: () => {
-      deletePresets(menuGroup.tokens.map(t => t.name));
-      if (selected === menuGroup.name) setSelected(null);
-    } },
-  ] : [];
+  // Right-click = the Presets panel's typography row menu (Edit / Rename / Duplicate / Delete), through
+  // the shared usePresetRowMenu. Rename / Duplicate cover every `typo-<name>-*` token of the group.
+  const rowMenu = usePresetRowMenu({
+    kind: 'typography',
+    labelFor: (name) => groups.find(g => g.name === name)?.label ?? name,
+    onEdit: (name) => { const g = groups.find(x => x.name === name); if (g) onEdit(g); },
+    onRenamed: (from, to) => setSelected(sel => (sel === from ? to : sel)),
+    onDeleted: (name) => setSelected(sel => (sel === name ? null : sel)),
+    traceTag: 'typo-preset',
+  });
   return (
     <div className="flex flex-col gap-0.5">
       {/* Create new — top button (compact, matches color picker) */}
@@ -107,24 +89,11 @@ function TypoPresetListPanel({ activeGroupName, onApply, onEdit, onCreate }: {
       {groups.map(g => {
         const isActive = g.name === selected;
         const detail = presetDetail(g);
-        if (renaming === g.name) {
+        if (rowMenu.renamingId === g.name) {
           return (
             <div key={g.name} className="flex items-center gap-2 px-2 py-1.5 cut-corners bg-[var(--bg-hover)]" style={{ minHeight: '32px', boxSizing: 'border-box' }}>
               <TypoTagBadge tag={getTypoTag(g)} active={isActive} />
-              <input
-                autoFocus
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                onFocus={(e) => e.target.select()}
-                onBlur={() => endRename(true)}
-                onKeyDown={(e) => {
-                  // The popup closes on Escape too — keep these keys in the input.
-                  e.stopPropagation();
-                  if (e.key === 'Enter') endRename(true);
-                  if (e.key === 'Escape') endRename(false);
-                }}
-                className="flex-1 min-w-0 bg-transparent text-[11px] font-medium text-[var(--text-primary)] outline-none border-b border-[var(--accent)]"
-              />
+              {rowMenu.renameInput('flex-1 min-w-0 bg-transparent text-[11px] font-medium text-[var(--text-primary)] outline-none border-b border-[var(--accent)]')}
             </div>
           );
         }
@@ -132,16 +101,11 @@ function TypoPresetListPanel({ activeGroupName, onApply, onEdit, onCreate }: {
           <div
             key={g.name}
             className={`group flex items-center gap-2 px-2 py-1.5 cut-corners cursor-pointer transition-colors select-none ${
-              isActive || menu?.name === g.name ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
+              isActive || rowMenu.menuId === g.name ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
             }`}
             style={{ minHeight: '32px', boxSizing: 'border-box' }}
             onClick={() => { setSelected(g.name); onApply(g); }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setMenu({ name: g.name, x: e.clientX, y: e.clientY });
-              trace.action('typo-preset:row-menu', { group: g.name });
-            }}
+            onContextMenu={(e) => rowMenu.openMenu(g.name, e)}
           >
             <TypoTagBadge tag={getTypoTag(g)} active={isActive} />
             <span
@@ -173,14 +137,7 @@ function TypoPresetListPanel({ activeGroupName, onApply, onEdit, onCreate }: {
           No typography presets yet
         </div>
       )}
-      <DropdownMenu
-        isOpen={!!menuGroup}
-        onClose={() => setMenu(null)}
-        items={menuItems}
-        anchorPoint={menu ? { x: menu.x, y: menu.y } : null}
-        position="bottom-left"
-        zIndexBase={MENU_Z_ABOVE_POPUPS}
-      />
+      {rowMenu.menuElement}
     </div>
   );
 }

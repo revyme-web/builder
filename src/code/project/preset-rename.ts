@@ -115,6 +115,12 @@ const GROUP_PREFIX: Record<PresetGroupKind, string> = { typography: 'typo', bord
 const groupTokens = (kind: PresetGroupKind, tokens: PresetToken[]) =>
   kind === 'typography' ? groupTypoTokens(tokens) : groupBorderTokens(tokens);
 
+/** Every token name of compound preset `group` (empty when there is none). */
+export function presetGroupTokenNames(kind: PresetGroupKind, group: string): string[] {
+  const tokens = parsePresetTokens(projectFS.readFile(TOKENS_PATH) ?? '');
+  return groupTokens(kind, tokens).find((g) => g.name === group)?.tokens.map((t) => t.name) ?? [];
+}
+
 /** The group name a rename of group `fromGroup` to the user's `input`
  *  produces — slugged; typing the category prefix is fine. Null when the
  *  input slugs to nothing. */
