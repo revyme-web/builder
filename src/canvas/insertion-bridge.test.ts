@@ -107,6 +107,19 @@ export default Header;`;
     expect(n.attrs?.name).toBe('icon-1');
   });
 
+  test('an ICON set takes its primary icon\'s own size — a 240×96 logo is not squashed into a square', () => {
+    // User report 2026-10-22: an uploaded logo dropped as 240×240 and its
+    // vector (preserveAspectRatio none, sized as a share of the instance)
+    // stretched tall.
+    projectFS.writeFile('icons/JiTiPa.tsx', `const iconConfig = [
+  { name: 'icon-1', label: 'logo (1)', x: 0, y: 0, width: 240, height: 96, isPrimary: true },
+];\nexport default function JiTiPa() { return null; }\n`);
+    const [n] = buildInstanceClipboardNode('icons/JiTiPa.tsx', 'JiTiPa');
+    expect(n.styles.width).toBe('240px');
+    expect(n.styles.height).toBe('96px');
+    expect(n.attrs?.name).toBe('icon-1');
+  });
+
   test('a local VECTOR keeps a placeholder box (300×120)', () => {
     const [n] = buildInstanceClipboardNode('vectors/Triangle.tsx', 'Triangle');
     expect(n.styles.width).toBe('300px');

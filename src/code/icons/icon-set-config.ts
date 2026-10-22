@@ -121,6 +121,24 @@ export function parseIconSetConfig(code: string): IconConfig[] {
   }
 }
 
+// ─── New instances ──────────────────────────────────────────────────────────
+
+/**
+ * What a NEW instance of an icon set gets: the primary icon, at THAT icon's
+ * own card size. Every drop used a fixed 240×240 square, and the vectors
+ * inside an icon fill their share of the instance (`preserveAspectRatio:
+ * none`), so any non-square icon came out stretched — a 240×96 logo dropped
+ * as 240×240 squashed tall (user report 2026-10-22). Falls back to icon-1 at
+ * 240×240 when the file has no readable config.
+ */
+export function iconSetInstanceDefaults(code: string): { name: string; width: string; height: string } {
+  const configs = parseIconSetConfig(code);
+  const primary = configs.find((c) => c.isPrimary) ?? configs[0];
+  const w = primary && primary.width > 0 ? primary.width : ICON_DEFAULT_W;
+  const h = primary && primary.height > 0 ? primary.height : ICON_DEFAULT_H;
+  return { name: primary?.name ?? 'icon-1', width: `${w}px`, height: `${h}px` };
+}
+
 // ─── Serializer ─────────────────────────────────────────────────────────────
 
 /** Render an iconConfig array back into a `const iconConfig = [...]` block. */

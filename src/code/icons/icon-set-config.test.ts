@@ -5,6 +5,7 @@ import {
   replaceIconSetConfigInCode,
   createDefaultIconSetConfig,
   iconConfigPx,
+  iconSetInstanceDefaults,
 } from './icon-set-config';
 
 describe('iconConfigPx', () => {
@@ -99,5 +100,26 @@ describe('replaceIconSetConfigInCode', () => {
     // Imports preserved + still come first
     expect(after.indexOf("import React")).toBeLessThan(after.indexOf('const iconConfig'));
     expect(after.indexOf("import other")).toBeLessThan(after.indexOf('const iconConfig'));
+  });
+});
+
+describe('iconSetInstanceDefaults — a new instance keeps its icon\'s shape', () => {
+  // Every drop used a fixed 240×240; a non-square icon then stretched (user
+  // report 2026-10-22: an uploaded 240×96 logo came out squashed tall).
+  it('the primary icon, at its own card size', () => {
+    const code = `const iconConfig = [
+  { name: 'icon-1', label: 'logo (1)', x: 0, y: 0, width: 240, height: 96, isPrimary: false },
+  { name: 'icon-2', label: 'Badge', x: 280, y: 0, width: 240, height: 154, isPrimary: true },
+];`;
+    expect(iconSetInstanceDefaults(code)).toEqual({ name: 'icon-2', width: '240px', height: '154px' });
+  });
+
+  it('no primary flag → the first icon', () => {
+    const code = `const iconConfig = [{ name: 'icon-1', label: 'Logo', x: 0, y: 0, width: 240, height: 96 }];`;
+    expect(iconSetInstanceDefaults(code)).toEqual({ name: 'icon-1', width: '240px', height: '96px' });
+  });
+
+  it('no readable config → icon-1 at 240×240', () => {
+    expect(iconSetInstanceDefaults('')).toEqual({ name: 'icon-1', width: '240px', height: '240px' });
   });
 });

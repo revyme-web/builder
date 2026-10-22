@@ -14,6 +14,7 @@ import {
   CODE_COMPONENT_FALLBACK_SIZE,
 } from '@/code/components/component-registry';
 import { hasComponentControls } from '@/code/components/controls-parser';
+import { iconSetInstanceDefaults } from '@/code/icons/icon-set-config';
 import { getCachedCdnMetadata } from '@/cloud/components/cdn-metadata-hook';
 import { startToolbarDrag } from '@/canvas/drag/toolbar-drag-bridge';
 import { type ToolbarItem } from '@/canvas/drag/toolbar-item-config';
@@ -103,27 +104,27 @@ export function useComponentDrag(filePath: string, elementType: string) {
     // without `name` the component returns its MASTER VIEW (the full grid
     // of every icon in the set) which is correct for the master canvas
     // but wrong for a page-level instance. Force `name="icon-1"` on drop
-    // so the dropped instance renders as a single icon. Also use a
-    // square default size since icons are typically square (240px is
-    // ICON_CARD_W from the template — keeps "drop from library" visually
-    // matching the master cards).
+    // so the dropped instance renders as a single icon — the set's primary
+    // icon, at that icon's own card size (iconSetInstanceDefaults). A fixed
+    // 240×240 square stretched every non-square icon.
     const isIconSet = filePath.startsWith('icons/');
+    const icon = isIconSet ? iconSetInstanceDefaults(projectFS.readFile(filePath) ?? '') : null;
     // CDN-linked components: filePath IS the URL, elementType is the
     // slug (component name). The drag carries the URL through to the
     // strategy via `cdnUrl` so onEnd can ensure the URL `import` line
     // exists on the active page before the JSX instance lands.
     const isCdnLink = filePath.startsWith('http://') || filePath.startsWith('https://');
-    const item: ToolbarItem = isIconSet ? {
+    const item: ToolbarItem = isIconSet && icon ? {
       id: `iconSet:${elementType}`,
       elementType,
       defaultStyles: {
         position: 'relative',
-        width: '240px',
-        height: '240px',
+        width: icon.width,
+        height: icon.height,
         flex: '0 0 auto',
       },
-      defaultAttrs: { name: 'icon-1' },
-      ghostSize: { width: 200, height: 200 },
+      defaultAttrs: { name: icon.name },
+      ghostSize: { width: 200, height: Math.max(40, Math.round((200 * parseFloat(icon.height)) / parseFloat(icon.width))) },
     } : isCdnLink ? {
       id: `cdn:${elementType}`,
       elementType,

@@ -34,6 +34,8 @@ import { getContentRoot } from '@/canvas/node-ops';
 import { backend } from '@/backend';
 import { getProjectId } from '@/backend/project-id';
 import { createVectorSetFromSvgs, preflightSvgFiles, type PreflightSvg } from '@/code/icons/create-vector-set-from-svgs';
+import { iconSetInstanceDefaults } from '@/code/icons/icon-set-config';
+import { projectFS } from '@/code/project/project-fs';
 import { isViewerMode } from '@/code/stores/viewer-mode-store';
 import { addImportIfNeeded } from '@/code/icons/icon-set-ops';
 import { modifyProjectFile } from '@/code/project/modify-file';
@@ -318,12 +320,14 @@ export default function CanvasFileDrop() {
 
     // Drop an instance of the new icon-set onto the current page at the
     // drop position. The instance points to the FIRST icon by default
-    // (matches the manual "Make Icon Set" flow).
+    // (matches the manual "Make Icon Set" flow), at that icon's own size —
+    // a fixed square stretched every non-square SVG.
     const instanceId = generateNodeId('SeCeJo'); // namespaced id with iconset prefix
+    const icon = iconSetInstanceDefaults(projectFS.readFile(result.iconSetFilePath) ?? '');
     const styles = {
       position: 'absolute',
-      width: '240px',
-      height: '240px',
+      width: icon.width,
+      height: icon.height,
       left: `${canvasX}px`,
       top: `${canvasY}px`,
     } as Record<string, string>;
@@ -333,7 +337,7 @@ export default function CanvasFileDrop() {
         id: instanceId,
         type: result.iconSetName,
         name: result.iconSetName,
-        attrs: { name: 'icon-1' },
+        attrs: { name: icon.name },
         styles,
       },
     });

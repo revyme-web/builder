@@ -28,6 +28,7 @@ import { resolveParentHasLayout } from '@/code/features/paste-engine/execute-fro
 import { generateNodeId } from '@/shared/id-utils';
 import { getComponentRootSize } from '@/code/components/component-registry';
 import { projectFS } from '@/code/project/project-fs';
+import { iconSetInstanceDefaults } from '@/code/icons/icon-set-config';
 import type { ClipboardNode, ClipboardData } from '@/code/features/paste-engine/types';
 import { trace } from '@/shared/debug-trace';
 
@@ -155,16 +156,18 @@ export function buildInstanceClipboardNode(
   // the full grid view instead of a single variant — same logic
   // useComponentDrag uses for the drag-from-library flow.
   const attrs: Record<string, string> = {};
-  if (isIcon) attrs.name = 'icon-1';
+  // The set's primary icon at that icon's own card size — a fixed square
+  // stretched every non-square icon (iconSetInstanceDefaults).
+  const icon = isIcon ? iconSetInstanceDefaults(projectFS.readFile(filePath) ?? '') : null;
+  if (icon) attrs.name = icon.name;
 
-  const isSquare = isIcon;
   // A DESIGN component (components/) is everything that isn't an icon
   // set or a local vector — it inherits the master ROOT's authored width/height
   // (the PRIMARY variant's dimensions) so the instance matches the master.
   // Mirrors `useComponentDrag`'s design-component branch.
   const isDesignComponent = !isIcon && !isVector;
   const rootSize = isDesignComponent ? getComponentRootSize(projectFS.readFile(filePath) ?? '') : {};
-  const id = generateNodeId(isSquare ? 'icon' : 'component');
+  const id = generateNodeId(isIcon ? 'icon' : 'component');
 
   return [{
     id,
@@ -176,12 +179,13 @@ export function buildInstanceClipboardNode(
     styles: {
       position: 'relative',
       // Instance sizing — matches `useComponentDrag` defaults.
-      // Icon sets render square; local vectors render a 300×120
-      // placeholder; DESIGN components take the master root's primary-variant
-      // width/height. All get `flex: 0 0 auto` so they don't collapse in flex.
-      ...(isDesignComponent ? rootSize : {
-        width: isSquare ? '240px' : '300px',
-        height: isSquare ? '240px' : (isVector ? '120px' : '200px'),
+      // Icon sets take their primary icon's size; local vectors render a
+      // 300×120 placeholder; DESIGN components take the master root's
+      // primary-variant width/height. All get `flex: 0 0 auto` so they
+      // don't collapse in flex.
+      ...(isDesignComponent ? rootSize : icon ? { width: icon.width, height: icon.height } : {
+        width: '300px',
+        height: isVector ? '120px' : '200px',
       }),
       flex: '0 0 auto',
     },
