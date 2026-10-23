@@ -8,7 +8,7 @@
 
 import { trace } from '@/shared/debug-trace';
 import { isViewerMode } from '@/code/stores/viewer-mode-store';
-import { isShortcutKey, physicalShortcutKey } from '@/shared/shortcut-key';
+import { isShortcutKey, physicalShortcutKey, watchKeyboardLayout } from '@/shared/shortcut-key';
 
 /** Shortcut categories that stay live in view-only mode. Everything
  *  else (tools, edit, selection, general) is a write/edit action and
@@ -152,8 +152,12 @@ class KeyboardManager {
     this.boundKeyUp = this.handleKeyUp.bind(this);
     window.addEventListener('keydown', this.boundKeyDown);
     window.addEventListener('keyup', this.boundKeyUp);
+    // Learns which letter each physical key carries on the user's own
+    // keyboard, for the non-Latin-layout fallback (shortcut-key.ts).
+    const stopLayout = watchKeyboardLayout();
     trace.action('keyboard:listen');
     return () => {
+      stopLayout();
       if (this.boundKeyDown) window.removeEventListener('keydown', this.boundKeyDown);
       if (this.boundKeyUp) window.removeEventListener('keyup', this.boundKeyUp);
     };

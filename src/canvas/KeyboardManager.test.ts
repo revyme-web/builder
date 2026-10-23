@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { keyboard } from './KeyboardManager';
+import { resetKeyboardLayoutForTests } from '@/shared/shortcut-key';
 
 // macOS composes Option/Alt+letter into a symbol (Option+R → "®"), so a pure-Alt
 // shortcut's e.key never equals its letter. The manager falls back to the PHYSICAL
@@ -8,7 +9,7 @@ import { keyboard } from './KeyboardManager';
 describe('KeyboardManager — Alt physical-key fallback (macOS Option compose)', () => {
   let stop: () => void;
   const unregs: Array<() => void> = [];
-  beforeEach(() => { stop = keyboard.listen(); });
+  beforeEach(() => { resetKeyboardLayoutForTests(); stop = keyboard.listen(); });
   afterEach(() => { unregs.forEach((u) => u()); unregs.length = 0; stop(); });
 
   const fire = (init: KeyboardEventInit) =>
@@ -53,7 +54,7 @@ describe('KeyboardManager — Alt physical-key fallback (macOS Option compose)',
 describe('KeyboardManager — non-Latin layouts', () => {
   let stop: () => void;
   const unregs: Array<() => void> = [];
-  beforeEach(() => { stop = keyboard.listen(); });
+  beforeEach(() => { resetKeyboardLayoutForTests(); stop = keyboard.listen(); });
   afterEach(() => { unregs.forEach((u) => u()); unregs.length = 0; stop(); });
 
   const fire = (init: KeyboardEventInit) =>
@@ -92,5 +93,13 @@ describe('KeyboardManager — non-Latin layouts', () => {
     unregs.push(keyboard.register({ key: 'c', ctrl: true, category: 'general', handler }));
     fire({ key: 'с', code: 'KeyC', ctrlKey: true });
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('AZERTY Mac + Russian layout: Shift + the key printed A (code KeyQ, "Й") fires Create Layout once the AZERTY typing is known', () => {
+    const layout = vi.fn();
+    unregs.push(keyboard.register({ key: 'a', shift: true, category: 'structure', handler: layout }));
+    fire({ key: 'a', code: 'KeyQ' }); // the user typed "a" on AZERTY at some point
+    fire({ key: 'Й', code: 'KeyQ', shiftKey: true });
+    expect(layout).toHaveBeenCalledTimes(1);
   });
 });
