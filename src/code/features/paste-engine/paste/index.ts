@@ -26,6 +26,7 @@ import { copySlotConnectionsInCode } from '@/code/generation/slot-ops';
 import { rehydrateCmsBindings } from '@/code/generation/cms-detach-gen';
 import { addTextAnimInCode } from '@/code/generation/text-anim-gen';
 import { setCodeOverridesInCode } from '@/code/generation/code-override-gen';
+import { setTickerInCode } from '@/code/generation/ticker-gen';
 import type { TextAnimConfig } from '@/editor/tools/AnimationTool/motion/text-anim-presets';
 import type { OverlayConfig, OverlayTriggerConfig } from '@/shared/types';
 import type { ClipboardData, PasteContext, PasteResult, ClipboardNode } from '../types';
@@ -180,6 +181,7 @@ export function executePaste(opts: PasteOptions): PasteResult {
       // nodes are guaranteed in the file (the wrapper is JSX, not a style).
       reinjectTextAnims(ctx.clipboardNodes, idMapper, opts.activeFilePath);
       reinjectCodeOverrides(ctx.clipboardNodes, idMapper, opts.activeFilePath);
+      reinjectTickers(ctx.clipboardNodes, idMapper, opts.activeFilePath);
     }
     return {
       success: true,
@@ -500,6 +502,26 @@ function reinjectCodeOverrides(clipboardNodes: ClipboardNode[], idMapper: IdMapp
     return next;
   });
   trace.action('paste:code-overrides-reinjected', { count: work.length });
+}
+
+/** The Ticker effect travels the same way: re-wrap every new frame id in a
+ *  `<RevymeTicker>` with the copied settings (setTickerInCode keeps any code
+ *  override inside it and adds the runtime import). */
+function reinjectTickers(clipboardNodes: ClipboardNode[], idMapper: IdMapper, destFilePath: string): void {
+  const withTicker = clipboardNodes.filter(n => n.ticker);
+  if (withTicker.length === 0) return;
+  const mappings = idMapper.getAllMappings();
+  const work: Array<{ newId: string; ticker: NonNullable<ClipboardNode['ticker']> }> = [];
+  for (const n of withTicker) {
+    for (const newId of mappings.get(n.id) ?? []) work.push({ newId, ticker: n.ticker! });
+  }
+  if (work.length === 0) return;
+  modifyProjectFile(destFilePath, code => {
+    let next = code;
+    for (const w of work) next = setTickerInCode(next, w.newId, w.ticker);
+    return next;
+  });
+  trace.action('paste:tickers-reinjected', { count: work.length });
 }
 
 function reinjectTextAnims(clipboardNodes: ClipboardNode[], idMapper: IdMapper, destFilePath: string): void {

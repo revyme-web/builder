@@ -26,7 +26,11 @@ import { trace } from '@/shared/debug-trace';
 export const PUBLISH_FATAL_CODES = new Set(['SYNTAX_ERROR', 'STRING_STYLE_ATTR', 'WOULD_CRASH',
   // `<Override>` around zero/several elements throws in React.Children.only;
   // an un-imported override is a ReferenceError at render.
-  'OVERRIDE_CHILD_COUNT', 'OVERRIDE_NOT_IMPORTED']);
+  'OVERRIDE_CHILD_COUNT', 'OVERRIDE_NOT_IMPORTED',
+  // An un-imported (or shadowed) RevymeTicker is a ReferenceError / duplicate
+  // binding. (TICKER_CHILD_COUNT is NOT fatal: the runtime then renders its
+  // children still — nothing crashes — so it bounces AI writes only.)
+  'TICKER_NOT_IMPORTED']);
 
 export interface PreflightIssue {
   path: string;

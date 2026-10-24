@@ -15,6 +15,8 @@ import type { AgentTool, AgentToolResult, ToolContext } from '@/ai/agent';
 import { queueToolMutation, flushTool, getToolNodes, getToolCode } from '@/ai/agent/workspace';
 import { getScrollFx, type ScrollFxSpec } from '@/code/generation/generator-motion-scroll-fx';
 import { TEXT_ANIM_PRESETS, type TextAnimConfig } from '@/editor/tools/AnimationTool/motion/text-anim-presets';
+import { readTicker } from '@/code/generation/ticker-gen';
+import { tickerReport } from './site-motion';
 import { trace } from '@/shared/debug-trace';
 
 function ok(data: unknown): AgentToolResult {
@@ -228,7 +230,7 @@ export function describeSpec(spec: ScrollFxSpec | null): Record<string, unknown>
 
 export const getMotionTool: AgentTool = {
   name: 'get_motion',
-  description: 'Read the motion on an element — every effect (appear, hover, tap, loop, parallax speed, scroll transform, scroll animation) with its values, plus any text effect. Call it before changing motion that is already there.',
+  description: 'Read the motion on an element — every effect (appear, hover, tap, loop, parallax speed, scroll transform, scroll animation) with its values, plus any text effect and Ticker effect (set_ticker). Call it before changing motion that is already there.',
   inputSchema: { node_id: z.string() },
   category: 'read',
   async execute(args, ctx) {
@@ -240,7 +242,12 @@ export const getMotionTool: AgentTool = {
     const tagStart = code.indexOf(`data-id="${nodeId}"`);
     const tag = tagStart >= 0 ? code.slice(code.lastIndexOf('<', tagStart), tagStart + 600) : '';
     const textAnim = tag.match(/data-text-anim='([^']*)'/)?.[1];
-    return ok({ node_id: nodeId, motion, text_effect: textAnim ? JSON.parse(textAnim) : null, is_motion_element: /^<motion\./.test(tag) });
+    const t = readTicker(code, nodeId);
+    const report = t ? tickerReport(t, null) : null;
+    return ok({ node_id: nodeId, motion, text_effect: textAnim ? JSON.parse(textAnim) : null, ticker: report?.ticker ?? null,
+      ...(report?.per_breakpoint ? { ticker_per_breakpoint: report.per_breakpoint } : {}),
+      ...(report?.base_on === false ? { ticker_base_on: false } : {}),
+      is_motion_element: /^<motion\./.test(tag) });
   },
 };
 

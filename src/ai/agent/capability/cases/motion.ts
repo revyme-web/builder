@@ -167,6 +167,77 @@ export const MOTION_CASES: CapabilityCase[] = [
     },
   },
   {
+    id: 'motion/ticker', domain: 'motion', status: 'supported',
+    feature: 'Ticker (an infinite marquee of a layout frame\'s children)',
+    ask: 'make the cards scroll sideways forever, slowing down on hover, with faded edges',
+    calls: [
+      { tool: 'set_ticker', args: { node_id: 'cards', speed: 60, hover_speed: 0.5, fade: 48 } },
+      { tool: 'get_motion', args: { node_id: 'cards' } },
+    ],
+    expect: (w) => {
+      const code = w.read(HOME) ?? '';
+      must(w.replies[1].data?.ticker?.speed === 60 && w.replies[1].data?.ticker?.hover_speed === 0.5, `get_motion does not report the ticker: ${w.replies[1].text.slice(0, 200)}`);
+      must(/import \{[^}]*\bRevymeTicker\b[^}]*\} from '@revyme\/runtime'/.test(code), 'no RevymeTicker import from the runtime');
+      must(/<RevymeTicker speed=\{60\} direction="left" hoverSpeed=\{0\.5\} fade=\{48\}>\s*<div data-id="cards"/.test(code), 'the cards frame is not wrapped in the ticker with those settings');
+      const t = w.node('cards').ticker;
+      must(t?.speed === 60 && t?.hoverSpeed === 0.5 && t?.fade === 48, `the parser does not read the ticker back: ${JSON.stringify(t)}`);
+      must((code.match(/data-id="card-\d"/g) ?? []).length === 3, 'the items were duplicated or lost (the runtime makes the copies, never the source)');
+    },
+  },
+  {
+    id: 'motion/ticker-per-breakpoint', domain: 'motion', status: 'supported',
+    feature: 'Ticker values per breakpoint, and off on one breakpoint',
+    ask: 'slow the logo ticker down on mobile with no fade there, and turn it off on tablet',
+    calls: [
+      { tool: 'set_ticker', args: { node_id: 'cards', speed: 80, fade: 48 } },
+      { tool: 'set_ticker', args: { node_id: 'cards', viewport: 375, speed: 30, fade: 0 } },
+      { tool: 'set_ticker', args: { node_id: 'cards', viewport: 768, remove: true } },
+      { tool: 'get_motion', args: { node_id: 'cards' } },
+    ],
+    expect: (w) => {
+      const code = w.read(HOME) ?? '';
+      must(/<RevymeTicker speed=\{80\} direction="left" fade=\{48\} responsive=\{\[/.test(code), `the base was changed or the overrides are missing: ${code.match(/<RevymeTicker[^\n]*/)?.[0]}`);
+      must(/scope: \{ query: "\(max-width: 375px\)" \}, speed: 30, fade: 0/.test(code), `no mobile override with speed 30 and no fade: ${code.match(/<RevymeTicker[^\n]*/)?.[0]}`);
+      must(/scope: \{ query: "[^"]*max-width: 768px[^"]*" \}, disabled: true/.test(code), 'not turned off on tablet only');
+      must(!/useMediaQuery/.test(code), 'per-breakpoint ticker values must not add media-query hooks');
+      const t = w.node('cards').ticker;
+      must(t?.speed === 80 && t?.fade === 48 && t?.responsive?.length === 2, `the parser does not read the overrides back: ${JSON.stringify(t)}`);
+      const r = w.replies[3].data;
+      must(r?.ticker?.speed === 80 && Array.isArray(r?.ticker_per_breakpoint) && r.ticker_per_breakpoint.length === 2, `get_motion does not report the per-breakpoint values: ${w.replies[3].text.slice(0, 300)}`);
+    },
+  },
+  {
+    id: 'motion/ticker-update-remove', domain: 'motion', status: 'supported',
+    feature: 'Change one ticker setting, keep the rest; then remove it cleanly',
+    ask: 'make the logo strip go the other way — actually, stop it scrolling',
+    calls: [
+      { tool: 'set_ticker', args: { node_id: 'cards', speed: 60, draggable: true } },
+      { tool: 'set_ticker', args: { node_id: 'cards', direction: 'right' } },
+      { tool: 'set_ticker', args: { node_id: 'cards', remove: true } },
+    ],
+    expect: (w) => {
+      must(w.replies[1].data?.ticker?.speed === 60 && w.replies[1].data?.ticker?.draggable === true && w.replies[1].data?.ticker?.direction === 'right', `the update lost the other settings: ${w.replies[1].text.slice(0, 200)}`);
+      const code = w.read(HOME) ?? '';
+      must(!/RevymeTicker/.test(code), 'the wrapper or its import is still in the page');
+      must(w.node('cards').children.length === 3, 'the frame lost its items');
+    },
+  },
+  {
+    id: 'motion/ticker-needs-layout', domain: 'motion', status: 'supported',
+    feature: 'A ticker on something that is not a flex frame is refused with the way forward',
+    ask: 'make the hero image scroll like a marquee',
+    calls: [
+      { tool: 'set_ticker', args: { node_id: 'hero-image' } },
+      { tool: 'set_ticker', args: { node_id: 'hero-cta' } },
+    ],
+    allowFailedCalls: true,
+    expect: (w) => {
+      must(w.replies[0].isError && /flex layout/.test(w.replies[0].text) && /set_layout/.test(w.replies[0].text), `not refused with the layout hint: ${w.replies[0].text.slice(0, 200)}`);
+      must(w.replies[1].isError && /component instance/.test(w.replies[1].text), `an instance was not refused: ${w.replies[1].text.slice(0, 200)}`);
+      must(!/RevymeTicker/.test(w.read(HOME) ?? ''), 'a ticker was written anyway');
+    },
+  },
+  {
     id: 'motion/page-transition', domain: 'motion', status: 'supported',
     feature: 'Page transitions',
     ask: 'crossfade between pages',

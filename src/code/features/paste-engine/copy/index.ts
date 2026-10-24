@@ -30,6 +30,7 @@ import { getProjectId } from '@/backend/project-id';
 import { readTranslationText } from '@/code/project/translation-ops';
 import { readTextAnimConfig } from '@/code/generation/text-anim-gen';
 import { readCodeOverrides } from '@/code/generation/code-override-gen';
+import { readTicker } from '@/code/generation/ticker-gen';
 import { getI18nConfig } from '@/code/project/locale-ops';
 
 const CLIPBOARD_STORAGE_KEY = 'revyme_clipboard';
@@ -455,6 +456,8 @@ export function copyNodes(
         if (cfg) { n.textAnim = cfg as unknown as Record<string, unknown>; captured++; }
         const overrides = readCodeOverrides(src, n.id);
         if (overrides.length) n.codeOverrides = overrides;
+        const ticker = readTicker(src, n.id);
+        if (ticker) n.ticker = ticker;
       }
       if (captured) trace.action('copy:text-anim-captured', { count: captured });
     }

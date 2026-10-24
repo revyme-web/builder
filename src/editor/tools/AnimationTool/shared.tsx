@@ -74,7 +74,7 @@ export function PanelRow({ label, summary, onClick }: { label: string; summary: 
 
 
 /** Animation entry type */
-export type AnimEntryType = 'hover' | 'tap' | 'appear' | 'glide' | 'loop' | 'scrollTransform' | 'scrollSpeed' | 'scrollVariant' | 'textEffect' | 'transition' | 'keyframe' | 'cssHover' | 'sketchDraw';
+export type AnimEntryType = 'hover' | 'tap' | 'appear' | 'glide' | 'ticker' | 'loop' | 'scrollTransform' | 'scrollSpeed' | 'scrollVariant' | 'textEffect' | 'transition' | 'keyframe' | 'cssHover' | 'sketchDraw';
 
 /** Entry metadata */
 export const ENTRY_META: Record<AnimEntryType, { label: string; Icon: React.FC<React.SVGProps<SVGSVGElement>> }> = {
@@ -82,6 +82,7 @@ export const ENTRY_META: Record<AnimEntryType, { label: string; Icon: React.FC<R
   tap: { label: 'Tap', Icon: TapIcon },
   appear: { label: 'Appear', Icon: AppearIcon },
   glide: { label: 'Glide', Icon: AnimationIcon },
+  ticker: { label: 'Ticker', Icon: LoopIcon },
   loop: { label: 'Loop', Icon: LoopIcon },
   scrollTransform: { label: 'Scroll Transform', Icon: ScrollIcon },
   scrollSpeed: { label: 'Scroll Speed', Icon: ScrollIcon },

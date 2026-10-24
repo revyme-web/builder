@@ -13,6 +13,8 @@ export const PARSER_TRANSPARENT_TAGS: ReadonlySet<string> = new Set([
   'PageTransitions',
   // Code-override wrapper — `<Override with={withX}><El data-id/></Override>`.
   'Override',
+  // Ticker-effect wrapper — `<RevymeTicker …><Frame data-id/></RevymeTicker>`.
+  'RevymeTicker',
 ]);
 
 /** Name of the JSX tag whose opening tag contains offset `idx` (best effort:

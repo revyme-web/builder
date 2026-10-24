@@ -11,62 +11,30 @@
 // The wrapper sits DIRECTLY around one element and adds no DOM. The parser
 // looks through it (node.codeOverrides), the canvas never runs it.
 //
-// Carrying the wrapper through every structural edit: rather than teach each
-// generator (move, reorder, delete, conditional visibility, wrap, …) about a
-// new wrapper, the mutation queue LIFTS every `<Override>` off the file before
-// a mutation runs and RESTORES it around the same data-id afterwards. Every
-// generator sees the plain JSX it was written for; a deleted element simply
-// has nothing to restore onto.
+// Carrying the wrapper through every structural edit: the mutation queue LIFTS
+// every `<Override>` off the file before a mutation runs and RESTORES it around
+// the same data-id afterwards (element-wrapper.ts, shared with the Ticker
+// effect's `<RevymeTicker>`).
 //
 // Override files live in `overrides/*.tsx` and export `withX(Component)`.
 
 import { trace } from '@/shared/debug-trace';
-import { findSubtreeRange, findTagClose, findMatchingCloseTagIndex } from './generator-utils';
+import { findSubtreeRange } from './generator-utils';
+import { liftElementWrappers, restoreElementWrappers, ensureRuntimeWrapperImport, type LiftedWrappers } from './element-wrapper';
 
 export const OVERRIDES_DIR = 'overrides/';
 
 /** data-id → the verbatim `<Override …>` opening tag that wrapped it. */
-export type LiftedOverrides = Map<string, string>;
+export type LiftedOverrides = LiftedWrappers;
 
 /** Strip every `<Override>` wrapper, remembering which element each one wrapped. */
 export function liftCodeOverrides(code: string): { code: string; lifted: LiftedOverrides } {
-  const lifted: LiftedOverrides = new Map();
-  if (!code.includes('<Override')) return { code, lifted };
-  let out = code;
-  // Last to first so earlier offsets stay valid; nested wrappers (an override
-  // on an element inside another overridden element) unwrap inner-first.
-  let from = out.length;
-  for (;;) {
-    const open = out.lastIndexOf('<Override', from);
-    if (open < 0) break;
-    from = open - 1;
-    const after = out[open + '<Override'.length];
-    if (after !== ' ' && after !== '\n' && after !== '\t' && after !== '>') continue;
-    const openEnd = findTagClose(out, open + '<Override'.length);
-    if (openEnd < 0 || out[openEnd - 1] === '/') continue;
-    const close = findMatchingCloseTagIndex(out, 'Override', openEnd + 1);
-    if (close < 0) continue;
-    const inner = out.slice(openEnd + 1, close);
-    const id = /^\s*<[A-Za-z][\w.]*\b[^]*?\bdata-id="([^"]+)"/.exec(inner)?.[1];
-    if (!id) continue;
-    lifted.set(id, out.slice(open, openEnd + 1));
-    out = out.slice(0, open) + inner.trim() + out.slice(close + '</Override>'.length);
-  }
-  return { code: out, lifted };
+  return liftElementWrappers(code, 'Override');
 }
 
 /** Re-wrap each lifted element that still exists. */
 export function restoreCodeOverrides(code: string, lifted: LiftedOverrides): string {
-  let out = code;
-  for (const [id, openTag] of lifted) {
-    const range = findSubtreeRange(out, id);
-    if (!range) {
-      trace.action('code-override:dropped-with-element', { nodeId: id });
-      continue;
-    }
-    out = out.slice(0, range.start) + openTag + out.slice(range.start, range.end) + '</Override>' + out.slice(range.end);
-  }
-  return out;
+  return restoreElementWrappers(code, lifted, 'Override');
 }
 
 /** Override identifiers in a `<Override with={…}>` opening tag. */
@@ -124,22 +92,7 @@ export function setCodeOverridesInCode(code: string, nodeId: string, overrides: 
 /** `Override` from `@revyme/runtime` while the file uses the wrapper. syncImports
  *  rebuilds the same line on a flush; writers outside the queue (paste) need it now. */
 export function ensureRuntimeOverrideImport(code: string): string {
-  const line = /import\s*\{([^}]*)\}\s*from\s*['"]@revyme\/runtime['"];?/.exec(code);
-  if (!/<Override[\s>]/.test(code)) {
-    // Last wrapper gone: drop the now-unused specifier (or the whole line).
-    if (!line || !/\bOverride\b/.test(line[1])) return code;
-    const rest = line[1].split(',').map((x) => x.trim()).filter((x) => x && x !== 'Override');
-    return rest.length
-      ? code.replace(line[0], `import { ${rest.join(', ')} } from '@revyme/runtime';`)
-      : code.replace(new RegExp(`${line[0].replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}[ \t]*\n?`), '');
-  }
-  if (line) {
-    if (/\bOverride\b/.test(line[1])) return code;
-    return code.replace(line[0], `import { ${[...line[1].split(',').map((x) => x.trim()).filter(Boolean), 'Override'].join(', ')} } from '@revyme/runtime';`);
-  }
-  const lastImport = [...code.matchAll(/^import\b[^;]*;[ \t]*\n/gm)].pop();
-  const at = lastImport ? lastImport.index! + lastImport[0].length : (/^(['"])use client\1;?\s*\n/.exec(code)?.[0].length ?? 0);
-  return code.slice(0, at) + "import { Override } from '@revyme/runtime';\n" + code.slice(at);
+  return ensureRuntimeWrapperImport(code, 'Override');
 }
 
 function ensureOverrideImport(code: string, ref: CodeOverrideRef): { code: string; local: string } {

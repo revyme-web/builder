@@ -213,6 +213,8 @@ const MODULE_MAP: Record<string, any> = {
     // call this with the wrapper SVG + the user's animation options.
     playSketchDraw: RevymeRuntime.playSketchDraw,
     RevymeSplitText: RevymeRuntime.RevymeSplitText,
+    // Ticker effect — `<RevymeTicker …>` around a layout frame (ticker-gen.ts).
+    RevymeTicker: RevymeRuntime.RevymeTicker,
     // Collection-list locale resolution — a localized list's source is
     // `localizeRows(slug, __activeLocale)`, so the preview needs it or the
     // page throws "localizeRows is not a function" and renders nothing.

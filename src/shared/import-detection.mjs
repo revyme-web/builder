@@ -119,6 +119,8 @@ export function buildAutoImports(body) {
   if (/\bwithCursor\b/.test(body)) revymeRuntime.push('withCursor');
   if (/\bCursorPortal\b/.test(body)) revymeRuntime.push('CursorPortal');
   if (/\bRevymeSplitText\b/.test(body)) revymeRuntime.push('RevymeSplitText');
+  // Ticker effect wrapper on a layout frame (ticker-gen.ts).
+  if (/\bRevymeTicker\b/.test(body)) revymeRuntime.push('RevymeTicker');
   // localizeRows — a translated CMS collection list resolves its own locale at
   // the head of the chain. Missing here, the dedup pass above dropped the
   // import line and nothing rebuilt it, so the FIRST edit after the list was

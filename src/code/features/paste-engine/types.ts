@@ -7,6 +7,7 @@
 
 import type { CanvasNode } from '@/code/parsing/parser';
 import type { Transform } from '@/shared/types';
+import type { TickerConfig } from '@/shared/ticker-config';
 
 // ─── Clipboard data ───────────────────────────────────────────────────────────
 
@@ -68,6 +69,9 @@ export interface ClipboardNode {
    *  at copy time, so a duplicate / paste — also into another page — re-wraps
    *  the new id and imports the override there. */
   codeOverrides?: Array<{ file: string; name: string }>;
+  /** Ticker effect (`<RevymeTicker …>` wrapper) read at copy time — a
+   *  duplicate / paste re-wraps the new frame id with the same settings. */
+  ticker?: TickerConfig;
   /** Same, per translatable ATTR: attr → locale → string. */
   attrTranslations?: Record<string, Record<string, string>>;
   /** Per-breakpoint style overrides captured from the source page's @media

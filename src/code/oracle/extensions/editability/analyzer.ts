@@ -35,6 +35,10 @@ const TRANSPARENT_TAGS_LOCAL = new Set([
   'React.Fragment',
   'PageTransitions',
   'RevymeSplitText',
+  // Runtime wrappers around ONE element (element-wrapper.ts): the code
+  // override and the Ticker effect. Never nodes, never carry a data-id.
+  'Override',
+  'RevymeTicker',
 ]);
 
 // Tags that are not nodes the editor ever manages. <style> is just a CSS

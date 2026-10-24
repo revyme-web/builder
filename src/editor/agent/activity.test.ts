@@ -213,7 +213,7 @@ describe('the capability-audit tool families read as what they changed', () => {
       'set_locales', 'translate_texts', 'add_language_switcher', 'add_built_in_component',
       'set_variant_visibility', 'detach_instance', 'add_component_prop', 'set_text_on_breakpoint', 'set_pseudo_style', 'translate_attribute',
       'add_list_search', 'add_form_field', 'add_submit_button', 'set_background_video', 'set_form_destination',
-      'set_smooth_scroll', 'set_page_transition', 'set_cursor', 'set_glide', 'create_template', 'assign_template',
+      'set_smooth_scroll', 'set_page_transition', 'set_cursor', 'set_glide', 'set_ticker', 'create_template', 'assign_template',
       'add_viewport', 'set_viewport_width', 'remove_viewport', 'reset_overrides', 'change_list_source',
       'add_shape', 'add_icon', 'create_icon_set', 'insert_section', 'upload_image', 'write_override', 'set_code_overrides', 'bind_variable',
       'connect_slot', 'write_plugin', 'set_text_fit', 'create_branch', 'switch_branch', 'apply_branch', 'delete_branch',

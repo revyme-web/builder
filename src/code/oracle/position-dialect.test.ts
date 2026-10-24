@@ -83,7 +83,7 @@ describe('position pin dialect', () => {
     </div>`);
     const vs = checkFile(marquee, { kind: 'page' });
     expect(codes(vs)).toContain('LOOP_KEYFRAME_ARRAY');
-    expect(vs.find((x) => x.code === 'LOOP_KEYFRAME_ARRAY')!.message).toContain('Marquee');
+    expect(vs.find((x) => x.code === 'LOOP_KEYFRAME_ARRAY')!.message).toContain('<RevymeTicker');
 
     const single = page(`<div data-id="spinner" style={{ display: 'flex' }} animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }} />`);
     expect(codes(checkFile(single, { kind: 'page' }))).not.toContain('LOOP_KEYFRAME_ARRAY');

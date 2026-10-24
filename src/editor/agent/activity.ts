@@ -210,6 +210,7 @@ const EFFECTS: Record<string, Effect> = {
   set_page_transition: { kind: 'write', verb: 'edited', noun: 'page transition' },
   set_cursor: { kind: 'write', verb: 'edited', noun: 'cursor' },
   set_glide: { kind: 'write', verb: 'edited', noun: 'animation' },
+  set_ticker: { kind: 'write', verb: 'edited', noun: 'animation' },
   list_templates: { kind: 'read', noun: 'template' },
   create_template: { kind: 'write', verb: 'added', noun: 'template' },
   assign_template: { kind: 'write', verb: 'edited', noun: 'template' },

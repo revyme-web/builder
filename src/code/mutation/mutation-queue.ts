@@ -16,6 +16,7 @@
 // and flushes to codeAtom when idle.
 
 import { liftCodeOverrides, restoreCodeOverrides, pruneUnusedOverrideImports, setCodeOverridesInCode, type CodeOverrideRef } from '../generation/code-override-gen';
+import { liftTickers, restoreTickers, setTickerInCode, type TickerConfig } from '../generation/ticker-gen';
 import { SCROLL_TARGET_EXPR } from '@/shared/scroll-target';
 import { getAllCachedNodes, getNodeFromCache, canvasInteractingAtom, setPreferCacheSnapshot } from '@/code/stores/store';
 import { registerExternalWriteRefresh } from './external-write-registry';
@@ -256,6 +257,8 @@ export type Mutation =
    *  into `canvasNodes` (id-renamed by `suffix`, map + bindings preserved). The
    *  original stays in the page; the caller hides it on the source replica. */
   | { type: 'setCodeOverrides'; nodeId: string; overrides: CodeOverrideRef[] }
+  /** Ticker effect on a layout frame — a config sets / updates it, null removes it. */
+  | { type: 'setTicker'; nodeId: string; ticker: TickerConfig | null }
   | { type: 'duplicateCollectionToCanvas'; nodeId: string; source: string; suffix: string; styles: Record<string, string> }
   /** Move an element to a new position within its parent (reorder children). */
   | { type: 'reorder'; nodeId: string; parentId: string; index: number }
@@ -753,6 +756,8 @@ const FLUSH_DELAY_MS = 16; // ~1 frame
 const IMPORT_AFFECTING_TYPES = new Set([
   // `<Override>` needs the runtime import; the override file import is written by the generator.
   'setCodeOverrides',
+  // `<RevymeTicker>` needs the runtime import.
+  'setTicker',
   'updateMotionProp', 'removeMotionProp', 'removeMotionScopeBranch',
   'updateScrollAnim', 'removeScrollAnim', 'updateScrollDirection', 'removeScrollDirection',
   'updateScrollSpeed', 'removeScrollSpeed', 'updateLoop', 'removeLoop',
@@ -2000,6 +2005,8 @@ export function syncImports(code: string): string {
     'Link', 'Image', 'Fragment', 'AnimatePresence', 'MotionConfig', 'LayoutGroup',
     // Code-override wrapper — a `@revyme/runtime` export, not a components/ file.
     'Override',
+    // Ticker effect wrapper — a `@revyme/runtime` export too.
+    'RevymeTicker',
     'React', 'Suspense',
     // `MotionLink` is a local `const MotionLink = motion.create(Link)` — NOT a
     // `@/components/MotionLink` file. Excluding it stops the auto-import pass
@@ -2442,8 +2449,22 @@ function applyMutation(code: string, mutation: Mutation): string {
   if (code.includes('<Override') && mutation.type !== 'setCodeOverrides') {
     const { code: plain, lifted } = liftCodeOverrides(code);
     if (lifted.size > 0) {
-      const next = applyMutationUnwrapped(plain, mutation);
+      const next = applyMutationTickerAware(plain, mutation);
       return next === plain ? code : pruneUnusedOverrideImports(restoreCodeOverrides(next, lifted));
+    }
+  }
+  return applyMutationTickerAware(code, mutation);
+}
+
+/** Same lift / restore for the Ticker effect's `<RevymeTicker>` wrapper. It
+ *  runs INSIDE the override lift, so a frame carrying both comes back as
+ *  `<RevymeTicker><Override><el/></Override></RevymeTicker>` (ticker-gen.ts). */
+function applyMutationTickerAware(code: string, mutation: Mutation): string {
+  if (code.includes('<RevymeTicker') && mutation.type !== 'setTicker') {
+    const { code: plain, lifted } = liftTickers(code);
+    if (lifted.size > 0) {
+      const next = applyMutationUnwrapped(plain, mutation);
+      return next === plain ? code : restoreTickers(next, lifted);
     }
   }
   return applyMutationUnwrapped(code, mutation);
@@ -2635,6 +2656,9 @@ function applyMutationCore(code: string, mutation: Mutation): string {
 
       case 'setCodeOverrides':
         return setCodeOverridesInCode(code, mutation.nodeId, mutation.overrides);
+
+      case 'setTicker':
+        return setTickerInCode(code, mutation.nodeId, mutation.ticker);
 
       case 'reorder':
         return reorderNodeInCode(code, mutation.nodeId, mutation.parentId, mutation.index);

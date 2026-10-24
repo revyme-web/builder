@@ -10,6 +10,8 @@ import type { CanvasNode } from '../code/parsing/parser';
 import { resolveActiveVariant, bandForTile, responsiveVariantForWidth } from './resolve-core';
 import { pinnedResolveWidth, viewportBandPinOps } from './resize/viewport-band-pin-store';
 import { extractStyleCSS } from '../code/parsing/parser';
+import { resolveTickerWhere, tickerCanvasMask } from '@/shared/ticker-config';
+import { matches as mediaQueryMatchesWidth } from '@/code/project/breakpoint-proof';
 import type { ViewportConfig, CollectionItem, NodeOverride, FilterGroup, FilterConfig, SortConfig, OverlayConfig } from '@/shared/types';
 import { renderWidth } from '@/shared/types';
 import { resolveOverlayConfig } from '@/code/parsing/overlay-parser';
@@ -1000,7 +1002,8 @@ export function renderNodes(
     // (`[data-id="x"][data-overlay-node]`, injected by Canvas.tsx) out-specifies
     // this base rule, so the edited overlay still appears.
     const canvasOverrides = `[data-content-root] * { animation: none !important; transition: none !important; }\n`
-      + `[data-overlay-node] { display: none !important; }\n`;
+      + `[data-overlay-node] { display: none !important; }\n`
+      + TICKER_CANVAS_CSS;
     // Component-instance carried CSS (raw) — the master's <style> block, flattened away during
     // expansion, rewritten by expandComponent to the prefixed instance id (`instanceId:masterId`) and
     // stowed on each expanded root's `afterCSS`. This carries BOTH the overlay ::after rules AND the
@@ -2042,6 +2045,45 @@ function syncBgVideoChild(hostEl: HTMLElement, bgVideo: CanvasNode['bgVideo']): 
   }
 }
 
+/** Ticker-effect frames (`node.ticker`) are drawn STILL on the canvas, but
+ *  shaped like the live ticker's first frame: the runtime (RevymeTicker)
+ *  keeps the row on one line from the start, clips at the frame edge, never
+ *  shrinks an item, and fades the edges. Same rules here so the canvas
+ *  matches preview before the loop moves. */
+const TICKER_CANVAS_CSS = `[data-ticker] { flex-wrap: nowrap !important; justify-content: flex-start !important; overflow: hidden !important; }\n`
+  + `[data-ticker] > * { flex-shrink: 0 !important; }\n`
+  + `[data-ticker][data-ticker-fade] { -webkit-mask-image: var(--ticker-mask); mask-image: var(--ticker-mask); }\n`;
+
+/** Stamp (or clear) the canvas ticker attributes on a frame's element. Each
+ *  tile draws ITS breakpoint / variant: the first `responsive` override whose
+ *  media band contains the tile width (or whose variant is the tile's) — the
+ *  runtime's matchMedia rule — so a ticker that is off on mobile or fades
+ *  differently there shows that on the mobile tile. */
+function applyTickerStamp(el: HTMLElement, node: CanvasNode, vpWidth?: number, variantName?: string | null): void {
+  const t = node.ticker
+    ? resolveTickerWhere(node.ticker, (s) => ('query' in s
+      ? vpWidth !== undefined && mediaQueryMatchesWidth(s.query, vpWidth)
+      : s.variant === (variantName ?? 'default')))
+    : null;
+  if (!t || t.disabled) {
+    if (el.hasAttribute('data-ticker')) {
+      el.removeAttribute('data-ticker');
+      el.removeAttribute('data-ticker-fade');
+      el.style.removeProperty('--ticker-mask');
+    }
+    return;
+  }
+  if (el.getAttribute('data-ticker') !== t.direction) el.setAttribute('data-ticker', t.direction);
+  const mask = tickerCanvasMask(t);
+  if (mask) {
+    el.setAttribute('data-ticker-fade', '');
+    if (el.style.getPropertyValue('--ticker-mask') !== mask) el.style.setProperty('--ticker-mask', mask);
+  } else if (el.hasAttribute('data-ticker-fade')) {
+    el.removeAttribute('data-ticker-fade');
+    el.style.removeProperty('--ticker-mask');
+  }
+}
+
 export function patchElement(
   el: HTMLElement,
   node: CanvasNode,
@@ -2547,6 +2589,7 @@ export function patchElement(
     // Overlay positioning is handled by the portal system in renderNodes()
     // (overlays are moved from viewport tree to a portal sibling)
   }
+  applyTickerStamp(el, node, vpWidth, variantName);
 
   // Patch SVG-specific attributes (must use setAttribute with kebab-case names).
   // For GEOMETRY attrs (d/points/coords) prefer the VARIANT-RESOLVED value
@@ -3376,6 +3419,7 @@ function buildNodeElement(
   if (node.attrs?.['data-overlay']) {
     el.setAttribute('data-overlay-node', 'true');
   }
+  applyTickerStamp(el, node, vpWidth, variantName);
 
   // Placeholder node for {children} slot in layout editing
   if (node.isChildrenSlot) {

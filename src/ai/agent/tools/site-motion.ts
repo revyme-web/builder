@@ -3,10 +3,11 @@
 // Site- and page-level motion the Animation panel's "+" offers and the agent
 // could not reach (audit §8): smooth scrolling (Lenis, per page or site-wide),
 // page transitions (View Transitions between routes), a component cursor, and
-// Glide (a shared layout spring so siblings animate when one resizes). Plus
+// Glide (a shared layout spring so siblings animate when one resizes), and
+// the Ticker effect (an infinite marquee of a layout frame's children). Plus
 // the page templates page transitions depend on. Every write is the panel's
 // own op — smooth-scroll-ops, page-effects-ops, cursor-gen, glide-gen,
-// template-ops — so the panels read the result back as their own.
+// ticker-gen, template-ops — so the panels read the result back as their own.
 
 import { z } from 'zod';
 import { getDefaultStore } from 'jotai';
@@ -27,6 +28,15 @@ import { ensureLayoutFile } from '@/code/generation/metadata-gen';
 import { buildComponentRegistry } from '@/code/components/component-registry';
 import { listTemplates, createTemplate, assignTemplate, validateTemplateName } from '@/code/project/template-ops';
 import { activatePageForAgent } from './set-page';
+import {
+  TICKER_DEFAULTS, isVerticalTickerDirection, resolveTickerForScope, resetTickerScope, setTickerScoped,
+  type TickerConfig, type TickerDirection, type TickerScope,
+} from '@/shared/ticker-config';
+import { viewportKeyWidth } from './viewport-arg';
+import { viewportsConfigAtom, getSortedBreakpointWidths } from '@/code/stores/viewport-store';
+import { resolveScope } from '@/code/animations/animation-scope';
+import { readTicker } from '@/code/generation/ticker-gen';
+import { isTextTag } from '@/shared/constants';
 import { trace } from '@/shared/debug-trace';
 
 const store = getDefaultStore();
@@ -230,6 +240,133 @@ export const setGlideTool: AgentTool = {
   },
 };
 
+// ─── set_ticker ──────────────────────────────────────────────────────────────
+
+/** Tags that are never a ticker frame (media / form controls hold no items). */
+const NON_FRAME_TAGS = new Set(['img', 'video', 'svg', 'canvas', 'iframe', 'input', 'textarea', 'select']);
+const FLEX_DISPLAYS = new Set(['flex', 'inline-flex']);
+
+/** The tile scope a `viewport` argument names — the same media band the panel
+ *  writes on that tile (getActiveAnimationScope). null = the primary / base. */
+function tickerScopeForViewport(raw: unknown): { scope: TickerScope | null } | { error: string } {
+  if (raw === undefined || raw === null || String(raw).trim() === '') return { scope: null };
+  const width = viewportKeyWidth(raw);
+  const viewports = getDefaultStore().get(viewportsConfigAtom);
+  const live = getSortedBreakpointWidths();
+  const widths = width !== undefined && live.includes(width) ? live : viewports.map((v) => v.width).sort((a, b) => b - a);
+  if (width === undefined || !widths.includes(width)) {
+    return { error: `No breakpoint "${String(raw)}" on this page — its breakpoints: ${viewports.map((v) => `${v.label ?? v.id} (${v.width})`).join(', ')}.` };
+  }
+  if (viewports.find((v) => v.isPrimary)?.width === width) return { scope: null };
+  const scope = resolveScope({ kind: 'viewports', widths: [width] }, widths);
+  return { scope: scope && 'query' in scope ? scope : null };
+}
+
+/** What set_ticker / get_motion report: the values that run on `scope` (the
+ *  base when null), whether it runs there, and every breakpoint's own values. */
+export function tickerReport(config: TickerConfig, scope: TickerScope | null) {
+  const v = resolveTickerForScope(config, scope);
+  return {
+    ticker: { speed: v.speed, direction: v.direction, hover_speed: v.hoverSpeed, draggable: v.draggable, fade: v.fade, on: !v.disabled },
+    ...(config.responsive?.length ? {
+      per_breakpoint: config.responsive.map((r) => ({
+        ...('query' in r.scope ? { query: r.scope.query } : { variant: r.scope.variant }),
+        ...(r.speed !== undefined ? { speed: r.speed } : {}),
+        ...(r.hoverSpeed !== undefined ? { hover_speed: r.hoverSpeed } : {}),
+        ...(r.draggable !== undefined ? { draggable: r.draggable } : {}),
+        ...(r.fade !== undefined ? { fade: r.fade } : {}),
+        ...(r.disabled !== undefined ? { on: !r.disabled } : {}),
+      })),
+    } : {}),
+    ...(config.disabled ? { base_on: false } : {}),
+  };
+}
+
+export const setTickerTool: AgentTool = {
+  name: 'set_ticker',
+  description:
+    'TICKER (the Animation panel\'s Ticker effect): the CHILDREN of a layout frame scroll in an infinite, seamless loop — a logo strip, a testimonial band, a scrolling headline. ' +
+    'node_id is the FRAME (display flex): its own children are the items, spaced by its gap; a row frame scrolls left/right, a column frame up/down. Nothing is duplicated in the source — the runtime adds the copies. ' +
+    'speed px per second (default 80), direction left | right | up | down, hover_speed multiplies the speed while hovered (1 = unchanged, 0 = pause on hover), draggable lets visitors fling it, fade = edge fade width in px. ' +
+    'Settings you leave out keep the frame\'s current ticker (or the defaults). Pass remove true to take it off. Use this instead of hand-written loops or a Marquee component for a scrolling row of the page\'s own elements. ' +
+    'PER BREAKPOINT: pass viewport (breakpoint width in px, e.g. 390, or its id / label) and speed / hover_speed / draggable / fade apply on THAT breakpoint only, the desktop keeps its own — like the panel on a tablet tile; direction is always global. remove true with a viewport turns it off on that breakpoint only; reset true with a viewport drops that breakpoint\'s own values. A ticker first added with a viewport runs on that breakpoint only.',
+  inputSchema: {
+    node_id: z.string().describe('the flex frame whose children scroll'),
+    remove: z.boolean().optional().describe('true removes the ticker'),
+    speed: z.number().min(0).max(2000).optional().describe('px per second, default 80'),
+    direction: z.enum(['left', 'right', 'up', 'down']).optional().describe('default left (left/right on a row frame, up/down on a column frame)'),
+    hover_speed: z.number().min(0).max(4).optional().describe('speed multiplier while hovered: 1 = unchanged (default), 0.5 = half, 0 = pause'),
+    draggable: z.boolean().optional().describe('visitors can drag / fling it (default false)'),
+    fade: z.number().min(0).max(1000).optional().describe('edge fade width in px, 0 = none (default)'),
+    viewport: z.union([z.number(), z.string()]).optional().describe('breakpoint (width in px, id or label) to scope the settings / remove / reset to; omit for the base (desktop)'),
+    reset: z.boolean().optional().describe('with viewport: drop that breakpoint\'s own values (back to the base there)'),
+  },
+  category: 'semantic',
+  async execute(args, ctx) {
+    const nodeId = String(args.node_id);
+    const node = getToolNodes(ctx).get(nodeId);
+    if (!node) return fail(`No node "${nodeId}" in the active file.`);
+    const current = readTicker(getToolCode(ctx), nodeId);
+    const scoped = tickerScopeForViewport(args.viewport);
+    if ('error' in scoped) return fail(scoped.error);
+    const scope = scoped.scope;
+    const write = (ticker: TickerConfig | null, what: string) => {
+      ctx.ensureCheckpoint();
+      queueToolMutation(ctx, { type: 'setTicker', nodeId, ticker });
+      flushTool(ctx);
+      trace.action('agent-tool:set_ticker', { nodeId, what, scope });
+    };
+    if (args.reset === true) {
+      if (!scope) return fail('reset drops ONE breakpoint\'s own values — pass the viewport (to change the base, set the values without a viewport).');
+      if (!current) return fail(`"${nodeId}" has no ticker.`);
+      const next = resetTickerScope(current, scope);
+      write(next, 'reset');
+      return ok({ node_id: nodeId, ...tickerReport(next, scope) });
+    }
+    if (args.remove === true) {
+      if (!current) return fail(`"${nodeId}" has no ticker.`);
+      // On a breakpoint: off THERE only. On the base: gone — unless some
+      // breakpoint turned it on explicitly, then the base goes off (the panel's X).
+      const next = scope ? setTickerScoped(current, { disabled: true }, scope)
+        : current.responsive?.some((r) => r.disabled === false) ? { ...current, disabled: true } : null;
+      write(next, 'remove');
+      return ok({ node_id: nodeId, ...(next ? tickerReport(next, scope) : { ticker: null }) });
+    }
+    const tag = node.type.replace(/^motion\./, '');
+    if (/^[A-Z]/.test(tag)) return fail(`"${nodeId}" is a component instance — a ticker scrolls the children of a layout frame on the page. Wrap the instances in a flex frame (wrap_in_layout) and put the ticker on that frame.`);
+    if (isTextTag(tag) || NON_FRAME_TAGS.has(tag)) return fail(`"${nodeId}" is a <${tag}>, not a frame — a ticker scrolls the children of a layout frame. Pick the flex frame that holds the items.`);
+    const display = String(node.styles?.display ?? '');
+    if (!FLEX_DISPLAYS.has(display)) return fail(`"${nodeId}" is not a flex layout (display: ${display || 'not set'}) — the Ticker scrolls a flex frame's children along its direction. Give it a layout first (set_layout, direction row for a horizontal strip) or pick the row that holds the items.`);
+    if (node.children.length === 0) return fail(`"${nodeId}" has no children — the ticker scrolls the frame's own children; add the items to it first.`);
+    const patch: Partial<TickerConfig> = {};
+    if (typeof args.speed === 'number') patch.speed = args.speed;
+    if (typeof args.hover_speed === 'number') patch.hoverSpeed = args.hover_speed;
+    if (args.direction) patch.direction = args.direction as TickerDirection;
+    if (typeof args.draggable === 'boolean') patch.draggable = args.draggable;
+    if (typeof args.fade === 'number') patch.fade = args.fade;
+    // A ticker first added on a breakpoint runs THERE only (base off, that
+    // breakpoint on) — the panel's scoped add. Setting values on a breakpoint
+    // where it is off turns it on there.
+    const seeded: TickerConfig = current
+      ?? (scope ? { ...TICKER_DEFAULTS, disabled: true, responsive: [{ scope, disabled: false }] } : TICKER_DEFAULTS);
+    let config = setTickerScoped(seeded, patch, scope);
+    if (scope && resolveTickerForScope(config, scope).disabled) {
+      config = config.disabled ? setTickerScoped(config, { disabled: false }, scope) : resetTickerScope(config, scope, 'disabled');
+    }
+    else if (!scope && config.disabled && !config.responsive?.some((r) => r.disabled === false)) config = { ...config, disabled: undefined };
+    write(config, 'set');
+    const shown = resolveTickerForScope(config, scope);
+    const vertical = isVerticalTickerDirection(shown.direction);
+    const column = String(node.styles?.flexDirection ?? 'row').startsWith('column');
+    return ok({
+      node_id: nodeId,
+      ...tickerReport(config, scope),
+      items: node.children.length,
+      ...(vertical !== column ? { note: `The frame is a ${column ? 'column' : 'row'}, so it scrolls ${column ? (shown.direction === 'left' ? 'up' : 'down') : (shown.direction === 'up' ? 'left' : 'right')} — the ticker moves along the frame's own direction; change its flexDirection to scroll the other way.` } : {}),
+    });
+  },
+};
+
 // ─── templates ───────────────────────────────────────────────────────────────
 
 export const listTemplatesTool: AgentTool = {
@@ -296,4 +433,4 @@ export const assignTemplateTool: AgentTool = {
   },
 };
 
-export const SITE_MOTION_TOOLS: AgentTool[] = [setSmoothScrollTool, setPageTransitionTool, setCursorTool, setGlideTool, listTemplatesTool, createTemplateTool, assignTemplateTool];
+export const SITE_MOTION_TOOLS: AgentTool[] = [setSmoothScrollTool, setPageTransitionTool, setCursorTool, setGlideTool, setTickerTool, listTemplatesTool, createTemplateTool, assignTemplateTool];

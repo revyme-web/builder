@@ -75,6 +75,9 @@ const ADD_OPTIONS: AddOption[] = [
   // Glide — add on a container; its children glide smoothly when one resizes
   // (e.g. an FAQ accordion pushing siblings down) instead of jumping.
   { type: 'glide', label: 'Glide', desc: 'Smoothly animate children when one resizes — e.g. accordions pushing content.' },
+  // Ticker — on a frame WITH A LAYOUT: its children scroll in an infinite loop
+  // (Framer's Ticker effect). Offered only when `canTicker`.
+  { type: 'ticker', label: 'Ticker', desc: 'Loop this layout’s children forever, like a marquee — logos, testimonials, headlines.' },
   // Page Transition — page-level enter/exit via the View Transitions API. Only
   // offered on a page viewport/root (glideOnly), alongside Glide.
   { type: 'pageTransition', label: 'Page Transition', desc: 'Animate the page in/out on navigation (View Transitions).' },
@@ -234,7 +237,7 @@ function EffectSubMenu({ label, desc, children, onSelect }: {
   );
 }
 
-export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketchNode, isComponentInstance, appearOnly, glideOnly, noGlide, onApplyKeyframe, pasteItem }: {
+export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketchNode, isComponentInstance, appearOnly, glideOnly, noGlide, canTicker, onApplyKeyframe, pasteItem }: {
   onAdd: (t: AddActionType) => void;
   existing: Set<AnimEntryType>;
   isTextNode?: boolean;
@@ -249,6 +252,8 @@ export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketc
    *  Wins over glideOnly — a master's variant-root selection reuses the
    *  page-root picker path, which is exactly how a master root got glided. */
   noGlide?: boolean;
+  /** The node is a frame with a layout (flex) — the Ticker effect applies. */
+  canTicker?: boolean;
   /** Scroll Variant switches a component's variant — only meaningful on a
    *  design-component instance, so the submenu item is gated on this. */
   isComponentInstance?: boolean;
@@ -313,6 +318,8 @@ export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketc
     // node has no element children, so the option never shows there
     // (user decision 2026-08-18).
     (o.type !== 'glide' || !isTextNode) &&
+    // Ticker loops a LAYOUT's children — only on a frame with a layout.
+    (o.type !== 'ticker' || !!canTicker) &&
     (!glideOnly || o.type === 'glide' || o.type === 'pageTransition' || o.type === 'smoothScroll') &&
     // Page Transition is a PAGE-LEVEL effect — only when a viewport/root is the
     // selection (glideOnly), never on a normal element node.

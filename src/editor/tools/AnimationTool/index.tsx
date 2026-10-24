@@ -71,6 +71,11 @@ import { InstanceScrollSpeedPopup } from './popups/InstanceScrollSpeedPopup';
 import { InstanceScrollTransformPopup } from './popups/InstanceScrollTransformPopup';
 import { HoverPopup } from './popups/HoverPopup';
 import { GlidePopup } from './popups/GlidePopup';
+import { TickerPopup } from './popups/TickerPopup';
+import {
+  TICKER_DEFAULTS, hasTickerScope, resetTickerScope, resolveTickerForScope, setTickerScoped, tickerPresentOn,
+  type TickerConfig, type TickerScope,
+} from '@/shared/ticker-config';
 import { TapPopup } from './popups/TapPopup';
 import { OverlayAppearPopup } from './popups/OverlayAppearPopup';
 import { AppearScrollPopup } from './popups/AppearScrollPopup';
@@ -357,6 +362,16 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
       if (glideSpec) {
         entries.push({ type: 'glide', summary: summarizeTransition(glideSpec.transition || {}), key: 'glide', data: { spec: glideSpec } });
       }
+    }
+    // Ticker — the `<RevymeTicker>` wrapper around this layout frame (node.ticker).
+    // Per tile, like the Text Effect: the row shows where the ticker runs (a
+    // tile where it is off gets Ticker back in the Add menu), summarises THIS
+    // tile's values, and goes accent + Reset when the tile has an override (or
+    // the ticker exists only on some tiles).
+    if (node.ticker && tickerPresentOn(node.ticker, activeScope as TickerScope | null)) {
+      const tk = resolveTickerForScope(node.ticker, activeScope as TickerScope | null);
+      entries.push({ type: 'ticker', summary: `${tk.speed}px/s ${tk.direction}`, key: 'ticker',
+        data: { ticker: node.ticker, isOverride: hasTickerScope(node.ticker, activeScope as TickerScope | null) || !!node.ticker.disabled } });
     }
     // Direction-triggered On Scroll uses an `animate=` ternary with no style
     // bindings; parse it up front since both the loop guard (below) and the
@@ -736,6 +751,31 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
         });
         queueMutation({ type: 'updateMotionProp', nodeId, propName: 'viewport', props: { once: 'true' } });
         setActivePopup('appear'); break;
+      case 'ticker': {
+        // Ticker: wrap this layout frame in <RevymeTicker>; its children loop.
+        // Scoped existence, same as the Text Effect:
+        //  - the ticker exists but is off HERE → turn this tile on
+        //  - fresh add on a replica/variant → base off + this tile on, so it
+        //    runs ONLY where it was added
+        //  - fresh add on the primary → plain base, everywhere
+        const vertical = (s.flexDirection || '').startsWith('column');
+        const tScope = getActiveAnimationScope() as TickerScope | null;
+        const existing = getNodeFromCache(nodeId)?.ticker ?? node?.ticker;
+        const fresh: TickerConfig = { ...TICKER_DEFAULTS, direction: vertical ? 'up' : 'left' };
+        expediteStableAtomSync();
+        queueMutation({ type: 'setTicker', nodeId, ticker: existing
+          // Back on here: with the base on, that just drops this tile's "off".
+          ? (tScope ? (existing.disabled ? setTickerScoped(existing, { disabled: false }, tScope) : resetTickerScope(existing, tScope, 'disabled'))
+            : { ...existing, disabled: undefined })
+          : tScope ? { ...fresh, disabled: true, responsive: [{ scope: tScope, disabled: false }] } : fresh });
+        // The ticker runs on one start-aligned, clipped line (the runtime and
+        // the canvas both force it) — write that into the frame too, so the
+        // Layout panel shows what actually renders.
+        if (s.flexWrap && s.flexWrap !== 'nowrap') onUpdate('flexWrap', 'nowrap');
+        if (s.justifyContent && s.justifyContent !== 'flex-start' && s.justifyContent !== 'start') onUpdate('justifyContent', 'flex-start');
+        if (s.overflow !== 'hidden' && s.overflow !== 'clip') onUpdate('overflow', 'hidden');
+        setActivePopup('ticker'); break;
+      }
       case 'glide':
         // Glide ("Flow"): wrap this container's children in a shared LayoutGroup
         // so siblings glide smoothly when one resizes (e.g. an accordion opening).
@@ -864,7 +904,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
         break;
       }
     }
-  }, [nodeId, onUpdate, setKeyframeSheet, bumpKeyframes, s.transition, isInstance, writeInstanceFx, addInstanceFx, allTextAnims, overlayCall]);
+  }, [nodeId, node?.ticker, onUpdate, setKeyframeSheet, bumpKeyframes, s.transition, isInstance, writeInstanceFx, addInstanceFx, allTextAnims, overlayCall]);
 
   const handleRemove = useCallback((type: AnimEntryType, entry?: DetectedEntry) => {
     trace.action('animation:remove', { nodeId, type });
@@ -968,6 +1008,22 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
       }
       case 'glide':
         queueMutation({ type: 'removeGlide', nodeId }); break;
+      case 'ticker': {
+        // X on a replica/variant turns the ticker off for THAT tile only. X on
+        // the primary removes it for real — unless some tile turned it on
+        // explicitly, then the base goes off and those tiles keep it.
+        const tScope = getActiveAnimationScope() as TickerScope | null;
+        const existing = getNodeFromCache(nodeId)?.ticker ?? node?.ticker;
+        expediteStableAtomSync();
+        if (tScope && existing) {
+          queueMutation({ type: 'setTicker', nodeId, ticker: setTickerScoped(existing, { disabled: true }, tScope) });
+        } else if (existing?.responsive?.some((r) => r.disabled === false)) {
+          queueMutation({ type: 'setTicker', nodeId, ticker: { ...existing, disabled: true } });
+        } else {
+          queueMutation({ type: 'setTicker', nodeId, ticker: null });
+        }
+        break;
+      }
       case 'scrollTransform':
         writeScrollFx((sp) => { delete sp.transform; return sp; }); break;
       case 'scrollSpeed':
@@ -992,7 +1048,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
       }
     }
     setActivePopup(null);
-  }, [nodeId, onUpdate, s.animation, setKeyframeSheet, setSelectedKeyframeStop, bumpKeyframes, writeScrollFx, isInstance, writeInstanceFx, code]);
+  }, [nodeId, node?.ticker, onUpdate, s.animation, setKeyframeSheet, setSelectedKeyframeStop, bumpKeyframes, writeScrollFx, isInstance, writeInstanceFx, code]);
 
   // Reset Override: the animation is a RESPONSIVE override on the current tile
   // (a `__mqN ? {override} : {base}` branch). Drop just this scope's branch and
@@ -1051,6 +1107,15 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
         return;
       }
     }
+    // Ticker: its per-tile overrides live in the wrapper's `responsive` list —
+    // drop this tile's entry (every field, and an on/off for this tile).
+    if (scope && type === 'ticker' && node?.ticker) {
+      trace.action('animation:reset-override', { nodeId, type: 'ticker', scope });
+      expediteStableAtomSync();
+      queueMutation({ type: 'setTicker', nodeId, ticker: resetTickerScope(node.ticker, scope as TickerScope) });
+      setActivePopup(null);
+      return;
+    }
     // hover/tap → whileHover/whileTap; appear → its ENTER state `initial`.
     const propName = type === 'hover' ? 'whileHover' : type === 'tap' ? 'whileTap' : type === 'appear' ? 'initial' : null;
     if (scope && propName) {
@@ -1060,7 +1125,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
       return;
     }
     handleRemove(type, entry);
-  }, [nodeId, handleRemove, isInstance, writeInstanceFx, writeScrollFx, allTextAnims]);
+  }, [nodeId, node?.ticker, handleRemove, isInstance, writeInstanceFx, writeScrollFx, allTextAnims]);
 
   // ─── Popup content ─────────────────────────────────────
   const popup = useMemo(() => {
@@ -1110,6 +1175,11 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
       }
       case 'glide':
         return { title: 'Glide', content: <GlidePopup key={nodeId} nodeId={nodeId} spec={entry?.data?.spec || {}} /> };
+      case 'ticker':
+        return { title: 'Ticker', content: <TickerPopup key={nodeId} nodeId={nodeId}
+          ticker={node?.ticker ?? entry?.data?.ticker ?? TICKER_DEFAULTS}
+          vertical={(s.flexDirection || '').startsWith('column')}
+          scope={getActiveAnimationScope() as TickerScope | null} /> };
       case 'appear': {
         if (ifx) return { title: 'Appear Effect', content: <InstanceAppearPopup key={nodeId} nodeId={nodeId} spec={ifx} write={writeInstanceFx} /> };
         const d = entry?.data || {};
@@ -1253,6 +1323,8 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
           appearOnly={isOverlayNode}
           glideOnly={glideOnly}
           noGlide={inDesignMaster}
+          canTicker={!!node && !isInstance && !isOverlayNode && !isTextTag(node.type)
+            && (s.display === 'flex' || s.display === 'inline-flex')}
           isSketchNode={!!node && node.type === 'svg' && node.attrs?.['data-sketch'] === 'true'}
           onApplyKeyframe={(kfName) => {
             trace.action('animation:apply-existing-keyframe', { nodeId, kfName });

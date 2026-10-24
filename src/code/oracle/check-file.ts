@@ -37,6 +37,7 @@ import { checkOverlayDialect } from './checks/overlay-dialect';
 import { checkSvgShapeDialect, checkShapeVariantDForm } from './checks/svg-shape-dialect';
 import { checkMotionAppearHidden, checkMotionTransformDrift } from './checks/motion-appear';
 import { checkCodeOverrides } from './checks/code-override';
+import { checkTickers } from './checks/ticker';
 import { checkMotionPropsNeedMotionTag } from './checks/motion-tag';
 import { checkTranslationDialect } from './checks/translation-dialect';
 import { checkMediaBandDialect, checkDuplicateBreakpointStack } from './checks/media-band-dialect';
@@ -1067,7 +1068,7 @@ export function checkFile(
           const keyName = t.isIdentifier(arrayProp.key) ? arrayProp.key.name : 'prop';
           v.push({
             code: 'LOOP_KEYFRAME_ARRAY', tier: 2, line, elementId: dataId,
-            message: `animate={{ ${keyName}: [...] }} (line ${line}) — keyframe ARRAYS don't resolve in the Animation panel; loops are SINGLE numeric targets. For an A→B→A pulse use the single target + repeatType: 'mirror' (animate={{ scale: 1.2 }} transition={{ duration: 1, repeat: Infinity, repeatType: 'mirror' }}). For a scrolling marquee/ticker, do NOT hand-write it — the builder has a Marquee component (speed/direction/gap) the user inserts; leave a simple static row instead.`,
+            message: `animate={{ ${keyName}: [...] }} (line ${line}) — keyframe ARRAYS don't resolve in the Animation panel; loops are SINGLE numeric targets. For an A→B→A pulse use the single target + repeatType: 'mirror' (animate={{ scale: 1.2 }} transition={{ duration: 1, repeat: Infinity, repeatType: 'mirror' }}). For a scrolling marquee/ticker, do NOT hand-write a loop — use the Ticker effect: wrap ONE flex frame whose children are the items in <RevymeTicker speed={80} direction="left"> (import { RevymeTicker } from '@revyme/runtime').`,
           });
         }
         const hasWhileInView = attrs.some((a) => a.name.name === 'whileInView');
@@ -1288,6 +1289,13 @@ export function checkFile(
   // ── CODE OVERRIDES — `<Override with={withX}>` wraps one element, names an import.
   if (code.includes('<Override')) {
     checkCodeOverrides(ast, v);
+  }
+
+  // ── TICKER EFFECT — `<RevymeTicker …>` wraps one flex frame, literal settings,
+  //    the runtime import. A code component is a black box (its own JSX is never
+  //    read back by the panel), so it is exempt.
+  if (!isCodeComponent && code.includes('<RevymeTicker')) {
+    checkTickers(ast, v);
   }
 
   // ── MOTION PROPS ON A PLAIN TAG — silent everywhere the author can see.
