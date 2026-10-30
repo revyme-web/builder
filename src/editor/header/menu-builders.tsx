@@ -34,7 +34,7 @@ import { shareAsTemplate, createWebsite } from '@/backend/revyme-backend';
 import { backend } from '@/backend/index';
 import { getProjectId } from '@/backend/project-id';
 import { toast } from 'sonner';
-import type { AutoPanSpeed } from '@/code/stores/user-preferences-store';
+import type { AutoPanSpeed, UploadImageFormat } from '@/code/stores/user-preferences-store';
 import { previewModeAtom, shortcutsModalOpenAtom, exportDropdownOpenAtom } from '@/code/stores/editor-store';
 import { paletteOpenAtom } from '@/code/stores/palette-store';
 import { startOnboarding } from '@/editor/onboarding';
@@ -335,6 +335,7 @@ export interface PrefsState {
   showRulers: boolean;
   useSmoothZoom: boolean;
   showPixelGrid: boolean;
+  uploadImageFormat: UploadImageFormat;
 }
 
 export interface PrefsSetters {
@@ -344,6 +345,7 @@ export interface PrefsSetters {
   setShowRulers: (v: boolean) => void;
   setUseSmoothZoom: (v: boolean) => void;
   setShowPixelGrid: (v: boolean) => void;
+  setUploadImageFormat: (v: UploadImageFormat) => void;
 }
 
 /** Build the Preferences submenu from live atom values + setters.
@@ -351,7 +353,8 @@ export interface PrefsSetters {
  *  flips the atom (which is `atomWithStorage`-backed, so the new value
  *  persists across reloads). The Auto pan speed entries form a radio
  *  group — the active level is checked, the other two aren't, and
- *  clicking one switches without toggling. */
+ *  clicking one switches without toggling. Convert uploads is the same kind
+ *  of radio group, shown in cloud mode only (local mode never converts). */
 export function buildPreferencesSubmenu(prefs: PrefsState, set: PrefsSetters): DropdownMenuEntry[] {
   const toggle = (
     id: string, label: string, value: boolean, setter: (v: boolean) => void,
@@ -367,6 +370,20 @@ export function buildPreferencesSubmenu(prefs: PrefsState, set: PrefsSetters): D
     trailingIcon: prefs.autoPanSpeed === level ? <CheckGlyph /> : null,
     onClick: () => { set.setAutoPanSpeed(level); trace.action(`menu:pref:auto-pan-speed`, { level }); },
   });
+  const format = (
+    id: string, label: string, value: UploadImageFormat,
+  ): DropdownMenuEntry => ({
+    id, label,
+    trailingIcon: prefs.uploadImageFormat === value ? <CheckGlyph /> : null,
+    onClick: () => { set.setUploadImageFormat(value); trace.action('menu:pref:upload-image-format', { value }); },
+  });
+  const uploadFormatRows: DropdownMenuEntry[] = CLOUD_ENABLED ? [
+    { type: 'separator' },
+    { id: 'pref-upload-format', label: 'Convert uploads', disabled: true, onClick: () => {} },
+    format('pref-upload-format-webp', '   WebP', 'webp'),
+    format('pref-upload-format-avif', '   AVIF', 'avif'),
+    format('pref-upload-format-none', '   None (keep original)', 'none'),
+  ] : [];
   return [
     toggle('pref-direct-selection', 'Direct selection', prefs.directSelectionEnabled, set.setDirectSelectionEnabled),
     toggle('pref-auto-focus-layers', 'Auto focus layers', prefs.autoFocusLayers, set.setAutoFocusLayers),
@@ -381,6 +398,7 @@ export function buildPreferencesSubmenu(prefs: PrefsState, set: PrefsSetters): D
     radio('pref-auto-pan-speed-low',  '   Low',  'low'),
     radio('pref-auto-pan-speed-mid',  '   Mid',  'mid'),
     radio('pref-auto-pan-speed-high', '   High', 'high'),
+    ...uploadFormatRows,
   ];
 }
 

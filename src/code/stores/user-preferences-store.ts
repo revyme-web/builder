@@ -11,11 +11,15 @@
 // `directSelectionEnabled` → SelectionOverlay, etc.) is per-feature work
 // done as each toggle gets connected to a real consumer.
 
+import { getDefaultStore } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export type AutoPanSpeed = 'low' | 'mid' | 'high';
+
+/** What a JPEG/PNG upload is stored as on the CDN (backend routes/upload.ts). */
+export type UploadImageFormat = 'webp' | 'avif' | 'none';
 
 interface AutoPanSpeedValues {
   /** Canvas pan velocity (px/frame) when the cursor is FULLY into a
@@ -87,3 +91,20 @@ export const showPixelGridAtom = atomWithStorage<boolean>(
 export const builderThemeAtom = atomWithStorage<string>(
   'revyme:prefs:builderTheme', 'default',
 );
+
+/** Convert uploads: what a JPEG/PNG upload is stored as (cloud mode — local
+ *  mode embeds the file as it is). WebP is the default, and what every
+ *  upload got before this choice; AVIF is smaller for photos but slower to
+ *  encode and softer on fine text; `none` keeps the original file. Favicons
+ *  and share images are never made AVIF (the backend decides). `getOnInit`
+ *  so uploaders reading it outside React get the stored choice, not the
+ *  default, before any component has mounted the atom. */
+export const uploadImageFormatAtom = atomWithStorage<UploadImageFormat>(
+  'revyme:prefs:uploadImageFormat', 'webp', undefined, { getOnInit: true },
+);
+
+/** The Convert uploads choice, for the `convert` field of an upload form. */
+export function getUploadImageFormat(): UploadImageFormat {
+  const v = getDefaultStore().get(uploadImageFormatAtom);
+  return v === 'avif' || v === 'none' ? v : 'webp';
+}

@@ -9,6 +9,7 @@ import { ColorSwatch } from './ColorSwatch';
 import ImageSearchModal from '../ui/ImageSearchModal';
 import { getProjectId } from '@/backend/project-id';
 import { trace } from '@/shared/debug-trace';
+import { getUploadImageFormat } from '@/code/stores/user-preferences-store';
 
 interface UploadControlProps {
   value: string;
@@ -60,7 +61,7 @@ export default function UploadControl({
           setProgress(`${i + 1}/${sortedFiles.length}`);
 
           // Rename file to sequential name (frame-001.png, frame-002.png, etc.)
-          // The upload API will convert to .webp but keeps the base name
+          // The upload API converts it (Preferences → Convert uploads) but keeps the base name
           const seqName = `frame-${String(i + 1).padStart(3, '0')}.png`;
           const renamedFile = new File([file], seqName, { type: file.type });
 
@@ -69,6 +70,7 @@ export default function UploadControl({
           formData.append('type', 'image');
           formData.append('source', uploadSource);
           formData.append('websiteId', websiteId);
+          formData.append('convert', getUploadImageFormat());
 
           const res = await fetch('/api/upload', { method: 'POST', body: formData });
           const data = await res.json();
@@ -98,6 +100,7 @@ export default function UploadControl({
         formData.append('type', file.type.startsWith('video/') ? 'video' : 'image');
         formData.append('source', uploadSource);
         formData.append('websiteId', websiteId);
+        formData.append('convert', getUploadImageFormat());
 
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
         const data = await res.json();

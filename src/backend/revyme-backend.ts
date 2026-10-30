@@ -14,6 +14,7 @@ import { disableGzipBodies, encodeSaveBody, noteServerEncodings } from './save-e
 import { isKnownProjectFormat, SaveConflictError } from './types';
 import { getBaseRevision, isRevisionInSync, noteSaved, setLoadedRevision } from './save-revision';
 import { trace } from '@/shared/debug-trace';
+import { getUploadImageFormat } from '@/code/stores/user-preferences-store';
 
 const API_URL = ((import.meta as ImportMeta & { env: Record<string, string> }).env?.VITE_API_URL ?? '').replace(/\/$/, '');
 
@@ -322,6 +323,8 @@ export class RevymeBackend implements ProjectBackend {
     form.append('type', 'image');
     form.append('source', 'uploaded');
     form.append('websiteId', id);
+    // Preferences → Convert uploads: what a JPEG/PNG is stored as.
+    form.append('convert', getUploadImageFormat());
 
     const res = await fetch(url('/api/upload'), { method: 'POST', body: form, credentials: 'include' });
     if (!res.ok) {

@@ -22,6 +22,7 @@ import {
   useSmoothZoomAtom,
   showPixelGridAtom,
   builderThemeAtom,
+  uploadImageFormatAtom,
 } from '@/code/stores/user-preferences-store';
 import { trace } from '@/shared/debug-trace';
 import { backend } from '@/backend';
@@ -109,14 +110,15 @@ export function LogoButton() {
   const [showRulers, setShowRulers] = useAtom(showRulersAtom);
   const [useSmoothZoom, setUseSmoothZoom] = useAtom(useSmoothZoomAtom);
   const [showPixelGrid, setShowPixelGrid] = useAtom(showPixelGridAtom);
+  const [uploadImageFormat, setUploadImageFormat] = useAtom(uploadImageFormatAtom);
   // Builder chrome accent — the top-level "Theme" entry below. In the deps so
   // the submenu's checkmark re-renders on selection.
   const [builderTheme, setBuilderTheme] = useAtom(builderThemeAtom);
 
   const items: DropdownMenuEntry[] = useMemo(() => {
     const preferencesSubmenu = buildPreferencesSubmenu(
-      { directSelectionEnabled, autoPanSpeed, autoFocusLayers, showRulers, useSmoothZoom, showPixelGrid },
-      { setDirectSelectionEnabled, setAutoPanSpeed, setAutoFocusLayers, setShowRulers, setUseSmoothZoom, setShowPixelGrid },
+      { directSelectionEnabled, autoPanSpeed, autoFocusLayers, showRulers, useSmoothZoom, showPixelGrid, uploadImageFormat },
+      { setDirectSelectionEnabled, setAutoPanSpeed, setAutoFocusLayers, setShowRulers, setUseSmoothZoom, setShowPixelGrid, setUploadImageFormat },
     );
     const tabs = buildTabs(preferencesSubmenu);
     // Each tab becomes a single dropdown entry with `submenuItems` —
@@ -213,8 +215,8 @@ export function LogoButton() {
     ];
   }, [
     isViewer, hasActiveSubscription, setSettingsOpen, setSettingsSection,
-    directSelectionEnabled, autoPanSpeed, autoFocusLayers, showRulers, useSmoothZoom, showPixelGrid,
-    setDirectSelectionEnabled, setAutoPanSpeed, setAutoFocusLayers, setShowRulers, setUseSmoothZoom, setShowPixelGrid,
+    directSelectionEnabled, autoPanSpeed, autoFocusLayers, showRulers, useSmoothZoom, showPixelGrid, uploadImageFormat,
+    setDirectSelectionEnabled, setAutoPanSpeed, setAutoFocusLayers, setShowRulers, setUseSmoothZoom, setShowPixelGrid, setUploadImageFormat,
     builderTheme, setBuilderTheme,
   ]);
 

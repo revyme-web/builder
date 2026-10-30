@@ -293,3 +293,25 @@ describe('RevymeBackend — compressed saves', () => {
     expect((calls[3].init.headers as Record<string, string>)['Content-Encoding']).toBeUndefined();
   });
 });
+
+describe('RevymeBackend — uploads follow Preferences → Convert uploads', () => {
+  afterEach(() => localStorage.removeItem('revyme:prefs:uploadImageFormat'));
+
+  async function convertSent(): Promise<FormDataEntryValue | null> {
+    setResponse({ url: 'https://assets.test/a.webp' });
+    await new RevymeBackend().uploadAsset('site-1', new File(['x'], 'photo.png', { type: 'image/png' }));
+    expect(calls[calls.length - 1].url).toBe(`${API}/api/upload`);
+    return (calls[calls.length - 1].init.body as FormData).get('convert');
+  }
+
+  it('sends webp by default, and the chosen format once picked', async () => {
+    const { getDefaultStore } = await import('jotai');
+    const { uploadImageFormatAtom } = await import('@/code/stores/user-preferences-store');
+    expect(await convertSent()).toBe('webp');
+    getDefaultStore().set(uploadImageFormatAtom, 'avif');
+    expect(await convertSent()).toBe('avif');
+    getDefaultStore().set(uploadImageFormatAtom, 'none');
+    expect(await convertSent()).toBe('none');
+    getDefaultStore().set(uploadImageFormatAtom, 'webp');
+  });
+});
