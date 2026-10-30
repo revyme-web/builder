@@ -86,7 +86,7 @@ export const listTextsTool: AgentTool = {
 export const translateTextsTool: AgentTool = {
   name: 'translate_texts',
   description:
-    'Write translations for ONE locale: items are [{file_path, node_id, text}] from list_texts. Rich texts take inline HTML with the same marks as the source (<strong>, <em>, <span style>) — keep them. Component-instance text props are keyed the same way. The default language is edited on the canvas (set_text), never here.',
+    'Write translations for ONE locale: items are [{file_path, node_id, text}] from list_texts. Rich texts take inline HTML with the same marks as the source (<strong>, <em>, <span style>) — keep them. Component-instance text props are keyed the same way. Passing the DEFAULT locale edits the source copy itself (messages/<default>.json for a translated text) — the same write as set_text.',
   inputSchema: {
     locale: z.string(),
     items: z.array(z.object({ file_path: z.string(), node_id: z.string(), text: z.string() })).min(1),
@@ -96,7 +96,8 @@ export const translateTextsTool: AgentTool = {
     const locale = String(args.locale);
     const config = getI18nConfig();
     if (!config.locales.some((l) => l.code === locale)) return fail(`Locale "${locale}" is not configured — set_locales first. Configured: ${config.locales.map((l) => l.code).join(', ')}.`);
-    if (locale === config.defaultLocale) return fail(`"${locale}" is the default language — edit its copy on the canvas (set_text), translate_texts writes the OTHER languages.`);
+    // The default locale edits the source copy (commitTranslationText routes
+    // it to messages/<default>.json or the JSX) — see set_text.
     if (isBranchedRun(ctx)) return fail('Translations are written on the active branch only — run unbranched.');
     const known = new Map(listTranslatableTexts(config.defaultLocale).map((t) => [`${t.filePath}:${t.nodeId}`, t]));
     const items = args.items as { file_path: string; node_id: string; text: string }[];

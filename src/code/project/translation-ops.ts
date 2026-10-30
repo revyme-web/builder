@@ -39,6 +39,7 @@ import { isTextTag } from '@/shared/constants';
 import { getI18nConfig } from '@/code/project/locale-ops';
 import { findInstanceTag } from '@/code/components/instance-prop-overrides';
 import { parsePropMeta } from '@/code/components/prop-meta';
+import { parseComponentControlsMeta, type ComponentControlDef } from '@/code/components/controls-parser';
 import { parseScopedScalarExpr } from '@/code/generation/scoped-expr';
 import { setLocaleInstancePropInCode, setInstancePropBaseInCode } from '@/code/generation/responsive-instance-prop-vars-gen';
 import { buildProvidersSource, looksGeneratedProviders } from '@/code/project/providers-gen';
@@ -92,9 +93,10 @@ const unqLit = (v: string): string | null => {
 };
 
 /** The instance's DEFAULT-locale value for a plainText prop: attr base branch
- *  → master signature default. */
-function readInstancePropBase(hostCode: string, instanceId: string, componentName: string, prop: string, compCode: string): string {
-  const masterDefault = compCode.match(new RegExp(`[{,\\s]${prop}\\s*=\\s*"([^"]*)"`))?.[1] ?? '';
+ *  → master signature default (→ `fallbackDefault`, a code component's
+ *  @controls default, when the signature has none). */
+function readInstancePropBase(hostCode: string, instanceId: string, componentName: string, prop: string, compCode: string, fallbackDefault = ''): string {
+  const masterDefault = compCode.match(new RegExp(`[{,\\s]${prop}\\s*=\\s*"([^"]*)"`))?.[1] ?? fallbackDefault;
   const raw = readInstanceAttrRaw(hostCode, instanceId, componentName, prop);
   if (raw == null) return masterDefault;
   const direct = unqLit(raw);
@@ -118,6 +120,47 @@ function readInstancePropLocaleText(hostCode: string, instanceId: string, compon
     }
   }
   return null;
+}
+
+/** A code component's `text` control holds whatever the author typed it for —
+ *  headings, but also URLs, IDs, CSS, embed code. Only copy is translatable:
+ *  the prop must not be NAMED like a technical value, and its value must
+ *  read like words, not an address or a number. */
+const TECHNICAL_PROP_RE = /url|href|link|src|path|(^|[^a-z])id$|Id$|code|embed|css|gradient|font|colou?r|e-?mail|phone|locale|query|glyph|model|scene|track|video|audio|form|key|token|class|style|selector|icon/i;
+/** Text controls used as a setting (`variant="full"`), named exactly. */
+const SETTING_PROP_RE = /^(variant|mode|theme|layout|align(ment)?|size|position|direction|target|rel|type|as|tone|state|kind|preset)$/i;
+function looksLikeCopy(prop: string, label: string | undefined, value: string): boolean {
+  if (SETTING_PROP_RE.test(prop)) return false;
+  if (TECHNICAL_PROP_RE.test(prop) || (label && TECHNICAL_PROP_RE.test(label))) return false;
+  const v = value.trim();
+  if (/^(https?:|mailto:|tel:|www\.|\/|#)/i.test(v)) return false;
+  if (/^[\w.+-]+@[\w-]+\.[\w.]+$/.test(v)) return false;   // e-mail address
+  if (/^[\d\s.,:%+\-–]*$/.test(v)) return false;            // numbers only
+  if (/^[A-Za-z0-9_-]{12,}$/.test(v)) return false;           // an id / token
+  if (/[{};]|\w\(/.test(v)) return false;                     // CSS / code
+  return true;
+}
+
+/** A master's per-instance TEXT props: a design component's `plainText`
+ *  @propMeta entries, and a code component's `text` controls (group-nested
+ *  ones are flat props too). `codeControl` rows still pass `looksLikeCopy`
+ *  per instance; `fallback` is the @controls default — a code component's
+ *  default lives there, not in its signature. */
+function instanceTextProps(compCode: string): { prop: string; label?: string; fallback?: string; codeControl?: boolean }[] {
+  const out: { prop: string; label?: string; fallback?: string; codeControl?: boolean }[] = Object.entries(parsePropMeta(compCode))
+    .filter(([, e]) => e.type === 'plainText')
+    .map(([prop, e]) => ({ prop, label: e.label }));
+  const walk = (defs: Record<string, ComponentControlDef>) => {
+    for (const [prop, def] of Object.entries(defs)) {
+      if (def.type === 'group' && def.controls) walk(def.controls);
+      else if (def.type === 'text' && !out.some((p) => p.prop === prop)) {
+        out.push({ prop, label: def.label, fallback: typeof def.default === 'string' ? def.default : undefined, codeControl: true });
+      }
+    }
+  };
+  const controls = parseComponentControlsMeta(compCode)?.controls;
+  if (controls) walk(controls);
+  return out;
 }
 
 /** Enumerate every translatable TEXT node across pages + components — the
@@ -173,7 +216,8 @@ export function listTranslatableTexts(defaultLocale: string): TranslatableText[]
     // Component-INSTANCE plainText props: a master whose text
     // is variable-bound ({content}) has NO literal text node — the per-
     // instance prop VALUES are the user-visible copy, so each instance gets a
-    // row per plainText prop. Detected via the host file's component imports
+    // row per plainText prop (and per code-component `text` control that
+    // holds copy — instanceTextProps). Detected via the host file's component imports
     // (covers nested instances inside other component masters too).
     const importRe = /import\s+(\w+)\s+from\s+['"]@\/components\/([\w-]+)['"]/g;
     let im: RegExpExecArray | null;
@@ -182,8 +226,7 @@ export function listTranslatableTexts(defaultLocale: string): TranslatableText[]
       const compPath = `components/${im[2]}.tsx`;
       const compCode = projectFS.readFile(compPath);
       if (!compCode) continue;
-      const meta = parsePropMeta(compCode);
-      const textProps = Object.entries(meta).filter(([, e]) => e.type === 'plainText');
+      const textProps = instanceTextProps(compCode);
       if (textProps.length === 0) continue;
       const tagRe = new RegExp(`<${compName}\\b[^>]*data-id="([^"]+)"[^>]*>`, 'g');
       let tm: RegExpExecArray | null;
@@ -192,13 +235,19 @@ export function listTranslatableTexts(defaultLocale: string): TranslatableText[]
         // data-name sits anywhere on the tag — a lazy optional group inside
         // tagRe gets SKIPPED by the engine, so read it from the matched text.
         const instName = tm[0].match(/data-name="([^"]*)"/)?.[1];
-        for (const [prop, entry] of textProps) {
-          const source = readInstancePropBase(code, instanceId, compName, prop, compCode);
+        for (const { prop, label, fallback, codeControl } of textProps) {
+          // A value that is itself a translation call (`headline={t("hero")}`,
+          // hand-written) is code no tool owns: listing it would show the
+          // master default and a write would wrap the call. It shows up once
+          // the prop is plain text again.
+          if (/\bt(?:\.raw|\.rich)?\(/.test(readInstanceAttrRaw(code, instanceId, compName, prop) ?? '')) continue;
+          const source = readInstancePropBase(code, instanceId, compName, prop, compCode, fallback);
           if (!source.trim()) continue;
+          if (codeControl && !looksLikeCopy(prop, label, source)) continue;
           out.push({
             filePath, kind,
             nodeId: `${instanceId}#${prop}`,
-            label: `${instName || compName} · ${entry.label || prop}`,
+            label: `${instName || compName} · ${label || prop}`,
             source,
             fallbackDefaultText: source,
             instanceProp: { componentName: compName, prop },

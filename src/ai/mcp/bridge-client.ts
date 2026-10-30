@@ -379,9 +379,12 @@ export const bridgeHandlers: Record<string, BridgeHandler> = {
       if (!config.locales.some((l) => l.code === locale)) {
         throw new Error(`Locale '${locale}' is not configured — add it first with op 'set_locales'.`);
       }
-      if (locale === config.defaultLocale) {
-        throw new Error(`'${locale}' is the default locale — write_texts writes TRANSLATIONS. Edit default copy on the canvas or via revyme_submit_files.`);
-      }
+      // The DEFAULT locale is allowed: it edits the source copy — the message
+      // in messages/<default>.json for a translated text, the JSX text
+      // otherwise (commitTranslationText decides). Refusing it left an agent
+      // no way to change English copy that lives in messages/en.json:
+      // revyme_submit_files cannot write messages, and set_text appended
+      // beside the t() call (customer's agent, 2026-10-30).
       // Validate targets against the live enumeration (also supplies the
       // pre-transform seed text for first-time conversions).
       const known = new Map(listTranslatableTexts(config.defaultLocale).map((t) => [`${t.filePath}:${t.nodeId}`, t]));

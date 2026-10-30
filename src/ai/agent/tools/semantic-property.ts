@@ -10,9 +10,15 @@
 
 import { viewportKeyWidth, viewportForArg } from './viewport-arg';
 import { z } from 'zod';
-import { queueToolMutation, flushTool, getToolTokens } from '@/ai/agent/workspace';
+import { queueToolMutation, flushTool, getToolTokens, isBranchedRun, resolveToolFile } from '@/ai/agent/workspace';
 import type { AgentTool, AgentToolResult } from '@/ai/agent';
 import { coerceRecord } from './coerce';
+import { getDefaultStore } from 'jotai';
+import { projectFS } from '@/code/project/project-fs';
+import { parseJSXToNodes } from '@/code/parsing/parser';
+import { getI18nConfig } from '@/code/project/locale-ops';
+import { commitTranslationText } from '@/code/project/translation-ops';
+import { activeLocaleAtom, localeOverridesAtom } from '@/code/stores/locale-store';
 
 function fail(message: string): AgentToolResult {
   return { content: [{ type: 'text', text: JSON.stringify({ error: message }) }], isError: true };
@@ -64,15 +70,58 @@ export const setStylesTool: AgentTool = {
   },
 };
 
+/** Is `nodeId` a TRANSLATED text in `filePath` — its JSX child `{t('id')}`
+ *  (or a rich `t.raw` message), its words in messages/<locale>.json? */
+function translatedText(filePath: string, nodeId: string): { rich: boolean } | null {
+  const code = filePath ? projectFS.readFile(filePath) : null;
+  if (!code) return null;
+  let node;
+  try { node = parseJSXToNodes(code).get(nodeId); } catch { return null; }
+  if (!node?.translationKey) return null;
+  return { rich: !!node.richTranslation };
+}
+
+const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
 export const setTextTool: AgentTool = {
   name: 'set_text',
   description:
-    'Set the plain text content of a node — inserted as plain text, no HTML or markup (use set_rich_text for rich content).',
+    'Set the plain text content of a node — inserted as plain text, no HTML or markup (use set_rich_text for rich content). '
+    + 'On a translated site this is how the DEFAULT language\'s copy changes: a text whose words live in messages/<default>.json is updated there (translate_texts writes the other languages).',
   inputSchema: { node_id: z.string().describe(NODE_ID_DESCRIBE), text: z.string().describe('plain text content, no HTML') },
   category: 'semantic',
   async execute(args, ctx) {
+    const nodeId = args.node_id as string;
+    const text = args.text as string;
+    // TRANSLATED text: the JSX child is `{t('id')}` and the words live in
+    // messages/<default>.json. `updateText` finds no JSXText to replace and
+    // APPENDS one beside the t() call, so the element renders both — the
+    // Content panel's 2026-08-09 bug, which the panel fixed and this tool
+    // never got (customer's agent, 2026-10-30: "set_text only appends").
+    // Write the default-locale message, exactly as the panel does.
+    const filePath = resolveToolFile(ctx);
+    const translated = translatedText(filePath, nodeId);
+    if (translated) {
+      if (isBranchedRun(ctx)) return fail('This text is translated (its words live in messages/*.json), which is written on the active branch only — run unbranched.');
+      ctx.ensureCheckpoint();
+      flushTool(ctx);
+      const { defaultLocale } = getI18nConfig();
+      commitTranslationText({
+        filePath, nodeId, locale: defaultLocale, defaultLocale,
+        text: translated.rich ? escapeHtml(text) : text, rich: translated.rich,
+      });
+      // messages/*.json is outside the parse→render loop — the JSX did not
+      // change, so nothing would repaint the node. Mirror like the panel.
+      const store = getDefaultStore();
+      if (!translated.rich && store.get(activeLocaleAtom) === defaultLocale) {
+        const next = new Map(store.get(localeOverridesAtom));
+        next.set(nodeId, { ...(next.get(nodeId) ?? {}), text });
+        store.set(localeOverridesAtom, next);
+      }
+      return ok({ updated: `messages/${defaultLocale}.json`, locale: defaultLocale });
+    }
     ctx.ensureCheckpoint();
-    queueToolMutation(ctx, { type: 'updateText', nodeId: args.node_id as string, text: args.text as string });
+    queueToolMutation(ctx, { type: 'updateText', nodeId, text });
     flushTool(ctx);
     return ok({});
   },
