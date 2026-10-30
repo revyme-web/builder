@@ -26,7 +26,7 @@ import { nodesAtom, selectedIdsAtom } from '@/code/stores/store';
 import { interactingViewportIdAtom } from '@/code/stores/viewport-store';
 import { overlayEditingIdAtom } from '@/code/stores/overlay-store';
 import { shapeEditingIdAtom, groupEditingIdAtom } from '@/code/stores/shape-edit-store';
-import { queueMutation, flushNow, setForceRender } from '@/code/mutation/mutation-queue';
+import { queueMutation, flushNow, setForceRender, hasQueuedMutations, isMutationQueueProcessing, hasPendingDeferredFanOut } from '@/code/mutation/mutation-queue';
 import { setClosedSource } from '@/code/stores/closed-source-store';
 import { setTemplatePromptArmed, templatePromptDismissKey } from '@/code/stores/fresh-site-store';
 import { setViewerMode } from '@/code/stores/viewer-mode-store';
@@ -41,6 +41,42 @@ import { migrateFormSubmitDisplayTransitions } from '@/code/generation/form-subm
 import { getI18nConfig } from '@/code/project/locale-ops';
 import { syncLocaleRoutes } from '@/code/project/locale-route-ops';
 import { openPluginIdAtom } from '@/plugins/registry';
+
+/** Hooks shared by BOTH `__e2e` surfaces below (noauth + local mode), so the
+ *  two copies can't drift on these. DEV-only — called inside the DEV gates. */
+function e2eSharedHooks(store: ReturnType<typeof getDefaultStore>) {
+  const frame = () => new Promise(r => requestAnimationFrame(() => r(null)));
+  return {
+    // Resolves once the mutation queue has been idle for 3 frames in a row (an
+    // insert into an ordered parent lands in two flushes ~30ms apart) plus two
+    // paint frames. Helpers await this instead of sleeping a magic number.
+    settled: async () => {
+      let idle = 0;
+      const deadline = performance.now() + 5_000;
+      while (idle < 3 && performance.now() < deadline) {
+        await frame();
+        idle = hasQueuedMutations() || isMutationQueueProcessing() || hasPendingDeferredFanOut() ? 0 : idle + 1;
+      }
+      await frame();
+      await frame();
+    },
+    // The builder's own oracle on one file — what a test leaves behind must be
+    // code the builder itself would accept. Lazy: the oracle is pure, so the
+    // dynamic-import identity trap (see the import block) doesn't apply.
+    checkFile: async (path: string) => {
+      const code = projectFS.readFile(path);
+      if (!code) return [];
+      const [{ checkFile }, { oracleFileKind }] = await Promise.all([
+        import('@/code/oracle/check-file'),
+        import('@/code/oracle/file-kind'),
+      ]);
+      const kind = oracleFileKind(path, code);
+      if (!kind) return [];
+      return checkFile(code, { kind, path }).map(v => ({ code: v.code, tier: v.tier, message: v.message, elementId: v.elementId }));
+    },
+    activeFile: () => store.get(activeFilePathAtom),
+  };
+}
 
 export default function ProjectLoader() {
   const [ready, setReady] = useState(false);
@@ -98,6 +134,7 @@ export default function ProjectLoader() {
         if (import.meta.env.DEV) {
           const store = getDefaultStore();
           (window as any).__e2e = {
+            ...e2eSharedHooks(store),
             readFile: (path: string) => projectFS.readFile(path),
             listFiles: () => projectFS.listFiles(),
             // E2E seeding (noauth only): write a file and open it — lets a
@@ -410,6 +447,7 @@ export default function ProjectLoader() {
         // writes don't propagate to readers.
         const store = getDefaultStore();
         (window as any).__e2e = {
+          ...e2eSharedHooks(store),
           readFile: (path: string) => projectFS.readFile(path),
           listFiles: () => projectFS.listFiles(),
           selection: () => store.get(selectedIdsAtom),

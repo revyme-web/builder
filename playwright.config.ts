@@ -16,16 +16,19 @@ import { defineConfig, devices } from '@playwright/test';
 // fine — the sandbox is stateless per iframe and serves from the same disk —
 // so we reuse a running one and only boot our own when nothing is there.
 //
-// Any `e2e/` folder anywhere under src/ is picked up (testDir + testMatch),
-// so a new area only needs its own folder — no config edit, and no suite
-// silently not running because someone forgot to register it.
+// Any `e2e/` folder is picked up (testDir + testMatch): the per-area suites
+// under `e2e/specs/` (the full plan, see e2e/README.md) and the older specs
+// still living next to their code under src/. A new area only needs its own
+// folder — no config edit, and no suite silently not running because someone
+// forgot to register it.
 
 const PORT = Number(process.env.E2E_PORT ?? 4333);
 const SANDBOX_PORT = Number(process.env.E2E_SANDBOX_PORT ?? 5174);
 
 export default defineConfig({
-  testDir: './src',
+  testDir: '.',
   testMatch: '**/e2e/**/*.spec.ts',
+  testIgnore: ['**/node_modules/**'],
   // Drag specs drive one shared dev server with real pointer streams.
   // Serial by default; `E2E_WORKERS=3 npm run e2e` to try parallel locally
   // (each test gets its own browser context, so seeds don't collide — the
@@ -58,8 +61,11 @@ export default defineConfig({
   webServer: [
     {
       // LOCAL mode explicitly — never inherit the dev stack's cloud flag.
+      // A dead AI-service URL keeps every test tab OFF the MCP bridge (:8082):
+      // a DEV editor always connects to it, and the bridge is single-client —
+      // a headless tab would steal it from the user's own editor.
       command: `npx vite --port ${PORT} --strictPort`,
-      env: { VITE_REVYME_CLOUD: 'false' },
+      env: { VITE_REVYME_CLOUD: 'false', VITE_AI_SERVICE_URL: 'http://127.0.0.1:9' },
       url: `http://localhost:${PORT}`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
@@ -70,6 +76,16 @@ export default defineConfig({
       // Reused when the dev stack already serves it (the common case).
       command: 'npx vite --config vite.sandbox.config.ts',
       url: `http://localhost:${SANDBOX_PORT}`,
+      reuseExistingServer: true,
+      timeout: 120_000,
+      stdout: 'ignore',
+      stderr: 'pipe',
+    },
+    {
+      // Preview sandbox (pinned to 5175 like the canvas one) — preview specs
+      // used to pass only when a dev stack happened to be running.
+      command: 'npx vite --config vite.preview.config.ts',
+      url: 'http://localhost:5175',
       reuseExistingServer: true,
       timeout: 120_000,
       stdout: 'ignore',

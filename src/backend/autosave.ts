@@ -192,8 +192,34 @@ async function performSave(attempt = 0): Promise<SaveOutcome> {
   }
 }
 
-/** Start a save and track its promise so `flushSaveNow` can await it. */
+/** The one save queued behind the in-flight one (see `startSave`). */
+let nextSave: Promise<SaveOutcome> | null = null;
+
+/**
+ * Start a save — or, while one is in flight, queue ONE follow-up behind it.
+ *
+ * SINGLE-FLIGHT: two of this tab's saves in flight at once are both based on
+ * the same row revision, so the first one landing makes the backend refuse
+ * the second as a stale tab (409). On a big project (seconds to encode and
+ * upload) the debounce timer, every bridge write's flushSaveNow and parallel
+ * agent tool calls overlapped constantly; the one raced-retry raced again and
+ * the tab latched "saved from another tab or device" with no other tab open,
+ * losing every MCP write after it (2026-10-30, 51 MB project). The in-flight
+ * save's snapshot may predate the newest edit, so the follow-up snapshots
+ * when it starts; every request made meanwhile shares it.
+ */
 function startSave(): Promise<SaveOutcome> {
+  if (nextSave) return nextSave;
+  if (currentSave) {
+    const inFlight = currentSave;
+    const queued: Promise<SaveOutcome> = inFlight.then(() => undefined, () => undefined).then(() => {
+      if (nextSave === queued) nextSave = null;
+      return startSave();
+    });
+    nextSave = queued;
+    trace.action('autosave:queued-behind-in-flight');
+    return queued;
+  }
   const p = performSave().finally(() => {
     if (currentSave === p) currentSave = null;
   });
@@ -209,16 +235,16 @@ function startSave(): Promise<SaveOutcome> {
  *  frame, hit Publish, and the live site doesn't have it" report. The final
  *  save runs UNCONDITIONALLY (not gated on pendingSave): a redundant save
  *  is harmless, and it also covers a non-leader collab tab (whose
- *  triggerAutosave early-returns without ever setting pendingSave). */
+ *  triggerAutosave early-returns without ever setting pendingSave).
+ *  While a save is in flight this resolves with the follow-up queued behind
+ *  it (`startSave`), never with the in-flight one: its snapshot predates
+ *  this call. Parallel flushes share that one follow-up. */
 export async function flushSaveNow(): Promise<SaveOutcome> {
   if (debounceTimer !== null) {
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
-  if (currentSave) {
-    try { await currentSave; } catch { /* status handled in performSave */ }
-  }
-  trace.action('autosave:flush-now');
+  trace.action('autosave:flush-now', { inFlight: currentSave !== null });
   return startSave();
 }
 
