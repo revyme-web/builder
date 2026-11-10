@@ -36,6 +36,7 @@ import {
 } from '@/shared/icons';
 import { trace } from '@/shared/debug-trace';
 import { usePreviewThumbnail } from './usePreviewThumbnail';
+import { isMessageFrom } from '@/shared/message-source';
 import ToolInput from '@/editor/controls/ToolInput';
 import Button from '@/design-system/Button';
 
@@ -51,11 +52,11 @@ const PREVIEW_ORIGIN =
   typeof window !== 'undefined'
     ? `${window.location.protocol}//${window.location.hostname}:5175`
     : 'http://localhost:5175';
-/** Target-origin used in `iframe.contentWindow.postMessage(..., …)`.
- *  `'*'` works regardless of where the iframe ends up (5175, 3333, or any
- *  future port). The incoming filter is also relaxed below so messages from
- *  whichever origin actually serves the iframe are accepted. */
-const POST_MESSAGE_TARGET = '*';
+/** Target-origin used in `iframe.contentWindow.postMessage(..., …)`. The
+ *  iframe is always loaded from PREVIEW_ORIGIN. Never '*': the messages carry
+ *  every project file, and a page the preview navigated to (a link in the
+ *  user's site) would receive them. */
+const POST_MESSAGE_TARGET = PREVIEW_ORIGIN;
 
 // Preview devices: each width lands inside the matching breakpoint of the default ladder
 // (Desktop 1200+, Tablet 810–1199, Mobile < 810) AND of the older 1440 / 768 / 375 one.
@@ -297,11 +298,9 @@ export default function PreviewOverlay({ open, onClose }: Props) {
     if (!open) return;
     setIframeReady(false);
     const handler = (e: MessageEvent) => {
-      // No origin filter — the iframe may be served from PREVIEW_ORIGIN,
-      // the parent's own origin, or any future port. We only act on a
-      // narrow set of `preview:*` message types we send to ourselves; an
-      // unrelated origin can't fake the protocol shape in a way that
-      // changes editor behavior. Filtering by message type below.
+      // Only our preview iframe — any window holding a reference to the
+      // editor can post here.
+      if (!isMessageFrom(e, iframeRef.current?.contentWindow, PREVIEW_ORIGIN)) return;
       if (e.data?.type === 'preview:ready') {
         setIframeReady(true);
         setReadyTick((t) => t + 1);
@@ -560,7 +559,7 @@ export default function PreviewOverlay({ open, onClose }: Props) {
     isHomePage,
     projectVersion,
     iframeRef,
-    postMessageTarget: POST_MESSAGE_TARGET,
+    previewOrigin: POST_MESSAGE_TARGET,
   });
 
   if (!open) return null;

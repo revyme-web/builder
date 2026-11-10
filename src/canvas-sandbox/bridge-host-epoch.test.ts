@@ -13,8 +13,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('@/shared/debug-trace', () => ({ trace: { action: vi.fn(), fn: vi.fn(), error: vi.fn(), dom: vi.fn() } }));
 import { PostMessageBridge } from './bridge-host';
+import { SANDBOX_ORIGIN } from './protocol';
 
 const allRectsMsg = (renderSeq: number | undefined, height: number) => ({
+  origin: SANDBOX_ORIGIN,
   data: {
     __sandbox: true,
     payload: {

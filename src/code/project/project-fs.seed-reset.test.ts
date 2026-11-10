@@ -1,6 +1,6 @@
 // project-fs.seed-reset.test.ts — EMPIRICAL PIN, live find 2026-07-14:
 // the seed's CSS reset zeroed margins only on html/body while the editor
-// sandboxes (public/preview.html) reset `* { margin: 0; padding: 0 }`.
+// sandboxes (canvas-sandbox + preview-sandbox index.html) reset `* { margin: 0; padding: 0 }`.
 // A <p> without an inline margin therefore looked compact in the builder
 // but gained UA `1em` margins on the PUBLISHED site — 120px top+bottom at
 // a 120px font (the "nav menu has huge gaps live but not in the editor"

@@ -12,6 +12,7 @@ import { CLOUD_ENABLED } from '@/shared/cloud-flag';
 import { getProjectId } from '@/backend/project-id';
 import { uploadPreviewThumbnail } from '@/backend/revyme-backend';
 import { trace } from '@/shared/debug-trace';
+import { isMessageFrom } from '@/shared/message-source';
 
 /**
  * Decide whether to (re)capture the thumbnail. Two gates:
@@ -40,8 +41,9 @@ interface Options {
   isHomePage: boolean;
   projectVersion: number;
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
-  /** postMessage targetOrigin — PreviewOverlay uses '*' (see its comment). */
-  postMessageTarget: string;
+  /** Origin the preview iframe is served from: the only origin a thumbnail is
+   *  accepted from, and the targetOrigin of the capture request. */
+  previewOrigin: string;
 }
 
 /**
@@ -62,7 +64,7 @@ export function usePreviewThumbnail({
   isHomePage,
   projectVersion,
   iframeRef,
-  postMessageTarget,
+  previewOrigin,
 }: Options): void {
   const lastCapturedVersionRef = useRef<number | null>(null);
 
@@ -70,6 +72,9 @@ export function usePreviewThumbnail({
   useEffect(() => {
     if (!open) return;
     const handler = (e: MessageEvent) => {
+      // Only our preview iframe — another window could otherwise replace the
+      // site's dashboard thumbnail with any image.
+      if (!isMessageFrom(e, iframeRef.current?.contentWindow, previewOrigin)) return;
       if (e.data?.type !== 'preview:thumbnail') return;
       const dataUrl = e.data.dataUrl;
       if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
@@ -110,7 +115,7 @@ export function usePreviewThumbnail({
     const iframe = iframeRef.current;
     if (!iframe?.contentWindow) return;
     lastCapturedVersionRef.current = projectVersion;
-    iframe.contentWindow.postMessage({ type: 'preview:capture-thumbnail' }, postMessageTarget);
+    iframe.contentWindow.postMessage({ type: 'preview:capture-thumbnail' }, previewOrigin);
     trace.action('preview-thumbnail:requested', { projectVersion });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, iframeReady, isHomePage]);

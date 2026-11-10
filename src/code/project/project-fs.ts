@@ -1172,7 +1172,7 @@ html, body {
 }`;
 
 /** The universal reset every project ships natively — matches the editor
- *  sandboxes (public/preview.html) exactly so builder and published site
+ *  sandboxes (canvas-sandbox + preview-sandbox index.html) exactly so builder and published site
  *  render identically with zero publish-time normalization. */
 const UNIVERSAL_SEED_RESET = `*, *::before, *::after {
   margin: 0;
@@ -2129,7 +2129,7 @@ const DEFAULT_TOKENS_CSS = `/* Modern reset — without this, \`width: 100%\` + 
    blows out the layout because the browser's default box-sizing is
    content-box. Most Next.js starters ship this (or Tailwind preflight).
    margin/padding are reset UNIVERSALLY (not just html/body) to match the
-   editor sandboxes (public/preview.html) EXACTLY — the sandboxes zero UA
+   editor sandboxes (canvas-sandbox + preview-sandbox index.html) EXACTLY — the sandboxes zero UA
    margins on every element, so a <p> without an inline margin looked
    compact in the builder but gained 1em top+bottom (120px at a 120px
    font!) on the PUBLISHED site (live find 2026-07-14: nav menu links with

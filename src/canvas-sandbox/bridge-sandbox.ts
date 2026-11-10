@@ -17,6 +17,7 @@ import type { SandboxApi, RenderInput } from './sandbox-api';
 import { deserializeNodeMap } from './protocol';
 import type { CanvasNode } from '@/code/parsing/parser';
 import { trace } from '@/shared/debug-trace';
+import { trustedWindowEndpoint } from '@/shared/message-source';
 import { setSandboxGlobalsCSS } from './stubs/project-fs';
 import { setPushedLayoutCss } from '@/canvas/renderer/responsive';
 import { replayOverlayPlacements } from '@/canvas/renderer/overlay-portals';
@@ -116,8 +117,10 @@ export function initSandbox(_containerEl: HTMLElement, contentRootEl: HTMLElemen
   // whole browser page instead of the canvas (see wheel-forward.ts).
   installWheelForwarding(window, (msg) => self.parent.postMessage(msg, '*'));
   // Expose the API to the parent. Comlink wraps postMessage under the hood;
-  // every method becomes an awaited RPC call on the parent side.
-  Comlink.expose(api, Comlink.windowEndpoint(self.parent));
+  // every method becomes an awaited RPC call on the parent side. Only the
+  // embedding editor may call it — a page holding a reference to this frame
+  // (e.g. one that opened the editor in a popup) can post here too.
+  Comlink.expose(api, trustedWindowEndpoint(self.parent));
   // One-time signal — Comlink doesn't have a native ready event since
   // wrap() returns a proxy immediately. Parent waits on this before sending.
   emit({ type: 'sandboxReady' });

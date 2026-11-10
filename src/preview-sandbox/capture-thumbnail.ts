@@ -56,9 +56,10 @@ export function captureScale(scrollWidth: number): number {
 
 /** Snapshot `document.body` (the user's rendered site — globals.css background
  *  plus the #root tree) to a downscaled JPEG data URL and post it to the
- *  parent. Best-effort: a failure just means the thumbnail isn't refreshed.
+ *  parent at `targetOrigin` (the editor that asked for it). Best-effort: a
+ *  failure just means the thumbnail isn't refreshed.
  *  Re-entrant guard — overlapping requests are ignored. */
-export async function captureThumbnail(): Promise<void> {
+export async function captureThumbnail(targetOrigin = '*'): Promise<void> {
   if (capturing) return;
   capturing = true;
   try {
@@ -89,7 +90,7 @@ export async function captureThumbnail(): Promise<void> {
       height: body.scrollHeight || window.innerHeight,
       backgroundColor: opaqueBackground(),
     });
-    parent.postMessage({ type: 'preview:thumbnail', dataUrl }, '*');
+    parent.postMessage({ type: 'preview:thumbnail', dataUrl }, targetOrigin);
   } catch (err) {
     console.warn('[preview] thumbnail capture failed', err);
   } finally {

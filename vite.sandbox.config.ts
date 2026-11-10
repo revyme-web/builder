@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
+import { editorCorsOrigins } from './src/shared/dev-server-guards';
 
 const stubs = path.resolve(__dirname, 'src/canvas-sandbox/stubs');
 const src = path.resolve(__dirname, 'src');
@@ -63,6 +64,9 @@ function runtimeBridgeImportmapPlugin(): Plugin {
   };
 }
 
+const allowedHosts = (process.env.VITE_ALLOWED_HOSTS ?? 'revyme.com,.revyme.com').split(',');
+const editorCors = { origin: editorCorsOrigins(allowedHosts) };
+
 export default defineConfig({
   root: path.resolve(__dirname, 'src/canvas-sandbox'),
   // Own cache — see vite.preview.config.ts for rationale (multiple Vite
@@ -73,7 +77,9 @@ export default defineConfig({
   server: {
     port: 5174,
     strictPort: true,
-    cors: true,
+    // The editor's own hosts only (was `true`: any website could read every
+    // response, source modules included).
+    cors: editorCors,
     // CORP `cross-origin` lets the parent (3333) embed sandbox responses under
     // its `Cross-Origin-Embedder-Policy: credentialless` policy. Without this
     // header on the iframe HTML + JS, the parent would refuse to load it.
@@ -100,7 +106,8 @@ export default defineConfig({
     // Env-driven so self-hosters can serve `vite preview` under their own
     // domain: VITE_ALLOWED_HOSTS="example.com,.example.com". Localhost/IPs
     // are always allowed by Vite regardless.
-    allowedHosts: (process.env.VITE_ALLOWED_HOSTS ?? 'revyme.com,.revyme.com').split(','),
+    allowedHosts,
+    cors: editorCors,
     // Same process-isolation trio as the dev server above — without
     // Origin-Agent-Cluster a same-site deployment shares one renderer
     // process between editor and canvas (see server.headers rationale).

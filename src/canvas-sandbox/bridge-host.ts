@@ -17,10 +17,11 @@ import * as Comlink from 'comlink';
 import type { CanvasBridge } from '@/canvas/canvas-bridge';
 import type { SandboxApi, RenderInput, PatchUpdate, TextEditCommand } from './sandbox-api';
 import type { TextEditFitResult, SandboxEvent, TextEditSnapshot } from './protocol';
-import { isSandboxEvent, serializeNodeMap } from './protocol';
+import { isSandboxEvent, serializeNodeMap, SANDBOX_ORIGIN } from './protocol';
 import type { ViewportConfig } from '@/shared/types';
 import type { CanvasNode } from '@/code/parsing/parser';
 import { trace } from '@/shared/debug-trace';
+import { trustedWindowEndpoint } from '@/shared/message-source';
 import { viewportBandPinOps } from '@/canvas/resize/viewport-band-pin-store';
 import { readProjectVersion, type CacheEpoch } from '@/canvas/canvas-bridge';
 
@@ -117,9 +118,9 @@ export class PostMessageBridge implements CanvasBridge {
   setIframe(iframe: HTMLIFrameElement): void {
     this.iframe = iframe;
     if (iframe.contentWindow) {
-      // Wrap the iframe's contentWindow with Comlink. windowEndpoint adapts the
-      // Window's postMessage signature to Comlink's Worker-style API.
-      this.remote = Comlink.wrap<SandboxApi>(Comlink.windowEndpoint(iframe.contentWindow));
+      // Wrap the iframe's contentWindow with Comlink. The endpoint posts to the
+      // sandbox origin only and hears replies from the iframe only.
+      this.remote = Comlink.wrap<SandboxApi>(trustedWindowEndpoint(iframe.contentWindow, SANDBOX_ORIGIN));
     }
     trace.action('postmessage-bridge:setIframe', { src: iframe.src, hasRemote: !!this.remote });
   }
@@ -1003,7 +1004,19 @@ export class PostMessageBridge implements CanvasBridge {
 
   // ─── Iframe → parent event handler (raw postMessage) ──────────────────
 
+  /** Only the canvas iframe drives the bridge. Any window holding a reference
+   *  to the editor (a page that opened it in a popup, a frame) can post to it,
+   *  and a forged `dndCommit` would be written into the project and saved.
+   *  The sandbox announces itself from its module script, which can run before
+   *  `setIframe` (the parent's load event) — until then the origin is the check. */
+  private isFromSandbox(e: MessageEvent): boolean {
+    if (e.origin !== SANDBOX_ORIGIN) return false;
+    const sandboxWindow = this.iframe?.contentWindow;
+    return !sandboxWindow || e.source === sandboxWindow;
+  }
+
   private handleMessage = (e: MessageEvent): void => {
+    if (!this.isFromSandbox(e)) return;
     // canvas-dnd events come over raw postMessage with a top-level `type`
     // (no __sandbox wrapper). Route them first.
     const raw = e.data;

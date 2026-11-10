@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isInsideDir, isPlainFileName, isTrustedDebugRequest } from './src/shared/dev-server-guards';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -246,9 +247,17 @@ function debugTracePlugin(): Plugin {
     configureServer(server) {
       // Helper: mount middleware that works with any base path.
       // Vite's connect doesn't strip base from the mount path, so we match the URL ourselves.
+      // These endpoints write files, so only this machine's own editor tab may
+      // call them — not another device on the network (`--host`), and not a
+      // website open in another tab (see isTrustedDebugRequest).
       const mount = (route: string, handler: (req: any, res: any) => void) => {
         server.middlewares.use((req: any, res: any, next: any) => {
           if (req.url?.endsWith(route) || req.url?.includes(route + '?')) {
+            if (!isTrustedDebugRequest(req.socket?.remoteAddress, req.headers['sec-fetch-site'])) {
+              res.statusCode = 403;
+              res.end('Debug endpoints only answer the editor on this machine');
+              return;
+            }
             handler(req, res);
           } else {
             next();
@@ -285,20 +294,23 @@ function debugTracePlugin(): Plugin {
       // Save current code snapshot
       mount('/__debug_code', (req, res) => {
         if (req.method !== 'POST') { res.statusCode = 405; res.end(); return; }
+        // Custom filename from header, or default. A bare `debug-*` file name
+        // only — it is also written to the project root, where any other name
+        // could overwrite package.json or this config.
+        const requested = req.headers['x-debug-filename'];
+        const filename = typeof requested === 'string' && requested ? requested : 'debug-code.jsx';
+        if (!isPlainFileName(filename) || !filename.startsWith('debug-')) {
+          res.statusCode = 400; res.end('Bad file name'); return;
+        }
         let body = '';
         req.on('data', (chunk) => { body += chunk; });
         req.on('end', () => {
           const outDir = path.resolve(process.cwd(), 'debug_output');
           if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-          // Use custom filename from header, or default
-          const filename = (req.headers['x-debug-filename'] as string) || 'debug-code.jsx';
-
-          // Save to both locations (ensure parent dirs exist)
+          // Save to both locations
           const rootPath = path.resolve(process.cwd(), filename);
           const outPath = path.join(outDir, filename);
-          fs.mkdirSync(path.dirname(rootPath), { recursive: true });
-          fs.mkdirSync(path.dirname(outPath), { recursive: true });
           fs.writeFileSync(rootPath, body, 'utf-8');
           fs.writeFileSync(outPath, body, 'utf-8');
 
@@ -319,7 +331,8 @@ function debugTracePlugin(): Plugin {
           const outDir = path.join(baseDir, timestamp);
           fs.mkdirSync(outDir, { recursive: true });
 
-          const detail = JSON.parse(body);
+          let detail: any;
+          try { detail = JSON.parse(body); } catch { res.statusCode = 400; res.end('Bad JSON'); return; }
 
           // Raw error (no trace) — small, quick to open
           const { recentTrace: _trace, ...rawDetail } = detail;
@@ -344,15 +357,23 @@ function debugTracePlugin(): Plugin {
         req.on('end', () => {
           const outDir = path.resolve(process.cwd(), 'debug_output', 'project');
 
+          let files: Record<string, unknown>;
+          try { files = JSON.parse(body); } catch { res.statusCode = 400; res.end('Bad JSON'); return; }
+
           // Clean previous project snapshot
           if (fs.existsSync(outDir)) {
             fs.rmSync(outDir, { recursive: true, force: true });
           }
 
-          const files: Record<string, string> = JSON.parse(body);
           let count = 0;
           for (const [filePath, content] of Object.entries(files)) {
-            const fullPath = path.join(outDir, filePath);
+            // Project paths only: `../x` or an absolute path would write
+            // anywhere on this machine.
+            const fullPath = path.resolve(outDir, filePath);
+            if (typeof content !== 'string' || !isInsideDir(outDir, fullPath, path.sep)) {
+              console.warn(`Skipped debug project file outside debug_output/project: ${filePath}`);
+              continue;
+            }
             const dir = path.dirname(fullPath);
             if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             fs.writeFileSync(fullPath, content, 'utf-8');
