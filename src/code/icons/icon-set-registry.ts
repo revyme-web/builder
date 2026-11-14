@@ -262,17 +262,33 @@ function extractEntryThumb(entry: string, tagName: string): { svgMarkup: string;
   return { svgMarkup: jsxMarkupToHtml(inner), viewBox: vbMatch ? vbMatch[1] : '0 0 100 100', bgColor };
 }
 
+/** Neutralize active content before `dangerouslySetInnerHTML` on the editor
+ *  origin. Icon/vector markup can originate from a CDN-shared bundle authored
+ *  by another user (see `useCdnSource`), so the thumbnail sanitizers must drop
+ *  anything that would run script in the editor: inline `on*` handlers,
+ *  `<script>`/`<foreignObject>` blocks, and `javascript:` URLs. The JSX-attr
+ *  stripping below is cosmetic and never removed these. */
+function stripActiveMarkup(html: string): string {
+  return html
+    .replace(/<\s*(script|foreignObject)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+    .replace(/<\s*(script|foreignObject)\b[^>]*\/?>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, '')
+    .replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, '')
+    .replace(/(href|xlink:href|src)\s*=\s*(["']?)\s*javascript:[^"'>\s]*\2/gi, '');
+}
+
 /** Convert a JSX markup fragment to plain HTML for dangerouslySetInnerHTML:
  *  `motion.svg` → `svg` (motion shapes aren't real DOM elements), JSX style
  *  objects → CSS strings (so CSS-positioned shapes stay positioned), and strip
  *  JSX-expression attrs (`layout={true}`, `data-id`, `data-name`). */
 function jsxMarkupToHtml(jsx: string): string {
-  return jsx
+  return stripActiveMarkup(jsx
     .replace(/(<\/?)motion\.([a-zA-Z][\w]*)/g, '$1$2')
     .replace(/\s*data-id="[^"]*"/g, '')
     .replace(/\s*data-name="[^"]*"/g, '')
     .replace(/style=\{\{([^}]*)\}\}/g, (_m, body: string) => `style="${jsxStyleBodyToCss(body)}"`)
-    .replace(/\s+[a-zA-Z][\w-]*=\{[^}]*\}/g, '');
+    .replace(/\s+[a-zA-Z][\w-]*=\{[^}]*\}/g, ''));
 }
 
 /** `position: 'absolute', width: '63px', backgroundColor: '#fff'` →
@@ -297,5 +313,5 @@ function sanitizeSvgForThumb(svg: string): { svgMarkup: string; viewBox: string 
   cleaned = cleaned.replace(/\s*data-name="[^"]*"/g, '');
   const vbMatch = cleaned.match(/viewBox="([^"]+)"/);
   const viewBox = vbMatch ? vbMatch[1] : '0 0 100 100';
-  return { svgMarkup: cleaned, viewBox };
+  return { svgMarkup: stripActiveMarkup(cleaned), viewBox };
 }
